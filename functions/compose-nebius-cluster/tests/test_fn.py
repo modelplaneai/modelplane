@@ -14,14 +14,16 @@
 
 """Tests for the compose-nebius-cluster function."""
 
+import asyncio
 import dataclasses
-import unittest
+import json
 
-from crossplane.function import logging, resource
+import pytest
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import fn
 from google.protobuf import duration_pb2 as durationpb
-from google.protobuf import json_format
+from google.protobuf import json_format, message
 from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.infrastructure.nebiuscluster import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -34,10 +36,6 @@ class Case:
     name: str
     req: fnv1.RunFunctionRequest
     want: fnv1.RunFunctionResponse
-
-
-def setUpModule() -> None:
-    logging.configure(level=logging.Level.DISABLED)
 
 
 # The Nebius ClusterProviderConfig the function reads the credentials
@@ -414,405 +412,402 @@ _GPU_POOL = v1alpha1.NodePool(
 )
 
 
-class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
-    """Tests for FunctionRunner.RunFunction."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.runner = fn.FunctionRunner()
-
-    async def test_compose(self) -> None:
-        """The function composes Nebius mk8s cluster infrastructure."""
-        cases = [
-            Case(
-                name="first pass composes infra resources; autoscaling from maxNodeCount",
-                req=_req([_GPU_POOL]),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "network": fnv1.Resource(resource=resource.dict_to_struct(_network())),
-                            "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
-                            "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
-                            "filesystem": fnv1.Resource(resource=resource.dict_to_struct(_filesystem())),
-                            "cloud-init": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cloud_init_secret()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            # The CSI driver release and StorageClass aren't
-                            # composed yet: the cluster isn't observed, so the
-                            # ProviderConfigs can't reach it.
-                            "nodegroup-system": fnv1.Resource(resource=resource.dict_to_struct(_nodegroup_system())),
-                            # nodeCount defaults to 1 and minNodeCount is
-                            # unset, so autoscaling starts at the node count.
-                            "nodegroup-gpu-h100": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
-                                ),
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
-                    ),
-                    context=structpb.Struct(),
-                ),
-            ),
-            Case(
-                name="provider config not yet fetched gates provider configs, not infra",
-                req=_req([_GPU_POOL], with_provider_config=False),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(_status(with_credentials=False)),
+def _compose_cases() -> list[Case]:
+    """The cases for test_compose, with requirements patched onto their wants by position."""
+    cases = [
+        Case(
+            name="first pass composes infra resources; autoscaling from maxNodeCount",
+            req=_req([_GPU_POOL]),
+            want=fnv1.RunFunctionResponse(
+                meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                desired=fnv1.State(
+                    composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                    resources={
+                        "network": fnv1.Resource(resource=resource.dict_to_struct(_network())),
+                        "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
+                        "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
+                        "filesystem": fnv1.Resource(resource=resource.dict_to_struct(_filesystem())),
+                        "cloud-init": fnv1.Resource(
+                            resource=resource.dict_to_struct(_cloud_init_secret()),
+                            ready=fnv1.READY_TRUE,
                         ),
-                        resources={
-                            "network": fnv1.Resource(resource=resource.dict_to_struct(_network())),
-                            "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
-                            "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
-                            "filesystem": fnv1.Resource(resource=resource.dict_to_struct(_filesystem())),
-                            "cloud-init": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cloud_init_secret()),
-                                ready=fnv1.READY_TRUE,
+                        # The CSI driver release and StorageClass aren't
+                        # composed yet: the cluster isn't observed, so the
+                        # ProviderConfigs can't reach it.
+                        "nodegroup-system": fnv1.Resource(resource=resource.dict_to_struct(_nodegroup_system())),
+                        # nodeCount defaults to 1 and minNodeCount is
+                        # unset, so autoscaling starts at the node count.
+                        "nodegroup-gpu-h100": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
                             ),
-                            "nodegroup-system": fnv1.Resource(resource=resource.dict_to_struct(_nodegroup_system())),
-                            "nodegroup-gpu-h100": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
-                                ),
-                            ),
-                        },
-                    ),
-                    results=[
-                        fnv1.Result(
-                            severity=fnv1.SEVERITY_NORMAL,
-                            message="Waiting for Nebius ClusterProviderConfig default",
                         ),
-                    ],
-                    context=structpb.Struct(),
-                ),
-            ),
-            Case(
-                name="deleted provider config keeps credentials from the observed ProviderConfig",
-                req=_req(
-                    [_GPU_POOL],
-                    observed_resources={
                         "provider-config-kubernetes": fnv1.Resource(
                             resource=resource.dict_to_struct(
                                 _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
                             ),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "provider-config-helm": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
+                            ),
+                            ready=fnv1.READY_TRUE,
                         ),
                     },
-                    with_provider_config=False,
                 ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "network": fnv1.Resource(resource=resource.dict_to_struct(_network())),
-                            "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
-                            "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
-                            "filesystem": fnv1.Resource(resource=resource.dict_to_struct(_filesystem())),
-                            "cloud-init": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cloud_init_secret()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "nodegroup-system": fnv1.Resource(resource=resource.dict_to_struct(_nodegroup_system())),
-                            "nodegroup-gpu-h100": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
-                                ),
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
-                    ),
-                    results=[
-                        fnv1.Result(
-                            severity=fnv1.SEVERITY_NORMAL,
-                            message="Nebius ClusterProviderConfig default not found; keeping the "
-                            "credentials the composed ProviderConfig already carries",
-                        ),
-                    ],
-                    context=structpb.Struct(),
-                ),
+                context=structpb.Struct(),
             ),
-            Case(
-                name="fixed-size fabric pool composes a GPU cluster and fixedNodeCount",
-                req=_req(
-                    [
-                        v1alpha1.NodePool(
-                            name="gpu-h100",
-                            role="GPU",
-                            platform="gpu-h100-sxm",
-                            preset="8gpu-128vcpu-1600gb",
-                            diskSizeGb=200,
-                            nodeCount=2,
-                            fabric=v1alpha1.Fabric(
-                                type="InfiniBand",
-                                infiniband=v1alpha1.Infiniband(fabric="fabric-2"),
-                            ),
-                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+        ),
+        Case(
+            name="provider config not yet fetched gates provider configs, not infra",
+            req=_req([_GPU_POOL], with_provider_config=False),
+            want=fnv1.RunFunctionResponse(
+                meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                desired=fnv1.State(
+                    composite=fnv1.Resource(
+                        resource=resource.dict_to_struct(_status(with_credentials=False)),
+                    ),
+                    resources={
+                        "network": fnv1.Resource(resource=resource.dict_to_struct(_network())),
+                        "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
+                        "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
+                        "filesystem": fnv1.Resource(resource=resource.dict_to_struct(_filesystem())),
+                        "cloud-init": fnv1.Resource(
+                            resource=resource.dict_to_struct(_cloud_init_secret()),
+                            ready=fnv1.READY_TRUE,
                         ),
-                    ]
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "network": fnv1.Resource(resource=resource.dict_to_struct(_network())),
-                            "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
-                            "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
-                            "filesystem": fnv1.Resource(resource=resource.dict_to_struct(_filesystem())),
-                            "cloud-init": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cloud_init_secret()),
-                                ready=fnv1.READY_TRUE,
+                        "nodegroup-system": fnv1.Resource(resource=resource.dict_to_struct(_nodegroup_system())),
+                        "nodegroup-gpu-h100": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
                             ),
-                            "gpu-cluster-fabric-2": fnv1.Resource(
-                                resource=resource.dict_to_struct(
+                        ),
+                    },
+                ),
+                results=[
+                    fnv1.Result(
+                        severity=fnv1.SEVERITY_NORMAL,
+                        message="Waiting for Nebius ClusterProviderConfig default",
+                    ),
+                ],
+                context=structpb.Struct(),
+            ),
+        ),
+        Case(
+            name="deleted provider config keeps credentials from the observed ProviderConfig",
+            req=_req(
+                [_GPU_POOL],
+                observed_resources={
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
+                        ),
+                    ),
+                },
+                with_provider_config=False,
+            ),
+            want=fnv1.RunFunctionResponse(
+                meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                desired=fnv1.State(
+                    composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                    resources={
+                        "network": fnv1.Resource(resource=resource.dict_to_struct(_network())),
+                        "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
+                        "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
+                        "filesystem": fnv1.Resource(resource=resource.dict_to_struct(_filesystem())),
+                        "cloud-init": fnv1.Resource(
+                            resource=resource.dict_to_struct(_cloud_init_secret()),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "nodegroup-system": fnv1.Resource(resource=resource.dict_to_struct(_nodegroup_system())),
+                        "nodegroup-gpu-h100": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
+                            ),
+                        ),
+                        "provider-config-kubernetes": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
+                            ),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "provider-config-helm": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
+                            ),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                    },
+                ),
+                results=[
+                    fnv1.Result(
+                        severity=fnv1.SEVERITY_NORMAL,
+                        message="Nebius ClusterProviderConfig default not found; keeping the "
+                        "credentials the composed ProviderConfig already carries",
+                    ),
+                ],
+                context=structpb.Struct(),
+            ),
+        ),
+        Case(
+            name="fixed-size fabric pool composes a GPU cluster and fixedNodeCount",
+            req=_req(
+                [
+                    v1alpha1.NodePool(
+                        name="gpu-h100",
+                        role="GPU",
+                        platform="gpu-h100-sxm",
+                        preset="8gpu-128vcpu-1600gb",
+                        diskSizeGb=200,
+                        nodeCount=2,
+                        fabric=v1alpha1.Fabric(
+                            type="InfiniBand",
+                            infiniband=v1alpha1.Infiniband(fabric="fabric-2"),
+                        ),
+                        gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                    ),
+                ]
+            ),
+            want=fnv1.RunFunctionResponse(
+                meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                desired=fnv1.State(
+                    composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                    resources={
+                        "network": fnv1.Resource(resource=resource.dict_to_struct(_network())),
+                        "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
+                        "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
+                        "filesystem": fnv1.Resource(resource=resource.dict_to_struct(_filesystem())),
+                        "cloud-init": fnv1.Resource(
+                            resource=resource.dict_to_struct(_cloud_init_secret()),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "gpu-cluster-fabric-2": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                {
+                                    "apiVersion": "compute.nebius.m.upbound.io/v1beta1",
+                                    "kind": "GpuCluster",
+                                    "metadata": {"labels": {"modelplane.ai/fabric": "fabric-2"}},
+                                    "spec": {
+                                        "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                                        "forProvider": {
+                                            "name": "test-cluster-fabric-2",
+                                            "infinibandFabric": "fabric-2",
+                                        },
+                                    },
+                                }
+                            ),
+                        ),
+                        "nodegroup-system": fnv1.Resource(resource=resource.dict_to_struct(_nodegroup_system())),
+                        "nodegroup-gpu-h100": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _nodegroup_gpu(
                                     {
-                                        "apiVersion": "compute.nebius.m.upbound.io/v1beta1",
-                                        "kind": "GpuCluster",
-                                        "metadata": {"labels": {"modelplane.ai/fabric": "fabric-2"}},
-                                        "spec": {
-                                            "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
-                                            "forProvider": {
-                                                "name": "test-cluster-fabric-2",
-                                                "infinibandFabric": "fabric-2",
+                                        "gpuCluster": {
+                                            "idSelector": {
+                                                "matchControllerRef": True,
+                                                "matchLabels": {"modelplane.ai/fabric": "fabric-2"},
                                             },
                                         },
-                                    }
+                                    },
+                                    fixedNodeCount=2,
                                 ),
                             ),
-                            "nodegroup-system": fnv1.Resource(resource=resource.dict_to_struct(_nodegroup_system())),
-                            "nodegroup-gpu-h100": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _nodegroup_gpu(
-                                        {
-                                            "gpuCluster": {
-                                                "idSelector": {
-                                                    "matchControllerRef": True,
-                                                    "matchLabels": {"modelplane.ai/fabric": "fabric-2"},
-                                                },
-                                            },
-                                        },
-                                        fixedNodeCount=2,
-                                    ),
-                                ),
+                        ),
+                        "provider-config-kubernetes": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
                             ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "provider-config-helm": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
                             ),
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
-                    ),
-                    context=structpb.Struct(),
-                ),
-            ),
-            Case(
-                name="marks managed resources ready from observed conditions",
-                req=_req(
-                    [_GPU_POOL],
-                    observed_resources={
-                        "network": _observed_ready(_network()),
-                        "subnet": _observed_ready(_subnet()),
-                        "cluster": _observed_ready(_cluster()),
-                        "filesystem": _observed_ready(_filesystem()),
-                        "release-csi-mounted-fs-path": _observed_ready(_csi_release()),
-                        "nodegroup-system": _observed_ready(_nodegroup_system()),
-                        "nodegroup-gpu-h100": _observed_ready(
-                            _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
+                            ready=fnv1.READY_TRUE,
                         ),
                     },
                 ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "network": fnv1.Resource(
-                                resource=resource.dict_to_struct(_network()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "subnet": fnv1.Resource(
-                                resource=resource.dict_to_struct(_subnet()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "filesystem": fnv1.Resource(
-                                resource=resource.dict_to_struct(_filesystem()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "cloud-init": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cloud_init_secret()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            # The cluster is observed, so the CSI driver
-                            # release and StorageClass are composed too.
-                            "release-csi-mounted-fs-path": fnv1.Resource(
-                                resource=resource.dict_to_struct(_csi_release()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "storage-class-rwx-fs": fnv1.Resource(
-                                resource=resource.dict_to_struct(_storage_class()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "nodegroup-system": fnv1.Resource(
-                                resource=resource.dict_to_struct(_nodegroup_system()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "nodegroup-gpu-h100": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
-                    ),
-                    context=structpb.Struct(),
-                ),
+                context=structpb.Struct(),
             ),
-            Case(
-                name="custom credentials flow through to all cloud MRs",
-                req=_req(
-                    [_GPU_POOL],
-                    credentials=v1alpha1.Credentials(type="ProviderConfig", name="my-nebius-account"),
-                    provider_config_resource={
-                        "apiVersion": "nebius.m.upbound.io/v1beta1",
-                        "kind": "ProviderConfig",
-                        "metadata": {"name": "my-nebius-account", "namespace": "crossplane-system"},
-                        "spec": {
-                            "identity": {"type": "ServiceAccount"},
-                            "credentials": {
-                                "source": "Secret",
-                                "secretRef": {
-                                    "namespace": "crossplane-system",
-                                    "name": "nebius-credentials",
-                                    "key": "credentials.json",
-                                },
-                            },
-                            "projectID": "project-e00test",
-                        },
+        ),
+        Case(
+            name="marks managed resources ready from observed conditions",
+            req=_req(
+                [_GPU_POOL],
+                observed_resources={
+                    "network": _observed_ready(_network()),
+                    "subnet": _observed_ready(_subnet()),
+                    "cluster": _observed_ready(_cluster()),
+                    "filesystem": _observed_ready(_filesystem()),
+                    "release-csi-mounted-fs-path": _observed_ready(_csi_release()),
+                    "nodegroup-system": _observed_ready(_nodegroup_system()),
+                    "nodegroup-gpu-h100": _observed_ready(
+                        _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
+                    ),
+                },
+            ),
+            want=fnv1.RunFunctionResponse(
+                meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                desired=fnv1.State(
+                    composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                    resources={
+                        "network": fnv1.Resource(
+                            resource=resource.dict_to_struct(_network()),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "subnet": fnv1.Resource(
+                            resource=resource.dict_to_struct(_subnet()),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "cluster": fnv1.Resource(
+                            resource=resource.dict_to_struct(_cluster()),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "filesystem": fnv1.Resource(
+                            resource=resource.dict_to_struct(_filesystem()),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "cloud-init": fnv1.Resource(
+                            resource=resource.dict_to_struct(_cloud_init_secret()),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        # The cluster is observed, so the CSI driver
+                        # release and StorageClass are composed too.
+                        "release-csi-mounted-fs-path": fnv1.Resource(
+                            resource=resource.dict_to_struct(_csi_release()),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "storage-class-rwx-fs": fnv1.Resource(
+                            resource=resource.dict_to_struct(_storage_class()),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "nodegroup-system": fnv1.Resource(
+                            resource=resource.dict_to_struct(_nodegroup_system()),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "nodegroup-gpu-h100": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
+                            ),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "provider-config-kubernetes": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
+                            ),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "provider-config-helm": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
+                            ),
+                            ready=fnv1.READY_TRUE,
+                        ),
                     },
                 ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "network": fnv1.Resource(
-                                resource=resource.dict_to_struct(_network("ProviderConfig", "my-nebius-account")),
-                            ),
-                            "subnet": fnv1.Resource(
-                                resource=resource.dict_to_struct(_subnet("ProviderConfig", "my-nebius-account")),
-                            ),
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster("ProviderConfig", "my-nebius-account")),
-                            ),
-                            "filesystem": fnv1.Resource(
-                                resource=resource.dict_to_struct(_filesystem("ProviderConfig", "my-nebius-account")),
-                            ),
-                            "cloud-init": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cloud_init_secret()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "nodegroup-system": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _nodegroup_system("ProviderConfig", "my-nebius-account"),
-                                ),
-                            ),
-                            "nodegroup-gpu-h100": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _nodegroup_gpu(
-                                        {},
-                                        "ProviderConfig",
-                                        "my-nebius-account",
-                                        autoscaling={"minNodeCount": 1, "maxNodeCount": 4},
-                                    ),
-                                ),
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
-                    ),
-                    context=structpb.Struct(),
-                ),
+                context=structpb.Struct(),
             ),
-        ]
+        ),
+        Case(
+            name="custom credentials flow through to all cloud MRs",
+            req=_req(
+                [_GPU_POOL],
+                credentials=v1alpha1.Credentials(type="ProviderConfig", name="my-nebius-account"),
+                provider_config_resource={
+                    "apiVersion": "nebius.m.upbound.io/v1beta1",
+                    "kind": "ProviderConfig",
+                    "metadata": {"name": "my-nebius-account", "namespace": "crossplane-system"},
+                    "spec": {
+                        "identity": {"type": "ServiceAccount"},
+                        "credentials": {
+                            "source": "Secret",
+                            "secretRef": {
+                                "namespace": "crossplane-system",
+                                "name": "nebius-credentials",
+                                "key": "credentials.json",
+                            },
+                        },
+                        "projectID": "project-e00test",
+                    },
+                },
+            ),
+            want=fnv1.RunFunctionResponse(
+                meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                desired=fnv1.State(
+                    composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                    resources={
+                        "network": fnv1.Resource(
+                            resource=resource.dict_to_struct(_network("ProviderConfig", "my-nebius-account")),
+                        ),
+                        "subnet": fnv1.Resource(
+                            resource=resource.dict_to_struct(_subnet("ProviderConfig", "my-nebius-account")),
+                        ),
+                        "cluster": fnv1.Resource(
+                            resource=resource.dict_to_struct(_cluster("ProviderConfig", "my-nebius-account")),
+                        ),
+                        "filesystem": fnv1.Resource(
+                            resource=resource.dict_to_struct(_filesystem("ProviderConfig", "my-nebius-account")),
+                        ),
+                        "cloud-init": fnv1.Resource(
+                            resource=resource.dict_to_struct(_cloud_init_secret()),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "nodegroup-system": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _nodegroup_system("ProviderConfig", "my-nebius-account"),
+                            ),
+                        ),
+                        "nodegroup-gpu-h100": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _nodegroup_gpu(
+                                    {},
+                                    "ProviderConfig",
+                                    "my-nebius-account",
+                                    autoscaling={"minNodeCount": 1, "maxNodeCount": 4},
+                                ),
+                            ),
+                        ),
+                        "provider-config-kubernetes": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
+                            ),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                        "provider-config-helm": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
+                            ),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                    },
+                ),
+                context=structpb.Struct(),
+            ),
+        ),
+    ]
 
-        # Every compose path declares the provider config requirement; the
-        # selector kind and name vary by credentials.
-        custom_creds_selector = fnv1.ResourceSelector(
-            api_version="nebius.m.upbound.io/v1beta1",
-            kind="ProviderConfig",
-            match_name="my-nebius-account",
-            namespace="modelplane-system",
-        )
-        for case in cases[:-1]:
-            case.want.requirements.resources["nebius-provider-config"].CopyFrom(_PROVIDER_CONFIG_SELECTOR)
-        cases[-1].want.requirements.resources["nebius-provider-config"].CopyFrom(custom_creds_selector)
+    # Every compose path declares the provider config requirement; the
+    # selector kind and name vary by credentials.
+    custom_creds_selector = fnv1.ResourceSelector(
+        api_version="nebius.m.upbound.io/v1beta1",
+        kind="ProviderConfig",
+        match_name="my-nebius-account",
+        namespace="modelplane-system",
+    )
+    for case in cases[:-1]:
+        case.want.requirements.resources["nebius-provider-config"].CopyFrom(_PROVIDER_CONFIG_SELECTOR)
+    cases[-1].want.requirements.resources["nebius-provider-config"].CopyFrom(custom_creds_selector)
+    return cases
 
-        for case in cases:
-            with self.subTest(case.name):
-                got = await self.runner.RunFunction(case.req, None)
-                self.assertEqual(
-                    json_format.MessageToDict(case.want),
-                    json_format.MessageToDict(got),
-                    "-want, +got",
-                )
+
+def _to_dict(msg: message.Message) -> dict:
+    """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
+    return json.loads(json_format.MessageToJson(msg, sort_keys=True))
+
+
+@pytest.mark.parametrize("case", _compose_cases(), ids=lambda case: case.name)
+def test_compose(case: Case) -> None:
+    """RunFunction composes a NebiusCluster's network, mk8s cluster, node groups and ProviderConfigs."""
+    got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
+    assert _to_dict(got) == _to_dict(case.want)

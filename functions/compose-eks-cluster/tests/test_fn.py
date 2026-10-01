@@ -14,15 +14,17 @@
 
 """Tests for the compose-eks-cluster function."""
 
+import asyncio
 import dataclasses
-import unittest
+import json
 from typing import Any
 
-from crossplane.function import logging, resource
+import pytest
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import fn
 from google.protobuf import duration_pb2 as durationpb
-from google.protobuf import json_format
+from google.protobuf import json_format, message
 from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.infrastructure.ekscluster import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -35,10 +37,6 @@ class Case:
     name: str
     req: fnv1.RunFunctionRequest
     want: fnv1.RunFunctionResponse
-
-
-def setUpModule() -> None:
-    logging.configure(level=logging.Level.DISABLED)
 
 
 _KUBECONFIG_SECRET = "test-cluster-kubeconfig-55b57"
@@ -1139,303 +1137,44 @@ def _expected_resources() -> dict:
     }
 
 
-class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
-    """Tests for FunctionRunner.RunFunction."""
+def _compose_cases() -> list[Case]:
+    """The cases test_compose runs."""
+    # Second pass: cluster and cluster-auth observed Ready, function flips
+    # those two desired resources ready while still emitting everything.
+    ready_resources = _expected_resources()
+    ready_resources["cluster"] = fnv1.Resource(
+        resource=ready_resources["cluster"].resource,
+        ready=fnv1.READY_TRUE,
+    )
+    ready_resources["cluster-auth"] = fnv1.Resource(
+        resource=ready_resources["cluster-auth"].resource,
+        ready=fnv1.READY_TRUE,
+    )
+    ready_resources["efs-filesystem"] = fnv1.Resource(
+        resource=ready_resources["efs-filesystem"].resource,
+        ready=fnv1.READY_TRUE,
+    )
+    # Once the EFS filesystem id is observed, the managed StorageClass Object
+    # is composed (and marked ready) against the cluster's own ProviderConfig.
+    ready_resources["storage-class-rwx-efs"] = fnv1.Resource(
+        resource=resource.dict_to_struct(_storage_class_object("fs-0abc123")),
+        ready=fnv1.READY_TRUE,
+    )
+    # With the cluster observed, the autoscaler Helm release is composed (it's
+    # gated on the cluster existing so provider-helm can reach it). It carries
+    # no Ready condition yet, so it stays not-ready this pass.
+    ready_resources["release-cluster-autoscaler"] = fnv1.Resource(
+        resource=resource.dict_to_struct(_autoscaler_release()),
+    )
 
-    maxDiff = None
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.runner = fn.FunctionRunner()
-
-    async def test_compose(self) -> None:
-        """The function composes EKS cluster infrastructure."""
-        # Second pass: cluster and cluster-auth observed Ready, function flips
-        # those two desired resources ready while still emitting everything.
-        ready_resources = _expected_resources()
-        ready_resources["cluster"] = fnv1.Resource(
-            resource=ready_resources["cluster"].resource,
-            ready=fnv1.READY_TRUE,
-        )
-        ready_resources["cluster-auth"] = fnv1.Resource(
-            resource=ready_resources["cluster-auth"].resource,
-            ready=fnv1.READY_TRUE,
-        )
-        ready_resources["efs-filesystem"] = fnv1.Resource(
-            resource=ready_resources["efs-filesystem"].resource,
-            ready=fnv1.READY_TRUE,
-        )
-        # Once the EFS filesystem id is observed, the managed StorageClass Object
-        # is composed (and marked ready) against the cluster's own ProviderConfig.
-        ready_resources["storage-class-rwx-efs"] = fnv1.Resource(
-            resource=resource.dict_to_struct(_storage_class_object("fs-0abc123")),
-            ready=fnv1.READY_TRUE,
-        )
-        # With the cluster observed, the autoscaler Helm release is composed (it's
-        # gated on the cluster existing so provider-helm can reach it). It carries
-        # no Ready condition yet, so it stays not-ready this pass.
-        ready_resources["release-cluster-autoscaler"] = fnv1.Resource(
-            resource=resource.dict_to_struct(_autoscaler_release()),
-        )
-
-        cases = [
-            Case(
-                name="first pass composes infra resources; none ready",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(
-                                _xr().model_dump(exclude_none=True, mode="json"),
-                            ),
-                        ),
-                    ),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(_expected_status()),
-                        ),
-                        resources=_expected_resources(),
-                    ),
-                    context=structpb.Struct(),
-                ),
-            ),
-            Case(
-                name="second pass with observed cluster ready marks cluster resources ready",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(
-                                _xr().model_dump(exclude_none=True, mode="json"),
-                            ),
-                        ),
-                        resources={
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    {
-                                        **_eks_cluster(),
-                                        "status": {"conditions": [_ready_condition()]},
-                                    },
-                                ),
-                            ),
-                            "cluster-auth": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    {
-                                        **_cluster_auth(),
-                                        "status": {"conditions": [_ready_condition()]},
-                                    },
-                                ),
-                            ),
-                            "efs-filesystem": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    {
-                                        **_efs_filesystem(),
-                                        "metadata": {"annotations": {"crossplane.io/external-name": "fs-0abc123"}},
-                                        "status": {"conditions": [_ready_condition()]},
-                                    },
-                                ),
-                            ),
-                        },
-                    ),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(_expected_status()),
-                        ),
-                        resources=ready_resources,
-                    ),
-                    context=structpb.Struct(),
-                ),
-            ),
-        ]
-
-        for case in cases:
-            with self.subTest(name=case.name):
-                got = await self.runner.RunFunction(case.req, None)
-                self.assertEqual(
-                    json_format.MessageToDict(case.want),
-                    json_format.MessageToDict(got),
-                )
-
-    async def test_compose_capacity_block(self) -> None:
-        """A Capacity Block pool composes a launch template and a CAPACITY_BLOCK node group.
-
-        The GPU node group must not set instanceTypes (EKS takes the type
-        from the launch template), must set capacityType=CAPACITY_BLOCK, and
-        must reference the launch template. The launch template targets the
-        reservation via the capacity-block market type.
-        """
-        req = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct(
-                        _xr_capacity_block().model_dump(exclude_none=True, mode="json"),
-                    ),
-                ),
-            ),
-        )
-
-        got = await self.runner.RunFunction(req, None)
-        resources = got.desired.resources
-
-        # The launch template is composed and targets the reservation.
-        self.assertIn("launch-template-gpu-h200", resources)
-        self.assertEqual(
-            _launch_template(),
-            resource.struct_to_dict(resources["launch-template-gpu-h200"].resource),
-        )
-
-        # The GPU node group uses CAPACITY_BLOCK + the launch template and
-        # carries no instanceTypes.
-        self.assertEqual(
-            _gpu_node_group_capacity_block(),
-            resource.struct_to_dict(resources["nodegroup-gpu-h200"].resource),
-        )
-
-    async def test_compose_efa(self) -> None:
-        """An EFA GPU pool composes EFA infrastructure end to end.
-
-        The node group's launch template carries one EFA interface per network
-        card (card 0 keeps device index 0 for the node's IP traffic, the rest
-        device index 1 for RDMA), the cluster gets an EFA security group with
-        self-referencing all-traffic ingress and egress rules, and the node
-        group references the launch template instead of setting instanceTypes.
-        """
-        want_resources = {
-            "vpc": fnv1.Resource(resource=resource.dict_to_struct(_vpc())),
-            "subnet-0": fnv1.Resource(
-                resource=resource.dict_to_struct(_subnet(_SUBNET_A, "us-west-2a", "10.0.0.0/20")),
-            ),
-            "subnet-1": fnv1.Resource(
-                resource=resource.dict_to_struct(_subnet(_SUBNET_B, "us-west-2b", "10.0.16.0/20")),
-            ),
-            "subnet-2": fnv1.Resource(
-                resource=resource.dict_to_struct(_subnet(_SUBNET_C, "us-west-2c", "10.0.32.0/20")),
-            ),
-            "private-subnet-0": fnv1.Resource(
-                resource=resource.dict_to_struct(_private_subnet(_PRIVATE_SUBNET_A, "us-west-2a", "10.0.48.0/20")),
-            ),
-            "private-subnet-1": fnv1.Resource(
-                resource=resource.dict_to_struct(_private_subnet(_PRIVATE_SUBNET_B, "us-west-2b", "10.0.64.0/20")),
-            ),
-            "private-subnet-2": fnv1.Resource(
-                resource=resource.dict_to_struct(_private_subnet(_PRIVATE_SUBNET_C, "us-west-2c", "10.0.80.0/20")),
-            ),
-            "internet-gateway": fnv1.Resource(resource=resource.dict_to_struct(_internet_gateway())),
-            "nat-eip": fnv1.Resource(resource=resource.dict_to_struct(_nat_eip())),
-            "nat-gateway": fnv1.Resource(resource=resource.dict_to_struct(_nat_gateway("us-west-2a"))),
-            "route-table": fnv1.Resource(resource=resource.dict_to_struct(_route_table())),
-            "route-default": fnv1.Resource(resource=resource.dict_to_struct(_route_default())),
-            "private-route-table": fnv1.Resource(resource=resource.dict_to_struct(_private_route_table())),
-            "private-route-default": fnv1.Resource(resource=resource.dict_to_struct(_private_route_default())),
-            "route-table-association-0": fnv1.Resource(
-                resource=resource.dict_to_struct(_route_table_association("us-west-2a")),
-            ),
-            "route-table-association-1": fnv1.Resource(
-                resource=resource.dict_to_struct(_route_table_association("us-west-2b")),
-            ),
-            "route-table-association-2": fnv1.Resource(
-                resource=resource.dict_to_struct(_route_table_association("us-west-2c")),
-            ),
-            "private-route-table-association-0": fnv1.Resource(
-                resource=resource.dict_to_struct(_private_route_table_association("us-west-2a")),
-            ),
-            "private-route-table-association-1": fnv1.Resource(
-                resource=resource.dict_to_struct(_private_route_table_association("us-west-2b")),
-            ),
-            "private-route-table-association-2": fnv1.Resource(
-                resource=resource.dict_to_struct(_private_route_table_association("us-west-2c")),
-            ),
-            "iam-role-cluster": fnv1.Resource(
-                resource=resource.dict_to_struct(_role("cluster", _ASSUME_CLUSTER)),
-            ),
-            "iam-attach-cluster-policy": fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    _role_policy_attachment("cluster", "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"),
-                ),
-            ),
-            "iam-role-node": fnv1.Resource(resource=resource.dict_to_struct(_role("node", _ASSUME_NODE))),
-            "iam-attach-node-worker": fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    _role_policy_attachment("node", "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"),
-                ),
-            ),
-            "iam-attach-node-cni": fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    _role_policy_attachment("node", "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"),
-                ),
-            ),
-            "iam-attach-node-ecr": fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    _role_policy_attachment("node", "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"),
-                ),
-            ),
-            "cluster": fnv1.Resource(resource=resource.dict_to_struct(_eks_cluster())),
-            "cluster-auth": fnv1.Resource(resource=resource.dict_to_struct(_cluster_auth())),
-            "nodegroup-system": fnv1.Resource(resource=resource.dict_to_struct(_system_node_group())),
-            "launch-template-gpu-h200": fnv1.Resource(resource=resource.dict_to_struct(_launch_template_efa())),
-            "efa-security-group": fnv1.Resource(resource=resource.dict_to_struct(_efa_security_group())),
-            "efa-security-group-ingress": fnv1.Resource(
-                resource=resource.dict_to_struct(_efa_security_group_ingress()),
-            ),
-            "efa-security-group-egress": fnv1.Resource(
-                resource=resource.dict_to_struct(_efa_security_group_egress()),
-            ),
-            "nodegroup-gpu-h200": fnv1.Resource(resource=resource.dict_to_struct(_gpu_node_group_efa())),
-            "addon-vpc-cni": fnv1.Resource(resource=resource.dict_to_struct(_addon("vpc-cni"))),
-            "addon-kube-proxy": fnv1.Resource(resource=resource.dict_to_struct(_addon("kube-proxy"))),
-            "addon-coredns": fnv1.Resource(resource=resource.dict_to_struct(_addon("coredns"))),
-            "efs-filesystem": fnv1.Resource(resource=resource.dict_to_struct(_efs_filesystem())),
-            "efs-security-group": fnv1.Resource(resource=resource.dict_to_struct(_efs_security_group())),
-            "efs-security-group-ingress": fnv1.Resource(
-                resource=resource.dict_to_struct(_efs_security_group_ingress()),
-            ),
-            "efs-mount-target-0": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_PRIVATE_SUBNET_A))),
-            "efs-mount-target-1": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_PRIVATE_SUBNET_B))),
-            "efs-mount-target-2": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_PRIVATE_SUBNET_C))),
-            "iam-role-efs-csi": fnv1.Resource(
-                resource=resource.dict_to_struct(_role("efs-csi", _ASSUME_POD_IDENTITY)),
-            ),
-            "iam-attach-efs-csi": fnv1.Resource(
-                resource=resource.dict_to_struct(_role_policy_attachment("efs-csi", _POLICY_EFS_CSI)),
-            ),
-            "addon-eks-pod-identity-agent": fnv1.Resource(
-                resource=resource.dict_to_struct(_addon("eks-pod-identity-agent")),
-            ),
-            "pod-identity-efs-csi": fnv1.Resource(resource=resource.dict_to_struct(_pod_identity_association())),
-            "addon-aws-efs-csi-driver": fnv1.Resource(
-                resource=resource.dict_to_struct(_addon("aws-efs-csi-driver")),
-            ),
-            "iam-policy-cluster-autoscaler": fnv1.Resource(resource=resource.dict_to_struct(_autoscaler_policy())),
-            "iam-role-cluster-autoscaler": fnv1.Resource(
-                resource=resource.dict_to_struct(_role("cluster-autoscaler", _ASSUME_POD_IDENTITY)),
-            ),
-            "iam-attach-cluster-autoscaler": fnv1.Resource(
-                resource=resource.dict_to_struct(_autoscaler_attachment()),
-            ),
-            "pod-identity-cluster-autoscaler": fnv1.Resource(
-                resource=resource.dict_to_struct(_autoscaler_pod_identity()),
-            ),
-            "provider-config-kubernetes": fnv1.Resource(
-                resource=resource.dict_to_struct(_provider_config("kubernetes.m.crossplane.io/v1alpha1")),
-                ready=fnv1.READY_TRUE,
-            ),
-            "provider-config-helm": fnv1.Resource(
-                resource=resource.dict_to_struct(_provider_config("helm.m.crossplane.io/v1beta1")),
-                ready=fnv1.READY_TRUE,
-            ),
-        }
-
-        case = Case(
-            name="an EFA pool composes EFA launch template, security group, and rules",
+    return [
+        Case(
+            name="first pass composes infra resources; none ready",
             req=fnv1.RunFunctionRequest(
                 observed=fnv1.State(
                     composite=fnv1.Resource(
                         resource=resource.dict_to_struct(
-                            _xr_efa().model_dump(exclude_none=True, mode="json"),
+                            _xr().model_dump(exclude_none=True, mode="json"),
                         ),
                     ),
                 ),
@@ -1446,96 +1185,338 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     composite=fnv1.Resource(
                         resource=resource.dict_to_struct(_expected_status()),
                     ),
-                    resources=want_resources,
+                    resources=_expected_resources(),
                 ),
                 context=structpb.Struct(),
             ),
-        )
+        ),
+        Case(
+            name="second pass with observed cluster ready marks cluster resources ready",
+            req=fnv1.RunFunctionRequest(
+                observed=fnv1.State(
+                    composite=fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _xr().model_dump(exclude_none=True, mode="json"),
+                        ),
+                    ),
+                    resources={
+                        "cluster": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                {
+                                    **_eks_cluster(),
+                                    "status": {"conditions": [_ready_condition()]},
+                                },
+                            ),
+                        ),
+                        "cluster-auth": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                {
+                                    **_cluster_auth(),
+                                    "status": {"conditions": [_ready_condition()]},
+                                },
+                            ),
+                        ),
+                        "efs-filesystem": fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                {
+                                    **_efs_filesystem(),
+                                    "metadata": {"annotations": {"crossplane.io/external-name": "fs-0abc123"}},
+                                    "status": {"conditions": [_ready_condition()]},
+                                },
+                            ),
+                        ),
+                    },
+                ),
+            ),
+            want=fnv1.RunFunctionResponse(
+                meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                desired=fnv1.State(
+                    composite=fnv1.Resource(
+                        resource=resource.dict_to_struct(_expected_status()),
+                    ),
+                    resources=ready_resources,
+                ),
+                context=structpb.Struct(),
+            ),
+        ),
+    ]
 
-        got = await self.runner.RunFunction(case.req, None)
-        self.assertEqual(
-            json_format.MessageToDict(case.want),
-            json_format.MessageToDict(got),
-        )
 
-    async def test_compose_efa_cluster_security_group(self) -> None:
-        """Once both security groups are observed, every interface carries them.
+def _to_dict(msg: message.Message) -> dict:
+    """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
+    return json.loads(json_format.MessageToJson(msg, sort_keys=True))
 
-        A launch template with networkInterfaces makes its security groups
-        authoritative, so the interfaces must carry both the EFA security group
-        and the EKS cluster security group or the node never joins. Both are set
-        as raw IDs in securityGroups (not securityGroupRefs): the provider's
-        reference resolver no-ops once that field is populated, so a ref mixed
-        with a literal would be dropped. The EFA group's ID comes from its
-        observed external name, the cluster group's from the observed cluster's
-        status, so both appear only once their resources report them.
-        """
-        req = fnv1.RunFunctionRequest(
+
+@pytest.mark.parametrize("case", _compose_cases(), ids=lambda case: case.name)
+def test_compose(case: Case) -> None:
+    """The function composes EKS cluster infrastructure."""
+    got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
+    assert _to_dict(got) == _to_dict(case.want)
+
+
+def test_compose_capacity_block() -> None:
+    """A Capacity Block pool composes a launch template and a CAPACITY_BLOCK node group."""
+    # The GPU node group must not set instanceTypes (EKS takes the type
+    # from the launch template), must set capacityType=CAPACITY_BLOCK, and
+    # must reference the launch template. The launch template targets the
+    # reservation via the capacity-block market type.
+    req = fnv1.RunFunctionRequest(
+        observed=fnv1.State(
+            composite=fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    _xr_capacity_block().model_dump(exclude_none=True, mode="json"),
+                ),
+            ),
+        ),
+    )
+
+    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
+    resources = got.desired.resources
+
+    # The launch template is composed and targets the reservation.
+    assert "launch-template-gpu-h200" in resources
+    assert resource.struct_to_dict(resources["launch-template-gpu-h200"].resource) == _launch_template()
+
+    # The GPU node group uses CAPACITY_BLOCK + the launch template and
+    # carries no instanceTypes.
+    assert resource.struct_to_dict(resources["nodegroup-gpu-h200"].resource) == _gpu_node_group_capacity_block()
+
+
+def test_compose_efa() -> None:
+    """An EFA GPU pool composes EFA infrastructure end to end."""
+    # The node group's launch template carries one EFA interface per network
+    # card (card 0 keeps device index 0 for the node's IP traffic, the rest
+    # device index 1 for RDMA), the cluster gets an EFA security group with
+    # self-referencing all-traffic ingress and egress rules, and the node
+    # group references the launch template instead of setting instanceTypes.
+    want_resources = {
+        "vpc": fnv1.Resource(resource=resource.dict_to_struct(_vpc())),
+        "subnet-0": fnv1.Resource(
+            resource=resource.dict_to_struct(_subnet(_SUBNET_A, "us-west-2a", "10.0.0.0/20")),
+        ),
+        "subnet-1": fnv1.Resource(
+            resource=resource.dict_to_struct(_subnet(_SUBNET_B, "us-west-2b", "10.0.16.0/20")),
+        ),
+        "subnet-2": fnv1.Resource(
+            resource=resource.dict_to_struct(_subnet(_SUBNET_C, "us-west-2c", "10.0.32.0/20")),
+        ),
+        "private-subnet-0": fnv1.Resource(
+            resource=resource.dict_to_struct(_private_subnet(_PRIVATE_SUBNET_A, "us-west-2a", "10.0.48.0/20")),
+        ),
+        "private-subnet-1": fnv1.Resource(
+            resource=resource.dict_to_struct(_private_subnet(_PRIVATE_SUBNET_B, "us-west-2b", "10.0.64.0/20")),
+        ),
+        "private-subnet-2": fnv1.Resource(
+            resource=resource.dict_to_struct(_private_subnet(_PRIVATE_SUBNET_C, "us-west-2c", "10.0.80.0/20")),
+        ),
+        "internet-gateway": fnv1.Resource(resource=resource.dict_to_struct(_internet_gateway())),
+        "nat-eip": fnv1.Resource(resource=resource.dict_to_struct(_nat_eip())),
+        "nat-gateway": fnv1.Resource(resource=resource.dict_to_struct(_nat_gateway("us-west-2a"))),
+        "route-table": fnv1.Resource(resource=resource.dict_to_struct(_route_table())),
+        "route-default": fnv1.Resource(resource=resource.dict_to_struct(_route_default())),
+        "private-route-table": fnv1.Resource(resource=resource.dict_to_struct(_private_route_table())),
+        "private-route-default": fnv1.Resource(resource=resource.dict_to_struct(_private_route_default())),
+        "route-table-association-0": fnv1.Resource(
+            resource=resource.dict_to_struct(_route_table_association("us-west-2a")),
+        ),
+        "route-table-association-1": fnv1.Resource(
+            resource=resource.dict_to_struct(_route_table_association("us-west-2b")),
+        ),
+        "route-table-association-2": fnv1.Resource(
+            resource=resource.dict_to_struct(_route_table_association("us-west-2c")),
+        ),
+        "private-route-table-association-0": fnv1.Resource(
+            resource=resource.dict_to_struct(_private_route_table_association("us-west-2a")),
+        ),
+        "private-route-table-association-1": fnv1.Resource(
+            resource=resource.dict_to_struct(_private_route_table_association("us-west-2b")),
+        ),
+        "private-route-table-association-2": fnv1.Resource(
+            resource=resource.dict_to_struct(_private_route_table_association("us-west-2c")),
+        ),
+        "iam-role-cluster": fnv1.Resource(
+            resource=resource.dict_to_struct(_role("cluster", _ASSUME_CLUSTER)),
+        ),
+        "iam-attach-cluster-policy": fnv1.Resource(
+            resource=resource.dict_to_struct(
+                _role_policy_attachment("cluster", "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"),
+            ),
+        ),
+        "iam-role-node": fnv1.Resource(resource=resource.dict_to_struct(_role("node", _ASSUME_NODE))),
+        "iam-attach-node-worker": fnv1.Resource(
+            resource=resource.dict_to_struct(
+                _role_policy_attachment("node", "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"),
+            ),
+        ),
+        "iam-attach-node-cni": fnv1.Resource(
+            resource=resource.dict_to_struct(
+                _role_policy_attachment("node", "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"),
+            ),
+        ),
+        "iam-attach-node-ecr": fnv1.Resource(
+            resource=resource.dict_to_struct(
+                _role_policy_attachment("node", "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"),
+            ),
+        ),
+        "cluster": fnv1.Resource(resource=resource.dict_to_struct(_eks_cluster())),
+        "cluster-auth": fnv1.Resource(resource=resource.dict_to_struct(_cluster_auth())),
+        "nodegroup-system": fnv1.Resource(resource=resource.dict_to_struct(_system_node_group())),
+        "launch-template-gpu-h200": fnv1.Resource(resource=resource.dict_to_struct(_launch_template_efa())),
+        "efa-security-group": fnv1.Resource(resource=resource.dict_to_struct(_efa_security_group())),
+        "efa-security-group-ingress": fnv1.Resource(
+            resource=resource.dict_to_struct(_efa_security_group_ingress()),
+        ),
+        "efa-security-group-egress": fnv1.Resource(
+            resource=resource.dict_to_struct(_efa_security_group_egress()),
+        ),
+        "nodegroup-gpu-h200": fnv1.Resource(resource=resource.dict_to_struct(_gpu_node_group_efa())),
+        "addon-vpc-cni": fnv1.Resource(resource=resource.dict_to_struct(_addon("vpc-cni"))),
+        "addon-kube-proxy": fnv1.Resource(resource=resource.dict_to_struct(_addon("kube-proxy"))),
+        "addon-coredns": fnv1.Resource(resource=resource.dict_to_struct(_addon("coredns"))),
+        "efs-filesystem": fnv1.Resource(resource=resource.dict_to_struct(_efs_filesystem())),
+        "efs-security-group": fnv1.Resource(resource=resource.dict_to_struct(_efs_security_group())),
+        "efs-security-group-ingress": fnv1.Resource(
+            resource=resource.dict_to_struct(_efs_security_group_ingress()),
+        ),
+        "efs-mount-target-0": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_PRIVATE_SUBNET_A))),
+        "efs-mount-target-1": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_PRIVATE_SUBNET_B))),
+        "efs-mount-target-2": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_PRIVATE_SUBNET_C))),
+        "iam-role-efs-csi": fnv1.Resource(
+            resource=resource.dict_to_struct(_role("efs-csi", _ASSUME_POD_IDENTITY)),
+        ),
+        "iam-attach-efs-csi": fnv1.Resource(
+            resource=resource.dict_to_struct(_role_policy_attachment("efs-csi", _POLICY_EFS_CSI)),
+        ),
+        "addon-eks-pod-identity-agent": fnv1.Resource(
+            resource=resource.dict_to_struct(_addon("eks-pod-identity-agent")),
+        ),
+        "pod-identity-efs-csi": fnv1.Resource(resource=resource.dict_to_struct(_pod_identity_association())),
+        "addon-aws-efs-csi-driver": fnv1.Resource(
+            resource=resource.dict_to_struct(_addon("aws-efs-csi-driver")),
+        ),
+        "iam-policy-cluster-autoscaler": fnv1.Resource(resource=resource.dict_to_struct(_autoscaler_policy())),
+        "iam-role-cluster-autoscaler": fnv1.Resource(
+            resource=resource.dict_to_struct(_role("cluster-autoscaler", _ASSUME_POD_IDENTITY)),
+        ),
+        "iam-attach-cluster-autoscaler": fnv1.Resource(
+            resource=resource.dict_to_struct(_autoscaler_attachment()),
+        ),
+        "pod-identity-cluster-autoscaler": fnv1.Resource(
+            resource=resource.dict_to_struct(_autoscaler_pod_identity()),
+        ),
+        "provider-config-kubernetes": fnv1.Resource(
+            resource=resource.dict_to_struct(_provider_config("kubernetes.m.crossplane.io/v1alpha1")),
+            ready=fnv1.READY_TRUE,
+        ),
+        "provider-config-helm": fnv1.Resource(
+            resource=resource.dict_to_struct(_provider_config("helm.m.crossplane.io/v1beta1")),
+            ready=fnv1.READY_TRUE,
+        ),
+    }
+
+    case = Case(
+        name="an EFA pool composes EFA launch template, security group, and rules",
+        req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=fnv1.Resource(
                     resource=resource.dict_to_struct(
                         _xr_efa().model_dump(exclude_none=True, mode="json"),
                     ),
                 ),
-                resources={
-                    "cluster": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                **_eks_cluster(),
-                                "status": {
-                                    "atProvider": {
-                                        "vpcConfig": {"clusterSecurityGroupId": "sg-0cluster"},
-                                    },
-                                },
-                            },
-                        ),
-                    ),
-                    "efa-security-group": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                **_efa_security_group(),
-                                "metadata": {
-                                    **_efa_security_group()["metadata"],
-                                    "annotations": {"crossplane.io/external-name": "sg-0efa"},
-                                },
-                            },
-                        ),
-                    ),
-                },
             ),
-        )
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(_expected_status()),
+                ),
+                resources=want_resources,
+            ),
+            context=structpb.Struct(),
+        ),
+    )
 
-        got = await self.runner.RunFunction(req, None)
-        lt = resource.struct_to_dict(got.desired.resources["launch-template-gpu-h200"].resource)
-        interfaces = lt["spec"]["forProvider"]["networkInterfaces"]
+    got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
+    assert _to_dict(got) == _to_dict(case.want)
 
-        # Every interface carries both SGs as raw IDs (EFA first, then cluster)
-        # and no securityGroupRefs; no interface requests a public IP (nodes are
-        # in private subnets).
-        self.assertEqual("efa", interfaces[0]["interfaceType"])
-        for ni in interfaces:
-            self.assertNotIn("securityGroupRefs", ni)
-            self.assertEqual(["sg-0efa", "sg-0cluster"], ni["securityGroups"])
-            self.assertNotIn("associatePublicIpAddress", ni)
-        for ni in interfaces[1:]:
-            self.assertEqual("efa-only", ni["interfaceType"])
 
-    async def test_compose_efa_dra_driver(self) -> None:
-        """An EFA pool installs the EFA DRA driver Helm release.
-
-        Like the autoscaler, the release is gated on the cluster being observed
-        so provider-helm can reach it. A pool without the EFA fabric installs no
-        driver even once the cluster is observed.
-        """
-        observed_cluster = {
-            "cluster": fnv1.Resource(
+def test_compose_efa_cluster_security_group() -> None:
+    """Once both security groups are observed, every interface carries them."""
+    # A launch template with networkInterfaces makes its security groups
+    # authoritative, so the interfaces must carry both the EFA security group
+    # and the EKS cluster security group or the node never joins. Both are set
+    # as raw IDs in securityGroups (not securityGroupRefs): the provider's
+    # reference resolver no-ops once that field is populated, so a ref mixed
+    # with a literal would be dropped. The EFA group's ID comes from its
+    # observed external name, the cluster group's from the observed cluster's
+    # status, so both appear only once their resources report them.
+    req = fnv1.RunFunctionRequest(
+        observed=fnv1.State(
+            composite=fnv1.Resource(
                 resource=resource.dict_to_struct(
-                    {**_eks_cluster(), "status": {"conditions": [_ready_condition()]}},
+                    _xr_efa().model_dump(exclude_none=True, mode="json"),
                 ),
             ),
-        }
+            resources={
+                "cluster": fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            **_eks_cluster(),
+                            "status": {
+                                "atProvider": {
+                                    "vpcConfig": {"clusterSecurityGroupId": "sg-0cluster"},
+                                },
+                            },
+                        },
+                    ),
+                ),
+                "efa-security-group": fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            **_efa_security_group(),
+                            "metadata": {
+                                **_efa_security_group()["metadata"],
+                                "annotations": {"crossplane.io/external-name": "sg-0efa"},
+                            },
+                        },
+                    ),
+                ),
+            },
+        ),
+    )
 
-        got_efa = await self.runner.RunFunction(
+    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
+    lt = resource.struct_to_dict(got.desired.resources["launch-template-gpu-h200"].resource)
+    interfaces = lt["spec"]["forProvider"]["networkInterfaces"]
+
+    # Every interface carries both SGs as raw IDs (EFA first, then cluster)
+    # and no securityGroupRefs; no interface requests a public IP (nodes are
+    # in private subnets).
+    assert interfaces[0]["interfaceType"] == "efa"
+    for ni in interfaces:
+        assert "securityGroupRefs" not in ni
+        assert ni["securityGroups"] == ["sg-0efa", "sg-0cluster"]
+        assert "associatePublicIpAddress" not in ni
+    for ni in interfaces[1:]:
+        assert ni["interfaceType"] == "efa-only"
+
+
+def test_compose_efa_dra_driver() -> None:
+    """An EFA pool installs the EFA DRA driver Helm release, and a pool without EFA doesn't."""
+    # Like the autoscaler, the release is gated on the cluster being observed
+    # so provider-helm can reach it. A pool without the EFA fabric installs no
+    # driver even once the cluster is observed.
+    observed_cluster = {
+        "cluster": fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {**_eks_cluster(), "status": {"conditions": [_ready_condition()]}},
+            ),
+        ),
+    }
+
+    got_efa = asyncio.run(
+        fn.FunctionRunner().RunFunction(
             fnv1.RunFunctionRequest(
                 observed=fnv1.State(
                     composite=fnv1.Resource(
@@ -1546,13 +1527,15 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             ),
             None,
         )
-        self.assertIn("release-efa-dra-driver", got_efa.desired.resources)
-        self.assertEqual(
-            _efa_dra_driver_release(),
-            resource.struct_to_dict(got_efa.desired.resources["release-efa-dra-driver"].resource),
-        )
+    )
+    assert "release-efa-dra-driver" in got_efa.desired.resources
+    assert (
+        resource.struct_to_dict(got_efa.desired.resources["release-efa-dra-driver"].resource)
+        == _efa_dra_driver_release()
+    )
 
-        got_none = await self.runner.RunFunction(
+    got_none = asyncio.run(
+        fn.FunctionRunner().RunFunction(
             fnv1.RunFunctionRequest(
                 observed=fnv1.State(
                     composite=fnv1.Resource(
@@ -1563,100 +1546,97 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             ),
             None,
         )
-        self.assertNotIn("release-efa-dra-driver", got_none.desired.resources)
+    )
+    assert "release-efa-dra-driver" not in got_none.desired.resources
 
-    async def test_custom_credentials(self) -> None:
-        """Custom credentials flow through to all cloud MRs.
 
-        When spec.credentials is set with a custom type and name, every cloud
-        provider MR (VPC, subnets, IAM roles, EKS cluster, node groups, addons,
-        EFS resources, autoscaler IAM resources) carries the corresponding
-        providerConfigRef. The kubeconfig-based resources (provider-config-kubernetes,
-        provider-config-helm, release-*, storage-class-*) are unaffected.
-        """
-        ck = "ProviderConfig"
-        cn = "my-aws-account"
-        creds = v1alpha1.Credentials(type=ck, name=cn)
+def test_custom_credentials() -> None:
+    """Custom credentials flow through to all cloud MRs."""
+    # When spec.credentials is set with a custom type and name, every cloud
+    # provider MR (VPC, subnets, IAM roles, EKS cluster, node groups, addons,
+    # EFS resources, autoscaler IAM resources) carries the corresponding
+    # providerConfigRef. The kubeconfig-based resources (provider-config-kubernetes,
+    # provider-config-helm, release-*, storage-class-*) are unaffected.
+    ck = "ProviderConfig"
+    cn = "my-aws-account"
+    creds = v1alpha1.Credentials(type=ck, name=cn)
 
-        req = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct(
-                        _xr(credentials=creds).model_dump(exclude_none=True, mode="json"),
-                    ),
+    req = fnv1.RunFunctionRequest(
+        observed=fnv1.State(
+            composite=fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    _xr(credentials=creds).model_dump(exclude_none=True, mode="json"),
                 ),
             ),
-        )
+        ),
+    )
 
-        got = await self.runner.RunFunction(req, None)
-        rs = got.desired.resources
+    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
+    rs = got.desired.resources
 
-        cloud_checks = {
-            "vpc": _vpc(ck, cn),
-            "subnet-0": _subnet(_SUBNET_A, "us-west-2a", "10.0.0.0/20", ck, cn),
-            "subnet-1": _subnet(_SUBNET_B, "us-west-2b", "10.0.16.0/20", ck, cn),
-            "subnet-2": _subnet(_SUBNET_C, "us-west-2c", "10.0.32.0/20", ck, cn),
-            "private-subnet-0": _private_subnet(_PRIVATE_SUBNET_A, "us-west-2a", "10.0.48.0/20", ck, cn),
-            "private-subnet-1": _private_subnet(_PRIVATE_SUBNET_B, "us-west-2b", "10.0.64.0/20", ck, cn),
-            "private-subnet-2": _private_subnet(_PRIVATE_SUBNET_C, "us-west-2c", "10.0.80.0/20", ck, cn),
-            "internet-gateway": _internet_gateway(ck, cn),
-            "nat-eip": _nat_eip(ck, cn),
-            "nat-gateway": _nat_gateway("us-west-2a", ck, cn),
-            "route-table": _route_table(ck, cn),
-            "route-default": _route_default(ck, cn),
-            "private-route-table": _private_route_table(ck, cn),
-            "private-route-default": _private_route_default(ck, cn),
-            "route-table-association-0": _route_table_association("us-west-2a", ck, cn),
-            "route-table-association-1": _route_table_association("us-west-2b", ck, cn),
-            "route-table-association-2": _route_table_association("us-west-2c", ck, cn),
-            "private-route-table-association-0": _private_route_table_association("us-west-2a", ck, cn),
-            "private-route-table-association-1": _private_route_table_association("us-west-2b", ck, cn),
-            "private-route-table-association-2": _private_route_table_association("us-west-2c", ck, cn),
-            "iam-role-cluster": _role("cluster", _ASSUME_CLUSTER, ck, cn),
-            "iam-attach-cluster-policy": _role_policy_attachment(
-                "cluster", "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy", ck, cn
-            ),
-            "iam-role-node": _role("node", _ASSUME_NODE, ck, cn),
-            "iam-attach-node-worker": _role_policy_attachment(
-                "node", "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy", ck, cn
-            ),
-            "iam-attach-node-cni": _role_policy_attachment(
-                "node", "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy", ck, cn
-            ),
-            "iam-attach-node-ecr": _role_policy_attachment(
-                "node", "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly", ck, cn
-            ),
-            "cluster": _eks_cluster(ck, cn),
-            "cluster-auth": _cluster_auth(ck, cn),
-            "nodegroup-system": _system_node_group(ck, cn),
-            "nodegroup-gpu-l4": _gpu_node_group(ck, cn),
-            "addon-vpc-cni": _addon("vpc-cni", ck, cn),
-            "addon-kube-proxy": _addon("kube-proxy", ck, cn),
-            "addon-coredns": _addon("coredns", ck, cn),
-            "efs-filesystem": _efs_filesystem(ck, cn),
-            "efs-security-group": _efs_security_group(ck, cn),
-            "efs-security-group-ingress": _efs_security_group_ingress(ck, cn),
-            "efs-mount-target-0": _efs_mount_target(_PRIVATE_SUBNET_A, ck, cn),
-            "efs-mount-target-1": _efs_mount_target(_PRIVATE_SUBNET_B, ck, cn),
-            "efs-mount-target-2": _efs_mount_target(_PRIVATE_SUBNET_C, ck, cn),
-            "iam-role-efs-csi": _role("efs-csi", _ASSUME_POD_IDENTITY, ck, cn),
-            "iam-attach-efs-csi": _role_policy_attachment("efs-csi", _POLICY_EFS_CSI, ck, cn),
-            "addon-eks-pod-identity-agent": _addon("eks-pod-identity-agent", ck, cn),
-            "pod-identity-efs-csi": _pod_identity_association(ck, cn),
-            "addon-aws-efs-csi-driver": _addon("aws-efs-csi-driver", ck, cn),
-            "iam-policy-cluster-autoscaler": _autoscaler_policy(ck, cn),
-            "iam-role-cluster-autoscaler": _role("cluster-autoscaler", _ASSUME_POD_IDENTITY, ck, cn),
-            "iam-attach-cluster-autoscaler": _autoscaler_attachment(ck, cn),
-            "pod-identity-cluster-autoscaler": _autoscaler_pod_identity(ck, cn),
-        }
+    cloud_checks = {
+        "vpc": _vpc(ck, cn),
+        "subnet-0": _subnet(_SUBNET_A, "us-west-2a", "10.0.0.0/20", ck, cn),
+        "subnet-1": _subnet(_SUBNET_B, "us-west-2b", "10.0.16.0/20", ck, cn),
+        "subnet-2": _subnet(_SUBNET_C, "us-west-2c", "10.0.32.0/20", ck, cn),
+        "private-subnet-0": _private_subnet(_PRIVATE_SUBNET_A, "us-west-2a", "10.0.48.0/20", ck, cn),
+        "private-subnet-1": _private_subnet(_PRIVATE_SUBNET_B, "us-west-2b", "10.0.64.0/20", ck, cn),
+        "private-subnet-2": _private_subnet(_PRIVATE_SUBNET_C, "us-west-2c", "10.0.80.0/20", ck, cn),
+        "internet-gateway": _internet_gateway(ck, cn),
+        "nat-eip": _nat_eip(ck, cn),
+        "nat-gateway": _nat_gateway("us-west-2a", ck, cn),
+        "route-table": _route_table(ck, cn),
+        "route-default": _route_default(ck, cn),
+        "private-route-table": _private_route_table(ck, cn),
+        "private-route-default": _private_route_default(ck, cn),
+        "route-table-association-0": _route_table_association("us-west-2a", ck, cn),
+        "route-table-association-1": _route_table_association("us-west-2b", ck, cn),
+        "route-table-association-2": _route_table_association("us-west-2c", ck, cn),
+        "private-route-table-association-0": _private_route_table_association("us-west-2a", ck, cn),
+        "private-route-table-association-1": _private_route_table_association("us-west-2b", ck, cn),
+        "private-route-table-association-2": _private_route_table_association("us-west-2c", ck, cn),
+        "iam-role-cluster": _role("cluster", _ASSUME_CLUSTER, ck, cn),
+        "iam-attach-cluster-policy": _role_policy_attachment(
+            "cluster", "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy", ck, cn
+        ),
+        "iam-role-node": _role("node", _ASSUME_NODE, ck, cn),
+        "iam-attach-node-worker": _role_policy_attachment(
+            "node", "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy", ck, cn
+        ),
+        "iam-attach-node-cni": _role_policy_attachment("node", "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy", ck, cn),
+        "iam-attach-node-ecr": _role_policy_attachment(
+            "node", "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly", ck, cn
+        ),
+        "cluster": _eks_cluster(ck, cn),
+        "cluster-auth": _cluster_auth(ck, cn),
+        "nodegroup-system": _system_node_group(ck, cn),
+        "nodegroup-gpu-l4": _gpu_node_group(ck, cn),
+        "addon-vpc-cni": _addon("vpc-cni", ck, cn),
+        "addon-kube-proxy": _addon("kube-proxy", ck, cn),
+        "addon-coredns": _addon("coredns", ck, cn),
+        "efs-filesystem": _efs_filesystem(ck, cn),
+        "efs-security-group": _efs_security_group(ck, cn),
+        "efs-security-group-ingress": _efs_security_group_ingress(ck, cn),
+        "efs-mount-target-0": _efs_mount_target(_PRIVATE_SUBNET_A, ck, cn),
+        "efs-mount-target-1": _efs_mount_target(_PRIVATE_SUBNET_B, ck, cn),
+        "efs-mount-target-2": _efs_mount_target(_PRIVATE_SUBNET_C, ck, cn),
+        "iam-role-efs-csi": _role("efs-csi", _ASSUME_POD_IDENTITY, ck, cn),
+        "iam-attach-efs-csi": _role_policy_attachment("efs-csi", _POLICY_EFS_CSI, ck, cn),
+        "addon-eks-pod-identity-agent": _addon("eks-pod-identity-agent", ck, cn),
+        "pod-identity-efs-csi": _pod_identity_association(ck, cn),
+        "addon-aws-efs-csi-driver": _addon("aws-efs-csi-driver", ck, cn),
+        "iam-policy-cluster-autoscaler": _autoscaler_policy(ck, cn),
+        "iam-role-cluster-autoscaler": _role("cluster-autoscaler", _ASSUME_POD_IDENTITY, ck, cn),
+        "iam-attach-cluster-autoscaler": _autoscaler_attachment(ck, cn),
+        "pod-identity-cluster-autoscaler": _autoscaler_pod_identity(ck, cn),
+    }
 
-        for key, want in cloud_checks.items():
-            with self.subTest(resource=key):
-                self.assertIn(key, rs, f"resource {key!r} not found in desired")
-                got_dict = resource.struct_to_dict(rs[key].resource)
-                self.assertEqual(want, got_dict, f"resource {key!r} mismatch")
+    for key, want in cloud_checks.items():
+        assert key in rs, f"resource {key!r} not found in desired"
+        got_dict = resource.struct_to_dict(rs[key].resource)
+        assert got_dict == want, f"resource {key!r} mismatch"
 
-        # kubeconfig-based resources must NOT carry the cloud providerConfigRef
-        for key in ("provider-config-kubernetes", "provider-config-helm"):
-            got_dict = resource.struct_to_dict(rs[key].resource)
-            self.assertNotIn("providerConfigRef", got_dict.get("spec", {}), f"{key} should not have providerConfigRef")
+    # kubeconfig-based resources must NOT carry the cloud providerConfigRef
+    for key in ("provider-config-kubernetes", "provider-config-helm"):
+        got_dict = resource.struct_to_dict(rs[key].resource)
+        assert "providerConfigRef" not in got_dict.get("spec", {}), f"{key} should not have providerConfigRef"

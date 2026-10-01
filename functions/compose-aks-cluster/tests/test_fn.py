@@ -14,14 +14,16 @@
 
 """Tests for the compose-aks-cluster function."""
 
+import asyncio
 import dataclasses
-import unittest
+import json
 
-from crossplane.function import logging, resource
+import pytest
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import fn
 from google.protobuf import duration_pb2 as durationpb
-from google.protobuf import json_format
+from google.protobuf import json_format, message
 from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.infrastructure.akscluster import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -34,10 +36,6 @@ class Case:
     name: str
     req: fnv1.RunFunctionRequest
     want: fnv1.RunFunctionResponse
-
-
-def setUpModule() -> None:
-    logging.configure(level=logging.Level.DISABLED)
 
 
 # Names derived like the function derives them - the hash suffix depends only
@@ -344,285 +342,277 @@ _GPU_POOL_INFINIBAND = v1alpha1.NodePool(
 )
 
 
-class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
-    """Tests for FunctionRunner.RunFunction."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.runner = fn.FunctionRunner()
-
-    async def test_compose(self) -> None:
-        """The function composes AKS cluster infrastructure."""
-        cases = [
-            Case(
-                name="first pass composes infra; gated resources wait for the cluster",
-                req=_req([_GPU_POOL]),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "resource-group": fnv1.Resource(resource=resource.dict_to_struct(_resource_group())),
-                            "virtual-network": fnv1.Resource(resource=resource.dict_to_struct(_virtual_network())),
-                            "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
-                            "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
-                            # The StorageClass isn't composed yet: the cluster
-                            # isn't observed, so the ProviderConfigs can't
-                            # reach it.
-                            "nodepool-gpuh100": fnv1.Resource(resource=resource.dict_to_struct(_nodepool_gpu())),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
-                    ),
-                    context=structpb.Struct(),
-                ),
-            ),
-            Case(
-                name="zones pass through to the node pool",
-                req=_req(
-                    [
-                        v1alpha1.NodePool(
-                            name="gpuh100",
-                            role="GPU",
-                            vmSize="Standard_ND96isr_H100_v5",
-                            diskSizeGb=200,
-                            nodeCount=1,
-                            minNodeCount=1,
-                            maxNodeCount=4,
-                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
-                            zones=[v1alpha1.Zone("1")],
+COMPOSE_CASES = [
+    Case(
+        name="first pass composes infra; gated resources wait for the cluster",
+        req=_req([_GPU_POOL]),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "resource-group": fnv1.Resource(resource=resource.dict_to_struct(_resource_group())),
+                    "virtual-network": fnv1.Resource(resource=resource.dict_to_struct(_virtual_network())),
+                    "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
+                    "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
+                    # The StorageClass isn't composed yet: the cluster
+                    # isn't observed, so the ProviderConfigs can't
+                    # reach it.
+                    "nodepool-gpuh100": fnv1.Resource(resource=resource.dict_to_struct(_nodepool_gpu())),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
                         ),
-                    ]
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "resource-group": fnv1.Resource(resource=resource.dict_to_struct(_resource_group())),
-                            "virtual-network": fnv1.Resource(resource=resource.dict_to_struct(_virtual_network())),
-                            "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
-                            "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
-                            "nodepool-gpuh100": fnv1.Resource(
-                                resource=resource.dict_to_struct(_nodepool_gpu(zones=["1"])),
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
+                        ready=fnv1.READY_TRUE,
                     ),
-                    context=structpb.Struct(),
-                ),
+                    "provider-config-helm": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                },
             ),
-            Case(
-                name="InfiniBand pool composes the network operator once the cluster is observed",
-                req=_req(
-                    [_GPU_POOL_INFINIBAND],
-                    observed_resources={
-                        "cluster": _observed_ready(_cluster()),
-                    },
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="zones pass through to the node pool",
+        req=_req(
+            [
+                v1alpha1.NodePool(
+                    name="gpuh100",
+                    role="GPU",
+                    vmSize="Standard_ND96isr_H100_v5",
+                    diskSizeGb=200,
+                    nodeCount=1,
+                    minNodeCount=1,
+                    maxNodeCount=4,
+                    gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                    zones=[v1alpha1.Zone("1")],
                 ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "resource-group": fnv1.Resource(resource=resource.dict_to_struct(_resource_group())),
-                            "virtual-network": fnv1.Resource(resource=resource.dict_to_struct(_virtual_network())),
-                            "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "nodepool-gpuh100": fnv1.Resource(resource=resource.dict_to_struct(_nodepool_gpu())),
-                            "release-network-operator": fnv1.Resource(
-                                resource=resource.dict_to_struct(_network_operator_release()),
-                            ),
-                            "storage-class-rwx-fs": fnv1.Resource(
-                                resource=resource.dict_to_struct(_storage_class()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
+            ]
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "resource-group": fnv1.Resource(resource=resource.dict_to_struct(_resource_group())),
+                    "virtual-network": fnv1.Resource(resource=resource.dict_to_struct(_virtual_network())),
+                    "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
+                    "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
+                    "nodepool-gpuh100": fnv1.Resource(
+                        resource=resource.dict_to_struct(_nodepool_gpu(zones=["1"])),
                     ),
-                    context=structpb.Struct(),
-                ),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-helm": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                },
             ),
-            Case(
-                name="InfiniBand pool before the cluster is observed gates the network operator",
-                req=_req([_GPU_POOL_INFINIBAND]),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "resource-group": fnv1.Resource(resource=resource.dict_to_struct(_resource_group())),
-                            "virtual-network": fnv1.Resource(resource=resource.dict_to_struct(_virtual_network())),
-                            "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
-                            "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
-                            "nodepool-gpuh100": fnv1.Resource(resource=resource.dict_to_struct(_nodepool_gpu())),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="InfiniBand pool composes the network operator once the cluster is observed",
+        req=_req(
+            [_GPU_POOL_INFINIBAND],
+            observed_resources={
+                "cluster": _observed_ready(_cluster()),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "resource-group": fnv1.Resource(resource=resource.dict_to_struct(_resource_group())),
+                    "virtual-network": fnv1.Resource(resource=resource.dict_to_struct(_virtual_network())),
+                    "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(_cluster()),
+                        ready=fnv1.READY_TRUE,
                     ),
-                    context=structpb.Struct(),
-                ),
+                    "nodepool-gpuh100": fnv1.Resource(resource=resource.dict_to_struct(_nodepool_gpu())),
+                    "release-network-operator": fnv1.Resource(
+                        resource=resource.dict_to_struct(_network_operator_release()),
+                    ),
+                    "storage-class-rwx-fs": fnv1.Resource(
+                        resource=resource.dict_to_struct(_storage_class()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-helm": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                },
             ),
-            Case(
-                name="custom credentials flow through to all cloud MRs",
-                req=_req(
-                    [_GPU_POOL],
-                    credentials=v1alpha1.Credentials(
-                        type="ProviderConfig",
-                        name="my-azure-account",
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="InfiniBand pool before the cluster is observed gates the network operator",
+        req=_req([_GPU_POOL_INFINIBAND]),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "resource-group": fnv1.Resource(resource=resource.dict_to_struct(_resource_group())),
+                    "virtual-network": fnv1.Resource(resource=resource.dict_to_struct(_virtual_network())),
+                    "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
+                    "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
+                    "nodepool-gpuh100": fnv1.Resource(resource=resource.dict_to_struct(_nodepool_gpu())),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
+                        ),
+                        ready=fnv1.READY_TRUE,
                     ),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "resource-group": fnv1.Resource(
-                                resource=resource.dict_to_struct(_resource_group("ProviderConfig", "my-azure-account")),
-                            ),
-                            "virtual-network": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _virtual_network("ProviderConfig", "my-azure-account")
-                                ),
-                            ),
-                            "subnet": fnv1.Resource(
-                                resource=resource.dict_to_struct(_subnet("ProviderConfig", "my-azure-account")),
-                            ),
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster("ProviderConfig", "my-azure-account")),
-                            ),
-                            "nodepool-gpuh100": fnv1.Resource(
-                                resource=resource.dict_to_struct(_nodepool_gpu("ProviderConfig", "my-azure-account")),
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
+                    "provider-config-helm": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
+                        ),
+                        ready=fnv1.READY_TRUE,
                     ),
-                    context=structpb.Struct(),
-                ),
+                },
             ),
-            Case(
-                name="marks managed resources ready from observed conditions",
-                req=_req(
-                    [_GPU_POOL],
-                    observed_resources={
-                        "resource-group": _observed_ready(_resource_group()),
-                        "virtual-network": _observed_ready(_virtual_network()),
-                        "subnet": _observed_ready(_subnet()),
-                        "cluster": _observed_ready(_cluster()),
-                        "nodepool-gpuh100": _observed_ready(_nodepool_gpu()),
-                    },
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "resource-group": fnv1.Resource(
-                                resource=resource.dict_to_struct(_resource_group()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "virtual-network": fnv1.Resource(
-                                resource=resource.dict_to_struct(_virtual_network()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "subnet": fnv1.Resource(
-                                resource=resource.dict_to_struct(_subnet()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            # The cluster is observed, so the StorageClass is
-                            # composed too.
-                            "storage-class-rwx-fs": fnv1.Resource(
-                                resource=resource.dict_to_struct(_storage_class()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "nodepool-gpuh100": fnv1.Resource(
-                                resource=resource.dict_to_struct(_nodepool_gpu()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
-                    ),
-                    context=structpb.Struct(),
-                ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="custom credentials flow through to all cloud MRs",
+        req=_req(
+            [_GPU_POOL],
+            credentials=v1alpha1.Credentials(
+                type="ProviderConfig",
+                name="my-azure-account",
             ),
-        ]
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "resource-group": fnv1.Resource(
+                        resource=resource.dict_to_struct(_resource_group("ProviderConfig", "my-azure-account")),
+                    ),
+                    "virtual-network": fnv1.Resource(
+                        resource=resource.dict_to_struct(_virtual_network("ProviderConfig", "my-azure-account")),
+                    ),
+                    "subnet": fnv1.Resource(
+                        resource=resource.dict_to_struct(_subnet("ProviderConfig", "my-azure-account")),
+                    ),
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(_cluster("ProviderConfig", "my-azure-account")),
+                    ),
+                    "nodepool-gpuh100": fnv1.Resource(
+                        resource=resource.dict_to_struct(_nodepool_gpu("ProviderConfig", "my-azure-account")),
+                    ),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-helm": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="marks managed resources ready from observed conditions",
+        req=_req(
+            [_GPU_POOL],
+            observed_resources={
+                "resource-group": _observed_ready(_resource_group()),
+                "virtual-network": _observed_ready(_virtual_network()),
+                "subnet": _observed_ready(_subnet()),
+                "cluster": _observed_ready(_cluster()),
+                "nodepool-gpuh100": _observed_ready(_nodepool_gpu()),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "resource-group": fnv1.Resource(
+                        resource=resource.dict_to_struct(_resource_group()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "virtual-network": fnv1.Resource(
+                        resource=resource.dict_to_struct(_virtual_network()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "subnet": fnv1.Resource(
+                        resource=resource.dict_to_struct(_subnet()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(_cluster()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    # The cluster is observed, so the StorageClass is
+                    # composed too.
+                    "storage-class-rwx-fs": fnv1.Resource(
+                        resource=resource.dict_to_struct(_storage_class()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "nodepool-gpuh100": fnv1.Resource(
+                        resource=resource.dict_to_struct(_nodepool_gpu()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-helm": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+]
 
-        for case in cases:
-            with self.subTest(case.name):
-                got = await self.runner.RunFunction(case.req, None)
-                self.assertEqual(
-                    json_format.MessageToDict(case.want),
-                    json_format.MessageToDict(got),
-                    "-want, +got",
-                )
+
+def _to_dict(msg: message.Message) -> dict:
+    """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
+    return json.loads(json_format.MessageToJson(msg, sort_keys=True))
+
+
+@pytest.mark.parametrize("case", COMPOSE_CASES, ids=lambda case: case.name)
+def test_compose(case: Case) -> None:
+    """The function composes AKS cluster infrastructure."""
+    got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
+    assert _to_dict(got) == _to_dict(case.want)

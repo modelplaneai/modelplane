@@ -48,8 +48,9 @@ let
   # Type-check each function with ty. Each function exports its own 'function'
   # module, so checking all functions at once would let ty resolve one
   # function's `function.fn` import to another's package. We check each in
-  # isolation against a venv that provides its dependencies, plus the protobuf
-  # type stubs ty needs to resolve the SDK's generated Struct and Duration.
+  # isolation against a venv that provides its dependencies, pytest, which the
+  # tests import, and the protobuf type stubs ty needs to resolve the SDK's
+  # generated Struct and Duration.
   #
   # Unlike mkFunctionTest, which runs the function module from the venv, ty
   # checks the source, so we copy function/ and tests/ from the tree. We also
@@ -60,6 +61,7 @@ let
     let
       venv = pythonSet.mkVirtualEnv "${name}-ty-env" {
         ${name} = [ ];
+        pytest = [ ];
         types-protobuf = [ ];
       };
     in

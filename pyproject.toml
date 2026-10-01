@@ -57,6 +57,7 @@ select = [
     "TID",    # flake8-tidy-imports (no relative imports)
     "BLE",    # flake8-blind-except (no bare except Exception)
     "ANN",    # flake8-annotations (require type annotations)
+    "PT",     # flake8-pytest-style (pytest idioms, no unittest assertions)
     "RUF",    # ruff-specific rules (incl. unused/malformed noqa)
 ]
 
@@ -75,6 +76,8 @@ allow-star-arg-any = true
 # Tests use magic values, many parameters, long hardcoded resource dicts, and
 # boolean fixture toggles passed positionally.
 "**/tests/**" = ["E501", "PLR2004", "PLR0913", "FBT001"]
+# The pytest style rules are for tests. Elsewhere an assert guards an invariant.
+"!**/tests/**" = ["PT"]
 # fn.py uses gRPC's required PascalCase method name.
 "functions/*/function/fn.py" = ["N802"]
 # The docs manifest validator is a CLI script; print is its output.

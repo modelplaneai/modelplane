@@ -245,7 +245,7 @@ functions/<name>/
     main.py           # CLI entrypoint (boilerplate)
     fn.py             # FunctionRunner gRPC service and Composer logic
   tests/
-    test_fn.py        # unittest-based tests for fn.py
+    test_fn.py        # pytest tests for fn.py
 ```
 
 The `Composer.compose()` method in `fn.py` reads the XR from the request,
@@ -274,12 +274,15 @@ XRDs or dependencies you've removed don't linger.
 
 ### Tests
 
-Every function has tests under `functions/<name>/tests/test_fn.py`. The
-canonical form is a table of `Case`s, each running the function on a
+Every function has tests under `functions/<name>/tests/`, run with
+[pytest](https://docs.pytest.org/). `test_fn.py` tests the function as a whole.
+A module with logic of its own, such as `compose-model-deployment`'s scheduler,
+can have its own `test_<module>.py` too.
+
+The canonical form is a table of `Case`s, each running the function on a
 `RunFunctionRequest` and comparing the whole `RunFunctionResponse` against an
-expected one — not asserting on individual fields. `compose-usages` is a clean
-example; `compose-model-cache` shows the same form scaled up to a multi-pass
-reconcile. The skeleton:
+expected one, rather than asserting on individual fields. `compose-usages` is a
+small example. The skeleton:
 
 ```python
 @dataclasses.dataclass
@@ -289,50 +292,59 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-def setUpModule() -> None:
-    logging.configure(level=logging.Level.DISABLED)
+COMPOSE_CASES = [
+    Case(
+        name="describes what this case exercises",
+        req=fnv1.RunFunctionRequest(...),
+        want=fnv1.RunFunctionResponse(...),
+    ),
+]
 
 
-class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
-    maxDiff = None
+def _to_dict(msg: message.Message) -> dict:
+    """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
+    return json.loads(json_format.MessageToJson(msg, sort_keys=True))
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.runner = fn.FunctionRunner()
 
-    async def test_compose(self) -> None:
-        cases = [
-            Case(
-                name="describes what this case exercises",
-                req=fnv1.RunFunctionRequest(...),
-                want=fnv1.RunFunctionResponse(...),
-            ),
-        ]
-        for case in cases:
-            with self.subTest(case.name):
-                got = await self.runner.RunFunction(case.req, None)
-                self.assertEqual(
-                    json_format.MessageToDict(case.want),
-                    json_format.MessageToDict(got),
-                    "-want, +got",
-                )
+@pytest.mark.parametrize("case", COMPOSE_CASES, ids=lambda case: case.name)
+def test_compose(case: Case) -> None:
+    """RunFunction composes the resources an XR needs."""
+    got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
+    assert _to_dict(got) == _to_dict(case.want)
 ```
 
-Build the XR with
-`resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json"))` from a
-generated Pydantic model; build other observed, desired, and required resources
-as plain dicts. Because `want` is the whole response, it must include the parts
-the function always emits: `meta.ttl` (60s), an empty `context`, and any
-conditions, results, and requirements. Give observed conditions a fixed
-`lastTransitionTime` so the input is deterministic. Protobuf maps
-(`desired.resources`, `requirements.resources`) compare order-independently, but
-repeated fields (`conditions`, `results`, status arrays) must match the order
-the function emits.
+Name a table for the test that runs it, and put it just above that test. Each
+case becomes its own test, named for the case, so `pytest -k` can select it.
+With `got` on the left, pytest's diff shows the expected lines as `-` and the
+actual lines as `+`, the same way round as Go's `cmp.Diff(want, got)`. Tests are
+plain functions, with no classes, fixtures, or `conftest.py`. They call the
+async `RunFunction` with `asyncio.run` rather than needing a plugin, and check
+errors with `pytest.raises(..., match=...)`.
+
+Build the XR with `resource.dict_to_struct(xr.model_dump(exclude_none=True,
+mode="json"))` from a generated Pydantic model; build other observed, desired,
+and required resources as plain dicts. Because `want` is the whole response, it
+must include the parts the function always emits: `meta.ttl` (60s), an empty
+`context`, and any conditions, results, and requirements. Give observed
+conditions a fixed `lastTransitionTime` so the input is deterministic. Protobuf
+maps (`desired.resources`, `requirements.resources`) compare
+order-independently, but repeated fields (`conditions`, `results`, status
+arrays) must match the order the function emits.
 
 Some existing tests (`compose-serving-stack`, the second method in
 `compose-eks-cluster`) predate this form and assert on individual fields. Don't
-model new tests on them. Add new cases to the function's `test_fn.py` and run
-`nix flake check` to verify they pass.
+model new tests on them.
+
+`nix flake check` runs every function's tests. To run one function's while
+you work on it:
+
+```bash
+uv run --isolated --package compose-usages --group dev pytest functions/compose-usages/tests
+```
+
+`--isolated` gives each run its own environment, because every function names
+its package `function`, so two can't share one. That's also why each function
+runs in its own pytest session.
 
 ### Running locally
 

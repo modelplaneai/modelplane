@@ -23,17 +23,19 @@ identity contract; renaming a key deletes and recreates the remote
 resource - for every cloud and stack, as frozen literals.
 """
 
+import asyncio
 import copy
 import dataclasses
+import json
 import pathlib
-import unittest
 
+import pytest
 import yaml
-from crossplane.function import logging, resource
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import fn
 from google.protobuf import duration_pb2 as durationpb
-from google.protobuf import json_format
+from google.protobuf import json_format, message
 from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.infrastructure.servingstack import v1alpha1
 from models.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
@@ -44,11 +46,6 @@ from models.io.crossplane.m.kubernetes.providerconfig import (
 )
 from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
-
-
-def setUpModule() -> None:
-    logging.configure(level=logging.Level.DISABLED)
-
 
 # Precomputed child_name value for test-backend.
 _PC_NAME = "test-backend-cluster-63fde"
@@ -847,328 +844,315 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
-    maxDiff = None
+def _compose_cases() -> list[Case]:
+    """The test_compose cases, built from the Existing/Dynamo stack's resources."""
+    full = _provider_configs() | _EXISTING_DYNAMO_USAGES | _existing_dynamo_stack()
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.runner = fn.FunctionRunner()
+    # Second pass: PCs observed. depends_on gates first creation, so
+    # only the dependency-free wave renders; each dependent waits for
+    # its dependency's Ready before it is first created.
+    dep_gated = {
+        "envoy-gateway",  # -> cert-manager
+        "ai-gateway",  # -> ai-gateway-crds
+        "gateway-proxy",  # -> gateway-namespace
+        "kai-queue-root",  # -> kai-scheduler
+        "kai-queue",  # -> kai-scheduler
+        "modelexpress-server",  # -> modelexpress-crds
+        "gateway-selfsigned-issuer",  # -> cert-manager, gateway-namespace
+        "trust-manager",  # -> gateway-selfsigned-issuer
+    }
+    first_wave = {k: v for k, v in full.items() if k not in dep_gated}
 
-    async def test_compose(self) -> None:
-        full = _provider_configs() | _EXISTING_DYNAMO_USAGES | _existing_dynamo_stack()
+    # Third pass: every rendered resource observed Ready (the gateway
+    # with its address assigned), so everything is marked ready and
+    # the address lands in the XR status.
+    rendered = [k for k in _existing_dynamo_stack() if k != "gateway"]
+    observed_ready = _observed_pcs()
+    for key in rendered:
+        observed_ready[key] = fnv1.Resource(
+            resource=resource.dict_to_struct({"status": {"conditions": [{"type": "Ready", "status": "True"}]}})
+        )
+    observed_ready["gateway"] = fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "status": {
+                    "conditions": [{"type": "Ready", "status": "True"}],
+                    "atProvider": {
+                        "manifest": {"status": {"addresses": [{"type": "IPAddress", "value": "203.0.113.7"}]}},
+                    },
+                },
+            }
+        )
+    )
+    # Every component observed Ready; PCs and Usages are ready on arrival.
+    all_ready = copy.deepcopy(full)
+    for res in all_ready.values():
+        res.ready = fnv1.READY_TRUE
 
-        # Second pass: PCs observed. depends_on gates first creation, so
-        # only the dependency-free wave renders; each dependent waits for
-        # its dependency's Ready before it is first created.
-        dep_gated = {
-            "envoy-gateway",  # -> cert-manager
-            "ai-gateway",  # -> ai-gateway-crds
-            "gateway-proxy",  # -> gateway-namespace
-            "kai-queue-root",  # -> kai-scheduler
-            "kai-queue",  # -> kai-scheduler
-            "modelexpress-server",  # -> modelexpress-crds
-            "gateway-selfsigned-issuer",  # -> cert-manager, gateway-namespace
-            "trust-manager",  # -> gateway-selfsigned-issuer
+    return [
+        Case(
+            name="first pass composes only the provider configs and usages",
+            req=_request("Existing", "Dynamo"),
+            # Everything targeting the remote cluster is gated on the
+            # ProviderConfigs having been observed; Usages reference
+            # nothing remote and compose immediately. The unready
+            # ProviderConfigs keep the composite unready until the
+            # stack actually renders.
+            want=_response(_provider_configs(ready=False) | _EXISTING_DYNAMO_USAGES),
+        ),
+        Case(
+            name="second pass renders the dependency-free wave",
+            req=_request("Existing", "Dynamo", observed=_observed_pcs()),
+            want=_response(first_wave),
+        ),
+        Case(
+            name="all dependencies ready renders the whole stack, marks it ready, and writes the gateway address",
+            req=_request("Existing", "Dynamo", observed=observed_ready),
+            want=_response(all_ready, status={"gateway": {"address": "203.0.113.7"}}),
+        ),
+    ]
+
+
+def _to_dict(msg: message.Message) -> dict:
+    """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
+    return json.loads(json_format.MessageToJson(msg, sort_keys=True))
+
+
+@pytest.mark.parametrize("case", _compose_cases(), ids=lambda case: case.name)
+def test_compose(case: Case) -> None:
+    """RunFunction composes the Existing/Dynamo stack across the reconcile passes."""
+    got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
+    assert _to_dict(got) == _to_dict(case.want)
+
+
+def test_identity_secret_type_flows_to_provider_configs() -> None:
+    """A non-GCP identity secret's type and namespace reach both ProviderConfigs verbatim."""
+    # The type is stamped as is rather than being forced to
+    # GoogleApplicationCredentials, and the secret's own namespace wins over
+    # the XR's.
+    req = fnv1.RunFunctionRequest(
+        observed=fnv1.State(
+            composite=fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    v1alpha1.ServingStack(
+                        metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
+                        spec=v1alpha1.Spec(
+                            cloud="Nebius",
+                            secrets=[
+                                v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
+                                v1alpha1.Secret(
+                                    type="NebiusServiceAccountCredentials",
+                                    name="nebius-secret",
+                                    key="credentials.json",
+                                    namespace="other-ns",
+                                ),
+                            ],
+                            gateway=v1alpha1.Gateway(hostname=_GATEWAY_HOSTNAME),
+                        ),
+                    ).model_dump(exclude_none=True, mode="json")
+                ),
+            ),
+        ),
+    )
+    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
+    pc = resource.struct_to_dict(got.desired.resources["provider-config-kubernetes"].resource)
+    assert pc["spec"]["identity"]["type"] == "NebiusServiceAccountCredentials"
+    assert pc["spec"]["identity"]["secretRef"]["namespace"] == "other-ns"
+    helm_pc = resource.struct_to_dict(got.desired.resources["provider-config-helm"].resource)
+    assert helm_pc["spec"]["identity"]["type"] == "NebiusServiceAccountCredentials"
+
+
+def test_cluster_gateway_composes_mtls_with_ca() -> None:
+    """A cluster with an InferenceGateway CA composes its own PKI and serves mTLS."""
+    # It issues its own PKI, republishes the CA without its key, demands a
+    # client certificate on its HTTPS listener, and publishes the CA in status.
+    #
+    # The hostname is a full Service FQDN, so the CA certificate's commonName
+    # overflows the 64-byte X.509 limit and is truncated.
+    hostname = "gateway-test-backend-12345.modelplane-system.svc.cluster.local"
+    req = fnv1.RunFunctionRequest(
+        observed=fnv1.State(
+            composite=fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    v1alpha1.ServingStack(
+                        metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
+                        spec=v1alpha1.Spec(
+                            cloud="Existing",
+                            stack="Standard",
+                            secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
+                            gateway=v1alpha1.Gateway(
+                                hostname=hostname,
+                                # Deliberately out of name order, to prove the
+                                # bundle sorts before concatenating.
+                                clientCAs=[
+                                    v1alpha1.ClientCA(name="fleet-b", certificate="BBB"),
+                                    v1alpha1.ClientCA(name="fleet-a", certificate="AAA"),
+                                ],
+                            ),
+                        ),
+                    ).model_dump(exclude_none=True, mode="json")
+                ),
+            ),
+            # PCs observed, the self-signed Issuer Ready (so trust-manager and
+            # the CA chain proceed), and the CA ConfigMap trust-manager syncs
+            # carrying the certificate back for status.
+            resources=_observed_pcs()
+            | {
+                "gateway-selfsigned-issuer": fnv1.Resource(
+                    resource=resource.dict_to_struct({"status": {"conditions": [{"type": "Ready", "status": "True"}]}})
+                ),
+                "gateway-ca-configmap": fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {"status": {"atProvider": {"manifest": {"data": {"ca.crt": "CLUSTERCA"}}}}}
+                    )
+                ),
+            },
+        ),
+    )
+    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
+
+    def manifest(key: str) -> dict:
+        return resource.struct_to_dict(got.desired.resources[key].resource)["spec"]["forProvider"]["manifest"]
+
+    ca_cert = manifest("gateway-ca-certificate")
+    assert ca_cert["spec"]["commonName"] == "modelplane cluster CA gateway-test-backend-12345.modelplane-syst"
+    assert len(ca_cert["spec"]["commonName"]) <= 64
+    assert ca_cert["spec"]["isCA"]
+    assert ca_cert["spec"]["issuerRef"]["name"] == "modelplane-selfsigned"
+
+    serving = manifest("gateway-serving-certificate")
+    assert serving["spec"]["dnsNames"] == [hostname]
+    assert serving["spec"]["issuerRef"]["name"] == "modelplane-cluster-ca"
+
+    bundle = manifest("gateway-ca-bundle")
+    assert bundle["apiVersion"] == "trust.cert-manager.io/v1alpha1"
+    assert bundle["spec"]["sources"] == [{"secret": {"name": "modelplane-cluster-ca", "key": "ca.crt"}}]
+
+    # Observed only, never managed: trust-manager owns the ConfigMap.
+    ca_cm = got.desired.resources["gateway-ca-configmap"]
+    assert resource.struct_to_dict(ca_cm.resource)["spec"]["managementPolicies"] == ["Observe"]
+
+    # Every InferenceGateway's CA, sorted by name and concatenated.
+    client_bundle = manifest("gateway-client-ca-bundle")
+    assert client_bundle["data"]["ca.crt"] == "AAA\nBBB\n"
+
+    client_auth = manifest("gateway-client-auth")
+    assert client_auth["kind"] == "ClientTrafficPolicy"
+    assert client_auth["spec"]["targetRefs"][0]["sectionName"] == "https"
+    assert (
+        client_auth["spec"]["tls"]["clientValidation"]["caCertificateRefs"][0]["name"]
+        == "modelplane-inference-gateway-cas"
+    )
+
+    # One HTTPS listener, terminating TLS with the serving certificate.
+    gateway = manifest("gateway")
+    assert gateway["spec"]["listeners"] == [
+        {
+            "name": "https",
+            "protocol": "HTTPS",
+            "port": 443,
+            "hostname": hostname,
+            "tls": {"mode": "Terminate", "certificateRefs": [{"name": "cluster-gateway-serving"}]},
+            "allowedRoutes": {
+                "namespaces": {
+                    "from": "Selector",
+                    "selector": {"matchExpressions": [{"key": "modelplane.ai/namespace", "operator": "Exists"}]},
+                }
+            },
         }
-        first_wave = {k: v for k, v in full.items() if k not in dep_gated}
+    ]
 
-        # Third pass: every rendered resource observed Ready (the gateway
-        # with its address assigned), so everything is marked ready and
-        # the address lands in the XR status.
-        rendered = [k for k in _existing_dynamo_stack() if k != "gateway"]
-        observed_ready = _observed_pcs()
-        for key in rendered:
-            observed_ready[key] = fnv1.Resource(
+    status = resource.struct_to_dict(got.desired.composite.resource)["status"]
+    assert status["gateway"]["caCertificate"] == "CLUSTERCA"
+
+    # Every PKI resource must be tracked for readiness:
+    # compose_gateway_pki marks only the keys it returns, so one composed
+    # but not returned would silently hold the cluster un-Ready. Observe
+    # each Ready and assert it's marked ready, which fails if the key was
+    # dropped from the rendered list. (The self-signed Issuer and
+    # trust-manager are stack components, covered by the golden test.)
+    pki_keys = [
+        "gateway-ca-certificate",
+        "gateway-ca-issuer",
+        "gateway-serving-certificate",
+        "gateway-ca-bundle",
+        "gateway-ca-configmap",
+        "gateway-client-ca-bundle",
+        "gateway-client-auth",
+    ]
+    for key in pki_keys:
+        req.observed.resources[key].CopyFrom(
+            fnv1.Resource(
                 resource=resource.dict_to_struct({"status": {"conditions": [{"type": "Ready", "status": "True"}]}})
             )
-        observed_ready["gateway"] = fnv1.Resource(
+        )
+    # Preserve the CA ConfigMap's data alongside its Ready condition.
+    req.observed.resources["gateway-ca-configmap"].CopyFrom(
+        fnv1.Resource(
             resource=resource.dict_to_struct(
                 {
                     "status": {
                         "conditions": [{"type": "Ready", "status": "True"}],
-                        "atProvider": {
-                            "manifest": {"status": {"addresses": [{"type": "IPAddress", "value": "203.0.113.7"}]}},
-                        },
-                    },
-                }
-            )
-        )
-        # Every component observed Ready; PCs and Usages are ready on arrival.
-        all_ready = copy.deepcopy(full)
-        for res in all_ready.values():
-            res.ready = fnv1.READY_TRUE
-
-        cases = [
-            Case(
-                name="first pass composes only the provider configs and usages",
-                req=_request("Existing", "Dynamo"),
-                # Everything targeting the remote cluster is gated on the
-                # ProviderConfigs having been observed; Usages reference
-                # nothing remote and compose immediately. The unready
-                # ProviderConfigs keep the composite unready until the
-                # stack actually renders.
-                want=_response(_provider_configs(ready=False) | _EXISTING_DYNAMO_USAGES),
-            ),
-            Case(
-                name="second pass renders the dependency-free wave",
-                req=_request("Existing", "Dynamo", observed=_observed_pcs()),
-                want=_response(first_wave),
-            ),
-            Case(
-                name="all dependencies ready renders the whole stack, marks it ready, and writes the gateway address",
-                req=_request("Existing", "Dynamo", observed=observed_ready),
-                want=_response(all_ready, status={"gateway": {"address": "203.0.113.7"}}),
-            ),
-        ]
-        for case in cases:
-            with self.subTest(case.name):
-                got = await self.runner.RunFunction(case.req, None)
-                self.assertEqual(
-                    json_format.MessageToDict(case.want),
-                    json_format.MessageToDict(got),
-                    "-want, +got",
-                )
-
-    async def test_identity_secret_type_flows_to_provider_configs(self) -> None:
-        """A non-GCP identity secret's type is stamped verbatim on both
-        ProviderConfigs rather than being forced to GoogleApplicationCredentials,
-        and its own namespace wins over the XR's."""
-        req = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct(
-                        v1alpha1.ServingStack(
-                            metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
-                            spec=v1alpha1.Spec(
-                                cloud="Nebius",
-                                secrets=[
-                                    v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
-                                    v1alpha1.Secret(
-                                        type="NebiusServiceAccountCredentials",
-                                        name="nebius-secret",
-                                        key="credentials.json",
-                                        namespace="other-ns",
-                                    ),
-                                ],
-                                gateway=v1alpha1.Gateway(hostname=_GATEWAY_HOSTNAME),
-                            ),
-                        ).model_dump(exclude_none=True, mode="json")
-                    ),
-                ),
-            ),
-        )
-        got = await self.runner.RunFunction(req, None)
-        pc = resource.struct_to_dict(got.desired.resources["provider-config-kubernetes"].resource)
-        self.assertEqual("NebiusServiceAccountCredentials", pc["spec"]["identity"]["type"])
-        self.assertEqual("other-ns", pc["spec"]["identity"]["secretRef"]["namespace"])
-        helm_pc = resource.struct_to_dict(got.desired.resources["provider-config-helm"].resource)
-        self.assertEqual("NebiusServiceAccountCredentials", helm_pc["spec"]["identity"]["type"])
-
-    async def test_cluster_gateway_composes_mtls_with_ca(self) -> None:
-        """A cluster with an InferenceGateway CA serves mTLS: it issues its own
-        PKI, republishes the CA without its key, demands a client certificate on
-        its HTTPS listener, and publishes the CA in status.
-
-        The hostname is a full Service FQDN, so the CA certificate's commonName
-        overflows the 64-byte X.509 limit and is truncated.
-        """
-        hostname = "gateway-test-backend-12345.modelplane-system.svc.cluster.local"
-        req = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct(
-                        v1alpha1.ServingStack(
-                            metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
-                            spec=v1alpha1.Spec(
-                                cloud="Existing",
-                                stack="Standard",
-                                secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
-                                gateway=v1alpha1.Gateway(
-                                    hostname=hostname,
-                                    # Deliberately out of name order, to prove the
-                                    # bundle sorts before concatenating.
-                                    clientCAs=[
-                                        v1alpha1.ClientCA(name="fleet-b", certificate="BBB"),
-                                        v1alpha1.ClientCA(name="fleet-a", certificate="AAA"),
-                                    ],
-                                ),
-                            ),
-                        ).model_dump(exclude_none=True, mode="json")
-                    ),
-                ),
-                # PCs observed, the self-signed Issuer Ready (so trust-manager and
-                # the CA chain proceed), and the CA ConfigMap trust-manager syncs
-                # carrying the certificate back for status.
-                resources=_observed_pcs()
-                | {
-                    "gateway-selfsigned-issuer": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {"status": {"conditions": [{"type": "Ready", "status": "True"}]}}
-                        )
-                    ),
-                    "gateway-ca-configmap": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {"status": {"atProvider": {"manifest": {"data": {"ca.crt": "CLUSTERCA"}}}}}
-                        )
-                    ),
-                },
-            ),
-        )
-        got = await self.runner.RunFunction(req, None)
-
-        def manifest(key: str) -> dict:
-            return resource.struct_to_dict(got.desired.resources[key].resource)["spec"]["forProvider"]["manifest"]
-
-        ca_cert = manifest("gateway-ca-certificate")
-        self.assertEqual(
-            "modelplane cluster CA gateway-test-backend-12345.modelplane-syst", ca_cert["spec"]["commonName"]
-        )
-        self.assertLessEqual(len(ca_cert["spec"]["commonName"]), 64)
-        self.assertTrue(ca_cert["spec"]["isCA"])
-        self.assertEqual("modelplane-selfsigned", ca_cert["spec"]["issuerRef"]["name"])
-
-        serving = manifest("gateway-serving-certificate")
-        self.assertEqual([hostname], serving["spec"]["dnsNames"])
-        self.assertEqual("modelplane-cluster-ca", serving["spec"]["issuerRef"]["name"])
-
-        bundle = manifest("gateway-ca-bundle")
-        self.assertEqual("trust.cert-manager.io/v1alpha1", bundle["apiVersion"])
-        self.assertEqual([{"secret": {"name": "modelplane-cluster-ca", "key": "ca.crt"}}], bundle["spec"]["sources"])
-
-        # Observed only, never managed: trust-manager owns the ConfigMap.
-        ca_cm = got.desired.resources["gateway-ca-configmap"]
-        self.assertEqual(["Observe"], resource.struct_to_dict(ca_cm.resource)["spec"]["managementPolicies"])
-
-        # Every InferenceGateway's CA, sorted by name and concatenated.
-        client_bundle = manifest("gateway-client-ca-bundle")
-        self.assertEqual("AAA\nBBB\n", client_bundle["data"]["ca.crt"])
-
-        client_auth = manifest("gateway-client-auth")
-        self.assertEqual("ClientTrafficPolicy", client_auth["kind"])
-        self.assertEqual("https", client_auth["spec"]["targetRefs"][0]["sectionName"])
-        self.assertEqual(
-            "modelplane-inference-gateway-cas",
-            client_auth["spec"]["tls"]["clientValidation"]["caCertificateRefs"][0]["name"],
-        )
-
-        # One HTTPS listener, terminating TLS with the serving certificate.
-        gateway = manifest("gateway")
-        self.assertEqual(
-            [
-                {
-                    "name": "https",
-                    "protocol": "HTTPS",
-                    "port": 443,
-                    "hostname": hostname,
-                    "tls": {"mode": "Terminate", "certificateRefs": [{"name": "cluster-gateway-serving"}]},
-                    "allowedRoutes": {
-                        "namespaces": {
-                            "from": "Selector",
-                            "selector": {
-                                "matchExpressions": [{"key": "modelplane.ai/namespace", "operator": "Exists"}]
-                            },
-                        }
-                    },
-                }
-            ],
-            gateway["spec"]["listeners"],
-        )
-
-        status = resource.struct_to_dict(got.desired.composite.resource)["status"]
-        self.assertEqual("CLUSTERCA", status["gateway"]["caCertificate"])
-
-        # Every PKI resource must be tracked for readiness:
-        # compose_gateway_pki marks only the keys it returns, so one composed
-        # but not returned would silently hold the cluster un-Ready. Observe
-        # each Ready and assert it's marked ready, which fails if the key was
-        # dropped from the rendered list. (The self-signed Issuer and
-        # trust-manager are stack components, covered by the golden test.)
-        pki_keys = [
-            "gateway-ca-certificate",
-            "gateway-ca-issuer",
-            "gateway-serving-certificate",
-            "gateway-ca-bundle",
-            "gateway-ca-configmap",
-            "gateway-client-ca-bundle",
-            "gateway-client-auth",
-        ]
-        for key in pki_keys:
-            req.observed.resources[key].CopyFrom(
-                fnv1.Resource(
-                    resource=resource.dict_to_struct({"status": {"conditions": [{"type": "Ready", "status": "True"}]}})
-                )
-            )
-        # Preserve the CA ConfigMap's data alongside its Ready condition.
-        req.observed.resources["gateway-ca-configmap"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {
-                        "status": {
-                            "conditions": [{"type": "Ready", "status": "True"}],
-                            "atProvider": {"manifest": {"data": {"ca.crt": "CLUSTERCA"}}},
-                        }
+                        "atProvider": {"manifest": {"data": {"ca.crt": "CLUSTERCA"}}},
                     }
-                )
+                }
             )
         )
-        got = await self.runner.RunFunction(req, None)
-        for key in pki_keys:
-            self.assertEqual(fnv1.READY_TRUE, got.desired.resources[key].ready, f"{key} not marked ready")
+    )
+    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
+    for key in pki_keys:
+        assert got.desired.resources[key].ready == fnv1.READY_TRUE, f"{key} not marked ready"
 
-    async def test_cluster_gateway_without_ca_serves_nothing(self) -> None:
-        """A cluster with no InferenceGateway CA withholds the Gateway entirely
-        rather than serving the engines unauthenticated, and warns."""
-        req = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct(
-                        v1alpha1.ServingStack(
-                            metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
-                            spec=v1alpha1.Spec(
-                                cloud="Existing",
-                                stack="Standard",
-                                secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
-                                gateway=v1alpha1.Gateway(hostname="gw.clusters.example.com"),
-                            ),
-                        ).model_dump(exclude_none=True, mode="json")
-                    ),
+
+def test_cluster_gateway_without_ca_serves_nothing() -> None:
+    """A cluster with no InferenceGateway CA withholds its Gateway, and warns."""
+    # Withholding the Gateway entirely, rather than serving the engines
+    # unauthenticated.
+    req = fnv1.RunFunctionRequest(
+        observed=fnv1.State(
+            composite=fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    v1alpha1.ServingStack(
+                        metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
+                        spec=v1alpha1.Spec(
+                            cloud="Existing",
+                            stack="Standard",
+                            secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
+                            gateway=v1alpha1.Gateway(hostname="gw.clusters.example.com"),
+                        ),
+                    ).model_dump(exclude_none=True, mode="json")
                 ),
-                resources=_observed_pcs(),
+            ),
+            resources=_observed_pcs(),
+        ),
+    )
+    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
+    # The GatewayClass and the cluster's own PKI are composed, so the CA is
+    # ready to publish when the first InferenceGateway's CA arrives. The
+    # Gateway, the client CA bundle and the policy demanding a client
+    # certificate aren't, and nor is the Usage protecting the Gateway.
+    gateway_keys = {k for k in got.desired.resources if k.startswith(("gateway", "usage-gateway"))}
+    assert gateway_keys == {
+        "gateway-class",
+        "gateway-ca-certificate",
+        "gateway-ca-issuer",
+        "gateway-serving-certificate",
+        "gateway-ca-bundle",
+        "gateway-ca-configmap",
+        "gateway-namespace",
+        "usage-gateway-namespace-by-gateway-proxy",
+        "usage-gateway-namespace-by-gateway-selfsigned-issuer",
+        "usage-gateway-selfsigned-issuer-by-trust-manager",
+    }
+    assert list(got.results) == [
+        fnv1.Result(
+            severity=fnv1.SEVERITY_WARNING,
+            message=(
+                "Gateway gw.clusters.example.com not served: no InferenceGateway has published a client "
+                "CA for this cluster to trust, and serving without one would accept unauthenticated callers"
             ),
         )
-        got = await self.runner.RunFunction(req, None)
-        # The GatewayClass and the cluster's own PKI are composed, so the CA is
-        # ready to publish when the first InferenceGateway's CA arrives. The
-        # Gateway, the client CA bundle and the policy demanding a client
-        # certificate aren't, and nor is the Usage protecting the Gateway.
-        gateway_keys = {k for k in got.desired.resources if k.startswith(("gateway", "usage-gateway"))}
-        self.assertEqual(
-            {
-                "gateway-class",
-                "gateway-ca-certificate",
-                "gateway-ca-issuer",
-                "gateway-serving-certificate",
-                "gateway-ca-bundle",
-                "gateway-ca-configmap",
-                "gateway-namespace",
-                "usage-gateway-namespace-by-gateway-proxy",
-                "usage-gateway-namespace-by-gateway-selfsigned-issuer",
-                "usage-gateway-selfsigned-issuer-by-trust-manager",
-            },
-            gateway_keys,
-        )
-        self.assertEqual(
-            [
-                fnv1.Result(
-                    severity=fnv1.SEVERITY_WARNING,
-                    message=(
-                        "Gateway gw.clusters.example.com not served: no InferenceGateway has published a client "
-                        "CA for this cluster to trust, and serving without one would accept unauthenticated callers"
-                    ),
-                )
-            ],
-            list(got.results),
-        )
+    ]
 
 
 # The composed-resource key a component renders under is its identity:
@@ -1316,28 +1300,21 @@ _INVENTORY = {
 }
 
 
-class TestKeyInventory(unittest.IsolatedAsyncioTestCase):
-    maxDiff = None
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.runner = fn.FunctionRunner()
-
-    async def test_composed_resource_keys(self) -> None:
-        for cloud, cloud_keys in _INVENTORY.items():
-            for stack, stack_keys in (("Standard", _STANDARD), ("Dynamo", _DYNAMO)):
-                with self.subTest(cloud=cloud, stack=stack):
-                    expected = _ALWAYS | _COMMON | cloud_keys | stack_keys
-                    # Observe every expected key Ready so the depends_on
-                    # install gate opens and the full stack renders; a
-                    # key the function doesn't render still fails the
-                    # comparison.
-                    observed = _observed_pcs()
-                    for key in expected:
-                        observed[key] = fnv1.Resource(
-                            resource=resource.dict_to_struct(
-                                {"status": {"conditions": [{"type": "Ready", "status": "True"}]}}
-                            )
-                        )
-                    got = await self.runner.RunFunction(_request(cloud, stack, observed=observed), None)
-                    self.assertEqual(expected, set(got.desired.resources.keys()))
+@pytest.mark.parametrize(
+    ("stack", "stack_keys"), [("Standard", _STANDARD), ("Dynamo", _DYNAMO)], ids=["Standard", "Dynamo"]
+)
+@pytest.mark.parametrize(("cloud", "cloud_keys"), list(_INVENTORY.items()), ids=list(_INVENTORY))
+def test_composed_resource_keys(cloud: str, cloud_keys: frozenset[str], stack: str, stack_keys: frozenset[str]) -> None:
+    """Every cloud and stack composes exactly its inventoried resource keys."""
+    expected = _ALWAYS | _COMMON | cloud_keys | stack_keys
+    # Observe every expected key Ready so the depends_on
+    # install gate opens and the full stack renders; a
+    # key the function doesn't render still fails the
+    # comparison.
+    observed = _observed_pcs()
+    for key in expected:
+        observed[key] = fnv1.Resource(
+            resource=resource.dict_to_struct({"status": {"conditions": [{"type": "Ready", "status": "True"}]}})
+        )
+    got = asyncio.run(fn.FunctionRunner().RunFunction(_request(cloud, stack, observed=observed), None))
+    assert set(got.desired.resources.keys()) == expected

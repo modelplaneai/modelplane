@@ -14,14 +14,16 @@
 
 """Tests for the compose-usages function."""
 
+import asyncio
 import dataclasses
-import unittest
+import json
 
-from crossplane.function import logging, resource
+import pytest
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import fn
 from google.protobuf import duration_pb2 as durationpb
-from google.protobuf import json_format
+from google.protobuf import json_format, message
 from google.protobuf import struct_pb2 as structpb
 
 _NAMESPACE = "test-ns"
@@ -131,132 +133,123 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-def setUpModule() -> None:
-    logging.configure(level=logging.Level.DISABLED)
-
-
-class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
-    """Tests for FunctionRunner.RunFunction."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.runner = fn.FunctionRunner()
-
-    async def test_compose(self) -> None:
-        cases = [
-            Case(
-                name="labels each consumer and composes a Usage per ProviderConfig reference",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(composite=fnv1.Resource(resource=_composite())),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=_composite()),
-                        resources={
-                            "cert-manager": fnv1.Resource(resource=resource.dict_to_struct(_RELEASE)),
-                            "gateway-namespace": fnv1.Resource(resource=resource.dict_to_struct(_OBJECT)),
-                            "prometheus": fnv1.Resource(resource=resource.dict_to_struct(_RELEASE_WITH_LABEL)),
-                            "config-map": fnv1.Resource(resource=resource.dict_to_struct(_OBJECT_NO_PC)),
-                            "provider-config-helm": fnv1.Resource(resource=resource.dict_to_struct(_PROVIDER_CONFIG)),
-                        },
-                    ),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=_composite()),
-                        resources={
-                            "cert-manager": fnv1.Resource(
-                                resource=resource.dict_to_struct(_labelled(_RELEASE, "cert-manager")),
-                            ),
-                            "gateway-namespace": fnv1.Resource(
-                                resource=resource.dict_to_struct(_labelled(_OBJECT, "gateway-namespace")),
-                            ),
-                            # Existing labels are preserved when the consumer label is stamped.
-                            "prometheus": fnv1.Resource(
-                                resource=resource.dict_to_struct(_labelled(_RELEASE_WITH_LABEL, "prometheus")),
-                            ),
-                            # An Object with no providerConfigRef is left untouched, no Usage.
-                            "config-map": fnv1.Resource(
-                                resource=resource.dict_to_struct(_OBJECT_NO_PC),
-                            ),
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(_PROVIDER_CONFIG),
-                            ),
-                            "usage-pc-cert-manager": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _usage("helm.m.crossplane.io/v1beta1", "Release", "cert-manager")
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "usage-pc-gateway-namespace": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _usage("kubernetes.m.crossplane.io/v1alpha1", "Object", "gateway-namespace")
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "usage-pc-prometheus": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _usage("helm.m.crossplane.io/v1beta1", "Release", "prometheus")
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
-                    ),
-                    context=structpb.Struct(),
-                ),
+COMPOSE_CASES = [
+    Case(
+        name="labels each consumer and composes a Usage per ProviderConfig reference",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=fnv1.Resource(resource=_composite())),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=_composite()),
+                resources={
+                    "cert-manager": fnv1.Resource(resource=resource.dict_to_struct(_RELEASE)),
+                    "gateway-namespace": fnv1.Resource(resource=resource.dict_to_struct(_OBJECT)),
+                    "prometheus": fnv1.Resource(resource=resource.dict_to_struct(_RELEASE_WITH_LABEL)),
+                    "config-map": fnv1.Resource(resource=resource.dict_to_struct(_OBJECT_NO_PC)),
+                    "provider-config-helm": fnv1.Resource(resource=resource.dict_to_struct(_PROVIDER_CONFIG)),
+                },
             ),
-            Case(
-                name="no Usages when the composite has no namespace",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(composite=fnv1.Resource(resource=_composite(namespace=None))),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=_composite(namespace=None)),
-                        resources={
-                            "cert-manager": fnv1.Resource(resource=resource.dict_to_struct(_RELEASE)),
-                        },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=_composite()),
+                resources={
+                    "cert-manager": fnv1.Resource(
+                        resource=resource.dict_to_struct(_labelled(_RELEASE, "cert-manager")),
                     ),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=_composite(namespace=None)),
-                        resources={
-                            "cert-manager": fnv1.Resource(resource=resource.dict_to_struct(_RELEASE)),
-                        },
+                    "gateway-namespace": fnv1.Resource(
+                        resource=resource.dict_to_struct(_labelled(_OBJECT, "gateway-namespace")),
                     ),
-                    context=structpb.Struct(),
-                ),
+                    # Existing labels are preserved when the consumer label is stamped.
+                    "prometheus": fnv1.Resource(
+                        resource=resource.dict_to_struct(_labelled(_RELEASE_WITH_LABEL, "prometheus")),
+                    ),
+                    # An Object with no providerConfigRef is left untouched, no Usage.
+                    "config-map": fnv1.Resource(
+                        resource=resource.dict_to_struct(_OBJECT_NO_PC),
+                    ),
+                    "provider-config-helm": fnv1.Resource(
+                        resource=resource.dict_to_struct(_PROVIDER_CONFIG),
+                    ),
+                    "usage-pc-cert-manager": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _usage("helm.m.crossplane.io/v1beta1", "Release", "cert-manager")
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-pc-gateway-namespace": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _usage("kubernetes.m.crossplane.io/v1alpha1", "Object", "gateway-namespace")
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-pc-prometheus": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _usage("helm.m.crossplane.io/v1beta1", "Release", "prometheus")
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                },
             ),
-            Case(
-                name="no consumers means no Usages",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(composite=fnv1.Resource(resource=_composite())),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=_composite()),
-                        resources={
-                            "provider-config-helm": fnv1.Resource(resource=resource.dict_to_struct(_PROVIDER_CONFIG)),
-                        },
-                    ),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=_composite()),
-                        resources={
-                            "provider-config-helm": fnv1.Resource(
-                                resource=resource.dict_to_struct(_PROVIDER_CONFIG),
-                            ),
-                        },
-                    ),
-                    context=structpb.Struct(),
-                ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="no Usages when the composite has no namespace",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=fnv1.Resource(resource=_composite(namespace=None))),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=_composite(namespace=None)),
+                resources={
+                    "cert-manager": fnv1.Resource(resource=resource.dict_to_struct(_RELEASE)),
+                },
             ),
-        ]
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=_composite(namespace=None)),
+                resources={
+                    "cert-manager": fnv1.Resource(resource=resource.dict_to_struct(_RELEASE)),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="no consumers means no Usages",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=fnv1.Resource(resource=_composite())),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=_composite()),
+                resources={
+                    "provider-config-helm": fnv1.Resource(resource=resource.dict_to_struct(_PROVIDER_CONFIG)),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=_composite()),
+                resources={
+                    "provider-config-helm": fnv1.Resource(
+                        resource=resource.dict_to_struct(_PROVIDER_CONFIG),
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+]
 
-        for case in cases:
-            with self.subTest(case.name):
-                got = await self.runner.RunFunction(case.req, None)
-                self.assertEqual(
-                    json_format.MessageToDict(case.want),
-                    json_format.MessageToDict(got),
-                    "-want, +got",
-                )
+
+def _to_dict(msg: message.Message) -> dict:
+    """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
+    return json.loads(json_format.MessageToJson(msg, sort_keys=True))
+
+
+@pytest.mark.parametrize("case", COMPOSE_CASES, ids=lambda case: case.name)
+def test_compose(case: Case) -> None:
+    """RunFunction labels consumers and composes their Usages."""
+    got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
+    assert _to_dict(got) == _to_dict(case.want)

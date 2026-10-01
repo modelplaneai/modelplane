@@ -14,16 +14,18 @@
 
 """Tests for the compose-model-deployment function."""
 
+import asyncio
 import dataclasses
 import datetime
-import unittest
+import json
 from typing import Any
 
-from crossplane.function import logging, resource
+import pytest
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import fn
 from google.protobuf import duration_pb2 as durationpb
-from google.protobuf import json_format
+from google.protobuf import json_format, message
 from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelcache import v1alpha1 as mcv1alpha1
@@ -405,1134 +407,1121 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-def setUpModule() -> None:
-    logging.configure(level=logging.Level.DISABLED)
-
-
-class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
-    """Tests for FunctionRunner.RunFunction."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.runner = fn.FunctionRunner()
-
-    async def test_compose(self) -> None:
-        """The function fans out ModelReplicas and, once they're Ready, ModelEndpoints."""
-
-        # A deployment that sets spec.modelCacheRef.
-        xr_cached = v1alpha1.ModelDeployment(
-            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=v1alpha1.SpecModel1(
-                replicas=1,
-                template=v1alpha1.TemplateModel(
-                    spec=v1alpha1.SpecModel(
-                        modelCacheRef=v1alpha1.ModelCacheRef(name="qwen"),
-                        engines=[_ENGINE],
-                    )
-                ),
+def _compose_cases() -> list[Case]:
+    """The cases for test_compose, and the deployments they share."""
+    # A deployment that sets spec.modelCacheRef.
+    xr_cached = v1alpha1.ModelDeployment(
+        metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+        spec=v1alpha1.SpecModel1(
+            replicas=1,
+            template=v1alpha1.TemplateModel(
+                spec=v1alpha1.SpecModel(
+                    modelCacheRef=v1alpha1.ModelCacheRef(name="qwen"),
+                    engines=[_ENGINE],
+                )
             ),
-        ).model_dump(exclude_none=True, mode="json")
+        ),
+    ).model_dump(exclude_none=True, mode="json")
 
-        # A cached deployment that also sets its own clusterSelector, so the
-        # scheduler intersects it with the cache's footprint.
-        xr_cached_selector = v1alpha1.ModelDeployment(
-            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=v1alpha1.SpecModel1(
-                replicas=1,
-                template=v1alpha1.TemplateModel(
-                    spec=v1alpha1.SpecModel(
-                        clusterSelector=v1alpha1.ClusterSelector(matchLabels={"region": "us-east"}),
-                        modelCacheRef=v1alpha1.ModelCacheRef(name="qwen"),
-                        engines=[_ENGINE],
-                    )
-                ),
+    # A cached deployment that also sets its own clusterSelector, so the
+    # scheduler intersects it with the cache's footprint.
+    xr_cached_selector = v1alpha1.ModelDeployment(
+        metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+        spec=v1alpha1.SpecModel1(
+            replicas=1,
+            template=v1alpha1.TemplateModel(
+                spec=v1alpha1.SpecModel(
+                    clusterSelector=v1alpha1.ClusterSelector(matchLabels={"region": "us-east"}),
+                    modelCacheRef=v1alpha1.ModelCacheRef(name="qwen"),
+                    engines=[_ENGINE],
+                )
             ),
-        ).model_dump(exclude_none=True, mode="json")
+        ),
+    ).model_dump(exclude_none=True, mode="json")
 
-        # A two-replica deployment (no container args) for the co-location case.
-        xr_two = v1alpha1.ModelDeployment(
-            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=v1alpha1.SpecModel1(
-                replicas=2,
-                template=v1alpha1.TemplateModel(spec=v1alpha1.SpecModel(engines=[_ENGINE_NO_ARGS])),
-            ),
-        ).model_dump(exclude_none=True, mode="json")
+    # A two-replica deployment (no container args) for the co-location case.
+    xr_two = v1alpha1.ModelDeployment(
+        metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+        spec=v1alpha1.SpecModel1(
+            replicas=2,
+            template=v1alpha1.TemplateModel(spec=v1alpha1.SpecModel(engines=[_ENGINE_NO_ARGS])),
+        ),
+    ).model_dump(exclude_none=True, mode="json")
 
-        # A disaggregated (PrefillDecode) deployment: a Prefill and a Decode engine.
-        xr_pd = v1alpha1.ModelDeployment(
-            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=v1alpha1.SpecModel1(
-                replicas=1,
-                template=v1alpha1.TemplateModel(
-                    spec=v1alpha1.SpecModel(
-                        serving=v1alpha1.Serving(mode="PrefillDecode"),
-                        engines=[
-                            _ENGINE.model_copy(update={"name": "prefill", "phase": "Prefill"}),
-                            _ENGINE.model_copy(update={"name": "decode", "phase": "Decode"}),
-                        ],
-                    )
-                ),
-            ),
-        ).model_dump(exclude_none=True, mode="json")
-
-        # A deployment parked at zero replicas.
-        xr_zero = v1alpha1.ModelDeployment(
-            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=v1alpha1.SpecModel1(
-                replicas=0,
-                template=v1alpha1.TemplateModel(spec=v1alpha1.SpecModel(engines=[_ENGINE])),
-            ),
-        ).model_dump(exclude_none=True, mode="json")
-
-        cases = [
-            Case(
-                # First reconcile: the replica is composed but not yet observed
-                # Ready, so its endpoint is withheld - routing must not advertise
-                # a backend whose pods are still warming up (#102).
-                name="freshly scheduled replica composes no endpoint until ready",
-                req=_req(_XR, clusters=[_CLUSTER_A]),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                            ),
-                            resources={
-                                "replica-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelReplica",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "clusterName": "cluster-a",
-                                                "engines": _REPLICA_ENGINES,
-                                            },
-                                        }
-                                    ),
-                                ),
-                            },
-                        ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="Scheduling",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelStarting",
-                                message="0 of 1 ready",
-                            ),
-                        ],
-                        results=[
-                            fnv1.Result(
-                                severity=fnv1.SEVERITY_NORMAL,
-                                message="Scheduled 1 replicas across 1 clusters: cluster-a",
-                            ),
-                        ],
-                        context=structpb.Struct(),
-                    )
-                ),
-            ),
-            Case(
-                # A replica that has gone not-Ready (e.g. a crash-loop after
-                # once serving) has its endpoint withdrawn: the previously
-                # observed endpoint is absent from desired, so Crossplane
-                # deletes it and traffic stops routing to the dead backend
-                # (#102). Omitting it from desired - not composing it - is what
-                # drives the deletion.
-                name="not-ready replica withdraws its endpoint",
-                req=_req(
-                    _XR,
-                    clusters=[_CLUSTER_A],
-                    replicas=[_EXISTING_REPLICA],
-                    observed={
-                        "replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=False),
-                        "endpoint-cluster-a-0": {
-                            "apiVersion": "modelplane.ai/v1alpha1",
-                            "kind": "ModelEndpoint",
-                            "metadata": {"name": "my-model-5ab63", "namespace": "ml-team"},
-                        },
-                    },
-                ),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                            ),
-                            resources={
-                                "replica-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelReplica",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "clusterName": "cluster-a",
-                                                "engines": _REPLICA_ENGINES,
-                                            },
-                                        }
-                                    ),
-                                ),
-                            },
-                        ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_TRUE,
-                                reason="ReplicasCreated",
-                                message="Scheduled 1 of 1 replicas",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelStarting",
-                                message="0 of 1 ready",
-                            ),
-                        ],
-                        context=structpb.Struct(),
-                    )
-                ),
-            ),
-            Case(
-                name="no clusters produces warning",
-                req=_req(_XR, clusters=[]),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="NoClusters",
-                            ),
-                        ],
-                        results=[
-                            fnv1.Result(severity=fnv1.SEVERITY_WARNING, message="No InferenceClusters found"),
-                        ],
-                        context=structpb.Struct(),
-                    )
-                ),
-            ),
-            Case(
-                name="insufficient capacity produces no replicas",
-                req=_req(_XR, clusters=[_cluster("cluster-a", nodes=0)]),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
-                                ready=fnv1.READY_FALSE,
-                            ),
-                        ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="InsufficientCapacity",
-                                message="0 of 1 replicas scheduled (checked 1 clusters)",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="NoReplicasScheduled",
-                            ),
-                        ],
-                        context=structpb.Struct(),
-                    )
-                ),
-            ),
-            Case(
-                # Zero desired parks the deployment before resolve_inputs runs:
-                # no requirements are declared (the want carries none), nothing
-                # is composed, and both conditions read True with the
-                # NoReplicasDesired reason rather than a capacity failure.
-                name="scaled to zero composes nothing and reports NoReplicasDesired",
-                req=_req(xr_zero),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
-                            ready=fnv1.READY_TRUE,
-                        ),
-                    ),
-                    conditions=[
-                        fnv1.Condition(
-                            type="ReplicasScheduled",
-                            status=fnv1.STATUS_CONDITION_TRUE,
-                            reason="NoReplicasDesired",
-                            message="0 replicas desired",
-                        ),
-                        fnv1.Condition(
-                            type="ReplicasReady",
-                            status=fnv1.STATUS_CONDITION_TRUE,
-                            reason="NoReplicasDesired",
-                            message="0 replicas desired",
-                        ),
+    # A disaggregated (PrefillDecode) deployment: a Prefill and a Decode engine.
+    xr_pd = v1alpha1.ModelDeployment(
+        metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+        spec=v1alpha1.SpecModel1(
+            replicas=1,
+            template=v1alpha1.TemplateModel(
+                spec=v1alpha1.SpecModel(
+                    serving=v1alpha1.Serving(mode="PrefillDecode"),
+                    engines=[
+                        _ENGINE.model_copy(update={"name": "prefill", "phase": "Prefill"}),
+                        _ENGINE.model_copy(update={"name": "decode", "phase": "Decode"}),
                     ],
-                    context=structpb.Struct(),
-                ),
+                )
             ),
-            Case(
-                # Scaling an existing deployment to zero: the observed replica
-                # and endpoint are absent from desired (pruned), and the
-                # transition is announced while they still exist.
-                name="scale to zero prunes observed replicas and emits an event",
-                req=_req(
-                    xr_zero,
-                    observed={
-                        "replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True),
-                        "endpoint-cluster-a-0": {
-                            "apiVersion": "modelplane.ai/v1alpha1",
-                            "kind": "ModelEndpoint",
-                            "metadata": {"name": "my-model-5ab63", "namespace": "ml-team"},
-                        },
-                    },
-                ),
-                want=fnv1.RunFunctionResponse(
+        ),
+    ).model_dump(exclude_none=True, mode="json")
+
+    # A deployment parked at zero replicas.
+    xr_zero = v1alpha1.ModelDeployment(
+        metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+        spec=v1alpha1.SpecModel1(
+            replicas=0,
+            template=v1alpha1.TemplateModel(spec=v1alpha1.SpecModel(engines=[_ENGINE])),
+        ),
+    ).model_dump(exclude_none=True, mode="json")
+
+    return [
+        Case(
+            # First reconcile: the replica is composed but not yet observed
+            # Ready, so its endpoint is withheld - routing must not advertise
+            # a backend whose pods are still warming up (#102).
+            name="freshly scheduled replica composes no endpoint until ready",
+            req=_req(_XR, clusters=[_CLUSTER_A]),
+            want=_want(
+                fnv1.RunFunctionResponse(
                     meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
                     desired=fnv1.State(
                         composite=fnv1.Resource(
-                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
-                            ready=fnv1.READY_TRUE,
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
                         ),
+                        resources={
+                            "replica-cluster-a-0": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelReplica",
+                                        "metadata": {
+                                            "name": "my-model-5ab63",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-a",
+                                                "modelplane.ai/replica-index": "0",
+                                            },
+                                        },
+                                        "spec": {
+                                            "clusterName": "cluster-a",
+                                            "engines": _REPLICA_ENGINES,
+                                        },
+                                    }
+                                ),
+                            ),
+                        },
                     ),
                     conditions=[
                         fnv1.Condition(
                             type="ReplicasScheduled",
-                            status=fnv1.STATUS_CONDITION_TRUE,
-                            reason="NoReplicasDesired",
-                            message="0 replicas desired",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="Scheduling",
                         ),
                         fnv1.Condition(
                             type="ReplicasReady",
-                            status=fnv1.STATUS_CONDITION_TRUE,
-                            reason="NoReplicasDesired",
-                            message="0 replicas desired",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="ModelStarting",
+                            message="0 of 1 ready",
                         ),
                     ],
                     results=[
                         fnv1.Result(
                             severity=fnv1.SEVERITY_NORMAL,
-                            message="Scaled to zero: removing all replicas",
+                            message="Scheduled 1 replicas across 1 clusters: cluster-a",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                )
+            ),
+        ),
+        Case(
+            # A replica that has gone not-Ready (e.g. a crash-loop after
+            # once serving) has its endpoint withdrawn: the previously
+            # observed endpoint is absent from desired, so Crossplane
+            # deletes it and traffic stops routing to the dead backend
+            # (#102). Omitting it from desired - not composing it - is what
+            # drives the deletion.
+            name="not-ready replica withdraws its endpoint",
+            req=_req(
+                _XR,
+                clusters=[_CLUSTER_A],
+                replicas=[_EXISTING_REPLICA],
+                observed={
+                    "replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=False),
+                    "endpoint-cluster-a-0": {
+                        "apiVersion": "modelplane.ai/v1alpha1",
+                        "kind": "ModelEndpoint",
+                        "metadata": {"name": "my-model-5ab63", "namespace": "ml-team"},
+                    },
+                },
+            ),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                        ),
+                        resources={
+                            "replica-cluster-a-0": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelReplica",
+                                        "metadata": {
+                                            "name": "my-model-5ab63",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-a",
+                                                "modelplane.ai/replica-index": "0",
+                                            },
+                                        },
+                                        "spec": {
+                                            "clusterName": "cluster-a",
+                                            "engines": _REPLICA_ENGINES,
+                                        },
+                                    }
+                                ),
+                            ),
+                        },
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ReplicasCreated",
+                            message="Scheduled 1 of 1 replicas",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="ModelStarting",
+                            message="0 of 1 ready",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                )
+            ),
+        ),
+        Case(
+            name="no clusters produces warning",
+            req=_req(_XR, clusters=[]),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
+                    conditions=[
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="NoClusters",
+                        ),
+                    ],
+                    results=[
+                        fnv1.Result(severity=fnv1.SEVERITY_WARNING, message="No InferenceClusters found"),
+                    ],
+                    context=structpb.Struct(),
+                )
+            ),
+        ),
+        Case(
+            name="insufficient capacity produces no replicas",
+            req=_req(_XR, clusters=[_cluster("cluster-a", nodes=0)]),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
+                            ready=fnv1.READY_FALSE,
+                        ),
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="InsufficientCapacity",
+                            message="0 of 1 replicas scheduled (checked 1 clusters)",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="NoReplicasScheduled",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                )
+            ),
+        ),
+        Case(
+            # Zero desired parks the deployment before resolve_inputs runs:
+            # no requirements are declared (the want carries none), nothing
+            # is composed, and both conditions read True with the
+            # NoReplicasDesired reason rather than a capacity failure.
+            name="scaled to zero composes nothing and reports NoReplicasDesired",
+            req=_req(xr_zero),
+            want=fnv1.RunFunctionResponse(
+                meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                desired=fnv1.State(
+                    composite=fnv1.Resource(
+                        resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                ),
+                conditions=[
+                    fnv1.Condition(
+                        type="ReplicasScheduled",
+                        status=fnv1.STATUS_CONDITION_TRUE,
+                        reason="NoReplicasDesired",
+                        message="0 replicas desired",
+                    ),
+                    fnv1.Condition(
+                        type="ReplicasReady",
+                        status=fnv1.STATUS_CONDITION_TRUE,
+                        reason="NoReplicasDesired",
+                        message="0 replicas desired",
+                    ),
+                ],
+                context=structpb.Struct(),
+            ),
+        ),
+        Case(
+            # Scaling an existing deployment to zero: the observed replica
+            # and endpoint are absent from desired (pruned), and the
+            # transition is announced while they still exist.
+            name="scale to zero prunes observed replicas and emits an event",
+            req=_req(
+                xr_zero,
+                observed={
+                    "replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True),
+                    "endpoint-cluster-a-0": {
+                        "apiVersion": "modelplane.ai/v1alpha1",
+                        "kind": "ModelEndpoint",
+                        "metadata": {"name": "my-model-5ab63", "namespace": "ml-team"},
+                    },
+                },
+            ),
+            want=fnv1.RunFunctionResponse(
+                meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                desired=fnv1.State(
+                    composite=fnv1.Resource(
+                        resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                ),
+                conditions=[
+                    fnv1.Condition(
+                        type="ReplicasScheduled",
+                        status=fnv1.STATUS_CONDITION_TRUE,
+                        reason="NoReplicasDesired",
+                        message="0 replicas desired",
+                    ),
+                    fnv1.Condition(
+                        type="ReplicasReady",
+                        status=fnv1.STATUS_CONDITION_TRUE,
+                        reason="NoReplicasDesired",
+                        message="0 replicas desired",
+                    ),
+                ],
+                results=[
+                    fnv1.Result(
+                        severity=fnv1.SEVERITY_NORMAL,
+                        message="Scaled to zero: removing all replicas",
+                    ),
+                ],
+                context=structpb.Struct(),
+            ),
+        ),
+        Case(
+            name="ready replica is preserved and keeps its endpoint",
+            req=_req(
+                _XR,
+                clusters=[_CLUSTER_A],
+                replicas=[_EXISTING_REPLICA],
+                observed={
+                    "replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True),
+                    "endpoint-cluster-a-0": {
+                        "apiVersion": "modelplane.ai/v1alpha1",
+                        "kind": "ModelEndpoint",
+                        "metadata": {"name": "my-model-5ab63", "namespace": "ml-team"},
+                    },
+                },
+            ),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 1}}}),
+                        ),
+                        resources={
+                            "replica-cluster-a-0": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelReplica",
+                                        "metadata": {
+                                            "name": "my-model-5ab63",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-a",
+                                                "modelplane.ai/replica-index": "0",
+                                            },
+                                        },
+                                        "spec": {
+                                            "clusterName": "cluster-a",
+                                            "engines": _REPLICA_ENGINES,
+                                        },
+                                    }
+                                ),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                            "endpoint-cluster-a-0": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelEndpoint",
+                                        "metadata": {
+                                            "name": "my-model-5ab63",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-a",
+                                                "modelplane.ai/replica-index": "0",
+                                            },
+                                        },
+                                        "spec": {
+                                            "origin": "https://cluster.clusters.example.com",
+                                            "api": {
+                                                "schema": "OpenAI",
+                                                "prefix": "/ml-team/my-model-5ab63/v1",
+                                            },
+                                            "model": "ml-team/my-model",
+                                        },
+                                    }
+                                ),
+                            ),
+                        },
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ReplicasCreated",
+                            message="Scheduled 1 of 1 replicas",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="AllReplicasReady",
+                            message="1 of 1 ready",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                )
+            ),
+        ),
+        Case(
+            name="offline pinned cluster keeps replica but drops endpoint",
+            req=_req(
+                _XR,
+                clusters=[_cluster("cluster-a", ready=False, hostname=None)],
+                replicas=[_EXISTING_REPLICA],
+                observed={"replica-cluster-a-0": _EXISTING_REPLICA},
+            ),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                        ),
+                        resources={
+                            "replica-cluster-a-0": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelReplica",
+                                        "metadata": {
+                                            "name": "my-model-5ab63",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-a",
+                                                "modelplane.ai/replica-index": "0",
+                                            },
+                                        },
+                                        "spec": {
+                                            "clusterName": "cluster-a",
+                                            "engines": _REPLICA_ENGINES,
+                                        },
+                                    }
+                                ),
+                            ),
+                        },
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ReplicasCreated",
+                            message="Scheduled 1 of 1 replicas",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="ModelStarting",
+                            message="0 of 1 ready",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                )
+            ),
+        ),
+        Case(
+            name="deleted pinned cluster triggers replica re-placement",
+            req=_req(
+                _XR,
+                clusters=[_cluster("cluster-b", hostname="cluster-b.clusters.example.com")],
+                replicas=[_EXISTING_REPLICA],
+                observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
+            ),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                        ),
+                        resources={
+                            "replica-cluster-b-0": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelReplica",
+                                        "metadata": {
+                                            "name": "my-model-f0b76",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-b",
+                                                "modelplane.ai/replica-index": "0",
+                                            },
+                                        },
+                                        "spec": {
+                                            "clusterName": "cluster-b",
+                                            "engines": _REPLICA_ENGINES,
+                                        },
+                                    }
+                                ),
+                            ),
+                        },
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="Scheduling",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="ModelStarting",
+                            message="0 of 1 ready",
+                        ),
+                    ],
+                    results=[
+                        fnv1.Result(
+                            severity=fnv1.SEVERITY_NORMAL,
+                            message="Scheduled 1 replicas across 1 clusters: cluster-b",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                )
+            ),
+        ),
+        Case(
+            name="modelCacheRef is propagated onto the composed replica",
+            req=_req(xr_cached, clusters=[_CLUSTER_A_CACHE], cache=_cache("qwen")),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                        ),
+                        resources={
+                            "replica-cluster-a-0": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelReplica",
+                                        "metadata": {
+                                            "name": "my-model-5ab63",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-a",
+                                                "modelplane.ai/replica-index": "0",
+                                            },
+                                        },
+                                        "spec": {
+                                            "clusterName": "cluster-a",
+                                            "modelCacheRef": {"name": "qwen"},
+                                            "engines": _REPLICA_ENGINES,
+                                        },
+                                    }
+                                ),
+                            ),
+                        },
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="ModelCacheResolved",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ModelCacheResolved",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="Scheduling",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="ModelStarting",
+                            message="0 of 1 ready",
+                        ),
+                    ],
+                    results=[
+                        fnv1.Result(
+                            severity=fnv1.SEVERITY_NORMAL,
+                            message="Scheduled 1 replicas across 1 clusters: cluster-a",
                         ),
                     ],
                     context=structpb.Struct(),
                 ),
+                cache_name="qwen",
             ),
-            Case(
-                name="ready replica is preserved and keeps its endpoint",
-                req=_req(
-                    _XR,
-                    clusters=[_CLUSTER_A],
-                    replicas=[_EXISTING_REPLICA],
-                    observed={
-                        "replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True),
-                        "endpoint-cluster-a-0": {
-                            "apiVersion": "modelplane.ai/v1alpha1",
-                            "kind": "ModelEndpoint",
-                            "metadata": {"name": "my-model-5ab63", "namespace": "ml-team"},
+        ),
+        Case(
+            # The cache stages only to a subset of clusters; the scheduler
+            # intersects the cache's footprint with the deployment's own
+            # clusterSelector so replicas never land where the cache isn't.
+            name="cache clusterSelector is intersected with the deployment's",
+            req=_req(
+                xr_cached_selector,
+                clusters=[_CLUSTER_A_CACHE],
+                cache=_cache("qwen", match_labels={"tier": "gpu"}),
+            ),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                        ),
+                        resources={
+                            "replica-cluster-a-0": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelReplica",
+                                        "metadata": {
+                                            "name": "my-model-5ab63",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-a",
+                                                "modelplane.ai/replica-index": "0",
+                                            },
+                                        },
+                                        "spec": {
+                                            "clusterName": "cluster-a",
+                                            "modelCacheRef": {"name": "qwen"},
+                                            "engines": _REPLICA_ENGINES,
+                                        },
+                                    }
+                                ),
+                            ),
                         },
-                    },
-                ),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 1}}}),
-                            ),
-                            resources={
-                                "replica-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelReplica",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "clusterName": "cluster-a",
-                                                "engines": _REPLICA_ENGINES,
-                                            },
-                                        }
-                                    ),
-                                    ready=fnv1.READY_TRUE,
-                                ),
-                                "endpoint-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelEndpoint",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "origin": "https://cluster.clusters.example.com",
-                                                "api": {
-                                                    "schema": "OpenAI",
-                                                    "prefix": "/ml-team/my-model-5ab63/v1",
-                                                },
-                                                "model": "ml-team/my-model",
-                                            },
-                                        }
-                                    ),
-                                ),
-                            },
-                        ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_TRUE,
-                                reason="ReplicasCreated",
-                                message="Scheduled 1 of 1 replicas",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_TRUE,
-                                reason="AllReplicasReady",
-                                message="1 of 1 ready",
-                            ),
-                        ],
-                        context=structpb.Struct(),
-                    )
-                ),
-            ),
-            Case(
-                name="offline pinned cluster keeps replica but drops endpoint",
-                req=_req(
-                    _XR,
-                    clusters=[_cluster("cluster-a", ready=False, hostname=None)],
-                    replicas=[_EXISTING_REPLICA],
-                    observed={"replica-cluster-a-0": _EXISTING_REPLICA},
-                ),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                            ),
-                            resources={
-                                "replica-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelReplica",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "clusterName": "cluster-a",
-                                                "engines": _REPLICA_ENGINES,
-                                            },
-                                        }
-                                    ),
-                                ),
-                            },
-                        ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_TRUE,
-                                reason="ReplicasCreated",
-                                message="Scheduled 1 of 1 replicas",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelStarting",
-                                message="0 of 1 ready",
-                            ),
-                        ],
-                        context=structpb.Struct(),
-                    )
-                ),
-            ),
-            Case(
-                name="deleted pinned cluster triggers replica re-placement",
-                req=_req(
-                    _XR,
-                    clusters=[_cluster("cluster-b", hostname="cluster-b.clusters.example.com")],
-                    replicas=[_EXISTING_REPLICA],
-                    observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
-                ),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                            ),
-                            resources={
-                                "replica-cluster-b-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelReplica",
-                                            "metadata": {
-                                                "name": "my-model-f0b76",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-b",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "clusterName": "cluster-b",
-                                                "engines": _REPLICA_ENGINES,
-                                            },
-                                        }
-                                    ),
-                                ),
-                            },
-                        ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="Scheduling",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelStarting",
-                                message="0 of 1 ready",
-                            ),
-                        ],
-                        results=[
-                            fnv1.Result(
-                                severity=fnv1.SEVERITY_NORMAL,
-                                message="Scheduled 1 replicas across 1 clusters: cluster-b",
-                            ),
-                        ],
-                        context=structpb.Struct(),
-                    )
-                ),
-            ),
-            Case(
-                name="modelCacheRef is propagated onto the composed replica",
-                req=_req(xr_cached, clusters=[_CLUSTER_A_CACHE], cache=_cache("qwen")),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                            ),
-                            resources={
-                                "replica-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelReplica",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "clusterName": "cluster-a",
-                                                "modelCacheRef": {"name": "qwen"},
-                                                "engines": _REPLICA_ENGINES,
-                                            },
-                                        }
-                                    ),
-                                ),
-                            },
-                        ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ModelCacheResolved",
-                                status=fnv1.STATUS_CONDITION_TRUE,
-                                reason="ModelCacheResolved",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="Scheduling",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelStarting",
-                                message="0 of 1 ready",
-                            ),
-                        ],
-                        results=[
-                            fnv1.Result(
-                                severity=fnv1.SEVERITY_NORMAL,
-                                message="Scheduled 1 replicas across 1 clusters: cluster-a",
-                            ),
-                        ],
-                        context=structpb.Struct(),
                     ),
-                    cache_name="qwen",
-                ),
-            ),
-            Case(
-                # The cache stages only to a subset of clusters; the scheduler
-                # intersects the cache's footprint with the deployment's own
-                # clusterSelector so replicas never land where the cache isn't.
-                name="cache clusterSelector is intersected with the deployment's",
-                req=_req(
-                    xr_cached_selector,
-                    clusters=[_CLUSTER_A_CACHE],
-                    cache=_cache("qwen", match_labels={"tier": "gpu"}),
-                ),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                            ),
-                            resources={
-                                "replica-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelReplica",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "clusterName": "cluster-a",
-                                                "modelCacheRef": {"name": "qwen"},
-                                                "engines": _REPLICA_ENGINES,
-                                            },
-                                        }
-                                    ),
-                                ),
-                            },
+                    conditions=[
+                        fnv1.Condition(
+                            type="ModelCacheResolved",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ModelCacheResolved",
                         ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ModelCacheResolved",
-                                status=fnv1.STATUS_CONDITION_TRUE,
-                                reason="ModelCacheResolved",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="Scheduling",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelStarting",
-                                message="0 of 1 ready",
-                            ),
-                        ],
-                        results=[
-                            fnv1.Result(
-                                severity=fnv1.SEVERITY_NORMAL,
-                                message="Scheduled 1 replicas across 1 clusters: cluster-a",
-                            ),
-                        ],
-                        context=structpb.Struct(),
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="Scheduling",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="ModelStarting",
+                            message="0 of 1 ready",
+                        ),
+                    ],
+                    results=[
+                        fnv1.Result(
+                            severity=fnv1.SEVERITY_NORMAL,
+                            message="Scheduled 1 replicas across 1 clusters: cluster-a",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                ),
+                cluster_labels={"region": "us-east", "tier": "gpu"},
+                cache_name="qwen",
+            ),
+        ),
+        Case(
+            # compose-model-cache stages only onto clusters that report cache
+            # storage, so cluster-a, which reports none, can't host the
+            # replica's PVC. The replica lands on cluster-b, though cluster-a
+            # would win the tiebreak by name.
+            name="a cached replica lands only on a cluster with cache storage",
+            req=_req(
+                xr_cached,
+                clusters=[_CLUSTER_A, _cluster("cluster-b", cache_storage=True)],
+                cache=_cache("qwen"),
+            ),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                        ),
+                        resources={
+                            "replica-cluster-b-0": fnv1.Resource(resource=resource.dict_to_struct(_CACHED_REPLICA_B)),
+                        },
                     ),
-                    cluster_labels={"region": "us-east", "tier": "gpu"},
-                    cache_name="qwen",
-                ),
-            ),
-            Case(
-                # compose-model-cache stages only onto clusters that report cache
-                # storage, so cluster-a, which reports none, can't host the
-                # replica's PVC. The replica lands on cluster-b, though cluster-a
-                # would win the tiebreak by name.
-                name="a cached replica lands only on a cluster with cache storage",
-                req=_req(
-                    xr_cached,
-                    clusters=[_CLUSTER_A, _cluster("cluster-b", cache_storage=True)],
-                    cache=_cache("qwen"),
-                ),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                            ),
-                            resources={
-                                "replica-cluster-b-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(_CACHED_REPLICA_B)
-                                ),
-                            },
+                    conditions=[
+                        fnv1.Condition(
+                            type="ModelCacheResolved",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ModelCacheResolved",
                         ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ModelCacheResolved",
-                                status=fnv1.STATUS_CONDITION_TRUE,
-                                reason="ModelCacheResolved",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="Scheduling",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelStarting",
-                                message="0 of 1 ready",
-                            ),
-                        ],
-                        results=[
-                            fnv1.Result(
-                                severity=fnv1.SEVERITY_NORMAL,
-                                message="Scheduled 1 replicas across 1 clusters: cluster-b",
-                            ),
-                        ],
-                        context=structpb.Struct(),
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="Scheduling",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="ModelStarting",
+                            message="0 of 1 ready",
+                        ),
+                    ],
+                    results=[
+                        fnv1.Result(
+                            severity=fnv1.SEVERITY_NORMAL,
+                            message="Scheduled 1 replicas across 1 clusters: cluster-b",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                ),
+                cache_name="qwen",
+            ),
+        ),
+        Case(
+            # A replica is running on cluster-a, which has no cache storage,
+            # say because the bug this guards against put it there. Its PVC
+            # never appears, so it's dropped and re-placed on cluster-b, the
+            # way a replica is when the cache's selector stops matching.
+            name="a running cached replica on a cluster without cache storage is re-placed",
+            req=_req(
+                xr_cached,
+                clusters=[_CLUSTER_A, _cluster("cluster-b", cache_storage=True)],
+                replicas=[_EXISTING_REPLICA],
+                observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
+                cache=_cache("qwen"),
+            ),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                        ),
+                        resources={
+                            "replica-cluster-b-0": fnv1.Resource(resource=resource.dict_to_struct(_CACHED_REPLICA_B)),
+                        },
                     ),
-                    cache_name="qwen",
-                ),
-            ),
-            Case(
-                # A replica is running on cluster-a, which has no cache storage,
-                # say because the bug this guards against put it there. Its PVC
-                # never appears, so it's dropped and re-placed on cluster-b, the
-                # way a replica is when the cache's selector stops matching.
-                name="a running cached replica on a cluster without cache storage is re-placed",
-                req=_req(
-                    xr_cached,
-                    clusters=[_CLUSTER_A, _cluster("cluster-b", cache_storage=True)],
-                    replicas=[_EXISTING_REPLICA],
-                    observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
-                    cache=_cache("qwen"),
-                ),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                            ),
-                            resources={
-                                "replica-cluster-b-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(_CACHED_REPLICA_B)
-                                ),
-                            },
+                    conditions=[
+                        fnv1.Condition(
+                            type="ModelCacheResolved",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ModelCacheResolved",
                         ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ModelCacheResolved",
-                                status=fnv1.STATUS_CONDITION_TRUE,
-                                reason="ModelCacheResolved",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="Scheduling",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelStarting",
-                                message="0 of 1 ready",
-                            ),
-                        ],
-                        results=[
-                            fnv1.Result(
-                                severity=fnv1.SEVERITY_NORMAL,
-                                message="Scheduled 1 replicas across 1 clusters: cluster-b",
-                            ),
-                        ],
-                        context=structpb.Struct(),
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="Scheduling",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="ModelStarting",
+                            message="0 of 1 ready",
+                        ),
+                    ],
+                    results=[
+                        fnv1.Result(
+                            severity=fnv1.SEVERITY_NORMAL,
+                            message="Scheduled 1 replicas across 1 clusters: cluster-b",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                ),
+                cache_name="qwen",
+            ),
+        ),
+        Case(
+            # The only candidate has no cache storage, so the cache can't
+            # stage there and nothing is placed. ReplicasScheduled says why
+            # rather than blaming capacity.
+            name="no candidate with cache storage places nothing",
+            req=_req(xr_cached, clusters=[_CLUSTER_A], cache=_cache("qwen")),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
+                            ready=fnv1.READY_FALSE,
+                        ),
                     ),
-                    cache_name="qwen",
-                ),
-            ),
-            Case(
-                # The only candidate has no cache storage, so the cache can't
-                # stage there and nothing is placed. ReplicasScheduled says why
-                # rather than blaming capacity.
-                name="no candidate with cache storage places nothing",
-                req=_req(xr_cached, clusters=[_CLUSTER_A], cache=_cache("qwen")),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
-                                ready=fnv1.READY_FALSE,
-                            ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="ModelCacheResolved",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ModelCacheResolved",
                         ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ModelCacheResolved",
-                                status=fnv1.STATUS_CONDITION_TRUE,
-                                reason="ModelCacheResolved",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="NoCacheStorage",
-                                message="0 of 1 replicas scheduled: no candidate cluster has storage for ModelCache qwen",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="NoReplicasScheduled",
-                            ),
-                        ],
-                        context=structpb.Struct(),
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="NoCacheStorage",
+                            message="0 of 1 replicas scheduled: no candidate cluster has storage for ModelCache qwen",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="NoReplicasScheduled",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                ),
+                cache_name="qwen",
+            ),
+        ),
+        Case(
+            # A referenced cache Crossplane hasn't fetched yet leaves the
+            # footprint unknown. With no replicas to retain, the function
+            # holds off placing any rather than risk landing them outside the
+            # footprint: fill is suppressed, so nothing is composed, and
+            # ModelCacheResolved=False (Unresolved) says why. The wait is
+            # transient and self-clearing, so it's a condition, not an event.
+            # The cluster and replica requirements are still declared so the
+            # cache can resolve alongside them.
+            name="unresolved cache suppresses new placement",
+            req=_req(xr_cached, clusters=[_CLUSTER_A]),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
+                            ready=fnv1.READY_FALSE,
+                        ),
                     ),
-                    cache_name="qwen",
-                ),
-            ),
-            Case(
-                # A referenced cache Crossplane hasn't fetched yet leaves the
-                # footprint unknown. With no replicas to retain, the function
-                # holds off placing any rather than risk landing them outside the
-                # footprint: fill is suppressed, so nothing is composed, and
-                # ModelCacheResolved=False (Unresolved) says why. The wait is
-                # transient and self-clearing, so it's a condition, not an event.
-                # The cluster and replica requirements are still declared so the
-                # cache can resolve alongside them.
-                name="unresolved cache suppresses new placement",
-                req=_req(xr_cached, clusters=[_CLUSTER_A]),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
-                                ready=fnv1.READY_FALSE,
-                            ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="ModelCacheResolved",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="ModelCacheUnresolved",
+                            message="Waiting for ModelCache qwen",
                         ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ModelCacheResolved",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelCacheUnresolved",
-                                message="Waiting for ModelCache qwen",
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="InsufficientCapacity",
+                            message="0 of 1 replicas scheduled (checked 1 clusters)",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="NoReplicasScheduled",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                ),
+                cache_name="qwen",
+            ),
+        ),
+        Case(
+            # The cache a live deployment depends on is deleted (the cache
+            # requirement resolves but matches nothing - ABSENT). The cache
+            # only matters when loading weights, which already happened, so
+            # its disappearance must not tear the deployment down: the
+            # existing replica is retained (retain ignores fill) even as
+            # ModelCacheResolved goes False (NotFound) and new placement is
+            # suppressed.
+            name="deleted cache retains existing replicas",
+            req=_req(
+                xr_cached,
+                clusters=[_CLUSTER_A],
+                replicas=[_EXISTING_REPLICA],
+                observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
+                cache_resolved_empty=True,
+            ),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 1}}}),
+                        ),
+                        resources={
+                            "replica-cluster-a-0": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelReplica",
+                                        "metadata": {
+                                            "name": "my-model-5ab63",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-a",
+                                                "modelplane.ai/replica-index": "0",
+                                            },
+                                        },
+                                        "spec": {
+                                            "clusterName": "cluster-a",
+                                            "modelCacheRef": {"name": "qwen"},
+                                            "engines": _REPLICA_ENGINES,
+                                        },
+                                    }
+                                ),
+                                ready=fnv1.READY_TRUE,
                             ),
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="InsufficientCapacity",
-                                message="0 of 1 replicas scheduled (checked 1 clusters)",
+                            "endpoint-cluster-a-0": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelEndpoint",
+                                        "metadata": {
+                                            "name": "my-model-5ab63",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-a",
+                                                "modelplane.ai/replica-index": "0",
+                                            },
+                                        },
+                                        "spec": {
+                                            "origin": "https://cluster.clusters.example.com",
+                                            "api": {
+                                                "schema": "OpenAI",
+                                                "prefix": "/ml-team/my-model-5ab63/v1",
+                                            },
+                                            "model": "ml-team/my-model",
+                                        },
+                                    }
+                                ),
                             ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="NoReplicasScheduled",
-                            ),
-                        ],
-                        context=structpb.Struct(),
+                        },
                     ),
-                    cache_name="qwen",
-                ),
-            ),
-            Case(
-                # The cache a live deployment depends on is deleted (the cache
-                # requirement resolves but matches nothing - ABSENT). The cache
-                # only matters when loading weights, which already happened, so
-                # its disappearance must not tear the deployment down: the
-                # existing replica is retained (retain ignores fill) even as
-                # ModelCacheResolved goes False (NotFound) and new placement is
-                # suppressed.
-                name="deleted cache retains existing replicas",
-                req=_req(
-                    xr_cached,
-                    clusters=[_CLUSTER_A],
-                    replicas=[_EXISTING_REPLICA],
-                    observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
-                    cache_resolved_empty=True,
-                ),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 1}}}),
-                            ),
-                            resources={
-                                "replica-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelReplica",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "clusterName": "cluster-a",
-                                                "modelCacheRef": {"name": "qwen"},
-                                                "engines": _REPLICA_ENGINES,
-                                            },
-                                        }
-                                    ),
-                                    ready=fnv1.READY_TRUE,
-                                ),
-                                "endpoint-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelEndpoint",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "origin": "https://cluster.clusters.example.com",
-                                                "api": {
-                                                    "schema": "OpenAI",
-                                                    "prefix": "/ml-team/my-model-5ab63/v1",
-                                                },
-                                                "model": "ml-team/my-model",
-                                            },
-                                        }
-                                    ),
-                                ),
-                            },
+                    conditions=[
+                        fnv1.Condition(
+                            type="ModelCacheResolved",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="ModelCacheNotFound",
+                            message="ModelCache qwen not found; holding replica placement",
                         ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ModelCacheResolved",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelCacheNotFound",
-                                message="ModelCache qwen not found; holding replica placement",
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ReplicasCreated",
+                            message="Scheduled 1 of 1 replicas",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="AllReplicasReady",
+                            message="1 of 1 ready",
+                        ),
+                    ],
+                    results=[
+                        fnv1.Result(
+                            severity=fnv1.SEVERITY_WARNING,
+                            message="ModelCache qwen not found; holding replica placement",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                ),
+                cache_name="qwen",
+            ),
+        ),
+        Case(
+            name="two replicas co-locate on one cluster as distinct resources",
+            req=_req(xr_two, clusters=[_CLUSTER_A]),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 2, "ready": 0}}}),
+                        ),
+                        resources={
+                            "replica-cluster-a-0": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelReplica",
+                                        "metadata": {
+                                            "name": "my-model-5ab63",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-a",
+                                                "modelplane.ai/replica-index": "0",
+                                            },
+                                        },
+                                        "spec": {
+                                            "clusterName": "cluster-a",
+                                            "engines": _REPLICA_ENGINES_NO_ARGS,
+                                        },
+                                    }
+                                ),
                             ),
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_TRUE,
-                                reason="ReplicasCreated",
-                                message="Scheduled 1 of 1 replicas",
+                            "replica-cluster-a-1": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelReplica",
+                                        "metadata": {
+                                            "name": "my-model-609c5",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-a",
+                                                "modelplane.ai/replica-index": "1",
+                                            },
+                                        },
+                                        "spec": {
+                                            "clusterName": "cluster-a",
+                                            "engines": _REPLICA_ENGINES_NO_ARGS,
+                                        },
+                                    }
+                                ),
                             ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_TRUE,
-                                reason="AllReplicasReady",
-                                message="1 of 1 ready",
-                            ),
-                        ],
-                        results=[
-                            fnv1.Result(
-                                severity=fnv1.SEVERITY_WARNING,
-                                message="ModelCache qwen not found; holding replica placement",
-                            ),
-                        ],
-                        context=structpb.Struct(),
+                        },
                     ),
-                    cache_name="qwen",
-                ),
-            ),
-            Case(
-                name="two replicas co-locate on one cluster as distinct resources",
-                req=_req(xr_two, clusters=[_CLUSTER_A]),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 2, "ready": 0}}}),
-                            ),
-                            resources={
-                                "replica-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelReplica",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "clusterName": "cluster-a",
-                                                "engines": _REPLICA_ENGINES_NO_ARGS,
-                                            },
-                                        }
-                                    ),
-                                ),
-                                "replica-cluster-a-1": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelReplica",
-                                            "metadata": {
-                                                "name": "my-model-609c5",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "1",
-                                                },
-                                            },
-                                            "spec": {
-                                                "clusterName": "cluster-a",
-                                                "engines": _REPLICA_ENGINES_NO_ARGS,
-                                            },
-                                        }
-                                    ),
-                                ),
-                            },
+                    conditions=[
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="Scheduling",
                         ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="Scheduling",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelStarting",
-                                message="0 of 2 ready",
-                            ),
-                        ],
-                        results=[
-                            fnv1.Result(
-                                severity=fnv1.SEVERITY_NORMAL,
-                                message="Scheduled 2 replicas across 1 clusters: cluster-a",
-                            ),
-                        ],
-                        context=structpb.Struct(),
-                    )
-                ),
-            ),
-            Case(
-                # PrefillDecode copies serving and each engine's phase onto the
-                # replica; the replica backend reads them to front the engines
-                # with an InferencePool + endpoint picker rather than a Service.
-                name="PrefillDecode copies serving and engine phases onto the replica",
-                req=_req(xr_pd, clusters=[_CLUSTER_A]),
-                want=_want(
-                    fnv1.RunFunctionResponse(
-                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(
-                            composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                            ),
-                            resources={
-                                "replica-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelReplica",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "clusterName": "cluster-a",
-                                                "serving": {"mode": "PrefillDecode"},
-                                                "engines": _PD_REPLICA_ENGINES,
-                                            },
-                                        }
-                                    ),
-                                ),
-                            },
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="ModelStarting",
+                            message="0 of 2 ready",
                         ),
-                        conditions=[
-                            fnv1.Condition(
-                                type="ReplicasScheduled",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="Scheduling",
-                            ),
-                            fnv1.Condition(
-                                type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelStarting",
-                                message="0 of 1 ready",
-                            ),
-                        ],
-                        results=[
-                            fnv1.Result(
-                                severity=fnv1.SEVERITY_NORMAL,
-                                message="Scheduled 1 replicas across 1 clusters: cluster-a",
-                            ),
-                        ],
-                        context=structpb.Struct(),
-                    )
-                ),
-            ),
-        ]
-
-        for case in cases:
-            with self.subTest(case.name):
-                got = await self.runner.RunFunction(case.req, None)
-                self.assertEqual(
-                    json_format.MessageToDict(case.want),
-                    json_format.MessageToDict(got),
-                    "-want, +got",
+                    ],
+                    results=[
+                        fnv1.Result(
+                            severity=fnv1.SEVERITY_NORMAL,
+                            message="Scheduled 2 replicas across 1 clusters: cluster-a",
+                        ),
+                    ],
+                    context=structpb.Struct(),
                 )
+            ),
+        ),
+        Case(
+            # PrefillDecode copies serving and each engine's phase onto the
+            # replica; the replica backend reads them to front the engines
+            # with an InferencePool + endpoint picker rather than a Service.
+            name="PrefillDecode copies serving and engine phases onto the replica",
+            req=_req(xr_pd, clusters=[_CLUSTER_A]),
+            want=_want(
+                fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                        ),
+                        resources={
+                            "replica-cluster-a-0": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "modelplane.ai/v1alpha1",
+                                        "kind": "ModelReplica",
+                                        "metadata": {
+                                            "name": "my-model-5ab63",
+                                            "namespace": "ml-team",
+                                            "labels": {
+                                                "modelplane.ai/deployment": "my-model",
+                                                "modelplane.ai/cluster": "cluster-a",
+                                                "modelplane.ai/replica-index": "0",
+                                            },
+                                        },
+                                        "spec": {
+                                            "clusterName": "cluster-a",
+                                            "serving": {"mode": "PrefillDecode"},
+                                            "engines": _PD_REPLICA_ENGINES,
+                                        },
+                                    }
+                                ),
+                            ),
+                        },
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="Scheduling",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="ModelStarting",
+                            message="0 of 1 ready",
+                        ),
+                    ],
+                    results=[
+                        fnv1.Result(
+                            severity=fnv1.SEVERITY_NORMAL,
+                            message="Scheduled 1 replicas across 1 clusters: cluster-a",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                )
+            ),
+        ),
+    ]
+
+
+def _to_dict(msg: message.Message) -> dict:
+    """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
+    return json.loads(json_format.MessageToJson(msg, sort_keys=True))
+
+
+@pytest.mark.parametrize("case", _compose_cases(), ids=lambda case: case.name)
+def test_compose(case: Case) -> None:
+    """The function fans out ModelReplicas and, once they're Ready, ModelEndpoints."""
+    got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
+    assert _to_dict(got) == _to_dict(case.want)
 
 
 def _composed(resp: fnv1.RunFunctionResponse, kind: str) -> list[dict]:
@@ -1545,183 +1534,191 @@ def _composed(resp: fnv1.RunFunctionResponse, kind: str) -> list[dict]:
     return result
 
 
-class TestTemplateLabels(unittest.IsolatedAsyncioTestCase):
-    """spec.template.metadata.labels land on the composed ModelReplicas and
-    ModelEndpoints, alongside the labels Modelplane manages."""
+# spec.template.metadata.labels land on the composed ModelReplicas and
+# ModelEndpoints, alongside the labels Modelplane manages.
 
-    async def test_stamped_on_replica_and_endpoint(self) -> None:
-        xr = v1alpha1.ModelDeployment(
-            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=v1alpha1.SpecModel1(
-                replicas=1,
-                template=v1alpha1.TemplateModel(
-                    metadata=v1alpha1.Metadata(labels={"tier": "prod", "team": "search"}),
-                    spec=v1alpha1.SpecModel(engines=[_ENGINE]),
-                ),
+
+def test_template_labels_stamped_on_replica_and_endpoint() -> None:
+    """Template labels land on the replica and endpoint beside the managed labels."""
+    xr = v1alpha1.ModelDeployment(
+        metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+        spec=v1alpha1.SpecModel1(
+            replicas=1,
+            template=v1alpha1.TemplateModel(
+                metadata=v1alpha1.Metadata(labels={"tier": "prod", "team": "search"}),
+                spec=v1alpha1.SpecModel(engines=[_ENGINE]),
             ),
-        ).model_dump(exclude_none=True, mode="json")
-        # An observed, Ready replica lets the endpoint compose this reconcile.
-        req = _req(
-            xr,
-            clusters=[_CLUSTER_A],
-            replicas=[_EXISTING_REPLICA],
-            observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
-        )
-        got = await fn.FunctionRunner().RunFunction(req, None)
+        ),
+    ).model_dump(exclude_none=True, mode="json")
+    # An observed, Ready replica lets the endpoint compose this reconcile.
+    req = _req(
+        xr,
+        clusters=[_CLUSTER_A],
+        replicas=[_EXISTING_REPLICA],
+        observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
+    )
+    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
 
-        composed = _composed(got, "ModelReplica") + _composed(got, "ModelEndpoint")
-        self.assertEqual(len(composed), 2, "expected one ModelReplica and one ModelEndpoint")
-        for obj in composed:
-            labels = obj["metadata"]["labels"]
-            self.assertEqual(labels.get("tier"), "prod")
-            self.assertEqual(labels.get("team"), "search")
-            self.assertEqual(labels.get("modelplane.ai/deployment"), "my-model")
-            self.assertEqual(labels.get("modelplane.ai/cluster"), "cluster-a")
-            self.assertEqual(labels.get("modelplane.ai/replica-index"), "0")
+    composed = _composed(got, "ModelReplica") + _composed(got, "ModelEndpoint")
+    assert len(composed) == 2, "expected one ModelReplica and one ModelEndpoint"
+    for obj in composed:
+        labels = obj["metadata"]["labels"]
+        assert labels.get("tier") == "prod"
+        assert labels.get("team") == "search"
+        assert labels.get("modelplane.ai/deployment") == "my-model"
+        assert labels.get("modelplane.ai/cluster") == "cluster-a"
+        assert labels.get("modelplane.ai/replica-index") == "0"
 
-    async def test_managed_labels_win_a_collision(self) -> None:
-        """The XRD's CEL rejects a template label under the modelplane.ai/ prefix,
-        but the invariant lives in the function too: managed labels are stamped
-        last, so a colliding label can't override them even if that CEL rule is
-        relaxed or the function is reused elsewhere."""
-        xr = v1alpha1.ModelDeployment(
-            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=v1alpha1.SpecModel1(
-                replicas=1,
-                template=v1alpha1.TemplateModel(
-                    metadata=v1alpha1.Metadata(labels={"modelplane.ai/cluster": "wrong", "tier": "prod"}),
-                    spec=v1alpha1.SpecModel(engines=[_ENGINE]),
-                ),
+
+def test_template_labels_managed_labels_win_a_collision() -> None:
+    """A managed label beats a template label of the same key."""
+    # The XRD's CEL rejects a template label under the modelplane.ai/ prefix,
+    # but the invariant lives in the function too: managed labels are stamped
+    # last, so a colliding label can't override them even if that CEL rule is
+    # relaxed or the function is reused elsewhere.
+    xr = v1alpha1.ModelDeployment(
+        metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+        spec=v1alpha1.SpecModel1(
+            replicas=1,
+            template=v1alpha1.TemplateModel(
+                metadata=v1alpha1.Metadata(labels={"modelplane.ai/cluster": "wrong", "tier": "prod"}),
+                spec=v1alpha1.SpecModel(engines=[_ENGINE]),
             ),
-        ).model_dump(exclude_none=True, mode="json")
-        got = await fn.FunctionRunner().RunFunction(_req(xr, clusters=[_CLUSTER_A]), None)
+        ),
+    ).model_dump(exclude_none=True, mode="json")
+    got = asyncio.run(fn.FunctionRunner().RunFunction(_req(xr, clusters=[_CLUSTER_A]), None))
 
-        replica = _composed(got, "ModelReplica")[0]
-        self.assertEqual(replica["metadata"]["labels"]["modelplane.ai/cluster"], "cluster-a")
-        self.assertEqual(replica["metadata"]["labels"]["tier"], "prod")
-
-
-class TestResolveRequired(unittest.TestCase):
-    """Tests for fn.resolve_required - the three-state required-resource read."""
-
-    def test_resolve_required(self) -> None:
-        cache = {"apiVersion": "modelplane.ai/v1alpha1", "kind": "ModelCache", "metadata": {"name": "qwen"}}
-
-        # PRESENT: the requirement resolved and matched a resource.
-        req = fnv1.RunFunctionRequest()
-        req.required_resources["cache"].items.append(fnv1.Resource(resource=resource.dict_to_struct(cache)))
-        self.assertEqual((fn.Resolution.PRESENT, cache), fn.resolve_required(req, "cache"))
-
-        # ABSENT: the requirement resolved but matched nothing (key present, no items).
-        req = fnv1.RunFunctionRequest()
-        req.required_resources["cache"].SetInParent()
-        self.assertEqual((fn.Resolution.ABSENT, None), fn.resolve_required(req, "cache"))
-
-        # UNRESOLVED: Crossplane has not fetched the requirement (key absent).
-        req = fnv1.RunFunctionRequest()
-        self.assertEqual((fn.Resolution.UNRESOLVED, None), fn.resolve_required(req, "cache"))
+    replica = _composed(got, "ModelReplica")[0]
+    assert replica["metadata"]["labels"]["modelplane.ai/cluster"] == "cluster-a"
+    assert replica["metadata"]["labels"]["tier"] == "prod"
 
 
-class TestServedModelName(unittest.TestCase):
-    """The name an engine is started under, and how it gets there."""
+def test_resolve_required() -> None:
+    """resolve_required tells a found, a missing, and an unfetched requirement apart."""
+    cache = {"apiVersion": "modelplane.ai/v1alpha1", "kind": "ModelCache", "metadata": {"name": "qwen"}}
 
-    def test_it_goes_ahead_of_the_users_env(self) -> None:
-        """Env expansion is left to right, so an arg or a later entry
-        referencing $(MODELPLANE_SERVED_MODEL_NAME) only resolves if it's
-        first."""
-        template = mrv1alpha1.Template(
-            spec=mrv1alpha1.Spec(
-                containers=[
-                    mrv1alpha1.Container(
-                        name="engine",
-                        image="vllm/vllm-openai:latest",
-                        env=[mrv1alpha1.EnvItem(name="HF_TOKEN", value="x")],
-                    )
-                ]
-            )
+    # PRESENT: the requirement resolved and matched a resource.
+    req = fnv1.RunFunctionRequest()
+    req.required_resources["cache"].items.append(fnv1.Resource(resource=resource.dict_to_struct(cache)))
+    assert fn.resolve_required(req, "cache") == (fn.Resolution.PRESENT, cache)
+
+    # ABSENT: the requirement resolved but matched nothing (key present, no items).
+    req = fnv1.RunFunctionRequest()
+    req.required_resources["cache"].SetInParent()
+    assert fn.resolve_required(req, "cache") == (fn.Resolution.ABSENT, None)
+
+    # UNRESOLVED: Crossplane has not fetched the requirement (key absent).
+    req = fnv1.RunFunctionRequest()
+    assert fn.resolve_required(req, "cache") == (fn.Resolution.UNRESOLVED, None)
+
+
+# The name an engine is started under, and how it gets there.
+
+
+def test_served_model_name_goes_ahead_of_the_users_env() -> None:
+    """The served model name env var comes before the container's own env."""
+    # Env expansion is left to right, so an arg or a later entry referencing
+    # $(MODELPLANE_SERVED_MODEL_NAME) only resolves if it's first.
+    template = mrv1alpha1.Template(
+        spec=mrv1alpha1.Spec(
+            containers=[
+                mrv1alpha1.Container(
+                    name="engine",
+                    image="vllm/vllm-openai:latest",
+                    env=[mrv1alpha1.EnvItem(name="HF_TOKEN", value="x")],
+                )
+            ]
         )
-        fn._inject_served_model_name(template, "ml-team/kimi-k2")
-        assert template.spec is not None
-        self.assertEqual(
-            [(e.name, e.value) for e in template.spec.containers[0].env or []],
-            [("MODELPLANE_SERVED_MODEL_NAME", "ml-team/kimi-k2"), ("HF_TOKEN", "x")],
+    )
+    fn._inject_served_model_name(template, "ml-team/kimi-k2")
+    assert template.spec is not None
+    assert [(e.name, e.value) for e in template.spec.containers[0].env or []] == [
+        ("MODELPLANE_SERVED_MODEL_NAME", "ml-team/kimi-k2"),
+        ("HF_TOKEN", "x"),
+    ]
+
+
+def test_served_model_name_user_override_is_dropped() -> None:
+    """A user's own MODELPLANE_SERVED_MODEL_NAME is replaced, not kept."""
+    # Modelplane decides this value. Honouring an override would let the engine
+    # answer to a name nothing routes to, which surfaces as a 404 from the
+    # engine rather than anything visible in status.
+    template = mrv1alpha1.Template(
+        spec=mrv1alpha1.Spec(
+            containers=[
+                mrv1alpha1.Container(
+                    name="engine",
+                    image="vllm/vllm-openai:latest",
+                    env=[mrv1alpha1.EnvItem(name="MODELPLANE_SERVED_MODEL_NAME", value="mine")],
+                )
+            ]
         )
-
-    def test_a_user_override_is_dropped(self) -> None:
-        """Modelplane decides this value. Honouring an override would let the
-        engine answer to a name nothing routes to, which surfaces as a 404 from
-        the engine rather than anything visible in status."""
-        template = mrv1alpha1.Template(
-            spec=mrv1alpha1.Spec(
-                containers=[
-                    mrv1alpha1.Container(
-                        name="engine",
-                        image="vllm/vllm-openai:latest",
-                        env=[mrv1alpha1.EnvItem(name="MODELPLANE_SERVED_MODEL_NAME", value="mine")],
-                    )
-                ]
-            )
-        )
-        fn._inject_served_model_name(template, "ml-team/kimi-k2")
-        assert template.spec is not None
-        self.assertEqual(
-            [(e.name, e.value) for e in template.spec.containers[0].env or []],
-            [("MODELPLANE_SERVED_MODEL_NAME", "ml-team/kimi-k2")],
-        )
-
-    def test_it_is_namespaced(self) -> None:
-        """So two deployments in different namespaces can't collide, and a
-        ModelService can rewrite one name for a whole deployment."""
-        self.assertEqual(fn.served_model_name("ml-team", "kimi-k2"), "ml-team/kimi-k2")
+    )
+    fn._inject_served_model_name(template, "ml-team/kimi-k2")
+    assert template.spec is not None
+    assert [(e.name, e.value) for e in template.spec.containers[0].env or []] == [
+        ("MODELPLANE_SERVED_MODEL_NAME", "ml-team/kimi-k2"),
+    ]
 
 
-class TestPlacementLabels(unittest.IsolatedAsyncioTestCase):
-    """A cluster's spec.placement.metadata.labels land on the ModelReplicas and
-    ModelEndpoints composed there.
+def test_served_model_name_is_namespaced() -> None:
+    """served_model_name prefixes the deployment's name with its namespace."""
+    # So two deployments in different namespaces can't collide, and a
+    # ModelService can rewrite one name for a whole deployment.
+    assert fn.served_model_name("ml-team", "kimi-k2") == "ml-team/kimi-k2"
 
-    This is the endpoint half of residency: a ModelService selects endpoints by
-    label, so without it a region-scoped service can't select its own replicas,
-    and nobody can label them by hand because Modelplane owns them. The gateway
-    half is an InferenceGateway's serviceSelector.
-    """
 
-    async def test_stamped_on_replica_and_endpoint(self) -> None:
-        xr = v1alpha1.ModelDeployment(
-            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=v1alpha1.SpecModel1(
-                replicas=1,
-                template=v1alpha1.TemplateModel(spec=v1alpha1.SpecModel(engines=[_ENGINE])),
+# A cluster's spec.placement.metadata.labels land on the ModelReplicas and
+# ModelEndpoints composed there.
+#
+# This is the endpoint half of residency: a ModelService selects endpoints by
+# label, so without it a region-scoped service can't select its own replicas,
+# and nobody can label them by hand because Modelplane owns them. The gateway
+# half is an InferenceGateway's serviceSelector.
+
+
+def test_placement_labels_stamped_on_replica_and_endpoint() -> None:
+    """A cluster's placement labels land on the replica and endpoint composed there."""
+    xr = v1alpha1.ModelDeployment(
+        metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+        spec=v1alpha1.SpecModel1(
+            replicas=1,
+            template=v1alpha1.TemplateModel(spec=v1alpha1.SpecModel(engines=[_ENGINE])),
+        ),
+    ).model_dump(exclude_none=True, mode="json")
+    req = _req(
+        xr,
+        clusters=[_cluster("cluster-a", placement_labels={"example.org/region": "eu"})],
+        replicas=[_EXISTING_REPLICA],
+        observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
+    )
+    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
+
+    composed = _composed(got, "ModelReplica") + _composed(got, "ModelEndpoint")
+    assert len(composed) == 2, "expected one ModelReplica and one ModelEndpoint"
+    for obj in composed:
+        assert obj["metadata"]["labels"].get("example.org/region") == "eu"
+
+
+def test_placement_labels_cluster_label_beats_a_template_label() -> None:
+    """A cluster's placement label beats a template label of the same key."""
+    # The cluster is the authority on where it is, so its placement labels are
+    # stamped after the deployment's own template labels.
+    xr = v1alpha1.ModelDeployment(
+        metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+        spec=v1alpha1.SpecModel1(
+            replicas=1,
+            template=v1alpha1.TemplateModel(
+                metadata=v1alpha1.Metadata(labels={"example.org/region": "wrong"}),
+                spec=v1alpha1.SpecModel(engines=[_ENGINE]),
             ),
-        ).model_dump(exclude_none=True, mode="json")
-        req = _req(
-            xr,
-            clusters=[_cluster("cluster-a", placement_labels={"example.org/region": "eu"})],
-            replicas=[_EXISTING_REPLICA],
-            observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
-        )
-        got = await fn.FunctionRunner().RunFunction(req, None)
-
-        composed = _composed(got, "ModelReplica") + _composed(got, "ModelEndpoint")
-        self.assertEqual(len(composed), 2, "expected one ModelReplica and one ModelEndpoint")
-        for obj in composed:
-            self.assertEqual(obj["metadata"]["labels"].get("example.org/region"), "eu")
-
-    async def test_a_cluster_label_beats_a_template_label(self) -> None:
-        """The cluster is the authority on where it is, so its placement labels
-        are stamped after the deployment's own template labels."""
-        xr = v1alpha1.ModelDeployment(
-            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=v1alpha1.SpecModel1(
-                replicas=1,
-                template=v1alpha1.TemplateModel(
-                    metadata=v1alpha1.Metadata(labels={"example.org/region": "wrong"}),
-                    spec=v1alpha1.SpecModel(engines=[_ENGINE]),
-                ),
-            ),
-        ).model_dump(exclude_none=True, mode="json")
-        got = await fn.FunctionRunner().RunFunction(
+        ),
+    ).model_dump(exclude_none=True, mode="json")
+    got = asyncio.run(
+        fn.FunctionRunner().RunFunction(
             _req(xr, clusters=[_cluster("cluster-a", placement_labels={"example.org/region": "eu"})]),
             None,
         )
-        replica = _composed(got, "ModelReplica")[0]
-        self.assertEqual(replica["metadata"]["labels"]["example.org/region"], "eu")
+    )
+    replica = _composed(got, "ModelReplica")[0]
+    assert replica["metadata"]["labels"]["example.org/region"] == "eu"

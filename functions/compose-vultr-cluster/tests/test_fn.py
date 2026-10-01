@@ -14,15 +14,17 @@
 
 """Tests for the compose-vultr-cluster function."""
 
+import asyncio
 import dataclasses
-import unittest
+import json
 from typing import Any
 
-from crossplane.function import logging, resource
+import pytest
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import fn
 from google.protobuf import duration_pb2 as durationpb
-from google.protobuf import json_format
+from google.protobuf import json_format, message
 from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.infrastructure.vultrcluster import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -35,10 +37,6 @@ class Case:
     name: str
     req: fnv1.RunFunctionRequest
     want: fnv1.RunFunctionResponse
-
-
-def setUpModule() -> None:
-    logging.configure(level=logging.Level.DISABLED)
 
 
 # Name of the cluster's connection secret. Derived like the function derives
@@ -277,277 +275,269 @@ _GPU_POOL_GOLDEN = _node_pool(
 )
 
 
-class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
-    """Tests for FunctionRunner.RunFunction."""
-
-    maxDiff = None
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.runner = fn.FunctionRunner()
-
-    async def test_compose(self) -> None:
-        """The function composes VKE cluster infrastructure."""
-        cases = [
-            Case(
-                name="cluster composed first; node pools withheld until cluster Ready",
-                req=_req([_GPU_POOL]),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster()),
-                            ),
-                        },
+COMPOSE_CASES = [
+    Case(
+        name="cluster composed first; node pools withheld until cluster Ready",
+        req=_req([_GPU_POOL]),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(_cluster()),
                     ),
-                    context=structpb.Struct(),
-                ),
+                },
             ),
-            Case(
-                name="node pools and GPU observer composed once cluster is Ready; autoscaling from maxNodeCount",
-                req=_req(
-                    [_GPU_POOL],
-                    observed_resources={
-                        "cluster": _observed_ready(_cluster()),
-                    },
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "node-pool-gpu-l40s": fnv1.Resource(
-                                resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(_provider_config()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "gpu-observer": fnv1.Resource(
-                                resource=resource.dict_to_struct(_gpu_observer()),
-                            ),
-                        },
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="node pools and GPU observer composed once cluster is Ready; autoscaling from maxNodeCount",
+        req=_req(
+            [_GPU_POOL],
+            observed_resources={
+                "cluster": _observed_ready(_cluster()),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(_cluster()),
+                        ready=fnv1.READY_TRUE,
                     ),
-                    context=structpb.Struct(),
-                ),
-            ),
-            Case(
-                name="dependents kept when the cluster Ready condition transiently regresses",
-                req=_req(
-                    [_GPU_POOL],
-                    observed_resources={
-                        "cluster": _observed_unready(_cluster()),
-                        "provider-config-kubernetes": _observed_ready(_provider_config()),
-                    },
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster()),
-                            ),
-                            "node-pool-gpu-l40s": fnv1.Resource(
-                                resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(_provider_config()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "gpu-observer": fnv1.Resource(
-                                resource=resource.dict_to_struct(_gpu_observer()),
-                            ),
-                        },
+                    "node-pool-gpu-l40s": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
                     ),
-                    context=structpb.Struct(),
-                ),
-            ),
-            Case(
-                name="observed node pool alone keeps dependents composed",
-                req=_req(
-                    [_GPU_POOL],
-                    observed_resources={
-                        "cluster": _observed_unready(_cluster()),
-                        "node-pool-gpu-l40s": _observed_ready(_GPU_POOL_GOLDEN),
-                    },
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster()),
-                            ),
-                            "node-pool-gpu-l40s": fnv1.Resource(
-                                resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(_provider_config()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "gpu-observer": fnv1.Resource(
-                                resource=resource.dict_to_struct(_gpu_observer()),
-                            ),
-                        },
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(_provider_config()),
+                        ready=fnv1.READY_TRUE,
                     ),
-                    context=structpb.Struct(),
-                ),
+                    "gpu-observer": fnv1.Resource(
+                        resource=resource.dict_to_struct(_gpu_observer()),
+                    ),
+                },
             ),
-            Case(
-                name="fixed-size GPU pool",
-                req=_req(
-                    [
-                        v1alpha1.NodePool(
-                            name="gpu-l40s",
-                            role="GPU",
-                            plan="vcg-l40s-16c-180g-48vram",
-                            nodeCount=2,
-                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="dependents kept when the cluster Ready condition transiently regresses",
+        req=_req(
+            [_GPU_POOL],
+            observed_resources={
+                "cluster": _observed_unready(_cluster()),
+                "provider-config-kubernetes": _observed_ready(_provider_config()),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(_cluster()),
+                    ),
+                    "node-pool-gpu-l40s": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
+                    ),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(_provider_config()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "gpu-observer": fnv1.Resource(
+                        resource=resource.dict_to_struct(_gpu_observer()),
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="observed node pool alone keeps dependents composed",
+        req=_req(
+            [_GPU_POOL],
+            observed_resources={
+                "cluster": _observed_unready(_cluster()),
+                "node-pool-gpu-l40s": _observed_ready(_GPU_POOL_GOLDEN),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(_cluster()),
+                    ),
+                    "node-pool-gpu-l40s": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(_provider_config()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "gpu-observer": fnv1.Resource(
+                        resource=resource.dict_to_struct(_gpu_observer()),
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="fixed-size GPU pool",
+        req=_req(
+            [
+                v1alpha1.NodePool(
+                    name="gpu-l40s",
+                    role="GPU",
+                    plan="vcg-l40s-16c-180g-48vram",
+                    nodeCount=2,
+                    gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                ),
+            ],
+            observed_resources={
+                "cluster": _observed_ready(_cluster()),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(_cluster()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "node-pool-gpu-l40s": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _node_pool(
+                                label="gpu-l40s",
+                                plan="vcg-l40s-16c-180g-48vram",
+                                node_quantity=2,
+                                labels=[
+                                    {"key": "modelplane.ai/pool", "value": "gpu-l40s"},
+                                    {"key": "modelplane.ai/gpu", "value": "nvidia-l40s"},
+                                    {"key": "nvidia.com/gpu.deploy.device-plugin", "value": "false"},
+                                ],
+                                taints=_GPU_TAINTS,
+                            ),
                         ),
-                    ],
-                    observed_resources={
-                        "cluster": _observed_ready(_cluster()),
-                    },
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "node-pool-gpu-l40s": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _node_pool(
-                                        label="gpu-l40s",
-                                        plan="vcg-l40s-16c-180g-48vram",
-                                        node_quantity=2,
-                                        labels=[
-                                            {"key": "modelplane.ai/pool", "value": "gpu-l40s"},
-                                            {"key": "modelplane.ai/gpu", "value": "nvidia-l40s"},
-                                            {"key": "nvidia.com/gpu.deploy.device-plugin", "value": "false"},
-                                        ],
-                                        taints=_GPU_TAINTS,
-                                    ),
-                                ),
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(_provider_config()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "gpu-observer": fnv1.Resource(
-                                resource=resource.dict_to_struct(_gpu_observer()),
-                            ),
-                        },
                     ),
-                    context=structpb.Struct(),
-                ),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(_provider_config()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "gpu-observer": fnv1.Resource(
+                        resource=resource.dict_to_struct(_gpu_observer()),
+                    ),
+                },
             ),
-            Case(
-                name="minNodeCount sets the autoscaler floor; System pool carries no taint",
-                req=_req(
-                    [
-                        v1alpha1.NodePool(
-                            name="workers",
-                            role="System",
-                            plan="vc2-6c-16gb",
-                            nodeCount=2,
-                            minNodeCount=2,
-                            maxNodeCount=5,
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="minNodeCount sets the autoscaler floor; System pool carries no taint",
+        req=_req(
+            [
+                v1alpha1.NodePool(
+                    name="workers",
+                    role="System",
+                    plan="vc2-6c-16gb",
+                    nodeCount=2,
+                    minNodeCount=2,
+                    maxNodeCount=5,
+                ),
+            ],
+            observed_resources={
+                "cluster": _observed_ready(_cluster()),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(_cluster()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "node-pool-workers": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _node_pool(
+                                label="workers",
+                                plan="vc2-6c-16gb",
+                                node_quantity=2,
+                                labels=[{"key": "modelplane.ai/pool", "value": "workers"}],
+                                auto_scaler=True,
+                                min_nodes=2,
+                                max_nodes=5,
+                            ),
                         ),
-                    ],
-                    observed_resources={
-                        "cluster": _observed_ready(_cluster()),
-                    },
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "node-pool-workers": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    _node_pool(
-                                        label="workers",
-                                        plan="vc2-6c-16gb",
-                                        node_quantity=2,
-                                        labels=[{"key": "modelplane.ai/pool", "value": "workers"}],
-                                        auto_scaler=True,
-                                        min_nodes=2,
-                                        max_nodes=5,
-                                    ),
-                                ),
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(_provider_config()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "gpu-observer": fnv1.Resource(
-                                resource=resource.dict_to_struct(_gpu_observer()),
-                            ),
-                        },
                     ),
-                    context=structpb.Struct(),
-                ),
-            ),
-            Case(
-                name="VultrCluster Ready only once the gpu-observer is Ready",
-                req=_req(
-                    [_GPU_POOL],
-                    observed_resources={
-                        "cluster": _observed_ready(_cluster()),
-                        "node-pool-gpu-l40s": _observed_ready(_GPU_POOL_GOLDEN),
-                        "gpu-observer": _observed_ready(_gpu_observer()),
-                    },
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
-                        resources={
-                            "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "node-pool-gpu-l40s": fnv1.Resource(
-                                resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "provider-config-kubernetes": fnv1.Resource(
-                                resource=resource.dict_to_struct(_provider_config()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "gpu-observer": fnv1.Resource(
-                                resource=resource.dict_to_struct(_gpu_observer()),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(_provider_config()),
+                        ready=fnv1.READY_TRUE,
                     ),
-                    context=structpb.Struct(),
-                ),
+                    "gpu-observer": fnv1.Resource(
+                        resource=resource.dict_to_struct(_gpu_observer()),
+                    ),
+                },
             ),
-        ]
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="VultrCluster Ready only once the gpu-observer is Ready",
+        req=_req(
+            [_GPU_POOL],
+            observed_resources={
+                "cluster": _observed_ready(_cluster()),
+                "node-pool-gpu-l40s": _observed_ready(_GPU_POOL_GOLDEN),
+                "gpu-observer": _observed_ready(_gpu_observer()),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                resources={
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(_cluster()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "node-pool-gpu-l40s": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(_provider_config()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "gpu-observer": fnv1.Resource(
+                        resource=resource.dict_to_struct(_gpu_observer()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+]
 
-        for case in cases:
-            with self.subTest(case.name):
-                got = await self.runner.RunFunction(case.req, None)
-                self.assertEqual(
-                    json_format.MessageToDict(case.want),
-                    json_format.MessageToDict(got),
-                    "-want, +got",
-                )
+
+def _to_dict(msg: message.Message) -> dict:
+    """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
+    return json.loads(json_format.MessageToJson(msg, sort_keys=True))
+
+
+@pytest.mark.parametrize("case", COMPOSE_CASES, ids=lambda case: case.name)
+def test_compose(case: Case) -> None:
+    """RunFunction composes VKE cluster infrastructure."""
+    got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
+    assert _to_dict(got) == _to_dict(case.want)
