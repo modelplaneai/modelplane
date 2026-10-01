@@ -31,7 +31,7 @@
             -ignore '**/*.toml' \
             -ignore '**/*.yaml' \
             -ignore '**/*.yml' \
-            functions/ docs/utils/validate/ nix.sh
+            functions/ docs/utils/validate/ e2e/ nix.sh
 
           echo "Formatting and linting Nix..."
           statix fix .
@@ -46,8 +46,8 @@
           find . -name '*.sh' -type f -exec shellcheck {} +
 
           echo "Formatting and linting Python..."
-          ruff format functions/
-          ruff check --fix functions/
+          ruff format functions/ e2e/
+          ruff check --fix functions/ e2e/
 
           echo "Refreshing uv.lock..."
           uv lock
@@ -149,8 +149,8 @@
               esac
             done
 
-            # Pin Crossplane to the version e2e/run.sh uses: without a pin the
-            # CLI installs the latest release
+            # Pin Crossplane to the version e2e/environment.py uses: without a
+            # pin the CLI installs the latest release
             version_args=(--crossplane-version=2.4.0)
             for arg in "$@"; do
               case "$arg" in
@@ -296,21 +296,33 @@
       );
     };
 
-  # Run the two-cluster local end-to-end test: a workload
-  # kind cluster registered via source: Existing (serving stack + model) and a
-  # control-plane cluster (crossplane + the InferenceGateway). Two clusters
-  # because the control-plane and workload layers both install the Gateway API
-  # CRDs and collide on a single cluster. See e2e. Tear down with
-  # `nix run .#e2e -- --clean`. This app just materialises the Nix-built
-  # function images (as `run` does), then hands off to run.sh, which needs real
-  # orchestration (a second cluster, a cross-cluster kubeconfig) that
-  # `crossplane project run` flags can't express — kept a normal shell file so
-  # it stays shellcheck-clean rather than escaped nix strings.
+  # Run the two-cluster local end-to-end test: a workload kind cluster
+  # registered via source: Existing (serving stack + model) and a control-plane
+  # cluster (crossplane + the Configuration). Two clusters because the
+  # control-plane and workload layers both install the Gateway API CRDs and
+  # collide on a single cluster. See e2e/README.md.
+  #
+  # With no argument it brings the environment up and applies the manifests,
+  # --no-apply stops short of the manifests, --verify then runs the tests in
+  # e2e/ (passing any further arguments to pytest), and --clean tears it all
+  # down. This app materialises the Nix-built function images (as `run` does)
+  # for crossplane project run to load.
   e2e =
     {
       crossplane,
       functionsPkg,
+      pythonSet,
     }:
+    let
+      # What e2e/ imports: pytest, and the generated models it reads
+      # Modelplane's status with. pydantic is declared here rather than on
+      # crossplane-models, whose pyproject.toml the Crossplane CLI generates.
+      venv = pythonSet.mkVirtualEnv "modelplane-e2e-env" {
+        pytest = [ ];
+        crossplane-models = [ ];
+        pydantic = [ ];
+      };
+    in
     {
       type = "app";
       meta.description = "Run the local two-cluster end-to-end test";
@@ -319,16 +331,11 @@
           name = "modelplane-e2e";
           runtimeInputs = [
             crossplane
+            venv
             pkgs.coreutils
-            pkgs.gnused
-            pkgs.gnugrep
-            pkgs.gawk
             pkgs.kind
             pkgs.kubectl
-            pkgs.curl
             pkgs.docker-client
-            pkgs.git
-            pkgs.bash
           ];
           inheritPath = false;
           text = ''
@@ -336,7 +343,22 @@
             rm -f _output/functions
             ln -s ${functionsPkg} _output/functions
 
-            exec bash e2e/run.sh "$@"
+            case "''${1:-}" in
+              "") exec python -m e2e.environment up ;;
+              --no-apply) exec python -m e2e.environment up --no-apply ;;
+              --clean) exec python -m e2e.environment down ;;
+              --verify)
+                shift
+                python -m e2e.environment up
+                exec python -m pytest e2e \
+                  -o log_cli=true --log-cli-level=INFO "$@"
+                ;;
+              *)
+                echo "usage: nix run .#e2e" \
+                  "[-- --no-apply | --verify [pytest args...] | --clean]" >&2
+                exit 2
+                ;;
+            esac
           '';
         }
       );

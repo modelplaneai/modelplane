@@ -105,7 +105,8 @@ curl -fsSL https://install.determinate.systems/nix | sh -s -- install
 
 `nix flake check` runs all of the project's checks inside the Nix sandbox:
 Python, shell, and Nix linters and formatters, the [ty](https://docs.astral.sh/ty)
-type checker on every composition function, plus unit tests for every function.
+type checker on every composition function and the end-to-end tests, plus unit
+tests for every function.
 Run `nix flake show` to see what else is available.
 
 ```bash
@@ -120,7 +121,7 @@ composition function renders the right resources. The integration layer is
 `nix run .#e2e`, which brings up two local `kind` clusters and runs the
 whole path — scheduling, the serving-stack install on a registered cluster,
 gateway routing, a live request — with no cloud credentials. Add `-- --verify`
-and it waits for readiness, asserts a 200, and exits non-zero on failure. That
+and it runs the pytest suite in `e2e/`, exiting non-zero if a test fails. That
 verify command is what the label-gated `E2E` workflow runs on CI (add the
 `test-e2e` label to a PR), so a green local `--verify` and a green CI run mean
 the same thing. See `e2e/README.md`.

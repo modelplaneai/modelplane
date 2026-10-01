@@ -3,9 +3,9 @@
 # that only exist to *provision* clusters; here the workload cluster already
 # exists, so the compositions use only provider-kubernetes and provider-helm.
 #
-# run.sh feeds this via `crossplane project run --init-resources`, which applies
-# it BEFORE the Configuration's dependencies install, so the cloud providers
-# never activate their managed resources or run their controllers.
+# Bring-up feeds this via `crossplane project run --init-resources`, which
+# applies it BEFORE the Configuration's dependencies install, so the cloud
+# providers never activate their managed resources or run their controllers.
 #
 # Replace the Helm chart's default catch-all MRAP (activate: ["*"]) with one
 # that activates only the managed resources the BYO compositions use. The cloud

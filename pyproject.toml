@@ -76,8 +76,10 @@ allow-star-arg-any = true
 # Tests use magic values, many parameters, long hardcoded resource dicts, and
 # boolean fixture toggles passed positionally.
 "**/tests/**" = ["E501", "PLR2004", "PLR0913", "FBT001"]
+# The end-to-end tests compare HTTP statuses and curl exit codes.
+"e2e/**" = ["PLR2004"]
 # The pytest style rules are for tests. Elsewhere an assert guards an invariant.
-"!**/tests/**" = ["PT"]
+"!{**/tests/**,e2e/**}" = ["PT"]
 # fn.py uses gRPC's required PascalCase method name.
 "functions/*/function/fn.py" = ["N802"]
 # The docs manifest validator is a CLI script; print is its output.
