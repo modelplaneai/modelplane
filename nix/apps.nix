@@ -376,11 +376,12 @@
       pythonSet,
     }:
     let
-      # What e2e/ imports: pytest, and the generated models it reads
-      # Modelplane's status with. pydantic is declared here rather than on
+      # What e2e/ imports: pytest, the Kubernetes client, and the generated
+      # models it reads Modelplane's status with. pydantic is declared here rather than on
       # crossplane-models, whose pyproject.toml the Crossplane CLI generates.
       venv = pythonSet.mkVirtualEnv "modelplane-e2e-env" {
         pytest = [ ];
+        kubernetes = [ ];
         crossplane-models = [ ];
         pydantic = [ ];
       };

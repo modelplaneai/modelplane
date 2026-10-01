@@ -47,7 +47,9 @@ class Serving:
 class Response:
     """What came back from a request."""
 
+    # The HTTP status, or 0 if no HTTP response came back.
     status: int
+    # The body, or why no HTTP response came back.
     body: str
 
     def json(self) -> Any:  # noqa: ANN401 - a JSON body can decode to any type.
@@ -70,17 +72,18 @@ class Client:
             curl += ["--header", f"{name}: {value}"]
         if body is not None:
             curl += ["--header", "content-type: application/json", "--data", json.dumps(body)]
-        # curl exits non-zero only when no HTTP response came back, which fails
-        # the request rather than answering it.
-        out = self.cluster.kubectl("exec", f"--namespace={self.namespace}", self.pod, "--", *curl)
+        result = self.cluster.exec(self.pod, self.namespace, curl)
+        # curl exits non-zero only when no HTTP response came back.
+        if result.code != 0:
+            return Response(status=0, body=result.stderr.strip())
         # --write-out puts the status on a line of its own, after the body.
-        text, _, status = out.rpartition("\n")
+        text, _, status = result.stdout.rpartition("\n")
         return Response(status=int(status), body=text)
 
     def connect(self, url: str) -> int:
         """GET a URL without verifying the server's certificate, and return curl's exit code."""
         curl = ["curl", "--silent", "--show-error", "--insecure", "--max-time", "15", "--output", "/dev/null", url]
-        return self.cluster.run("exec", f"--namespace={self.namespace}", self.pod, "--", *curl).returncode
+        return self.cluster.exec(self.pod, self.namespace, curl).code
 
 
 def usage_records(cluster: kube.Cluster) -> list[dict[str, Any]]:
@@ -88,10 +91,12 @@ def usage_records(cluster: kube.Cluster) -> list[dict[str, Any]]:
 
     A request lands on any one of the proxy pods, so this reads them all.
     """
+    pods = cluster.core.list_namespaced_pod(
+        PROXY_NAMESPACE, label_selector=PROXY_SELECTOR, _request_timeout=kube.TIMEOUT_SECONDS
+    )
     records = []
-    for pod in cluster.list_objects("pod", PROXY_NAMESPACE, PROXY_SELECTOR):
-        logs = cluster.kubectl("logs", f"--namespace={PROXY_NAMESPACE}", pod["metadata"]["name"], "--container=envoy")
-        for line in logs.splitlines():
+    for pod in pods.items:
+        for line in cluster.logs(pod.metadata.name, PROXY_NAMESPACE, "envoy").splitlines():
             # Envoy logs other things too. The access log is the JSON objects.
             try:
                 record = json.loads(line)

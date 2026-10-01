@@ -99,6 +99,7 @@ in
     let
       venv = pythonSet.mkVirtualEnv "e2e-ty-env" {
         pytest = [ ];
+        kubernetes = [ ];
         crossplane-models = [ ];
         pydantic = [ ];
       };

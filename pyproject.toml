@@ -28,6 +28,8 @@ dev = [
   "pydantic>=2.0",
   # 9.0 reports unittest subtests natively.
   "pytest>=9.0",
+  # The end-to-end tests read the clusters through the Kubernetes API.
+  "kubernetes>=36.0",
 ]
 
 [tool.ruff]

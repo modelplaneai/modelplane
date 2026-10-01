@@ -12,120 +12,94 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Read and change a cluster's resources with kubectl.
+"""Read a cluster's resources through the Kubernetes API.
 
-Objects come back as the dicts kubectl's JSON output decodes to. Tests that
-read Modelplane's own fields validate them into the generated models.
+The official Kubernetes client returns typed objects and typed errors for the
+built-in kinds. Cluster wraps the parts of it that need care: Modelplane's own
+resources, which come back as dicts for the tests to validate into the
+generated models, a command's exit code, and container logs.
 """
 
 import dataclasses
-import json
-import pathlib
 import shlex
-import subprocess
 from typing import Any
 
-from e2e import wait
+import urllib3
+from kubernetes import client, config
+from kubernetes.client.rest import ApiException
+from kubernetes.stream import stream
 
-# A bound on each kubectl call, so a hung API server fails the test that hit it
-# rather than the whole run.
-KUBECTL_TIMEOUT_SECONDS = 60
+# A bound on each API call, so a hung API server fails the test that hit it
+# rather than the whole run. Pass it as _request_timeout: the client has no
+# default.
+TIMEOUT_SECONDS = 60
 
-type Object = dict[str, Any]
-
-
-class KubectlError(Exception):
-    """kubectl exited non-zero, or timed out."""
-
-
-# What a wait retries: the condition not holding yet, or a kubectl call failing
-# while the cluster converges.
-RETRY = (AssertionError, KubectlError)
+# What a wait retries: the condition not holding yet, or the API server
+# failing a request while the cluster converges.
+RETRY = (AssertionError, ApiException, urllib3.exceptions.HTTPError)
 
 
 @dataclasses.dataclass(frozen=True)
+class Exec:
+    """How a command run in a container exited, and what it printed."""
+
+    code: int
+    stdout: str
+    stderr: str
+
+
 class Cluster:
     """A cluster, addressed by its kubeconfig context."""
 
-    context: str
+    def __init__(self, context: str) -> None:
+        """Connect to the cluster a kubeconfig context names."""
+        api = config.new_client_from_config(context=context)
+        self.core = client.CoreV1Api(api)
+        self.apps = client.AppsV1Api(api)
+        self.custom = client.CustomObjectsApi(api)
 
-    def run(self, *args: str, timeout: float = KUBECTL_TIMEOUT_SECONDS) -> subprocess.CompletedProcess[str]:
-        """Run kubectl against this cluster, and return how it exited."""
-        cmd = ["kubectl", f"--context={self.context}", *args]
+    def modelplane(self, plural: str, name: str, namespace: str | None) -> dict[str, Any] | None:
+        """Return a Modelplane resource, or None if it doesn't exist."""
         try:
-            return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
-        except subprocess.TimeoutExpired as e:
-            msg = f"{shlex.join(cmd)}: timed out after {timeout:.0f}s"
-            raise KubectlError(msg) from e
+            if namespace is None:
+                return self.custom.get_cluster_custom_object(
+                    "modelplane.ai", "v1alpha1", plural, name, _request_timeout=TIMEOUT_SECONDS
+                )
+            return self.custom.get_namespaced_custom_object(
+                "modelplane.ai", "v1alpha1", namespace, plural, name, _request_timeout=TIMEOUT_SECONDS
+            )
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
 
-    def kubectl(self, *args: str, timeout: float = KUBECTL_TIMEOUT_SECONDS) -> str:
-        """Run kubectl against this cluster, and return what it wrote to stdout."""
-        result = self.run(*args, timeout=timeout)
-        if result.returncode != 0:
-            msg = f"{shlex.join(result.args)}: {result.stderr.strip()}"
-            raise KubectlError(msg)
-        return result.stdout
+    def exec(self, pod: str, namespace: str, command: list[str]) -> Exec:
+        """Run a command in a pod's only container, and return how it exited."""
+        # The exec API streams over a websocket. Without _preload_content the
+        # stream stays open until the command exits, which is what yields its
+        # exit code.
+        resp = stream(
+            self.core.connect_get_namespaced_pod_exec,
+            pod,
+            namespace,
+            command=command,
+            stdout=True,
+            stderr=True,
+            stdin=False,
+            tty=False,
+            _preload_content=False,
+        )
+        resp.run_forever(timeout=TIMEOUT_SECONDS)
+        if resp.returncode is None:
+            msg = f"{shlex.join(command)} in {namespace}/{pod} didn't exit within {TIMEOUT_SECONDS}s"
+            raise TimeoutError(msg)
+        return Exec(code=resp.returncode, stdout=resp.read_stdout(), stderr=resp.read_stderr())
 
-    def get(self, kind: str, name: str, namespace: str | None) -> Object | None:
-        """Return the named object, or None if it doesn't exist."""
-        out = self.kubectl("get", kind, name, *namespaced(namespace), "--ignore-not-found", "--output=json")
-        return json.loads(out) if out else None
-
-    def list_objects(self, kind: str, namespace: str, selector: str) -> list[Object]:
-        """Return the objects of a kind in a namespace that match a label selector."""
-        out = self.kubectl("get", kind, f"--namespace={namespace}", f"--selector={selector}", "--output=json")
-        return json.loads(out)["items"]
-
-    def apply(self, path: pathlib.Path) -> None:
-        """Apply a manifest file."""
-        self.kubectl("apply", f"--filename={path}")
-
-    def delete(self, kind: str, name: str, namespace: str | None) -> None:
-        """Delete an object without waiting for it to go. Deleting one that doesn't exist is a no-op."""
-        self.kubectl("delete", kind, name, *namespaced(namespace), "--ignore-not-found", "--wait=false")
-
-    def wait_for_condition(self, kind: str, name: str, namespace: str | None, condition: str, timeout: float) -> Object:
-        """Wait for an object's condition to be True, and return the object."""
-
-        def condition_is_true() -> Object:
-            obj = self.get(kind, name, namespace)
-            assert obj is not None, f"{kind} {qualified(namespace, name)} doesn't exist"
-            assert is_true(obj, condition), f"{describe(obj)} isn't {condition}"
-            return obj
-
-        what = f"{kind} {qualified(namespace, name)} {condition}"
-        return wait.until(condition_is_true, timeout=timeout, what=what, retry=RETRY)
-
-    def wait_until_gone(self, kind: str, name: str, namespace: str | None, timeout: float) -> None:
-        """Wait for an object to stop existing."""
-
-        def is_gone() -> None:
-            obj = self.get(kind, name, namespace)
-            assert obj is None, f"{describe(obj)} still exists"
-
-        wait.until(is_gone, timeout=timeout, what=f"{kind} {qualified(namespace, name)} to be deleted", retry=RETRY)
-
-
-def namespaced(namespace: str | None) -> list[str]:
-    """Return the kubectl flag that scopes a command to a namespace, if there is one."""
-    return [f"--namespace={namespace}"] if namespace else []
-
-
-def qualified(namespace: str | None, name: str) -> str:
-    """Return namespace/name, or just name for a cluster-scoped object."""
-    return f"{namespace}/{name}" if namespace else name
-
-
-def is_true(obj: Object, condition: str) -> bool:
-    """Report whether an object's status condition is True."""
-    return any(c["type"] == condition and c["status"] == "True" for c in obj.get("status", {}).get("conditions", []))
-
-
-def describe(obj: Object) -> str:
-    """Summarise an object and its status conditions on one line, for failure messages."""
-    meta = obj["metadata"]
-    conditions = []
-    for c in obj.get("status", {}).get("conditions", []):
-        why = ": ".join(v for v in (c.get("reason"), c.get("message")) if v)
-        conditions.append(f"{c['type']}={c['status']} ({why})" if why else f"{c['type']}={c['status']}")
-    return f"{obj['kind']} {qualified(meta.get('namespace'), meta['name'])}: {', '.join(conditions) or 'no conditions'}"
+    def logs(self, pod: str, namespace: str, container: str) -> str:
+        """Return a container's logs."""
+        # With its content preloaded, the client tries to deserialize the logs,
+        # and returns JSON log lines as the repr of a bytes object.
+        resp = self.core.read_namespaced_pod_log(
+            pod, namespace, container=container, _preload_content=False, _request_timeout=TIMEOUT_SECONDS
+        )
+        return resp.data.decode()

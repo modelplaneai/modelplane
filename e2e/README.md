@@ -162,15 +162,16 @@ Everything the control plane needs is a declarative manifest; `environment.py`
 is only the irreducible cross-cluster setup (a second cluster, its MetalLB and
 DRA driver, and the cross-cluster kubeconfig). With `--verify`, pytest then runs
 `test_serving.py`. Its fixtures in `conftest.py` wait for the model to serve,
-then start a curl pod on each cluster to send requests from.
+then start a curl pod on each cluster to send requests from. The tests read the
+clusters through the Kubernetes API, with the official Python client, while
+bring-up drives the kind, crossplane, docker and kubectl CLIs.
 
 ```
 e2e/
   environment.py             # two-cluster bring-up and teardown
   conftest.py                # fixtures: the clusters, curl pods, readiness
   test_serving.py            # the tests
-  kube.py, gateway.py        # kubectl and curl helpers
-  client.yaml                # the curl pod the tests send requests from
+  kube.py, gateway.py        # Kubernetes API and curl helpers
   wait.py                    # polling until a condition holds
   dra-example-driver.yaml    # vendored fake DRA GPU driver (applied to workload)
   manifests/                 # applied to the control plane after setup
