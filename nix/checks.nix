@@ -7,22 +7,10 @@
   pkgs,
   self,
   functionNames,
-  pyproject-nix,
-  uv2nix,
-  pyproject-build-systems,
+  pythonSet,
 }:
 let
   docs = import ./docs.nix { inherit pkgs self; };
-
-  workspace = uv2nix.lib.workspace.loadWorkspace { workspaceRoot = self; };
-  pythonSet =
-    (pkgs.callPackage pyproject-nix.build.packages { python = pkgs.python312; }).overrideScope
-      (
-        pkgs.lib.composeManyExtensions [
-          pyproject-build-systems.overlays.wheel
-          (workspace.mkPyprojectOverlay { sourcePreference = "wheel"; })
-        ]
-      );
 
   # Each function exports a 'function' Python module, so tests must run from
   # a directory where that module is importable via the venv, and one pytest

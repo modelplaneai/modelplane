@@ -112,14 +112,16 @@
       checks = forAllSystems (
         { pkgs, ... }:
         import ./nix/checks.nix {
-          inherit
-            pkgs
-            self
-            functionNames
-            pyproject-nix
-            uv2nix
-            pyproject-build-systems
-            ;
+          inherit pkgs self functionNames;
+          pythonSet = import ./nix/python.nix {
+            inherit
+              pkgs
+              self
+              pyproject-nix
+              uv2nix
+              pyproject-build-systems
+              ;
+          };
         }
       );
 
