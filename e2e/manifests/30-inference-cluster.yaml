@@ -1,4 +1,4 @@
-# Registers the separate workload kind cluster via source: Existing. run.sh
+# Registers the separate workload kind cluster via source: Existing. Bring-up
 # creates that cluster, builds the referenced kubeconfig Secret in
 # modelplane-system (--internal address, reachable from the control plane's
 # provider pods over the shared kind network), and labels its node

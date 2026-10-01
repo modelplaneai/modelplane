@@ -14,20 +14,19 @@
 
 """Tests for the compose-model-replica function."""
 
+import asyncio
 import dataclasses
-import unittest
+import json
 
-from crossplane.function import logging, resource
+import pytest
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import fn
 from google.protobuf import duration_pb2 as durationpb
-from google.protobuf import json_format
+from google.protobuf import json_format, message
 from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
-
-# A GPU device request CEL selector, as compose-model-deployment stamps it.
-_GPU_CEL = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
 
 
 @dataclasses.dataclass
@@ -39,13 +38,568 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-def setUpModule() -> None:
-    logging.configure(level=logging.Level.DISABLED)
+def _model_replica() -> fnv1.Resource:
+    """The ModelReplica XR test-replica in ml-team, with one Standalone engine."""
+    xr = v1alpha1.ModelReplica(
+        metadata=metav1.ObjectMeta(
+            name="test-replica",
+            namespace="ml-team",
+            labels={
+                "modelplane.ai/deployment": "my-deployment",
+                "modelplane.ai/cluster": "cluster-a",
+            },
+        ),
+        spec=v1alpha1.SpecModel(
+            clusterName="cluster-a",
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=1,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                ),
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=Qwen/Qwen3-0.6B"],
+                                        ),
+                                    ],
+                                ),
+                            ),
+                        ),
+                    ],
+                ),
+            ],
+        ),
+    )
+    return fnv1.Resource(resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json", by_alias=True)))
+
+
+def _cluster(*, provider_config_ref: str | None) -> fnv1.Resource:
+    """The InferenceCluster cluster-a, with no status until it reports a providerConfigRef."""
+    cluster = {
+        "apiVersion": "modelplane.ai/v1alpha1",
+        "kind": "InferenceCluster",
+        "metadata": {"name": "cluster-a"},
+        "spec": {
+            "cluster": {"source": "Existing", "existing": {"secretRef": {"name": "k"}}},
+        },
+    }
+    if provider_config_ref is not None:
+        cluster["status"] = {
+            "providerConfigRef": {"name": provider_config_ref},
+            "gateway": {"address": "10.0.0.1"},
+        }
+    return fnv1.Resource(resource=resource.dict_to_struct(cluster))
+
+
+def _workload(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The Object composing the engine's Deployment."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {
+                        "policy": "DeriveFromCelQuery",
+                        "celQuery": 'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")',
+                    },
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "apps/v1",
+                            "kind": "Deployment",
+                            "metadata": {
+                                "name": "test-replica-main-6b608",
+                                "namespace": "mp-ml-team-51733",
+                            },
+                            "spec": {
+                                "replicas": 1,
+                                "selector": {"matchLabels": {"modelplane.ai/workload": "test-replica-main-6b608"}},
+                                "template": {
+                                    "metadata": {
+                                        "labels": {
+                                            "modelplane.ai/serving": "test-replica",
+                                            "modelplane.ai/workload": "test-replica-main-6b608",
+                                        }
+                                    },
+                                    "spec": {
+                                        "containers": [
+                                            {
+                                                "name": "engine",
+                                                "image": "vllm/vllm-openai:latest",
+                                                "args": ["--model=Qwen/Qwen3-0.6B"],
+                                                "ports": [{"containerPort": 8000}],
+                                                "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                                                "readinessProbe": {
+                                                    "httpGet": {"path": "/health", "port": 8000},
+                                                    "initialDelaySeconds": 30,
+                                                    "periodSeconds": 10,
+                                                    "timeoutSeconds": 5,
+                                                },
+                                                "resources": {"claims": [{"name": "devices"}]},
+                                            }
+                                        ],
+                                        "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                                        "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                        "resourceClaims": [
+                                            {
+                                                "name": "devices",
+                                                "resourceClaimTemplateName": "test-replica-main-standalone-devices-e609d",
+                                            }
+                                        ],
+                                        "tolerations": [
+                                            {
+                                                "key": "nvidia.com/gpu",
+                                                "operator": "Exists",
+                                                "effect": "NoSchedule",
+                                            }
+                                        ],
+                                    },
+                                },
+                            },
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _route(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The Object composing the HTTPRoute to the InferencePool."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "gateway.networking.k8s.io/v1",
+                            "kind": "HTTPRoute",
+                            "metadata": {"name": "test-replica", "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                "parentRefs": [{"name": "cluster-gateway", "namespace": "modelplane-system"}],
+                                "rules": [
+                                    {
+                                        "matches": [
+                                            {
+                                                "path": {
+                                                    "type": "PathPrefix",
+                                                    "value": "/ml-team/test-replica/",
+                                                }
+                                            }
+                                        ],
+                                        "timeouts": {"request": "0s"},
+                                        "filters": [
+                                            {
+                                                "type": "URLRewrite",
+                                                "urlRewrite": {
+                                                    "path": {
+                                                        "type": "ReplacePrefixMatch",
+                                                        "replacePrefixMatch": "/",
+                                                    }
+                                                },
+                                            }
+                                        ],
+                                        "backendRefs": [
+                                            {
+                                                "group": "inference.networking.k8s.io",
+                                                "kind": "InferencePool",
+                                                "name": "test-replica-pool",
+                                            }
+                                        ],
+                                    }
+                                ],
+                            },
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _claim_template(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The Object composing the engine's ResourceClaimTemplate."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "resource.k8s.io/v1",
+                            "kind": "ResourceClaimTemplate",
+                            "metadata": {
+                                "name": "test-replica-main-standalone-devices-e609d",
+                                "namespace": "mp-ml-team-51733",
+                            },
+                            "spec": {
+                                "spec": {
+                                    "devices": {
+                                        "requests": [
+                                            {
+                                                "name": "gpu",
+                                                "exactly": {
+                                                    "deviceClassName": "gpu.nvidia.com",
+                                                    "count": 1,
+                                                    "selectors": [
+                                                        {
+                                                            "cel": {
+                                                                "expression": 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                                            }
+                                                        }
+                                                    ],
+                                                },
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _inference_pool(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The Object composing the InferencePool fronting the engine."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "inference.networking.k8s.io/v1",
+                            "kind": "InferencePool",
+                            "metadata": {"name": "test-replica-pool", "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                "selector": {"matchLabels": {"modelplane.ai/serving": "test-replica"}},
+                                "targetPorts": [{"number": 8000}],
+                                "endpointPickerRef": {
+                                    "name": "test-replica-epp",
+                                    "port": {"number": 9002},
+                                    "failureMode": "FailOpen",
+                                },
+                            },
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _epp(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The Object composing the endpoint picker's Deployment."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {
+                        "policy": "DeriveFromCelQuery",
+                        "celQuery": 'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")',
+                    },
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "apps/v1",
+                            "kind": "Deployment",
+                            "metadata": {"name": "test-replica-epp", "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                "replicas": 1,
+                                "selector": {"matchLabels": {"app": "test-replica-epp"}},
+                                "template": {
+                                    "metadata": {
+                                        "labels": {"app": "test-replica-epp"},
+                                        "annotations": {
+                                            "modelplane.ai/epp-config-checksum": "20c1dfea3fc4ad41e335cc74edbeb1e8689a607bc4bf7395849ffd2cf0bb2ae1"
+                                        },
+                                    },
+                                    "spec": {
+                                        "serviceAccountName": "test-replica-epp",
+                                        "containers": [
+                                            {
+                                                "name": "epp",
+                                                "image": "ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                                                "args": [
+                                                    "--pool-name=test-replica-pool",
+                                                    "--pool-namespace=mp-ml-team-51733",
+                                                    "--pool-group=inference.networking.k8s.io",
+                                                    "--config-file=/config/epp-config.yaml",
+                                                    "--grpc-port=9002",
+                                                ],
+                                                "ports": [
+                                                    {"name": "grpc", "containerPort": 9002},
+                                                    {"name": "grpc-health", "containerPort": 9003},
+                                                ],
+                                                "volumeMounts": [{"name": "config", "mountPath": "/config"}],
+                                            }
+                                        ],
+                                        "volumes": [
+                                            {
+                                                "name": "config",
+                                                "configMap": {"name": "test-replica-epp"},
+                                            }
+                                        ],
+                                    },
+                                },
+                            },
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _epp_config(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The Object composing the endpoint picker's ConfigMap."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "v1",
+                            "kind": "ConfigMap",
+                            "metadata": {"name": "test-replica-epp", "namespace": "mp-ml-team-51733"},
+                            "data": {
+                                "epp-config.yaml": (
+                                    "apiVersion: llm-d.ai/v1alpha1\n"
+                                    "kind: EndpointPickerConfig\n"
+                                    "plugins:\n"
+                                    "- type: approx-prefix-cache-producer\n"
+                                    "  parameters:\n"
+                                    "    autoTune: false\n"
+                                    "    blockSizeTokens: 16\n"
+                                    "    maxPrefixBlocksToMatch: 256\n"
+                                    "    lruCapacityPerServer: 31250\n"
+                                    "- type: prefix-cache-scorer\n"
+                                    "- type: queue-scorer\n"
+                                    "- type: max-score-picker\n"
+                                    "schedulingProfiles:\n"
+                                    "- name: default\n"
+                                    "  plugins:\n"
+                                    "  - pluginRef: max-score-picker\n"
+                                    "  - pluginRef: prefix-cache-scorer\n"
+                                    "    weight: 2\n"
+                                    "  - pluginRef: queue-scorer\n"
+                                    "    weight: 1\n"
+                                )
+                            },
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _epp_role(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The Object composing the endpoint picker's Role."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "rbac.authorization.k8s.io/v1",
+                            "kind": "Role",
+                            "metadata": {"name": "test-replica-epp", "namespace": "mp-ml-team-51733"},
+                            "rules": [
+                                {
+                                    "apiGroups": [""],
+                                    "resources": ["pods"],
+                                    "verbs": ["get", "watch", "list"],
+                                },
+                                {
+                                    "apiGroups": ["inference.networking.k8s.io"],
+                                    "resources": ["inferencepools"],
+                                    "verbs": ["get", "watch", "list"],
+                                },
+                                {
+                                    "apiGroups": ["inference.networking.x-k8s.io"],
+                                    "resources": ["inferenceobjectives"],
+                                    "verbs": ["get", "watch", "list"],
+                                },
+                            ],
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _epp_role_binding(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The Object composing the endpoint picker's RoleBinding."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "rbac.authorization.k8s.io/v1",
+                            "kind": "RoleBinding",
+                            "metadata": {"name": "test-replica-epp", "namespace": "mp-ml-team-51733"},
+                            "subjects": [
+                                {
+                                    "kind": "ServiceAccount",
+                                    "name": "test-replica-epp",
+                                    "namespace": "mp-ml-team-51733",
+                                }
+                            ],
+                            "roleRef": {
+                                "apiGroup": "rbac.authorization.k8s.io",
+                                "kind": "Role",
+                                "name": "test-replica-epp",
+                            },
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _epp_service_account(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The Object composing the endpoint picker's ServiceAccount."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "v1",
+                            "kind": "ServiceAccount",
+                            "metadata": {"name": "test-replica-epp", "namespace": "mp-ml-team-51733"},
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _epp_service(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The Object composing the endpoint picker's Service."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "v1",
+                            "kind": "Service",
+                            "metadata": {"name": "test-replica-epp", "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                "selector": {"app": "test-replica-epp"},
+                                "ports": [
+                                    {
+                                        "name": "grpc-ext-proc",
+                                        "port": 9002,
+                                        "targetPort": 9002,
+                                        "appProtocol": "http2",
+                                    }
+                                ],
+                            },
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _observed_workload() -> fnv1.Resource:
+    """The workload Object as observed back, applied and Available, so its derived Ready is True."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {"forProvider": {"manifest": {"kind": "Deployment"}}},
+                "status": {
+                    "atProvider": {"manifest": {"kind": "Deployment"}},
+                    "conditions": [
+                        {
+                            "type": "Ready",
+                            "status": "True",
+                            "reason": "Available",
+                            "lastTransitionTime": "2025-01-01T00:00:00Z",
+                        },
+                    ],
+                },
+            }
+        ),
+    )
 
 
 def _observed_object(*, ready: bool) -> fnv1.Resource:
-    """A composed provider-kubernetes Object as observed back, with the Ready
-    condition its readiness policy derives."""
+    """A composed Object as observed back, with the Ready condition its readiness policy derives."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -66,298 +620,56 @@ def _observed_object(*, ready: bool) -> fnv1.Resource:
     )
 
 
-class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
-    """Tests for FunctionRunner.RunFunction."""
+def _to_dict(msg: message.Message) -> dict:
+    """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
+    return json.loads(json_format.MessageToJson(msg, sort_keys=True))
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.runner = fn.FunctionRunner()
 
-    async def test_compose(self) -> None:
-        """The function dispatches to a backend to compose serving resources on a remote cluster."""
-
-        xr = v1alpha1.ModelReplica(
-            metadata=metav1.ObjectMeta(
-                name="test-replica",
-                namespace="ml-team",
-                labels={
-                    "modelplane.ai/deployment": "my-deployment",
-                    "modelplane.ai/cluster": "cluster-a",
-                },
-            ),
-            spec=v1alpha1.SpecModel(
-                clusterName="cluster-a",
-                engines=[
-                    v1alpha1.Engine(
-                        name="main",
-                        copies=1,
-                        members=[
-                            v1alpha1.Member(
-                                role="Standalone",
-                                nodePoolName="frontier",
-                                deviceRequests=[
-                                    v1alpha1.DeviceRequest(
-                                        name="gpu",
-                                        deviceClassName="gpu.nvidia.com",
-                                        count=1,
-                                        selectors=[v1alpha1.Selector(cel=_GPU_CEL)],
-                                    ),
-                                ],
-                                template=v1alpha1.Template(
-                                    spec=v1alpha1.Spec(
-                                        containers=[
-                                            v1alpha1.Container(
-                                                name="engine",
-                                                image="vllm/vllm-openai:latest",
-                                                args=["--model=Qwen/Qwen3-0.6B"],
-                                            ),
-                                        ],
-                                    ),
-                                ),
-                            ),
-                        ],
-                    ),
-                ],
-            ),
-        ).model_dump(exclude_none=True, mode="json")
-
-        cluster_requirement = fnv1.ResourceSelector(
-            api_version="modelplane.ai/v1alpha1",
-            kind="InferenceCluster",
-            match_name="cluster-a",
-        )
-
-        # Case 1: cluster resolved with providerConfigRef — composes native
-        # Deployment. First reconcile: none of the composed resources are in
-        # observed yet, so none are marked ready (the function only asserts
-        # readiness for a resource it can see in observed state).
-        req1 = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
-            ),
-        )
-        req1.required_resources["cluster"].items.append(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {
-                        "apiVersion": "modelplane.ai/v1alpha1",
-                        "kind": "InferenceCluster",
-                        "metadata": {"name": "cluster-a"},
-                        "spec": {
-                            "cluster": {"source": "Existing", "existing": {"secretRef": {"name": "k"}}},
-                        },
-                        "status": {
-                            "providerConfigRef": {"name": "cluster-a-pc"},
-                            "gateway": {"address": "10.0.0.1"},
-                        },
-                    }
-                )
-            )
-        )
-
-        want1 = fnv1.RunFunctionResponse(
+COMPOSE_CASES = [
+    # The cluster is resolved with a providerConfigRef, so the function composes
+    # a native Deployment. On this first reconcile none of the composed
+    # resources are observed yet, so none are marked ready: the function only
+    # asserts readiness for a resource it can see in observed state.
+    #
+    # Unified routing fronts the serving pods with an InferencePool and endpoint
+    # picker rather than a plain Service, and every object lands in the
+    # namespace mirroring the replica's. The device request's CEL selector, here
+    # and throughout, is as compose-model-deployment stamps it.
+    Case(
+        name="cluster with providerConfigRef composes native Deployment",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_replica()),
+            required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
+        ),
+        want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                                "kind": "Object",
-                                "spec": {
-                                    "providerConfigRef": {
-                                        "kind": "ClusterProviderConfig",
-                                        "name": "cluster-a-pc",
-                                    },
-                                    "readiness": {
-                                        "policy": "DeriveFromCelQuery",
-                                        "celQuery": (
-                                            "has(object.status.conditions) && "
-                                            "object.status.conditions.exists("
-                                            'c, c.type == "Available" && c.status == "True")'
-                                        ),
-                                    },
-                                    "forProvider": {
-                                        "manifest": {
-                                            "apiVersion": "apps/v1",
-                                            "kind": "Deployment",
-                                            "metadata": {
-                                                "name": resource.child_name("test-replica", "main"),
-                                                "namespace": "mp-ml-team-51733",
-                                            },
-                                            "spec": {
-                                                "replicas": 1,
-                                                "selector": {
-                                                    "matchLabels": {
-                                                        "modelplane.ai/workload": resource.child_name(
-                                                            "test-replica", "main"
-                                                        ),
-                                                    },
-                                                },
-                                                "template": {
-                                                    "metadata": {
-                                                        "labels": {
-                                                            "modelplane.ai/serving": "test-replica",
-                                                            "modelplane.ai/workload": resource.child_name(
-                                                                "test-replica", "main"
-                                                            ),
-                                                        },
-                                                    },
-                                                    "spec": {
-                                                        "containers": [
-                                                            {
-                                                                "name": "engine",
-                                                                "image": "vllm/vllm-openai:latest",
-                                                                "args": ["--model=Qwen/Qwen3-0.6B"],
-                                                                "ports": [{"containerPort": 8000}],
-                                                                "resources": {"claims": [{"name": "devices"}]},
-                                                                "volumeMounts": [
-                                                                    {"name": "dshm", "mountPath": "/dev/shm"},
-                                                                ],
-                                                                "readinessProbe": {
-                                                                    "httpGet": {"path": "/health", "port": 8000},
-                                                                    "initialDelaySeconds": 30,
-                                                                    "periodSeconds": 10,
-                                                                    "timeoutSeconds": 5,
-                                                                },
-                                                            },
-                                                        ],
-                                                        "volumes": [
-                                                            {"name": "dshm", "emptyDir": {"medium": "Memory"}},
-                                                        ],
-                                                        "nodeSelector": {"modelplane.ai/pool": "frontier"},
-                                                        "resourceClaims": [
-                                                            {
-                                                                "name": "devices",
-                                                                "resourceClaimTemplateName": resource.child_name(
-                                                                    "test-replica", "main", "standalone", "devices"
-                                                                ),
-                                                            },
-                                                        ],
-                                                        "tolerations": [
-                                                            {
-                                                                "key": "nvidia.com/gpu",
-                                                                "operator": "Exists",
-                                                                "effect": "NoSchedule",
-                                                            },
-                                                        ],
-                                                    },
-                                                },
-                                            },
-                                        },
-                                    },
-                                },
-                            }
-                        ),
-                    ),
-                    "model-route": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                                "kind": "Object",
-                                "spec": {
-                                    "providerConfigRef": {
-                                        "kind": "ClusterProviderConfig",
-                                        "name": "cluster-a-pc",
-                                    },
-                                    "readiness": {"policy": "SuccessfulCreate"},
-                                    "forProvider": {
-                                        "manifest": {
-                                            "apiVersion": "gateway.networking.k8s.io/v1",
-                                            "kind": "HTTPRoute",
-                                            "metadata": {
-                                                "name": "test-replica",
-                                                "namespace": "mp-ml-team-51733",
-                                            },
-                                            "spec": {
-                                                "parentRefs": [
-                                                    {
-                                                        "name": "cluster-gateway",
-                                                        "namespace": "modelplane-system",
-                                                    },
-                                                ],
-                                                "rules": [
-                                                    {
-                                                        "matches": [
-                                                            {
-                                                                "path": {
-                                                                    "type": "PathPrefix",
-                                                                    "value": "/ml-team/test-replica/",
-                                                                },
-                                                            },
-                                                        ],
-                                                        "timeouts": {"request": "0s"},
-                                                        "filters": [
-                                                            {
-                                                                "type": "URLRewrite",
-                                                                "urlRewrite": {
-                                                                    "path": {
-                                                                        "type": "ReplacePrefixMatch",
-                                                                        "replacePrefixMatch": "/",
-                                                                    },
-                                                                },
-                                                            },
-                                                        ],
-                                                        "backendRefs": [
-                                                            {
-                                                                "group": "inference.networking.k8s.io",
-                                                                "kind": "InferencePool",
-                                                                "name": "test-replica-pool",
-                                                            },
-                                                        ],
-                                                    },
-                                                ],
-                                            },
-                                        },
-                                    },
-                                },
-                            }
-                        ),
-                    ),
-                    "resource-claim-main-standalone": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                                "kind": "Object",
-                                "spec": {
-                                    "providerConfigRef": {
-                                        "kind": "ClusterProviderConfig",
-                                        "name": "cluster-a-pc",
-                                    },
-                                    "readiness": {"policy": "SuccessfulCreate"},
-                                    "forProvider": {
-                                        "manifest": {
-                                            "apiVersion": "resource.k8s.io/v1",
-                                            "kind": "ResourceClaimTemplate",
-                                            "metadata": {
-                                                "name": resource.child_name(
-                                                    "test-replica", "main", "standalone", "devices"
-                                                ),
-                                                "namespace": "mp-ml-team-51733",
-                                            },
-                                            "spec": {
-                                                "spec": {
-                                                    "devices": {
-                                                        "requests": [
-                                                            {
-                                                                "name": "gpu",
-                                                                "exactly": {
-                                                                    "deviceClassName": "gpu.nvidia.com",
-                                                                    "count": 1,
-                                                                    "selectors": [
-                                                                        {"cel": {"expression": _GPU_CEL}},
-                                                                    ],
-                                                                },
-                                                            },
-                                                        ],
-                                                    },
-                                                },
-                                            },
-                                        },
-                                    },
-                                },
-                            }
-                        ),
+                    "model-serving-main": _workload(ready=fnv1.READY_UNSPECIFIED),
+                    "model-route": _route(ready=fnv1.READY_UNSPECIFIED),
+                    "resource-claim-main-standalone": _claim_template(ready=fnv1.READY_UNSPECIFIED),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
+                    "epp": _epp(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-config": _epp_config(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-role": _epp_role(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="Composing vllm/vllm-openai:latest on cluster-a",
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
                     ),
                 },
             ),
@@ -373,40 +685,19 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     reason="WaitingForModel",
                 ),
             ],
-            results=[
-                fnv1.Result(
-                    severity=fnv1.SEVERITY_NORMAL,
-                    message="Composing vllm/vllm-openai:latest on cluster-a",
-                ),
-            ],
-            context=structpb.Struct(),
-        )
-        want1.requirements.resources["cluster"].CopyFrom(cluster_requirement)
-
-        # Case 2: cluster not resolved — early return with conditions.
-        req2 = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
-            ),
-        )
-
-        want2 = fnv1.RunFunctionResponse(
+        ),
+    ),
+    # The cluster isn't resolved yet, so the function returns early with waiting
+    # conditions. Nothing is composed while waiting, so the XR is marked not
+    # ready rather than left to aggregate to trivially ready.
+    Case(
+        name="cluster not resolved returns waiting conditions",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_replica()),
+        ),
+        want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            # Nothing is composed while waiting, so the XR is marked not ready
-            # rather than left to aggregate to trivially ready.
             desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
-            conditions=[
-                fnv1.Condition(
-                    type="ModelAccepted",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="WaitingForCluster",
-                ),
-                fnv1.Condition(
-                    type="ModelReady",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="WaitingForModel",
-                ),
-            ],
             results=[
                 fnv1.Result(
                     severity=fnv1.SEVERITY_NORMAL,
@@ -414,33 +705,15 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 ),
             ],
             context=structpb.Struct(),
-        )
-        want2.requirements.resources["cluster"].CopyFrom(cluster_requirement)
-
-        # Case 3: cluster resolved but no providerConfigRef — early return.
-        req3 = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                },
             ),
-        )
-        req3.required_resources["cluster"].items.append(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {
-                        "apiVersion": "modelplane.ai/v1alpha1",
-                        "kind": "InferenceCluster",
-                        "metadata": {"name": "cluster-a"},
-                        "spec": {
-                            "cluster": {"source": "Existing", "existing": {"secretRef": {"name": "k"}}},
-                        },
-                    }
-                )
-            )
-        )
-
-        want3 = fnv1.RunFunctionResponse(
-            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
             conditions=[
                 fnv1.Condition(
                     type="ModelAccepted",
@@ -453,6 +726,19 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     reason="WaitingForModel",
                 ),
             ],
+        ),
+    ),
+    # The cluster is resolved but has no providerConfigRef yet, so the function
+    # returns early.
+    Case(
+        name="cluster without providerConfigRef returns waiting conditions",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_replica()),
+            required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref=None)])},
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
             results=[
                 fnv1.Result(
                     severity=fnv1.SEVERITY_NORMAL,
@@ -460,135 +746,200 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 ),
             ],
             context=structpb.Struct(),
-        )
-        want3.requirements.resources["cluster"].CopyFrom(cluster_requirement)
-
-        # Unified routing fronts the serving pods with an InferencePool + endpoint
-        # picker; their manifests are asserted in detail in test_backends. Here we
-        # only check the function wired the whole set in (and dropped the plain
-        # Service), then drop their manifests so the golden covers the dispatch,
-        # wiring and readiness the function itself owns.
-        routing_keys = {
-            "inference-pool",
-            "epp",
-            "epp-config",
-            "epp-role",
-            "epp-rolebinding",
-            "epp-serviceaccount",
-            "epp-service",
-        }
-        for key in routing_keys:
-            want1.desired.resources[key].CopyFrom(fnv1.Resource())
-
-        # Case 4: the resources from case 1 now exist in observed, and the
-        # workload Object reports Available (so its derived Ready is True). The
-        # function marks each observed resource ready once its Object reports
-        # Ready: the workload because it's serving and the rest because existing
-        # is being ready for them. Built from case 1, mutating only what the
-        # observed-ready transition changes: the three ready flags, the
-        # acceptance/readiness conditions, and the dropped first-reconcile event.
-        req4 = fnv1.RunFunctionRequest()
-        req4.CopyFrom(req1)
-        # The workload Object as provider-kubernetes observes it back: applied
-        # (atProvider.manifest populated) and Available (its derived Ready=True).
-        req4.observed.resources["model-serving-main"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {
-                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                        "kind": "Object",
-                        "spec": {"forProvider": {"manifest": {"kind": "Deployment"}}},
-                        "status": {
-                            "atProvider": {"manifest": {"kind": "Deployment"}},
-                            "conditions": [
-                                {
-                                    "type": "Ready",
-                                    "status": "True",
-                                    "reason": "Available",
-                                    "lastTransitionTime": "2025-01-01T00:00:00Z",
-                                },
-                            ],
-                        },
-                    }
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ModelAccepted",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCluster",
                 ),
-            )
-        )
-        # The other two have no runtime readiness to wait on, so under their
-        # SuccessfulCreate policy provider-kubernetes reports them Ready once
-        # applied. (The InferencePool + endpoint picker resources aren't
-        # observed here, so they stay unready.)
-        for key in ("model-route", "resource-claim-main-standalone"):
-            req4.observed.resources[key].CopyFrom(_observed_object(ready=True))
-
-        want4 = fnv1.RunFunctionResponse()
-        want4.CopyFrom(want1)
-        for key in ("model-serving-main", "model-route", "resource-claim-main-standalone"):
-            want4.desired.resources[key].ready = fnv1.READY_TRUE
-        del want4.conditions[:]
-        want4.conditions.extend(
-            [
+                fnv1.Condition(
+                    type="ModelReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForModel",
+                ),
+            ],
+        ),
+    ),
+    # The workload, route and claim template from the first reconcile are now
+    # observed, and the workload Object reports Available, so its derived Ready
+    # is True. The function marks each observed resource ready once its Object
+    # reports Ready: the workload because it's serving, and the route and claim
+    # template because, with no runtime readiness to wait on, their
+    # SuccessfulCreate Objects report Ready once applied. The InferencePool and
+    # endpoint picker objects aren't observed yet, so they stay unready. The
+    # "Composing ..." event fires only on the first reconcile, before the
+    # workload is observed, so there are no results.
+    Case(
+        name="observed resources are marked ready",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_replica(),
+                resources={
+                    "model-serving-main": _observed_workload(),
+                    "model-route": _observed_object(ready=True),
+                    "resource-claim-main-standalone": _observed_object(ready=True),
+                },
+            ),
+            required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                resources={
+                    "model-serving-main": _workload(ready=fnv1.READY_TRUE),
+                    "model-route": _route(ready=fnv1.READY_TRUE),
+                    "resource-claim-main-standalone": _claim_template(ready=fnv1.READY_TRUE),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
+                    "epp": _epp(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-config": _epp_config(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-role": _epp_role(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                },
+            ),
+            conditions=[
                 fnv1.Condition(type="ModelAccepted", status=fnv1.STATUS_CONDITION_TRUE, reason="Accepted"),
                 fnv1.Condition(type="ModelReady", status=fnv1.STATUS_CONDITION_TRUE, reason="Serving"),
-            ]
-        )
-        # The "Composing ..." event fires only the first reconcile (model-serving
-        # not yet observed), so it's gone now.
-        del want4.results[:]
+            ],
+        ),
+    ),
+    # Everything is observed, but the endpoint picker's Service Object isn't
+    # Ready, as when the Service failed to apply, say because its name was
+    # invalid. Being observed isn't being applied, so it stays unready, and
+    # Crossplane holds the XR unready with it.
+    Case(
+        name="an object that failed to apply stays unready",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_replica(),
+                resources={
+                    "model-serving-main": _observed_workload(),
+                    "model-route": _observed_object(ready=True),
+                    "resource-claim-main-standalone": _observed_object(ready=True),
+                    "inference-pool": _observed_object(ready=True),
+                    "epp": _observed_object(ready=True),
+                    "epp-config": _observed_object(ready=True),
+                    "epp-role": _observed_object(ready=True),
+                    "epp-rolebinding": _observed_object(ready=True),
+                    "epp-serviceaccount": _observed_object(ready=True),
+                    "epp-service": _observed_object(ready=False),
+                },
+            ),
+            required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                resources={
+                    "model-serving-main": _workload(ready=fnv1.READY_TRUE),
+                    "model-route": _route(ready=fnv1.READY_TRUE),
+                    "resource-claim-main-standalone": _claim_template(ready=fnv1.READY_TRUE),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_TRUE),
+                    "epp": _epp(ready=fnv1.READY_TRUE),
+                    "epp-config": _epp_config(ready=fnv1.READY_TRUE),
+                    "epp-role": _epp_role(ready=fnv1.READY_TRUE),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_TRUE),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_TRUE),
+                    "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ModelAccepted", status=fnv1.STATUS_CONDITION_TRUE, reason="Accepted"),
+                fnv1.Condition(type="ModelReady", status=fnv1.STATUS_CONDITION_TRUE, reason="Serving"),
+            ],
+        ),
+    ),
+    # Everything applied, but the endpoint picker's Deployment isn't Available
+    # yet, so its Object's CEL-derived Ready is False and it stays unready.
+    # Crossplane holds the XR unready with it, because the gateway fails closed
+    # without a picker, whatever the InferencePool's failureMode says.
+    Case(
+        name="an unavailable endpoint picker stays unready",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_replica(),
+                resources={
+                    "model-serving-main": _observed_workload(),
+                    "model-route": _observed_object(ready=True),
+                    "resource-claim-main-standalone": _observed_object(ready=True),
+                    "inference-pool": _observed_object(ready=True),
+                    "epp": _observed_object(ready=False),
+                    "epp-config": _observed_object(ready=True),
+                    "epp-role": _observed_object(ready=True),
+                    "epp-rolebinding": _observed_object(ready=True),
+                    "epp-serviceaccount": _observed_object(ready=True),
+                    "epp-service": _observed_object(ready=True),
+                },
+            ),
+            required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                resources={
+                    "model-serving-main": _workload(ready=fnv1.READY_TRUE),
+                    "model-route": _route(ready=fnv1.READY_TRUE),
+                    "resource-claim-main-standalone": _claim_template(ready=fnv1.READY_TRUE),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_TRUE),
+                    "epp": _epp(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-config": _epp_config(ready=fnv1.READY_TRUE),
+                    "epp-role": _epp_role(ready=fnv1.READY_TRUE),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_TRUE),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_TRUE),
+                    "epp-service": _epp_service(ready=fnv1.READY_TRUE),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ModelAccepted", status=fnv1.STATUS_CONDITION_TRUE, reason="Accepted"),
+                fnv1.Condition(type="ModelReady", status=fnv1.STATUS_CONDITION_TRUE, reason="Serving"),
+            ],
+        ),
+    ),
+]
 
-        # Case 5: everything from case 4 plus the routing objects is observed,
-        # but the endpoint picker's Service failed to apply, say because its
-        # name was invalid, so its Object isn't Ready. Being observed isn't
-        # being applied, so it stays unready and holds the replica unready with
-        # it. Built from case 4, mutating only the routing objects' ready flags.
-        req5 = fnv1.RunFunctionRequest()
-        req5.CopyFrom(req4)
-        for key in routing_keys:
-            req5.observed.resources[key].CopyFrom(_observed_object(ready=key != "epp-service"))
 
-        want5 = fnv1.RunFunctionResponse()
-        want5.CopyFrom(want4)
-        for key in routing_keys - {"epp-service"}:
-            want5.desired.resources[key].ready = fnv1.READY_TRUE
-
-        # Case 6: as case 5, but everything applied and the endpoint picker's
-        # Deployment isn't Available yet, so its Object's CEL-derived Ready is
-        # False. The gateway fails closed without a picker, so the replica stays
-        # unready with it.
-        req6 = fnv1.RunFunctionRequest()
-        req6.CopyFrom(req4)
-        for key in routing_keys:
-            req6.observed.resources[key].CopyFrom(_observed_object(ready=key != "epp"))
-
-        want6 = fnv1.RunFunctionResponse()
-        want6.CopyFrom(want4)
-        for key in routing_keys - {"epp"}:
-            want6.desired.resources[key].ready = fnv1.READY_TRUE
-
-        cases = [
-            Case(name="cluster ready composes native Deployment", req=req1, want=want1),
-            Case(name="cluster not resolved returns waiting conditions", req=req2, want=want2),
-            Case(name="cluster without providerConfigRef returns waiting conditions", req=req3, want=want3),
-            Case(name="observed resources are marked ready", req=req4, want=want4),
-            Case(name="an object that failed to apply stays unready", req=req5, want=want5),
-            Case(name="an unavailable endpoint picker stays unready", req=req6, want=want6),
-        ]
-
-        for case in cases:
-            with self.subTest(case.name):
-                got = await self.runner.RunFunction(case.req, None)
-                got_dict = json_format.MessageToDict(got)
-                resources = got_dict.get("desired", {}).get("resources", {})
-                if "model-serving-main" in resources:
-                    self.assertLessEqual(routing_keys, set(resources))
-                    self.assertNotIn("model-service", resources)
-                    # The routing objects land in the mirrored namespace too,
-                    # before they're dropped from the golden below.
-                    for key in routing_keys:
-                        manifest = resources[key]["resource"]["spec"]["forProvider"]["manifest"]
-                        self.assertEqual(manifest["metadata"]["namespace"], "mp-ml-team-51733", key)
-                        del resources[key]["resource"]
-                self.assertEqual(
-                    json_format.MessageToDict(case.want),
-                    got_dict,
-                    "-want, +got",
-                )
+@pytest.mark.parametrize("case", COMPOSE_CASES, ids=lambda case: case.name)
+def test_compose(case: Case) -> None:
+    """RunFunction dispatches to a backend to compose serving resources on a remote cluster."""
+    got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
+    assert _to_dict(got) == _to_dict(case.want)

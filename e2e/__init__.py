@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+"""End-to-end tests that bring Modelplane up on kind and send it traffic. See README.md."""

@@ -11,8 +11,8 @@
 #   #  then prepend the Namespace below. The template output already starts with
 #   #  a --- separator, so don't add another after the Namespace.)
 #
-# run.sh applies this to the workload cluster. The kubeletplugin publishes 8 fake
-# gpu.example.com devices via a ResourceSlice, so a `claim: DRA` engine's
+# Bring-up applies this to the workload cluster. The kubeletplugin publishes 8
+# fake gpu.example.com devices via a ResourceSlice, so a `claim: DRA` engine's
 # ResourceClaim binds on a GPU-less node — exercising the real DRA allocation
 # path the fleet scheduler and composition emit, without a GPU.
 apiVersion: v1

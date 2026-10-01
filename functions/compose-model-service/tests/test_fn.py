@@ -14,22 +14,19 @@
 
 """Tests for the compose-model-service function."""
 
+import asyncio
 import dataclasses
-import unittest
+import json
 
-from crossplane.function import logging, resource
+import pytest
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import fn
 from google.protobuf import duration_pb2 as durationpb
-from google.protobuf import json_format
+from google.protobuf import json_format, message
 from google.protobuf import struct_pb2 as structpb
-from models.ai.modelplane.inferencegateway import v1alpha1 as igv1alpha1
-from models.ai.modelplane.modelroute import v1alpha1 as mrtv1alpha1
 from models.ai.modelplane.modelservice import v1alpha1
-
-_NS = "ml-team"
-_SVC = "assistant"
-_MODEL = f"{_NS}/{_SVC}"
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 
 @dataclasses.dataclass
@@ -41,382 +38,426 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-def _entry(deployment: str, *, priority: int | None = None, weight: int | None = None) -> v1alpha1.Endpoint:
-    kwargs = {}
-    if priority is not None:
-        kwargs["priority"] = priority
-    if weight is not None:
-        kwargs["weight"] = weight
-    return v1alpha1.Endpoint(
-        name=deployment,
-        selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": deployment}),
-        **kwargs,
+def _model_service(*, labels: dict[str, str] | None) -> fnv1.Resource:
+    """The ModelService XR assistant in ml-team, serving kimi-k2."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            v1alpha1.ModelService(
+                apiVersion="modelplane.ai/v1alpha1",
+                kind="ModelService",
+                metadata=metav1.ObjectMeta(name="assistant", namespace="ml-team", labels=labels),
+                spec=v1alpha1.Spec(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="kimi-k2",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "kimi-k2"}),
+                        )
+                    ],
+                    timeouts=v1alpha1.Timeouts(request="600s", idle="0s"),
+                ),
+            ).model_dump(exclude_none=True, mode="json", by_alias=True)
+        )
     )
 
 
-def _service(entries: list[v1alpha1.Endpoint], labels: dict[str, str] | None = None) -> dict:
-    xr = v1alpha1.ModelService(
-        apiVersion="modelplane.ai/v1alpha1",
-        kind="ModelService",
-        metadata={"name": _SVC, "namespace": _NS, **({"labels": labels} if labels else {})},
-        # Not the defaults, so a route carrying the defaults fails to match.
-        spec=v1alpha1.Spec(endpoints=entries, timeouts=v1alpha1.Timeouts(request="600s", idle="0s")),
-    )
-    return xr.model_dump(exclude_none=True, mode="json", by_alias=True)
-
-
-def _gateway(name: str, cluster: str, *, selector: dict[str, str] | None = None, address: str | None = None) -> dict:
-    gw = igv1alpha1.InferenceGateway(
-        apiVersion="modelplane.ai/v1alpha1",
-        kind="InferenceGateway",
-        metadata={"name": name},
-        spec=igv1alpha1.Spec(
-            clusterName=cluster,
-            **({"serviceSelector": igv1alpha1.ServiceSelector(matchLabels=selector)} if selector else {}),
+def _desired_model_service(*, total_routes: int, ready_routes: int, ready: fnv1.Ready) -> fnv1.Resource:
+    """The desired ModelService XR, reporting its model and how many of its routes are ready."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {"status": {"model": "ml-team/assistant", "routes": {"total": total_routes, "ready": ready_routes}}}
         ),
+        ready=ready,
     )
-    d = gw.model_dump(exclude_none=True, mode="json", by_alias=True)
-    if address:
-        d["status"] = {"address": address}
-    return d
 
 
-def _route(gateway: str, cluster: str) -> dict:
-    """The ModelRoute the function composes for one gateway, as a plain dict.
+def _inference_gateway(
+    *, name: str, cluster_name: str, service_selector: dict | None, address: str | None
+) -> fnv1.Resource:
+    """An InferenceGateway, as the gateways requirement returns it."""
+    spec: dict = {"clusterName": cluster_name}
+    if service_selector is not None:
+        spec["serviceSelector"] = service_selector
+    gateway: dict = {
+        "apiVersion": "modelplane.ai/v1alpha1",
+        "kind": "InferenceGateway",
+        "metadata": {"name": name},
+        "spec": spec,
+    }
+    if address is not None:
+        gateway["status"] = {"address": address}
+    return fnv1.Resource(resource=resource.dict_to_struct(gateway))
 
-    The endpoints are spelled out rather than derived from the service's, so a
-    bug in the copy the function does can't hide in an expectation computed the
-    same way. Every case here drives the single kimi-k2 entry, which the copy
-    fills to its priority/weight defaults. The cluster label carries the gateway's
-    clusterName, which compose-inference-cluster selects routes by.
-    """
-    route = mrtv1alpha1.ModelRoute(
-        apiVersion="modelplane.ai/v1alpha1",
-        kind="ModelRoute",
-        metadata={
-            "name": resource.child_name(_SVC, gateway),
-            "namespace": _NS,
-            "labels": {
-                "modelplane.ai/service": _SVC,
-                "modelplane.ai/gateway": gateway,
-                "modelplane.ai/cluster": cluster,
-            },
-        },
-        spec=mrtv1alpha1.Spec(
-            gatewayName=gateway,
-            serviceName=_SVC,
-            endpoints=[
-                mrtv1alpha1.Endpoint(
-                    name="kimi-k2",
-                    selector=mrtv1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "kimi-k2"}),
-                    priority=0,
-                    weight=1,
+
+def _model_route(*, name: str, gateway: str, cluster: str, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed ModelRoute pinning assistant to gateway on cluster."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "ModelRoute",
+                "metadata": {
+                    "name": name,
+                    "namespace": "ml-team",
+                    "labels": {
+                        "modelplane.ai/service": "assistant",
+                        "modelplane.ai/gateway": gateway,
+                        "modelplane.ai/cluster": cluster,
+                    },
+                },
+                "spec": {
+                    "gatewayName": gateway,
+                    "serviceName": "assistant",
+                    "endpoints": [
+                        {
+                            "name": "kimi-k2",
+                            "selector": {"matchLabels": {"modelplane.ai/deployment": "kimi-k2"}},
+                            "priority": 0,
+                            "weight": 1,
+                        }
+                    ],
+                    "timeouts": {"request": "600s", "idle": "0s"},
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _to_dict(msg: message.Message) -> dict:
+    """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
+    return json.loads(json_format.MessageToJson(msg, sort_keys=True))
+
+
+# Every ModelService here sets timeouts that aren't the defaults, so a route
+# carrying the defaults fails to match. Each composed ModelRoute's cluster label
+# carries its gateway's clusterName, which compose-inference-cluster selects
+# routes by.
+COMPOSE_CASES = [
+    Case(
+        name="gateways not resolved yet: require them and wait",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_service(labels=None)),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_service(total_routes=0, ready_routes=0, ready=fnv1.READY_FALSE)
+            ),
+            results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the gateways to resolve")],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForGateways",
+                    message="Waiting for the gateways to resolve",
                 )
             ],
-            timeouts=mrtv1alpha1.Timeouts(request="600s", idle="0s"),
         ),
-    )
-    return route.model_dump(exclude_none=True, mode="json", by_alias=True)
-
-
-def _observed_route(gateway: str, ready: bool) -> fnv1.Resource:
-    """A composed ModelRoute as observed back, Ready or not."""
-    d = {
-        "apiVersion": "modelplane.ai/v1alpha1",
-        "kind": "ModelRoute",
-        "metadata": {"name": resource.child_name(_SVC, gateway), "namespace": _NS},
-        "status": {
-            "conditions": [
-                {
-                    "type": "Ready",
-                    "status": "True" if ready else "False",
-                    "reason": "Available" if ready else "Creating",
-                    "lastTransitionTime": "2026-06-08T00:00:00Z",
-                }
-            ]
-        },
-    }
-    return fnv1.Resource(resource=resource.dict_to_struct(d))
-
-
-def _required(**resources) -> dict:  # noqa: ANN003
-    return {
-        name: fnv1.Resources(items=[fnv1.Resource(resource=resource.dict_to_struct(r)) for r in items])
-        for name, items in resources.items()
-    }
-
-
-def setUpModule() -> None:
-    logging.configure(level=logging.Level.DISABLED)
-
-
-class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
-    maxDiff = None
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.runner = fn.FunctionRunner()
-
-    async def test_compose(self) -> None:
-        entries = [_entry("kimi-k2")]
-        cases = [
-            Case(
-                name="gateways not resolved yet: require them and wait",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_service(entries)))),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(
-                                {"status": {"model": _MODEL, "routes": {"total": 0, "ready": 0}}}
-                            ),
-                            ready=fnv1.READY_FALSE,
-                        )
-                    ),
-                    context=structpb.Struct(),
-                    requirements=fnv1.Requirements(
-                        resources={
-                            "gateways": fnv1.ResourceSelector(
-                                api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"
-                            ),
-                        }
-                    ),
-                    conditions=[
-                        fnv1.Condition(
-                            type=fn.CONDITION_TYPE_ROUTING_READY,
-                            status=fnv1.STATUS_CONDITION_FALSE,
-                            reason=fn.CONDITION_REASON_WAITING_FOR_GATEWAYS,
-                            message="Waiting for the gateways to resolve",
-                        )
-                    ],
-                    results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the gateways to resolve")],
-                ),
-            ),
-            Case(
-                name="no gateway selects the service: unreachable, and say so",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(_service(entries, labels={"region": "us"}))
-                        )
-                    ),
-                    required_resources=_required(gateways=[_gateway("eu", "gw-eu", selector={"region": "eu"})]),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(
-                                {"status": {"model": _MODEL, "routes": {"total": 0, "ready": 0}}}
-                            ),
-                            ready=fnv1.READY_FALSE,
-                        )
-                    ),
-                    context=structpb.Struct(),
-                    requirements=fnv1.Requirements(
-                        resources={
-                            "gateways": fnv1.ResourceSelector(
-                                api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"
-                            ),
-                        }
-                    ),
-                    conditions=[
-                        fnv1.Condition(
-                            type=fn.CONDITION_TYPE_ROUTING_READY,
-                            status=fnv1.STATUS_CONDITION_FALSE,
-                            reason=fn.CONDITION_REASON_NO_GATEWAY,
-                            message=(
-                                "No InferenceGateway's serviceSelector matches this service's labels, "
-                                "so no caller can reach it"
-                            ),
-                        )
-                    ],
-                    results=[
-                        fnv1.Result(
-                            severity=fnv1.SEVERITY_NORMAL,
-                            message=(
-                                "No InferenceGateway's serviceSelector matches this service's labels, "
-                                "so no caller can reach it"
-                            ),
-                        )
-                    ],
-                ),
-            ),
-            Case(
-                # A gateway with no address is left out of readiness, but with no
-                # other gateway there is nowhere a caller could reach the service.
-                name="its only gateway has no address yet: not RoutingReady",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_service(entries))),
-                    ),
-                    required_resources=_required(gateways=[_gateway("eu", "gw-eu")]),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(
-                                {"status": {"model": _MODEL, "routes": {"total": 1, "ready": 0}}}
-                            ),
-                            ready=fnv1.READY_FALSE,
+    ),
+    Case(
+        name="no gateway selects the service: unreachable, and say so",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_service(labels={"region": "us"})),
+            required_resources={
+                "gateways": fnv1.Resources(
+                    items=[
+                        _inference_gateway(
+                            name="eu",
+                            cluster_name="gw-eu",
+                            service_selector={"matchLabels": {"region": "eu"}},
+                            address=None,
                         ),
-                        resources={
-                            "route-eu": fnv1.Resource(resource=resource.dict_to_struct(_route("eu", "gw-eu"))),
-                        },
-                    ),
-                    context=structpb.Struct(),
-                    requirements=fnv1.Requirements(
-                        resources={
-                            "gateways": fnv1.ResourceSelector(
-                                api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"
-                            ),
-                        }
-                    ),
-                    conditions=[
-                        fnv1.Condition(
-                            type=fn.CONDITION_TYPE_ROUTING_READY,
-                            status=fnv1.STATUS_CONDITION_FALSE,
-                            reason=fn.CONDITION_REASON_WAITING_FOR_GATEWAYS,
-                            message="Waiting for gateways to come up: eu",
-                        )
-                    ],
-                    results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for gateways to come up: eu")],
+                    ]
                 ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_service(total_routes=0, ready_routes=0, ready=fnv1.READY_FALSE)
             ),
-            Case(
-                name="two gateways serve it: a ModelRoute each, waiting for both routes",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_service(entries))),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message=(
+                        "No InferenceGateway's serviceSelector matches this service's labels, so no caller can reach it"
                     ),
-                    required_resources=_required(
-                        gateways=[
-                            _gateway("eu", "gw-eu", address="203.0.113.1"),
-                            _gateway("us", "gw-us", address="203.0.113.2"),
-                        ],
-                    ),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(
-                                {"status": {"model": _MODEL, "routes": {"total": 2, "ready": 0}}}
-                            ),
-                            ready=fnv1.READY_FALSE,
-                        ),
-                        resources={
-                            "route-eu": fnv1.Resource(resource=resource.dict_to_struct(_route("eu", "gw-eu"))),
-                            "route-us": fnv1.Resource(resource=resource.dict_to_struct(_route("us", "gw-us"))),
-                        },
-                    ),
-                    context=structpb.Struct(),
-                    requirements=fnv1.Requirements(
-                        resources={
-                            "gateways": fnv1.ResourceSelector(
-                                api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"
-                            ),
-                        }
-                    ),
-                    conditions=[
-                        fnv1.Condition(
-                            type=fn.CONDITION_TYPE_ROUTING_READY,
-                            status=fnv1.STATUS_CONDITION_FALSE,
-                            reason=fn.CONDITION_REASON_WAITING_FOR_ROUTES,
-                            message="Waiting for routes on gateways: eu, us",
-                        )
-                    ],
-                    results=[
-                        fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for routes on gateways: eu, us")
-                    ],
-                ),
-            ),
-            Case(
-                name="both routes accepted: ModelRoutes ready, service RoutingReady",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(_service(entries))),
-                        resources={
-                            "route-eu": _observed_route("eu", ready=True),
-                            "route-us": _observed_route("us", ready=True),
-                        },
-                    ),
-                    required_resources=_required(
-                        gateways=[
-                            _gateway("eu", "gw-eu", address="203.0.113.1"),
-                            _gateway("us", "gw-us", address="203.0.113.2"),
-                        ],
-                    ),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(
-                                {"status": {"model": _MODEL, "routes": {"total": 2, "ready": 2}}}
-                            ),
-                            ready=fnv1.READY_TRUE,
-                        ),
-                        resources={
-                            "route-eu": fnv1.Resource(
-                                resource=resource.dict_to_struct(_route("eu", "gw-eu")), ready=fnv1.READY_TRUE
-                            ),
-                            "route-us": fnv1.Resource(
-                                resource=resource.dict_to_struct(_route("us", "gw-us")), ready=fnv1.READY_TRUE
-                            ),
-                        },
-                    ),
-                    context=structpb.Struct(),
-                    requirements=fnv1.Requirements(
-                        resources={
-                            "gateways": fnv1.ResourceSelector(
-                                api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"
-                            ),
-                        }
-                    ),
-                    conditions=[
-                        fnv1.Condition(
-                            type=fn.CONDITION_TYPE_ROUTING_READY,
-                            status=fnv1.STATUS_CONDITION_TRUE,
-                            reason=fn.CONDITION_REASON_ROUTES_ACCEPTED,
-                        )
-                    ],
-                ),
-            ),
-        ]
-        for case in cases:
-            with self.subTest(case.name):
-                got = await self.runner.RunFunction(case.req, None)
-                self.assertEqual(
-                    json_format.MessageToDict(case.want),
-                    json_format.MessageToDict(got),
-                    "-want, +got",
                 )
-
-    async def test_absent_selector_serves_every_service(self) -> None:
-        """A gateway with no serviceSelector serves the service, and one still
-        coming up (no address) is excluded from readiness rather than failing
-        it: both RoutingReady and the service's own Ready ignore its unready
-        ModelRoute."""
-        entries = [_entry("kimi-k2")]
-        req = fnv1.RunFunctionRequest(
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="NoGatewayServesThisService",
+                    message=(
+                        "No InferenceGateway's serviceSelector matches this service's labels, so no caller can reach it"
+                    ),
+                )
+            ],
+        ),
+    ),
+    # A gateway with no address is left out of readiness, but with no other
+    # gateway there is nowhere a caller could reach the service.
+    Case(
+        name="its only gateway has no address yet: not RoutingReady",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_service(labels=None)),
+            required_resources={
+                "gateways": fnv1.Resources(
+                    items=[
+                        _inference_gateway(name="eu", cluster_name="gw-eu", service_selector=None, address=None),
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_service(total_routes=1, ready_routes=0, ready=fnv1.READY_FALSE),
+                resources={
+                    "route-eu": _model_route(
+                        name="assistant-eu-b0e0c", gateway="eu", cluster="gw-eu", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                },
+            ),
+            results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for gateways to come up: eu")],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForGateways",
+                    message="Waiting for gateways to come up: eu",
+                )
+            ],
+        ),
+    ),
+    Case(
+        name="two gateways serve it: a ModelRoute each, waiting for both routes",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_service(labels=None)),
+            required_resources={
+                "gateways": fnv1.Resources(
+                    items=[
+                        _inference_gateway(
+                            name="eu", cluster_name="gw-eu", service_selector=None, address="203.0.113.1"
+                        ),
+                        _inference_gateway(
+                            name="us", cluster_name="gw-us", service_selector=None, address="203.0.113.2"
+                        ),
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_service(total_routes=2, ready_routes=0, ready=fnv1.READY_FALSE),
+                resources={
+                    "route-eu": _model_route(
+                        name="assistant-eu-b0e0c", gateway="eu", cluster="gw-eu", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "route-us": _model_route(
+                        name="assistant-us-04e03", gateway="us", cluster="gw-us", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                },
+            ),
+            results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for routes on gateways: eu, us")],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoutes",
+                    message="Waiting for routes on gateways: eu, us",
+                )
+            ],
+        ),
+    ),
+    Case(
+        name="both routes accepted: ModelRoutes ready, service RoutingReady",
+        req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(_service(entries))),
-                resources={"route-eu": _observed_route("eu", ready=True)},
+                composite=_model_service(labels=None),
+                resources={
+                    "route-eu": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "modelplane.ai/v1alpha1",
+                                "kind": "ModelRoute",
+                                "metadata": {"name": "assistant-eu-b0e0c", "namespace": "ml-team"},
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2026-06-08T00:00:00Z",
+                                        }
+                                    ]
+                                },
+                            }
+                        )
+                    ),
+                    "route-us": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "modelplane.ai/v1alpha1",
+                                "kind": "ModelRoute",
+                                "metadata": {"name": "assistant-us-04e03", "namespace": "ml-team"},
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2026-06-08T00:00:00Z",
+                                        }
+                                    ]
+                                },
+                            }
+                        )
+                    ),
+                },
             ),
-            required_resources=_required(
-                gateways=[
-                    _gateway("eu", "gw-eu", address="203.0.113.1"),
-                    _gateway("us", "gw-us"),  # no address: still coming up
-                ],
+            required_resources={
+                "gateways": fnv1.Resources(
+                    items=[
+                        _inference_gateway(
+                            name="eu", cluster_name="gw-eu", service_selector=None, address="203.0.113.1"
+                        ),
+                        _inference_gateway(
+                            name="us", cluster_name="gw-us", service_selector=None, address="203.0.113.2"
+                        ),
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_service(total_routes=2, ready_routes=2, ready=fnv1.READY_TRUE),
+                resources={
+                    "route-eu": _model_route(
+                        name="assistant-eu-b0e0c", gateway="eu", cluster="gw-eu", ready=fnv1.READY_TRUE
+                    ),
+                    "route-us": _model_route(
+                        name="assistant-us-04e03", gateway="us", cluster="gw-us", ready=fnv1.READY_TRUE
+                    ),
+                },
             ),
-        )
-        got = await self.runner.RunFunction(req, None)
-        self.assertIn("route-eu", got.desired.resources)
-        self.assertIn("route-us", got.desired.resources)
-        cond = next(c for c in got.conditions if c.type == fn.CONDITION_TYPE_ROUTING_READY)
-        self.assertEqual(cond.status, fnv1.STATUS_CONDITION_TRUE, "us has no address, so it doesn't block")
-        self.assertEqual(got.desired.composite.ready, fnv1.READY_TRUE, "nor does its unready ModelRoute")
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="RoutesAccepted",
+                )
+            ],
+        ),
+    ),
+    # Neither gateway has a serviceSelector, so both serve the service. The us
+    # gateway is still coming up (no address), so it's excluded from readiness
+    # rather than failing it: both RoutingReady and the service's own Ready ignore
+    # its unready ModelRoute.
+    Case(
+        name="a gateway with no address doesn't block readiness, nor does its unready ModelRoute",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_service(labels=None),
+                resources={
+                    "route-eu": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "modelplane.ai/v1alpha1",
+                                "kind": "ModelRoute",
+                                "metadata": {"name": "assistant-eu-b0e0c", "namespace": "ml-team"},
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2026-06-08T00:00:00Z",
+                                        }
+                                    ]
+                                },
+                            }
+                        )
+                    ),
+                },
+            ),
+            required_resources={
+                "gateways": fnv1.Resources(
+                    items=[
+                        _inference_gateway(
+                            name="eu", cluster_name="gw-eu", service_selector=None, address="203.0.113.1"
+                        ),
+                        _inference_gateway(name="us", cluster_name="gw-us", service_selector=None, address=None),
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_service(total_routes=2, ready_routes=1, ready=fnv1.READY_TRUE),
+                resources={
+                    "route-eu": _model_route(
+                        name="assistant-eu-b0e0c", gateway="eu", cluster="gw-eu", ready=fnv1.READY_TRUE
+                    ),
+                    "route-us": _model_route(
+                        name="assistant-us-04e03", gateway="us", cluster="gw-us", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="RoutesAccepted",
+                )
+            ],
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize("case", COMPOSE_CASES, ids=lambda case: case.name)
+def test_compose(case: Case) -> None:
+    """RunFunction composes a ModelRoute per serving gateway and reports routing readiness."""
+    got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
+    assert _to_dict(got) == _to_dict(case.want)

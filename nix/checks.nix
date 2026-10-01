@@ -7,36 +7,28 @@
   pkgs,
   self,
   functionNames,
-  pyproject-nix,
-  uv2nix,
-  pyproject-build-systems,
+  pythonSet,
 }:
 let
   docs = import ./docs.nix { inherit pkgs self; };
 
-  workspace = uv2nix.lib.workspace.loadWorkspace { workspaceRoot = self; };
-  pythonSet =
-    (pkgs.callPackage pyproject-nix.build.packages { python = pkgs.python312; }).overrideScope
-      (
-        pkgs.lib.composeManyExtensions [
-          pyproject-build-systems.overlays.wheel
-          (workspace.mkPyprojectOverlay { sourcePreference = "wheel"; })
-        ]
-      );
-
   # Each function exports a 'function' Python module, so tests must run from
-  # a directory where that module is importable via the venv. We copy tests/
-  # from the source tree and run unittest against the venv's Python.
+  # a directory where that module is importable via the venv, and one pytest
+  # session can't hold two functions' tests. We copy tests/ from the source
+  # tree and run pytest against the venv's Python. We also copy pyproject.toml
+  # for its [tool.pytest] config, which pytest finds in its rootdir.
   mkFunctionTest =
     name:
     let
       venv = pythonSet.mkVirtualEnv "${name}-test-env" {
         ${name} = [ ];
+        pytest = [ ];
       };
     in
     pkgs.runCommand "modelplane-test-${name}" { } ''
       cp -r ${self}/functions/${name}/tests tests
-      ${venv}/bin/python -m unittest discover -s tests -v
+      cp ${self}/pyproject.toml pyproject.toml
+      ${venv}/bin/python -m pytest tests
       mkdir -p $out
       touch $out/.tests-passed
     '';
@@ -44,8 +36,9 @@ let
   # Type-check each function with ty. Each function exports its own 'function'
   # module, so checking all functions at once would let ty resolve one
   # function's `function.fn` import to another's package. We check each in
-  # isolation against a venv that provides its dependencies, plus the protobuf
-  # type stubs ty needs to resolve the SDK's generated Struct and Duration.
+  # isolation against a venv that provides its dependencies, pytest, which the
+  # tests import, and the protobuf type stubs ty needs to resolve the SDK's
+  # generated Struct and Duration.
   #
   # Unlike mkFunctionTest, which runs the function module from the venv, ty
   # checks the source, so we copy function/ and tests/ from the tree. We also
@@ -56,6 +49,7 @@ let
     let
       venv = pythonSet.mkVirtualEnv "${name}-ty-env" {
         ${name} = [ ];
+        pytest = [ ];
         types-protobuf = [ ];
       };
     in
@@ -99,6 +93,29 @@ in
       touch $out/.docs-manifests-validated
     '';
 
+  # Type-check the end-to-end tests with ty, against the packages the e2e app
+  # runs them with (see apps.nix).
+  ty-e2e =
+    let
+      venv = pythonSet.mkVirtualEnv "e2e-ty-env" {
+        pytest = [ ];
+        kubernetes = [ ];
+        crossplane-models = [ ];
+        pydantic = [ ];
+      };
+    in
+    pkgs.runCommand "modelplane-ty-e2e"
+      {
+        nativeBuildInputs = [ pkgs.unstable.ty ];
+      }
+      ''
+        cp -r ${self}/e2e e2e
+        cp ${self}/pyproject.toml pyproject.toml
+        ty check e2e --python ${venv}
+        mkdir -p $out
+        touch $out/.ty-passed
+      '';
+
   python =
     pkgs.runCommand "modelplane-python-checks"
       {
@@ -108,8 +125,8 @@ in
         cp -r ${self} src
         chmod -R u+w src
         cd src
-        ruff format --check functions/ docs/utils/validate/
-        ruff check functions/ docs/utils/validate/
+        ruff format --check functions/ docs/utils/validate/ e2e/
+        ruff check functions/ docs/utils/validate/ e2e/
         mkdir -p $out
         touch $out/.python-checks-passed
       '';
@@ -143,8 +160,8 @@ in
       '';
 
   # Fail if any hand-written source file is missing its Apache 2.0 license
-  # header. Scoped to the files we author: the composition functions and the
-  # docs manifest validator. Generated models under schemas/python carry their
+  # header. Scoped to the files we author: the composition functions, the docs
+  # manifest validator, and the end-to-end tests. Generated models under schemas/python carry their
   # own codegen banner, and config (*.toml) and vendored upstream CRDs (*.yaml)
   # are excluded. addlicense -check only reads, so it runs against the store
   # path directly. Run 'nix run .#fix' to add any missing headers.
@@ -159,7 +176,7 @@ in
           -ignore '**/*.toml' \
           -ignore '**/*.yaml' \
           -ignore '**/*.yml' \
-          functions/ docs/utils/validate/ nix.sh
+          functions/ docs/utils/validate/ e2e/ nix.sh
         mkdir -p $out
         touch $out/.license-check-passed
       '';

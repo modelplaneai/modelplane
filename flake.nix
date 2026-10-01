@@ -112,14 +112,16 @@
       checks = forAllSystems (
         { pkgs, ... }:
         import ./nix/checks.nix {
-          inherit
-            pkgs
-            self
-            functionNames
-            pyproject-nix
-            uv2nix
-            pyproject-build-systems
-            ;
+          inherit pkgs self functionNames;
+          pythonSet = import ./nix/python.nix {
+            inherit
+              pkgs
+              self
+              pyproject-nix
+              uv2nix
+              pyproject-build-systems
+              ;
+          };
         }
       );
 
@@ -155,6 +157,15 @@
           apps = import ./nix/apps.nix { inherit pkgs; };
           crossplane = deps.crossplane { inherit system; };
           functionsPkg = self.packages.${system}.functions or null;
+          pythonSet = import ./nix/python.nix {
+            inherit
+              pkgs
+              self
+              pyproject-nix
+              uv2nix
+              pyproject-build-systems
+              ;
+          };
         in
         {
           fix = apps.fix { };
@@ -171,7 +182,8 @@
             dockerCredentialUp = pkgs.upbound;
           };
           stop = apps.stop { inherit crossplane; };
-          e2e = apps.e2e { inherit crossplane functionsPkg; };
+          e2e = apps.e2e { inherit crossplane functionsPkg pythonSet; };
+          test = apps.test { inherit pythonSet functionNames; };
           stacks = apps.stacks { inherit (pkgs) aicr; };
         }
       );

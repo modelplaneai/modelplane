@@ -3,7 +3,7 @@
 #
 # Co-locating the InferenceGateway with the models it serves is a supported shape,
 # and the one this test uses: the workload cluster hosts both gateways, each with
-# its own LoadBalancer address from the MetalLB run.sh installs there.
+# its own LoadBalancer address from the MetalLB bring-up installs there.
 #
 # No TLS, so the gateway answers on its address over plain HTTP. It
 # authenticates callers by API key, against the Secret below.
@@ -20,7 +20,7 @@ spec:
         matchLabels:
           modelplane.ai/inference-keys: "true"
 ---
-# One caller, identified as e2e. run.sh sends its key in Authorization for
+# One caller, identified as e2e. The tests send its key in Authorization for
 # OpenAI requests and in x-api-key for Anthropic ones.
 apiVersion: v1
 kind: Secret

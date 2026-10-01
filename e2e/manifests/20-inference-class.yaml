@@ -1,5 +1,5 @@
 # A fake-GPU class backed by kubernetes-sigs/dra-example-driver (installed on the
-# workload cluster by run.sh). claim: DRA is required — the fleet scheduler
+# workload cluster by bring-up). claim: DRA is required — the fleet scheduler
 # rejects an engine whose only device is Synthetic, because it needs a claimable
 # device to bind a ResourceClaim through (see scheduling.py). The example driver
 # publishes fake gpu.example.com devices (memory 80Gi) with no real hardware, so

@@ -26,6 +26,10 @@ dev = [
   # schemas/ tree, so an edit there survives until the next build.
   "pyyaml>=6.0",
   "pydantic>=2.0",
+  # 9.0 reports unittest subtests natively.
+  "pytest>=9.0",
+  # The end-to-end tests read the clusters through the Kubernetes API.
+  "kubernetes>=36.0",
 ]
 
 [tool.ruff]
@@ -55,6 +59,7 @@ select = [
     "TID",    # flake8-tidy-imports (no relative imports)
     "BLE",    # flake8-blind-except (no bare except Exception)
     "ANN",    # flake8-annotations (require type annotations)
+    "PT",     # flake8-pytest-style (pytest idioms, no unittest assertions)
     "RUF",    # ruff-specific rules (incl. unused/malformed noqa)
 ]
 
@@ -73,6 +78,10 @@ allow-star-arg-any = true
 # Tests use magic values, many parameters, long hardcoded resource dicts, and
 # boolean fixture toggles passed positionally.
 "**/tests/**" = ["E501", "PLR2004", "PLR0913", "FBT001"]
+# The end-to-end tests compare HTTP statuses and curl exit codes.
+"e2e/**" = ["PLR2004"]
+# The pytest style rules are for tests. Elsewhere an assert guards an invariant.
+"!{**/tests/**,e2e/**}" = ["PT"]
 # fn.py uses gRPC's required PascalCase method name.
 "functions/*/function/fn.py" = ["N802"]
 # The docs manifest validator is a CLI script; print is its output.
@@ -94,3 +103,11 @@ python-version = "3.12"
 [tool.ty.src]
 # The generated Pydantic models aren't under our control and aren't checked.
 exclude = ["schemas/python"]
+
+[tool.pytest]
+# Fail on unknown config, unregistered markers, duplicate parametrize IDs and
+# passing xfails.
+strict = true
+# Tests compare whole responses, and by default pytest cuts the diff between two
+# large values down to a summary line.
+verbosity_assertions = "2"

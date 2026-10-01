@@ -66,8 +66,8 @@ jobs:
 
       # The exact command a developer runs locally (--print-build-logs is only CI
       # verbosity), so a green run here and a green run on a laptop mean the same
-      # thing. It brings up both clusters, deploys the mock model, waits for the
-      # ModelService, and asserts a live 200 — exiting non-zero on any failure.
+      # thing. It brings up both clusters, deploys the mock model, and runs the
+      # tests in e2e/, exiting non-zero if any fails.
       - name: Run e2e
         run: nix run .#e2e --print-build-logs -- --verify
 
