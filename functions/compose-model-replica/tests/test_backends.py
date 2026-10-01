@@ -533,6 +533,21 @@ class TestBackendManifests(unittest.TestCase):
         out_b = native.NativeBackend().build(b, b.spec.engines[0], _PC, base.serving_label(b), "Standard")
         self.assertEqual(self._names(out_a) & self._names(out_b), set())
 
+    def test_grove_gang_name_has_no_dots(self) -> None:
+        """Grove names a gang's headless Service after its PodCliqueSet, and a
+        Service name can't contain a dot, so a dotted replica name's dots are
+        replaced after hashing. Any other name is unchanged."""
+        cases = [
+            ("r", "r-main-bb4e3"),
+            ("qwen2.5", "qwen2-5-main-b2784"),
+        ]
+        for replica_name, want in cases:
+            with self.subTest(replica_name):
+                engine = _gang_engine()
+                replica = _replica(replica_name, engines=[engine])
+                out = grove.GroveBackend().build(replica, engine, _PC, base.serving_label(replica), "Dynamo")
+                self.assertEqual(want, out["model-serving-main"].spec.forProvider.manifest["metadata"]["name"])
+
     def test_multi_engine_qualifies_workload_names(self) -> None:
         # A replica with two engines names each engine's workload distinctly so
         # they don't collide on the remote cluster.
@@ -660,6 +675,29 @@ class TestLLMDBackend(unittest.TestCase):
         self.assertEqual(manifest["spec"]["replicas"], 2)
         # Gang size is the leader plus the worker's node count.
         self.assertEqual(manifest["spec"]["leaderWorkerTemplate"]["size"], 4)
+
+    def test_name(self) -> None:
+        """A LeaderWorkerSet names its headless Service after itself, so LWS's
+        webhook rejects a name that isn't a DNS-1035 label, and names its
+        StatefulSets after itself, whose pods can't be created past 52
+        characters, the last group's {lws}-{group} the longest. A replica name
+        that makes a short enough label keeps the engine-qualified name; a
+        dotted or long one is hashed behind an "lws" prefix, short enough for
+        the engine's copies."""
+        cases = [
+            ("r", 1, "r-main-bb4e3"),
+            ("qwen2.5", 1, "lws-qwen2-5-main-b2784-6d975"),
+            # 50 characters, and {lws}-0 is 52.
+            ("a" * 39, 1, "a" * 39 + "-main-f8695"),
+            # The same 50 characters, but {lws}-10 would be 53.
+            ("a" * 39, 11, "lws-" + "a" * 39 + "-ad679"),
+            ("a" * 40, 1, "lws-" + "a" * 40 + "-fbd29"),
+        ]
+        for replica_name, copies, want in cases:
+            with self.subTest(f"{replica_name} with {copies} copies"):
+                engine = _gang_engine(copies=copies)
+                replica = _replica(replica_name, engines=[engine])
+                self.assertEqual(want, self._lws(engine, replica)["metadata"]["name"])
 
     def test_only_leader_carries_serving_label(self) -> None:
         engine = _gang_engine()
@@ -1153,6 +1191,119 @@ class TestUnifiedRouting(unittest.TestCase):
         no relabeling is needed."""
         pool = self._apply()["inference-pool"].spec.forProvider.manifest
         self.assertEqual(pool["spec"]["selector"]["matchLabels"], {base.LABEL_SERVING: "r"})
+
+    def test_picker_names(self) -> None:
+        """The picker's Service, which the pool references, must be named by a
+        DNS-1035 label, and its app label value can be at most 63 characters.
+        Any replica name makes {name}-epp a valid name for the picker's other
+        objects, so they keep it. So do the Service and label when it's valid for
+        them, so nothing already composed is renamed. Otherwise the Service is
+        hashed behind an "epp" prefix, dots replaced after hashing so names
+        differing only in '.' versus '-' don't collide, and a label too long
+        takes the Service's name."""
+
+        @dataclasses.dataclass
+        class NameCase:
+            name: str
+            replica: str
+            want_objects: str
+            want_service: str
+            want_label: str
+
+        a59, a60 = "a" * 59, "a" * 60
+        cases = [
+            NameCase(
+                name="a short name keeps the suffix everywhere",
+                replica="r",
+                want_objects="r-epp",
+                want_service="r-epp",
+                want_label="r-epp",
+            ),
+            NameCase(
+                name="the longest name the suffix fits keeps it everywhere",
+                replica=a59,
+                want_objects=f"{a59}-epp",
+                want_service=f"{a59}-epp",
+                want_label=f"{a59}-epp",
+            ),
+            NameCase(
+                name="a name too long for the suffix hashes the Service and label",
+                replica=a60,
+                want_objects=f"{a60}-epp",
+                want_service="epp-" + "a" * 53 + "-84a48",
+                want_label="epp-" + "a" * 53 + "-84a48",
+            ),
+            NameCase(
+                name="a dotted name hashes only the Service",
+                replica="qwen2.5-7b-abcde",
+                want_objects="qwen2.5-7b-abcde-epp",
+                want_service="epp-qwen2-5-7b-abcde-epp-da596",
+                want_label="qwen2.5-7b-abcde-epp",
+            ),
+            NameCase(
+                name="a name starting with a digit hashes only the Service",
+                replica="7b-abcde",
+                want_objects="7b-abcde-epp",
+                want_service="epp-7b-abcde-epp-cac62",
+                want_label="7b-abcde-epp",
+            ),
+            NameCase(
+                name="a dot and a dash in the same place don't collide: dot",
+                replica="7a.b",
+                want_objects="7a.b-epp",
+                want_service="epp-7a-b-epp-f1ce7",
+                want_label="7a.b-epp",
+            ),
+            NameCase(
+                name="a dot and a dash in the same place don't collide: dash",
+                replica="7a-b",
+                want_objects="7a-b-epp",
+                want_service="epp-7a-b-epp-43c9d",
+                want_label="7a-b-epp",
+            ),
+        ]
+        for case in cases:
+            with self.subTest(case.name):
+                engine = _standalone_engine()
+                replica = _replica(case.replica, engines=[engine])
+                composed = native.NativeBackend().build(replica, engine, _PC, base.serving_label(replica), "Standard")
+                out = routing.apply(composed, replica, _PC)
+                deployment = out["epp"].spec.forProvider.manifest
+                service = out["epp-service"].spec.forProvider.manifest
+                binding = out["epp-rolebinding"].spec.forProvider.manifest
+                got = {
+                    "serviceaccount": out["epp-serviceaccount"].spec.forProvider.manifest["metadata"]["name"],
+                    "role": out["epp-role"].spec.forProvider.manifest["metadata"]["name"],
+                    "rolebinding": binding["metadata"]["name"],
+                    "rolebinding-subject": binding["subjects"][0]["name"],
+                    "rolebinding-role": binding["roleRef"]["name"],
+                    "configmap": out["epp-config"].spec.forProvider.manifest["metadata"]["name"],
+                    "deployment": deployment["metadata"]["name"],
+                    "deployment-serviceaccount": deployment["spec"]["template"]["spec"]["serviceAccountName"],
+                    "deployment-configmap": deployment["spec"]["template"]["spec"]["volumes"][0]["configMap"]["name"],
+                    "deployment-selector": deployment["spec"]["selector"]["matchLabels"]["app"],
+                    "pod-label": deployment["spec"]["template"]["metadata"]["labels"]["app"],
+                    "service": service["metadata"]["name"],
+                    "service-selector": service["spec"]["selector"]["app"],
+                    "pool": out["inference-pool"].spec.forProvider.manifest["spec"]["endpointPickerRef"]["name"],
+                }
+                want = {
+                    "serviceaccount": case.want_objects,
+                    "role": case.want_objects,
+                    "rolebinding": case.want_objects,
+                    "rolebinding-subject": case.want_objects,
+                    "rolebinding-role": case.want_objects,
+                    "configmap": case.want_objects,
+                    "deployment": case.want_objects,
+                    "deployment-serviceaccount": case.want_objects,
+                    "deployment-configmap": case.want_objects,
+                    "deployment-selector": case.want_label,
+                    "pod-label": case.want_label,
+                    "service": case.want_service,
+                    "service-selector": case.want_label,
+                    "pool": case.want_service,
+                }
+                self.assertEqual(want, got)
 
     def test_route_targets_inference_pool(self) -> None:
         route = self._apply()[base.ROUTE_KEY].spec.forProvider.manifest

@@ -45,6 +45,13 @@ from function.backends import base
 # reaches the gang leader (the only pod that serves the OpenAI API).
 _LABEL_ROLE = "modelplane.ai/lws-role"
 
+# A LeaderWorkerSet names its headless Service after itself, so LWS's webhook
+# rejects a name that isn't a DNS-1035 label. It also names its StatefulSets
+# after itself, {lws} for the leaders and {lws}-{group} for each group's
+# workers, and Kubernetes can't create a StatefulSet's pods once its name
+# passes 52 characters (kubernetes/kubernetes#64023).
+_STATEFULSET_NAME_MAX = 52
+
 
 class LLMDBackend:
     def build(
@@ -65,7 +72,10 @@ class LLMDBackend:
         # Leader and one Worker member, so both are always present here.
         assert leader is not None
         assert worker is not None
-        name = base.engine_name(replica, engine)
+        # The last group's worker StatefulSet has the longest name.
+        name = base.dns_1035_label(
+            base.engine_name(replica, engine), "lws", _STATEFULSET_NAME_MAX - len(f"-{int(engine.copies or 1) - 1}")
+        )
 
         # Gang size: the leader plus the worker's nodes (one follower pod each).
         size = 1 + (int(worker.worker.nodes) if worker.worker else 1)
