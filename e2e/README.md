@@ -94,16 +94,17 @@ against. The control-plane cluster needs no DRA.
 ```bash
 nix run .#e2e              # bring up both clusters + deploy the mock model
 nix run .#e2e -- --verify  # same, then run the tests
+nix run .#e2e -- --test    # run the tests against clusters already up
 nix run .#e2e -- --clean   # tear both clusters down
 ```
 
 Arguments after `--verify` go to pytest, so `nix run .#e2e -- --verify -k usage`
 runs only the tests whose names match. Bring-up reuses clusters that are already
 up. To rerun the tests against an environment that's up, without bringing it up
-again:
+again, use `--test`:
 
 ```bash
-uv run --isolated --package crossplane-models --group dev pytest e2e
+nix run .#e2e -- --test -k usage
 ```
 
 `crossplane project run` installs the config and applies the resources, then
@@ -169,8 +170,8 @@ e2e/
   conftest.py                # fixtures: the clusters, curl pods, readiness
   test_serving.py            # the tests
   kube.py, gateway.py        # kubectl and curl helpers
-  wait.py                    # polling until a condition holds
   client.yaml                # the curl pod the tests send requests from
+  wait.py                    # polling until a condition holds
   dra-example-driver.yaml    # vendored fake DRA GPU driver (applied to workload)
   manifests/                 # applied to the control plane after setup
     00-namespaces.yaml

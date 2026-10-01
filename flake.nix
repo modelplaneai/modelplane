@@ -183,6 +183,7 @@
           };
           stop = apps.stop { inherit crossplane; };
           e2e = apps.e2e { inherit crossplane functionsPkg pythonSet; };
+          test = apps.test { inherit pythonSet functionNames; };
           stacks = apps.stacks { inherit (pkgs) aicr; };
         }
       );

@@ -296,6 +296,68 @@
       );
     };
 
+  # Run the composition functions' unit tests outside the sandbox, against the
+  # same virtualenvs nix flake check uses. With no function named it runs every
+  # function's tests, each in a pytest session of its own because every
+  # function's package is named `function`. Arguments after the function name
+  # go to pytest, e.g. nix run .#test -- compose-usages -k namespace.
+  test =
+    {
+      pythonSet,
+      functionNames,
+    }:
+    let
+      venvs = map (name: {
+        inherit name;
+        venv = pythonSet.mkVirtualEnv "${name}-test-env" {
+          ${name} = [ ];
+          pytest = [ ];
+        };
+      }) functionNames;
+      cases = pkgs.lib.concatMapStrings (v: ''
+        ${v.name}) python=${v.venv}/bin/python ;;
+      '') venvs;
+    in
+    {
+      type = "app";
+      meta.description = "Run the composition functions' unit tests";
+      program = pkgs.lib.getExe (
+        pkgs.writeShellApplication {
+          name = "modelplane-test";
+          runtimeInputs = [ pkgs.coreutils ];
+          inheritPath = false;
+          text = ''
+            run() {
+              local fn="$1" python
+              shift
+              case "$fn" in
+                ${cases}
+                *)
+                  echo "no such function: $fn" >&2
+                  return 2
+                  ;;
+              esac
+              "$python" -m pytest "functions/$fn/tests" "$@"
+            }
+
+            if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
+              run "$@"
+              exit
+            fi
+
+            failed=()
+            for fn in ${pkgs.lib.concatStringsSep " " functionNames}; do
+              run "$fn" "$@" || failed+=("$fn")
+            done
+            if [ ''${#failed[@]} -gt 0 ]; then
+              echo "failed: ''${failed[*]}" >&2
+              exit 1
+            fi
+          '';
+        }
+      );
+    };
+
   # Run the two-cluster local end-to-end test: a workload kind cluster
   # registered via source: Existing (serving stack + model) and a control-plane
   # cluster (crossplane + the Configuration). Two clusters because the
@@ -304,8 +366,8 @@
   #
   # With no argument it brings the environment up and applies the manifests,
   # --no-apply stops short of the manifests, --verify then runs the tests in
-  # e2e/ (passing any further arguments to pytest), and --clean tears it all
-  # down. This app materialises the Nix-built function images (as `run` does)
+  # e2e/ (passing any further arguments to pytest), --test runs them against an
+  # environment that's already up, and --clean tears it all down. This app materialises the Nix-built function images (as `run` does)
   # for crossplane project run to load.
   e2e =
     {
@@ -353,9 +415,15 @@
                 exec python -m pytest e2e \
                   -o log_cli=true --log-cli-level=INFO "$@"
                 ;;
+              --test)
+                shift
+                exec python -m pytest e2e \
+                  -o log_cli=true --log-cli-level=INFO "$@"
+                ;;
               *)
-                echo "usage: nix run .#e2e" \
-                  "[-- --no-apply | --verify [pytest args...] | --clean]" >&2
+                echo "usage: nix run .#e2e -- [--no-apply |" \
+                  "--verify [pytest args...] | --test [pytest args...] |" \
+                  "--clean]" >&2
                 exit 2
                 ;;
             esac

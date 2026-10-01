@@ -364,16 +364,16 @@ input is deterministic. Protobuf maps (`desired.resources`,
 (`conditions`, `results`, status arrays) must match the order the function
 emits.
 
-`nix flake check` runs every function's tests. To run one function's while
-you work on it:
+`nix flake check` runs every function's tests, and so does `nix run .#test`,
+outside the sandbox. Name a function to run only its tests, and pass pytest
+arguments after it:
 
 ```bash
-uv run --isolated --package compose-usages --group dev pytest functions/compose-usages/tests
+nix run .#test -- compose-usages -k namespace
 ```
 
-`--isolated` gives each run its own environment, because every function names
-its package `function`, so two can't share one. That's also why each function
-runs in its own pytest session.
+Each function runs in a pytest session of its own, because every function names
+its package `function`.
 
 ### Running locally
 
