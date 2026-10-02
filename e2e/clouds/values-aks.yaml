@@ -1,0 +1,25 @@
+# The AKS leg of the cloud e2e matrix; see values-eks.yaml for the shape.
+# The taint VALUE is load-bearing here: the AKS stack's accelerated
+# tolerations are operator: Equal, value: "true" (AKS admission rejects
+# wildcards), so any other value would wrongly exclude them.
+# kubernetes.azure.com/accelerator is AKS's own GPU pool label; the stack's
+# nvidia-toolkit-hardening DaemonSet node-affines to it.
+cloud: AKS
+slug: aks
+expectedDaemonsets: >-
+  nvidia-dra-driver/nvidia-dra-driver-gpu-kubelet-plugin=2
+  node-feature-discovery/mp-node-feature-discovery-worker=3
+  monitoring/prometheus-node-exporter=3
+  gpu-operator/nvidia-toolkit-hardening=2
+node:
+  gpuTaintValue: "true"
+  labels:
+    type: kwok
+    kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    node.kubernetes.io/instance-type: Standard_ND96isr_H100_v5
+    kubernetes.azure.com/accelerator: nvidia
+    modelplane.ai/pool: gpufake
+    modelplane.ai/gpu: h100
+    nvidia.com/gpu.present: "true"
+    feature.node.kubernetes.io/pci-10de.present: "true"

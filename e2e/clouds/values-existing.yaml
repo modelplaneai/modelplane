@@ -1,0 +1,23 @@
+# The Existing (BYO) leg of the cloud e2e matrix; see values-eks.yaml for
+# the shape. The model e2e already installs this stack, but on an untainted
+# single node — this leg adds what it can't check: tainted GPU pools, so the
+# placement/toleration audit has teeth. Modelplane doesn't provision or
+# label BYO pools; the operator does, so the labels here are the convention
+# the stack relies on (the NFD GPU labels NFD's worker would set once it
+# reaches the node, and the nvidia.com/gpu taint BYO GPU pools commonly
+# carry — the stack tolerates it with operator: Exists).
+cloud: Existing
+slug: existing
+expectedDaemonsets: >-
+  nvidia-dra-driver/dra-driver-nvidia-gpu-kubelet-plugin=2
+  node-feature-discovery/mp-node-feature-discovery-worker=3
+  monitoring/mp-kube-prometheus-stack-prometheus-node-exporter=3
+node:
+  gpuTaintValue: "true"
+  labels:
+    type: kwok
+    kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    modelplane.ai/pool: gpu-fake
+    nvidia.com/gpu.present: "true"
+    feature.node.kubernetes.io/pci-10de.present: "true"
