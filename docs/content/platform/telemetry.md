@@ -98,7 +98,7 @@ spec:
 `type` names a collector exporter, by the name OpenTelemetry gives it.
 
 To authenticate with a bearer token, store the token in a Secret in
-`modelplane-system` on your control plane. Create it once: Modelplane copies it to
+`modelplane-system` on your control plane. Create it once. Modelplane copies it to
 every cluster running a collector, so you don't put the credential on each GPU
 cluster yourself.
 
@@ -210,9 +210,10 @@ Modelplane doesn't run any collectors until you create a
 Creating a destination turns collection on everywhere at once, and there's no per-deployment
 opt-out.
 
-Your clusters reach the control plane, and only the control plane reaches your backend. A
-cluster with no route to your observability stack still reports, and the backend's
-credential lives in one place instead of on every GPU cluster.
+Each cluster's collector exports to your backend itself. A cluster needs a route to that
+backend to report. Where a sink names a `secretRef`, you create that Secret once on the
+control plane and Modelplane copies it to every cluster running a collector, so the
+credential is held on each of them.
 
 ## Computing rates, quantiles, and ratios
 
