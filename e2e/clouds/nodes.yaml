@@ -1,0 +1,32 @@
+# Two fake GPU nodes, managed by KWOK (annotation kwok.x-k8s.io/node=fake).
+# The per-cloud shape — labels and taint value — comes from the
+# values-<cloud>.yaml the Chainsaw test binds in ($values). Two nodes so
+# per-node DaemonSet fan-out is visible. No nvidia.com/gpu extended resource:
+# the stack is DRA-mode (device plugin disabled everywhere).
+apiVersion: v1
+kind: Node
+metadata:
+  name: kwok-gpu-0
+  annotations:
+    kwok.x-k8s.io/node: fake
+    node.alpha.kubernetes.io/ttl: "0"
+  labels: ($values.node.labels)
+spec:
+  taints:
+    - key: nvidia.com/gpu
+      value: ($values.node.gpuTaintValue)
+      effect: NoSchedule
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: kwok-gpu-1
+  annotations:
+    kwok.x-k8s.io/node: fake
+    node.alpha.kubernetes.io/ttl: "0"
+  labels: ($values.node.labels)
+spec:
+  taints:
+    - key: nvidia.com/gpu
+      value: ($values.node.gpuTaintValue)
+      effect: NoSchedule

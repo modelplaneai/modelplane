@@ -1,0 +1,22 @@
+# The Nebius leg of the cloud e2e matrix; see values-eks.yaml for the shape.
+# The hand-written Nebius half (stacks/clouds/nebius.py) has no gpu-operator
+# or nvsentinel, and its charts keep default names, so the DaemonSet names
+# differ from the generated clouds. The labels and taint mirror what
+# compose-nebius-cluster stamps on GPU node groups.
+cloud: Nebius
+slug: nebius
+expectedDaemonsets: >-
+  nvidia-dra-driver/dra-driver-nvidia-gpu-kubelet-plugin=2
+  node-feature-discovery/mp-node-feature-discovery-worker=3
+  monitoring/mp-kube-prometheus-stack-prometheus-node-exporter=3
+node:
+  gpuTaintValue: "true"
+  labels:
+    type: kwok
+    kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    node.kubernetes.io/instance-type: gpu-h100-sxm
+    modelplane.ai/pool: gpu-fake
+    modelplane.ai/gpu: h100
+    nvidia.com/gpu.present: "true"
+    feature.node.kubernetes.io/pci-10de.present: "true"

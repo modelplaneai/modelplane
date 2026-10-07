@@ -1,0 +1,25 @@
+# The Vultr leg of the cloud e2e matrix; see values-eks.yaml for the shape.
+# The hand-written Vultr half (stacks/clouds/vultr.py) has no NFD: Vultr
+# pre-installs the NVIDIA GPU Operator (and with it NFD) on every VKE GPU
+# cluster, so the stack must not run a second instance. That platform add-on
+# would set the NFD GPU labels on real nodes; here they are pre-set like the
+# other clouds. nvidia.com/gpu.deploy.device-plugin=false is the label
+# compose-vultr-cluster stamps so the platform operator's device plugin
+# stands down and the DRA driver is the sole allocator.
+cloud: Vultr
+slug: vultr
+expectedDaemonsets: >-
+  nvidia-dra-driver/dra-driver-nvidia-gpu-kubelet-plugin=2
+  monitoring/mp-kube-prometheus-stack-prometheus-node-exporter=3
+node:
+  gpuTaintValue: "true"
+  labels:
+    type: kwok
+    kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    node.kubernetes.io/instance-type: vcg-a16-3c-32g-8vram
+    nvidia.com/gpu.deploy.device-plugin: "false"
+    modelplane.ai/pool: gpu-fake
+    modelplane.ai/gpu: a16
+    nvidia.com/gpu.present: "true"
+    feature.node.kubernetes.io/pci-10de.present: "true"
