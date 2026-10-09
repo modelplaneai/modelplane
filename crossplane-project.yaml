@@ -156,7 +156,7 @@ spec:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-kubernetes
-      version: v1.3.0
+      version: v1.4.1
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1

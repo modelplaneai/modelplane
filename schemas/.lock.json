@@ -16,7 +16,7 @@
     "xpkg://xpkg.upbound.io/upbound/provider-gcp-compute:v2.6.0": "sha256:c7417c461d403f0d59a2dd83f242cebd5d738f9ad328e03ffe0c7b99ea251635",
     "xpkg://xpkg.upbound.io/upbound/provider-gcp-container:v2.6.0": "sha256:b3f68d01ab2529026f1a5dd6d6215a2f499710fad4edd4850546bf6c756befb6",
     "xpkg://xpkg.upbound.io/upbound/provider-helm:v1.4.0": "sha256:fbafc3f6219ef7d2f8b4088947a59cc6268b53f5d0fb9b91d35932c0a06b0567",
-    "xpkg://xpkg.upbound.io/upbound/provider-kubernetes:v1.3.0": "sha256:b7a78b85a6442e30fd500b3c059fd0d4734db47cbf11790492576780f0f866b0",
+    "xpkg://xpkg.upbound.io/upbound/provider-kubernetes:v1.4.1": "sha256:24f36d60ea4f1daaa5ec6bd54912fbd1a8d1e8b2974a3024c392892522016cc7",
     "xpkg://xpkg.upbound.io/upbound/provider-nebius:v1.2.0": "sha256:ddd7d920612eba5b5c5573b1f7a13f5b1cb456ca7986c5b1476e2d0f6be3d0f9",
     "xpkg://xpkg.upbound.io/upbound/provider-vultr:v1.0.0": "sha256:3d690bc7787a887a0dd51887100f0daeab1b636a58faf697ba680e1e201b2003"
   }
