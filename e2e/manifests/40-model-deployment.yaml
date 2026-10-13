@@ -93,7 +93,8 @@ spec:
                           try:
                               body = json.loads(raw or b"{}")
                           except Exception:
-                              body = {}
+                              self._s({"error": {"message": "body is not JSON", "type": "BadRequestError"}}, 400)
+                              return
                           # A real engine only answers to the name it was started
                           # with. Rejecting anything else is what makes the
                           # InferenceGateway's model rewriting observable: without it the
@@ -103,7 +104,12 @@ spec:
                                                             % (body.get("model"), served),
                                                  "type": "NotFoundError"}}, 404)
                               return
-                          text = "Hello from the Modelplane local mock engine."
+                          if not body.get("messages"):
+                              self._s({"error": {"message": "messages is required", "type": "BadRequestError"}}, 400)
+                              return
+                          # Echo the last user turn, so a caller can tell its request reached the engine intact.
+                          turns = [m.get("content") or "" for m in body["messages"] if m.get("role") == "user"]
+                          text = "Echo: " + (turns[-1] if turns else "")
                           if self.path.startswith("/v1/messages"):
                               # Anthropic Messages API; vLLM serves it alongside the OpenAI routes.
                               self._s({
@@ -112,6 +118,17 @@ spec:
                                   "content": [{"type": "text", "text": text}],
                                   "usage": {"input_tokens": 12, "output_tokens": 9},
                               })
+                          elif body.get("stream"):
+                              head = {"id": "chatcmpl-mock", "object": "chat.completion.chunk", "model": served}
+                              deltas = [{"role": "assistant"}] + [{"content": w + " "} for w in text.split()]
+                              frames = [dict(head, choices=[{"index": 0, "delta": d}]) for d in deltas]
+                              frames.append(dict(head, choices=[{"index": 0, "delta": {}, "finish_reason": "stop"}]))
+                              self.send_response(200)
+                              self.send_header("content-type", "text/event-stream")
+                              self.end_headers()
+                              for f in frames:
+                                  self.wfile.write(b"data: " + json.dumps(f).encode() + b"\n\n")
+                              self.wfile.write(b"data: [DONE]\n\n")
                           else:
                               self._s({
                                   "id": "chatcmpl-mock", "object": "chat.completion", "model": served,
