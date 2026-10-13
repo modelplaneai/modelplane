@@ -54,6 +54,7 @@ class Response:
     status: int
     # The body, or why no HTTP response came back.
     body: str
+    content_type: str = ""
 
     def json(self) -> typing.Any:  # noqa: ANN401 - a JSON body can decode to any type.
         """Decode the body as JSON."""
@@ -68,20 +69,26 @@ class Client:
     namespace: str
     pod: str
 
-    def request(self, url: str, headers: dict[str, str], body: object | None = None) -> Response:
-        """Send a request, a POST of body as JSON if there is one and otherwise a GET."""
-        curl = ["curl", "--silent", "--show-error", "--max-time", "15", "--write-out", "\n%{http_code}", url]
+    def request(
+        self, url: str, headers: dict[str, str], body: object | None = None, *, raw: str | None = None
+    ) -> Response:
+        """Send a request, a POST of body as JSON (or of raw as is) if there is one and otherwise a GET."""
+        write_out = "\n%{content_type}\n%{http_code}"
+        curl = ["curl", "--silent", "--show-error", "--max-time", "15", "--write-out", write_out, url]
         for name, value in headers.items():
             curl += ["--header", f"{name}: {value}"]
         if body is not None:
-            curl += ["--header", "content-type: application/json", "--data", json.dumps(body)]
+            raw = json.dumps(body)
+        if raw is not None:
+            curl += ["--header", "content-type: application/json", "--data", raw]
         result = self.cluster.exec(self.pod, self.namespace, curl)
         # curl exits non-zero only when no HTTP response came back.
         if result.code != 0:
             return Response(status=0, body=result.stderr.strip())
-        # --write-out puts the status on a line of its own, after the body.
-        text, _, status = result.stdout.rpartition("\n")
-        return Response(status=int(status), body=text)
+        # --write-out puts the content type and status on lines of their own, after the body.
+        rest, _, status = result.stdout.rpartition("\n")
+        text, _, content_type = rest.rpartition("\n")
+        return Response(status=int(status), body=text, content_type=content_type)
 
     def connect(self, url: str) -> int:
         """GET a URL without verifying the server's certificate, and return curl's exit code."""

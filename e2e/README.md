@@ -191,6 +191,7 @@ e2e/
     conftest.py              # fixtures: the clusters, curl pods, readiness
     test_auth.py             # the InferenceGateway refuses unknown callers
     test_routing.py          # it routes OpenAI and Anthropic requests
+    test_serving.py          # requests and responses cross it intact, bad ones fail
     test_metering.py         # it logs a usage record per request
     test_cluster_gateway.py  # the cluster gateway requires a client certificate
     test_telemetry.py        # the engine's series reach the collector's sink
