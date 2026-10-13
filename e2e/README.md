@@ -89,6 +89,54 @@ cloud's kinds and wake that provider; the e2e just never creates one. Undoing
 these trims is possible but leaves a control plane that is no longer the one CI
 runs, so prefer a separate control plane for cloud work.
 
+## Cloud serving stacks on kind (`--cloud`)
+
+`nix run .#e2e -- --cloud eks|aks|gke|civo|nebius|vultr|existing` installs that
+cloud's serving stack — the AICR-generated component lists for EKS/AKS/GKE, or
+the hand-written halves for Civo, Nebius, Vultr and Existing — onto the same
+workload kind cluster, with no cloud credentials. The trick is
+[KWOK](https://kwok.sigs.k8s.io): bring-up installs its pinned `kwok` and
+`stage-fast` charts and applies two fake Nodes labelled and tainted exactly
+like that cloud's GPU pools. The real kind node plays the untainted system
+pool, so system components install and run for real; the GPU-toleration
+DaemonSets fan out to the fake nodes, where KWOK marks their pods Running —
+which is all helm `--wait` and the composition's readiness gates need.
+
+The clouds are one data-driven matrix: each leg in `clouds/__init__.py` holds
+everything cloud-specific — the fake nodes' labels, the GPU taint value, the
+stack's `spec.cloud`, and the DaemonSets expected to fan out to the GPU pool.
+Adding fidelity for a cloud means editing its leg, not a copy of the test.
+
+The `ServingStack` XR is applied directly rather than through an
+`InferenceCluster`, because `source: Existing` hard-wires `cloud: Existing`;
+the XRD accepts exactly the shape the cluster compositions compose, so
+`compose-serving-stack` is exercised end to end through real
+provider-helm/provider-kubernetes. Bring-up also parks the composition
+functions the ServingStack pipeline doesn't call at zero replicas, giving the
+install the runner's memory.
+
+Cloud mode always verifies: after bring-up, pytest runs `clouds/` against the
+clusters (`--no-apply` stops short of the fake nodes and the XR, `--test`
+reruns the tests alone). A session fixture waits for the `ServingStack` to go
+Ready, then the asserts are two-sided:
+
+- **DaemonSet fan-out**: the leg's expected DaemonSets (the DRA kubelet
+  plugin, NFD worker, node-exporter; toolkit-hardening on AKS) reach their
+  ready counts — a toleration too *narrow* (e.g. the wrong `Equal` value on
+  AKS) shows up as a shortfall.
+- **Placement/toleration audit**: no pod outside the GPU allowlist carries a
+  wildcard or `nvidia.com/gpu` toleration, nothing unexpected sits on a fake
+  GPU node, and GPU-only pods never sit on the system pool — a toleration too
+  *broad* (the "tolerates every taint" class of bug) fails here even when the
+  scheduler happened to keep the pod on the system node.
+
+What cloud mode does **not** test: AKS's admission rejection of wildcard
+tolerations (the audit approximates it client-side), real DRA allocation and
+driver/toolkit behaviour on GPU nodes (all faked by KWOK; the model e2e's
+dra-example-driver path covers DRA allocation), the EKS EFA driver and GKE's
+`nvidia-driver-installer` (installed by the cluster compositions/platform, not
+the serving stack), and the model/inference path (covered by the model e2e).
+
 ## Prerequisites
 
 - **Docker** with real headroom — **≥ 16 GB memory** and **plenty of disk**
@@ -109,10 +157,11 @@ against. The control-plane cluster needs no DRA.
 ## Run
 
 ```bash
-nix run .#e2e              # bring up both clusters + deploy the mock model
-nix run .#e2e -- --verify  # same, then run the tests
-nix run .#e2e -- --test    # run the tests against clusters already up
-nix run .#e2e -- --clean   # tear both clusters down
+nix run .#e2e                  # bring up both clusters + deploy the mock model
+nix run .#e2e -- --verify      # same, then run the tests
+nix run .#e2e -- --test        # run the tests against clusters already up
+nix run .#e2e -- --cloud eks   # one cloud's serving stack on KWOK-faked GPU pools (see below)
+nix run .#e2e -- --clean       # tear both clusters down
 ```
 
 Arguments after `--verify` go to pytest, so `nix run .#e2e -- --verify -k usage`
@@ -194,6 +243,10 @@ e2e/
     test_metering.py         # it logs a usage record per request
     test_cluster_gateway.py  # the cluster gateway requires a client certificate
     test_telemetry.py        # the engine's series reach the collector's sink
+  clouds/                    # --cloud mode: cloud stacks on KWOK-faked GPU pools
+    __init__.py              # the matrix: per-cloud node shape, taint, expected DaemonSets
+    conftest.py              # fixtures: the clusters, the ServingStack Ready wait
+    test_placement.py        # DaemonSet fan-out + placement/toleration audits
   dra-example-driver.yaml    # vendored fake DRA GPU driver (applied to workload)
   manifests/                 # applied to the control plane after setup
     00-namespaces.yaml

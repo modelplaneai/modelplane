@@ -124,7 +124,10 @@ gateway routing, a live request — with no cloud credentials. Add `-- --verify`
 and it runs the pytest suite in `e2e/tests/`, exiting non-zero if a test fails. That
 verify command is what the label-gated `E2E` workflow runs on CI (add the
 `test-e2e` label to a PR), so a green local `--verify` and a green CI run mean
-the same thing. See `e2e/README.md`.
+the same thing. `-- --cloud <cloud>` instead installs one cloud's serving
+stack onto KWOK-faked GPU pools and audits placement, still with no
+credentials; the same label gates its per-cloud CI matrix. See
+`e2e/README.md`.
 
 ## Submitting changes
 

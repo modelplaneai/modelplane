@@ -282,6 +282,11 @@ def _kube_prometheus_stack(*, ready: fnv1.Ready) -> fnv1.Resource:
                             },
                             "grafana": {"enabled": False},
                             "alertmanager": {"enabled": False},
+                            "prometheus-node-exporter": {
+                                "tolerations": [
+                                    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                                ],
+                            },
                         },
                     },
                 },
