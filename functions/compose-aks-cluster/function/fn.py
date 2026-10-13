@@ -124,6 +124,13 @@ _DNS_SERVICE_IP = "10.96.0.10"
 _ManagementPolicy = Literal["Observe", "Create", "Update", "Delete", "LateInitialize", "*"]
 _NODE_POOL_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update", "Delete"]
 
+# The upgrade surge declared on every node pool, the system pool included. AKS
+# gives a pool created without one 10%, and nothing late-initializes that into
+# the spec, so the provider would try to remove AKS's value on every reconcile
+# while AKS puts it back: an endless agent pool update loop. Declaring AKS's
+# own default ends the loop without changing how pools upgrade.
+_MAX_SURGE = "10%"
+
 # Management policies that exclude Delete, used for resources installed on
 # the workload cluster (the RWX StorageClass Object and the network operator
 # Helm Release). These exist only to configure the cluster and are only ever
@@ -345,6 +352,7 @@ class Composer:
                         osDiskSizeGb=_SYSTEM_POOL_DISK_SIZE_GB,
                         temporaryNameForRotation=_SYSTEM_POOL_ROTATION_NAME,
                         nodeLabels={_LABEL_POOL: _SYSTEM_POOL_NAME},
+                        upgradeSettings=clusterv1beta1.UpgradeSettings(maxSurge=_MAX_SURGE),
                         vnetSubnetIdSelector=clusterv1beta1.VnetSubnetIdSelector(
                             matchControllerRef=True,
                         ),
@@ -389,6 +397,7 @@ class Composer:
                 minCount=pool.minNodeCount,
                 maxCount=pool.maxNodeCount,
                 nodeLabels={_LABEL_POOL: pool.name},
+                upgradeSettings=nodepoolv1beta1.UpgradeSettings(maxSurge=_MAX_SURGE),
             )
 
             if pool.zones:

@@ -158,6 +158,7 @@ def _cluster(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resou
                             "osDiskSizeGb": 100,
                             "temporaryNameForRotation": "systemtmp",
                             "nodeLabels": {"modelplane.ai/pool": "system"},
+                            "upgradeSettings": {"maxSurge": "10%"},
                             "vnetSubnetIdSelector": {"matchControllerRef": True},
                         },
                         "networkProfile": {
@@ -202,6 +203,7 @@ def _nodepool_gpu(*, cred_kind: str, cred_name: str, zones: list[str] | None, re
                     "modelplane.ai/pool": "gpuh100",
                 },
                 "nodeTaints": ["nvidia.com/gpu=true:NoSchedule"],
+                "upgradeSettings": {"maxSurge": "10%"},
             },
         },
     }
@@ -440,6 +442,7 @@ COMPOSE_CASES = [
                                             "osDiskSizeGb": 100,
                                             "temporaryNameForRotation": "systemtmp",
                                             "nodeLabels": {"modelplane.ai/pool": "system"},
+                                            "upgradeSettings": {"maxSurge": "10%"},
                                             "vnetSubnetIdSelector": {"matchControllerRef": True},
                                         },
                                         "networkProfile": {
@@ -748,6 +751,7 @@ COMPOSE_CASES = [
                                             "osDiskSizeGb": 100,
                                             "temporaryNameForRotation": "systemtmp",
                                             "nodeLabels": {"modelplane.ai/pool": "system"},
+                                            "upgradeSettings": {"maxSurge": "10%"},
                                             "vnetSubnetIdSelector": {"matchControllerRef": True},
                                         },
                                         "networkProfile": {
@@ -799,6 +803,7 @@ COMPOSE_CASES = [
                                             "modelplane.ai/pool": "gpuh100",
                                         },
                                         "nodeTaints": ["nvidia.com/gpu=true:NoSchedule"],
+                                        "upgradeSettings": {"maxSurge": "10%"},
                                     },
                                 },
                                 "status": {
