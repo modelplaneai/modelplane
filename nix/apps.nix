@@ -381,8 +381,12 @@
   # --no-apply stops short of the manifests, --verify then runs the tests in
   # e2e/tests/ (passing any further arguments to pytest), --test runs them
   # against an environment that's already up, and --clean tears it all down.
-  # This app materialises the Nix-built function images (as `run` does) for
-  # crossplane project run to load.
+  # --cloud <cloud> brings the environment up as that cloud's leg instead -
+  # KWOK-faked GPU pools and the cloud's ServingStack, no model - and runs the
+  # tests in e2e/clouds/; it always verifies, with --no-apply to stop short of
+  # the ServingStack and --test to rerun the tests alone. This app
+  # materialises the Nix-built function images (as `run` does) for crossplane
+  # project run to load.
   e2e =
     {
       crossplane,
@@ -413,6 +417,7 @@
             pkgs.coreutils
             pkgs.kind
             pkgs.kubectl
+            pkgs.kubernetes-helm
             pkgs.docker-client
           ];
           inheritPath = false;
@@ -436,9 +441,33 @@
                 exec python -m pytest e2e/tests \
                   -o log_cli=true --log-cli-level=INFO "$@"
                 ;;
+              --cloud)
+                shift
+                cloud="''${1:?--cloud needs a cloud, e.g. --cloud eks}"
+                shift
+                case "''${1:-}" in
+                  "")
+                    python -m e2e.environment up --cloud "$cloud"
+                    exec python -m pytest e2e/clouds --cloud "$cloud" \
+                      -o log_cli=true --log-cli-level=INFO
+                    ;;
+                  --no-apply) exec python -m e2e.environment up --cloud "$cloud" --no-apply ;;
+                  --test)
+                    shift
+                    exec python -m pytest e2e/clouds --cloud "$cloud" \
+                      -o log_cli=true --log-cli-level=INFO "$@"
+                    ;;
+                  *)
+                    echo "usage: nix run .#e2e -- --cloud <cloud>" \
+                      "[--no-apply | --test [pytest args...]]" >&2
+                    exit 2
+                    ;;
+                esac
+                ;;
               *)
                 echo "usage: nix run .#e2e -- [--no-apply |" \
                   "--verify [pytest args...] | --test [pytest args...] |" \
+                  "--cloud <cloud> [--no-apply | --test [pytest args...]] |" \
                   "--clean]" >&2
                 exit 2
                 ;;

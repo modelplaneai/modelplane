@@ -19,7 +19,11 @@ control plane runs Crossplane and the Configuration, managed by `crossplane
 project run`, and registers the workload cluster as InferenceCluster local with
 source: Existing. See README.md.
 
-    python -m e2e.environment up [--no-apply]
+With --cloud the workload cluster plays a cloud's tainted GPU pool instead:
+KWOK fakes the GPU nodes, and that cloud's ServingStack goes in rather than
+the model manifests. The tests in e2e/clouds/ then audit placement.
+
+    python -m e2e.environment up [--no-apply] [--cloud <cloud>]
     python -m e2e.environment down
 """
 
@@ -32,6 +36,8 @@ import pathlib
 import shlex
 import subprocess
 import tempfile
+
+from e2e import clouds
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +58,15 @@ DEADLOCKING_KUBELETS = ("v1.34.0", "v1.34.1")
 METALLB_URL = "https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml"
 CROSSPLANE_VERSION = "2.4.0"
 
+# KWOK chart version 0.3.0 is appVersion v0.8.0. Cloud legs install it for the
+# fake GPU nodes; the model e2e doesn't use it.
+KWOK_CHART_REPO = "https://kwok.sigs.k8s.io/charts/"
+KWOK_CHART_VERSION = "0.3.0"
+
+# The functions the ServingStack pipeline calls (see
+# apis/servingstacks/composition.yaml). A cloud leg parks the rest.
+SERVING_STACK_FUNCTIONS = ("compose-serving-stack", "compose-usages")
+
 MANIFESTS = ROOT / "e2e" / "manifests"
 
 
@@ -59,18 +74,32 @@ class BringUpError(Exception):
     """The environment can't be brought up as asked."""
 
 
-def up(*, apply_manifests: bool) -> None:
-    """Bring up both clusters and install Modelplane, then apply the manifests the tests use."""
-    up_workload()
+def up(*, apply_manifests: bool, cloud: clouds.Cloud | None = None) -> None:
+    """Bring up both clusters and install Modelplane, then apply what the tests exercise.
+
+    The model e2e applies the manifests in e2e/manifests. A cloud leg instead
+    applies that cloud's fake GPU Nodes and its ServingStack, and parks the
+    composition functions the ServingStack pipeline doesn't call.
+    """
+    up_workload(cloud=cloud)
     up_control_plane()
+    if cloud is not None:
+        park_unused_functions()
     if not apply_manifests:
-        log.info("Control plane ready. Skipped applying %s", MANIFESTS)
+        what = MANIFESTS if cloud is None else f"the {cloud.cloud} ServingStack"
+        log.info("Control plane ready. Skipped applying %s", what)
         return
-    log.info("Applying %s", MANIFESTS)
-    kubectl(CONTROL_PLANE_CONTEXT, "apply", f"--filename={MANIFESTS}")
+    if cloud is None:
+        log.info("Applying %s", MANIFESTS)
+        kubectl(CONTROL_PLANE_CONTEXT, "apply", f"--filename={MANIFESTS}")
+        return
+    log.info("Applying the fake GPU nodes and the %s ServingStack", cloud.cloud)
+    nodes = {"apiVersion": "v1", "kind": "List", "items": clouds.nodes(cloud)}
+    kubectl(WORKLOAD_CONTEXT, "apply", "--filename=-", stdin=json.dumps(nodes))
+    kubectl(CONTROL_PLANE_CONTEXT, "apply", "--filename=-", stdin=json.dumps(clouds.serving_stack(cloud)))
 
 
-def up_workload() -> None:
+def up_workload(*, cloud: clouds.Cloud | None = None) -> None:
     """Create the workload cluster, and install what Modelplane expects a cluster to have already."""
     create_workload_cluster()
 
@@ -103,6 +132,28 @@ def up_workload() -> None:
         ],
     }
     kubectl(WORKLOAD_CONTEXT, "apply", "--filename=-", stdin=json.dumps(pool))
+
+    if cloud is not None:
+        # A cloud leg fakes the GPU pool instead of the GPU: KWOK manages the
+        # Nodes bring-up applies later (shaped like the cloud's GPU pools, see
+        # clouds/__init__.py), keeping them Ready and - via its stage-fast
+        # Stages - marking every pod scheduled onto them Running. So the
+        # stack's GPU DaemonSets and helm --wait behave as on a real tainted
+        # cloud pool, while the real kind node stays untouched and plays the
+        # untainted system pool.
+        log.info("Installing KWOK (fake kubelets) on the workload cluster")
+        run(
+            "helm", "upgrade", "--install", "kwok", "kwok",
+            f"--kube-context={WORKLOAD_CONTEXT}", "--namespace=kube-system",
+            f"--repo={KWOK_CHART_REPO}", f"--version={KWOK_CHART_VERSION}",
+            "--set=hostNetwork=true", "--wait",
+        )  # fmt: skip
+        run(
+            "helm", "upgrade", "--install", "kwok-stages", "stage-fast",
+            f"--kube-context={WORKLOAD_CONTEXT}", "--namespace=kube-system",
+            f"--repo={KWOK_CHART_REPO}", f"--version={KWOK_CHART_VERSION}",
+        )  # fmt: skip
+        return
 
     # Fake DRA GPUs, so a `claim: DRA` engine's ResourceClaim binds on this
     # GPU-less node. Without a DRA driver the claim stays Pending and the engine
@@ -235,6 +286,46 @@ def up_control_plane() -> None:
     kubectl(CONTROL_PLANE_CONTEXT, "apply", "--filename=-", stdin=json.dumps(secret))
 
 
+def park_unused_functions() -> None:
+    """Scale the composition functions the ServingStack pipeline doesn't call to zero.
+
+    A cloud leg composes exactly one XR, so parking the other functions gives
+    the serving-stack install the runner's memory. A Deployment with zero
+    desired replicas still reports Available, so the package revisions stay
+    healthy - the same mechanism that keeps the safe-start cloud providers
+    dormant. runtimeConfigRef binds like the provider patches in
+    up_control_plane: the runtime reconciler applies it to the
+    already-installed revision. The model e2e keeps every function: its path
+    composes most of them.
+    """
+    log.info("Parking the composition functions the ServingStack pipeline doesn't call")
+    config = {
+        "apiVersion": "pkg.crossplane.io/v1beta1",
+        "kind": "DeploymentRuntimeConfig",
+        "metadata": {"name": "scaled-to-zero"},
+        "spec": {"deploymentTemplate": {"spec": {"replicas": 0, "selector": {}, "template": {}}}},
+    }
+    kubectl(CONTROL_PLANE_CONTEXT, "apply", "--filename=-", stdin=json.dumps(config))
+    patch = {
+        "spec": {
+            "runtimeConfigRef": {
+                "apiVersion": "pkg.crossplane.io/v1beta1",
+                "kind": "DeploymentRuntimeConfig",
+                "name": "scaled-to-zero",
+            }
+        }
+    }
+    functions = output(
+        "kubectl", f"--context={CONTROL_PLANE_CONTEXT}", "get", "functions.pkg.crossplane.io", "--output=name"
+    ).split()
+    for function in functions:
+        # The installed names carry the project prefix
+        # (modelplane-modelplanecompose-serving-stack), so match on the suffix.
+        if function.endswith(SERVING_STACK_FUNCTIONS):
+            continue
+        kubectl(CONTROL_PLANE_CONTEXT, "patch", function, "--type=merge", f"--patch={json.dumps(patch)}")
+
+
 def down() -> None:
     """Delete both clusters, and the control plane's local registry."""
     # Delete both clusters whatever project stop returns: it can exit 0 without
@@ -277,6 +368,11 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     up_command = commands.add_parser("up", help="bring up both clusters, install Modelplane and apply the manifests")
     up_command.add_argument("--no-apply", action="store_true", help="skip the manifests, to apply them by hand")
+    up_command.add_argument(
+        "--cloud",
+        choices=sorted(clouds.CLOUDS),
+        help="install this cloud's serving stack on KWOK-faked GPU pools instead of the model path",
+    )
     commands.add_parser("down", help="delete both clusters")
     args = parser.parse_args()
 
@@ -284,7 +380,7 @@ def main() -> None:
     if args.command == "down":
         down()
         return
-    up(apply_manifests=not args.no_apply)
+    up(apply_manifests=not args.no_apply, cloud=clouds.CLOUDS[args.cloud] if args.cloud else None)
 
 
 if __name__ == "__main__":
