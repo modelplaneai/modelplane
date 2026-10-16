@@ -596,6 +596,19 @@ spec:
                       certificate. An InferenceGateway validates the gateway's
                       serving certificate against it. Written once cert-manager on
                       the cluster has issued.
+              routers:
+                type: array
+                description: >-
+                  The serving.router values this cluster can compose. Every
+                  serving stack composes an InferencePool for a named endpoint
+                  picker, so every cluster lists EndpointPicker. Placement by
+                  serving stack (#418) will use it to keep a deployment off
+                  clusters that can't compose its router.
+                maxItems: 8
+                x-kubernetes-list-type: set
+                items:
+                  type: string
+                  enum: [EndpointPicker]
               cache:
                 type: object
                 description: >-

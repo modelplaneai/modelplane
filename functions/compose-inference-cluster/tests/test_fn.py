@@ -67,6 +67,7 @@ def _desired_inference_cluster(*, gpu_pools: list[dict], cache: dict | None, gat
         "providerConfigRef": {"name": "test-cluster-cluster-kubeconfig-d0f89"},
         "namespace": "modelplane-system",
         "gpuPools": gpu_pools,
+        "routers": ["EndpointPicker"],
     }
     if cache is not None:
         status["cache"] = cache

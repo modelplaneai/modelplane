@@ -40,6 +40,9 @@ spec:
               - cel: |
                   device.driver == "gpu.nvidia.com" && device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("79Gi")) >= 0
           template:
+            metadata:
+              labels:
+                llm-d.ai/engine-type: sglang   # the picker reads SGLang's metric names
             spec:
               containers:
               - name: engine

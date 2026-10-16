@@ -83,10 +83,16 @@ def _model_deployment(
     cluster_selector: v1alpha1.ClusterSelector | None,
     model_cache: str | None,
     serving_mode: Literal["Unified", "PrefillDecode"] | None,
+    endpoint_picker: dict[str, Any] | None,
+    sidecar: dict[str, Any] | None,
     engines: list[dict[str, Any]],
     args: list[str] | None,
 ) -> fnv1.Resource:
-    """The observed ModelDeployment my-model, each of its engines running one Standalone GPU member."""
+    """The observed ModelDeployment my-model, each of its engines running one Standalone GPU member.
+
+    A sidecar, when given, runs beside the engine container in every member. An
+    endpoint picker, when given, comes with router: EndpointPicker.
+    """
     member = v1alpha1.Member(
         role="Standalone",
         nodeSelector=v1alpha1.NodeSelector(
@@ -100,7 +106,10 @@ def _model_deployment(
         ),
         template=v1alpha1.Template(
             spec=v1alpha1.Spec(
-                containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest", args=args)],
+                containers=[
+                    v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest", args=args),
+                    *([v1alpha1.Container.model_validate(sidecar)] if sidecar is not None else []),
+                ],
             ),
         ),
     )
@@ -113,7 +122,15 @@ def _model_deployment(
                 spec=v1alpha1.SpecModel(
                     clusterSelector=cluster_selector,
                     modelCacheRef=v1alpha1.ModelCacheRef(name=model_cache) if model_cache is not None else None,
-                    serving=v1alpha1.Serving(mode=serving_mode) if serving_mode is not None else None,
+                    serving=v1alpha1.Serving(
+                        mode=serving_mode,
+                        router="EndpointPicker" if endpoint_picker is not None else None,
+                        endpointPicker=v1alpha1.EndpointPicker.model_validate(endpoint_picker)
+                        if endpoint_picker is not None
+                        else None,
+                    )
+                    if serving_mode is not None
+                    else None,
                     engines=[v1alpha1.Engine(**engine, members=[member]) for engine in engines],
                 ),
             ),
@@ -284,6 +301,8 @@ def _composed_replica(
     labels: dict[str, str],
     model_cache: str | None,
     serving_mode: str | None,
+    endpoint_picker: dict[str, Any] | None,
+    sidecar: dict[str, Any] | None,
     engines: list[dict[str, str]],
     args: list[str] | None,
     ready: fnv1.Ready,
@@ -314,13 +333,19 @@ def _composed_replica(
                 "selectors": [{"cel": 'device.driver == "gpu.nvidia.com"'}],
             }
         ],
-        "template": {"spec": {"containers": [container]}},
+        # A sidecar passes through as written: only the engine gets the
+        # served model name.
+        "template": {"spec": {"containers": [container, *([sidecar] if sidecar is not None else [])]}},
     }
     spec: dict[str, Any] = {"clusterName": cluster}
     if model_cache is not None:
         spec["modelCacheRef"] = {"name": model_cache}
     if serving_mode is not None:
-        spec["serving"] = {"mode": serving_mode}
+        serving: dict[str, Any] = {"mode": serving_mode}
+        if endpoint_picker is not None:
+            serving["router"] = "EndpointPicker"
+            serving["endpointPicker"] = endpoint_picker
+        spec["serving"] = serving
     spec["engines"] = [{**engine, "copies": 1, "members": [member]} for engine in engines]
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -372,6 +397,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -407,6 +434,8 @@ COMPOSE_CASES = [
                         },
                         model_cache=None,
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_UNSPECIFIED,
@@ -454,6 +483,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -493,6 +524,8 @@ COMPOSE_CASES = [
                         },
                         model_cache=None,
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_UNSPECIFIED,
@@ -533,6 +566,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -577,6 +612,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -637,6 +674,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -680,6 +719,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -732,6 +773,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -771,6 +814,8 @@ COMPOSE_CASES = [
                         },
                         model_cache=None,
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_TRUE,
@@ -820,6 +865,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -858,6 +905,8 @@ COMPOSE_CASES = [
                         },
                         model_cache=None,
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_UNSPECIFIED,
@@ -898,6 +947,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -936,6 +987,8 @@ COMPOSE_CASES = [
                         },
                         model_cache=None,
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_UNSPECIFIED,
@@ -981,6 +1034,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache="qwen",
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -1017,6 +1072,8 @@ COMPOSE_CASES = [
                         },
                         model_cache="qwen",
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_UNSPECIFIED,
@@ -1075,6 +1132,8 @@ COMPOSE_CASES = [
                     cluster_selector=v1alpha1.ClusterSelector(matchLabels={"region": "us-east"}),
                     model_cache="qwen",
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -1111,6 +1170,8 @@ COMPOSE_CASES = [
                         },
                         model_cache="qwen",
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_UNSPECIFIED,
@@ -1173,6 +1234,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache="qwen",
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -1217,6 +1280,8 @@ COMPOSE_CASES = [
                         },
                         model_cache="qwen",
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_UNSPECIFIED,
@@ -1277,6 +1342,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache="qwen",
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -1324,6 +1391,8 @@ COMPOSE_CASES = [
                         },
                         model_cache="qwen",
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_UNSPECIFIED,
@@ -1380,6 +1449,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache="qwen",
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -1456,6 +1527,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache="qwen",
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -1530,6 +1603,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache="qwen",
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -1569,6 +1644,8 @@ COMPOSE_CASES = [
                         },
                         model_cache="qwen",
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_TRUE,
@@ -1634,6 +1711,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=None,
                 ),
@@ -1669,6 +1748,8 @@ COMPOSE_CASES = [
                         },
                         model_cache=None,
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=None,
                         ready=fnv1.READY_UNSPECIFIED,
@@ -1683,6 +1764,8 @@ COMPOSE_CASES = [
                         },
                         model_cache=None,
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=None,
                         ready=fnv1.READY_UNSPECIFIED,
@@ -1718,11 +1801,14 @@ COMPOSE_CASES = [
         ),
     ),
     # compose-model-replica reads serving and each engine's phase to pick
-    # disaggregated routing, which role-labels the phase engines and puts the
-    # pd-sidecar on decode.
+    # disaggregated routing, which role-labels the phase engines. The picker
+    # and the sidecar are the user's, so they reach the replica as written.
     ComposeCase(
         name="PrefillDecode",
-        reason="A PrefillDecode deployment copies its serving mode and each engine's phase onto the replica.",
+        reason=(
+            "A PrefillDecode deployment copies its serving mode, endpoint picker, each engine's phase, and the "
+            "containers beside its engines onto the replica."
+        ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_model_deployment(
@@ -1731,6 +1817,16 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode="PrefillDecode",
+                    endpoint_picker={
+                        "image": "ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                        "config": {"kind": "EndpointPickerConfig", "plugins": [{"type": "always-disagg-pd-decider"}]},
+                    },
+                    sidecar={
+                        "name": "sidecar",
+                        "image": "ghcr.io/llm-d/llm-d-router-disagg-sidecar:v0.9.0",
+                        "args": ["--kv-connector=nixlv2"],
+                        "ports": [{"containerPort": 8000}],
+                    },
                     engines=[{"name": "prefill", "phase": "Prefill"}, {"name": "decode", "phase": "Decode"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -1766,6 +1862,19 @@ COMPOSE_CASES = [
                         },
                         model_cache=None,
                         serving_mode="PrefillDecode",
+                        endpoint_picker={
+                            "image": "ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                            "config": {
+                                "kind": "EndpointPickerConfig",
+                                "plugins": [{"type": "always-disagg-pd-decider"}],
+                            },
+                        },
+                        sidecar={
+                            "name": "sidecar",
+                            "image": "ghcr.io/llm-d/llm-d-router-disagg-sidecar:v0.9.0",
+                            "args": ["--kv-connector=nixlv2"],
+                            "ports": [{"containerPort": 8000}],
+                        },
                         engines=[
                             {"name": "prefill", "phase": "Prefill"},
                             {"name": "decode", "phase": "Decode"},
@@ -1815,6 +1924,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -1855,6 +1966,8 @@ COMPOSE_CASES = [
                         },
                         model_cache=None,
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_TRUE,
@@ -1908,6 +2021,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -1944,6 +2059,8 @@ COMPOSE_CASES = [
                         },
                         model_cache=None,
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_UNSPECIFIED,
@@ -1994,6 +2111,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -2033,6 +2152,8 @@ COMPOSE_CASES = [
                         },
                         model_cache=None,
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_TRUE,
@@ -2083,6 +2204,8 @@ COMPOSE_CASES = [
                     cluster_selector=None,
                     model_cache=None,
                     serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
                     engines=[{"name": "main"}],
                     args=["--model=Qwen/Qwen3-0.6B"],
                 ),
@@ -2119,6 +2242,8 @@ COMPOSE_CASES = [
                         },
                         model_cache=None,
                         serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
                         engines=[{"name": "main"}],
                         args=["--model=Qwen/Qwen3-0.6B"],
                         ready=fnv1.READY_UNSPECIFIED,

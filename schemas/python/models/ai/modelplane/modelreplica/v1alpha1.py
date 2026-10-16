@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, Field, conint, constr
 
@@ -101,12 +101,23 @@ class EnvItem(BaseModel):
     valueFrom: ValueFrom | None = None
 
 
+class Port(BaseModel):
+    containerPort: conint(ge=1, le=65535)
+    name: (
+        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
+        | None
+    ) = None
+
+
 class Container(BaseModel):
     args: list[str] | None = None
     command: list[str] | None = None
     env: list[EnvItem] | None = None
     image: constr(min_length=1)
-    name: constr(min_length=1)
+    name: constr(
+        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
+    )
+    ports: list[Port] | None = Field(None, max_length=8)
 
 
 class ImagePullSecret(BaseModel):
@@ -114,7 +125,7 @@ class ImagePullSecret(BaseModel):
 
 
 class Spec(BaseModel):
-    containers: list[Container] = Field(..., max_length=1, min_length=1)
+    containers: list[Container] = Field(..., max_length=8, min_length=1)
     imagePullSecrets: list[ImagePullSecret] | None = None
 
 
@@ -154,8 +165,15 @@ class ModelCacheRef(BaseModel):
     name: constr(min_length=1)
 
 
+class EndpointPicker(BaseModel):
+    config: dict[str, Any] | None = Field(None, min_length=1)
+    image: constr(min_length=1) | None = None
+
+
 class Serving(BaseModel):
+    endpointPicker: EndpointPicker | None = None
     mode: Literal['Unified', 'PrefillDecode'] | None = 'Unified'
+    router: Literal['EndpointPicker'] | None = None
 
 
 class SpecModel(BaseModel):
@@ -177,7 +195,7 @@ class SpecModel(BaseModel):
     """
     serving: Serving | None = None
     """
-    Serving mode, inherited verbatim from the parent ModelDeployment. PrefillDecode fronts the engines with an InferencePool + endpoint picker and role-labels the engine each marks with its phase; Unified (or absent) fronts them with a Service.
+    Serving, inherited verbatim from the parent ModelDeployment. Both modes front the serving pods with an InferencePool and an endpoint picker, which endpointPicker can configure. PrefillDecode also role-labels the engine each marks with its phase.
     """
 
 

@@ -88,7 +88,8 @@ class Composer:
     def compose(self) -> None:
         if not self.resolve_inputs():
             return
-        self.compose_model_serving()
+        if not self.compose_model_serving():
+            return
         self.derive_conditions()
 
     def resolve_inputs(self) -> bool:
@@ -142,14 +143,16 @@ class Composer:
 
         return True
 
-    def compose_model_serving(self) -> None:
+    def compose_model_serving(self) -> bool:
         """Compose each engine's workload, then the replica's routing surface.
 
         Every engine composes to a Deployment, LeaderWorkerSet, or PodCliqueSet (with its
         members' ResourceClaimTemplates) via the backend its roles select; the
         backends build no routing. routing.apply then fronts the engines with an
         InferencePool and endpoint picker, whose scoring serving.mode selects.
-        Everything lands in the namespace mirroring the replica's own.
+        Everything lands in the namespace mirroring the replica's own. Returns
+        False, having set a fatal result, when a PrefillDecode replica lacks its
+        routing.
         """
         # resolve_inputs runs first and returns False unless the cluster's
         # status.providerConfigRef.name is set, so it's present here.
@@ -164,9 +167,21 @@ class Composer:
         for engine in self.xr.spec.engines:
             backend = _BACKENDS[base.select_backend(engine, stack)]()
             composed.update(backend.build(self.xr, engine, pc, label, stack))
+        if routing.prefill_decode_routing_missing(self.xr):
+            # Stop rather than compose a router the engines can't use. A fatal
+            # result leaves the replica's existing resources as they are, so an
+            # existing pair keeps serving until its ModelDeployment writes its
+            # routing.
+            response.fatal(
+                self.rsp,
+                "PrefillDecode serving requires serving.router: EndpointPicker and "
+                "serving.endpointPicker.config; add the picker configuration and the decode sidecar",
+            )
+            return False
         composed = routing.apply(composed, self.xr, pc)
         for key, obj in composed.items():
             resource.update(self.rsp.desired.resources[key], obj)
+        return True
 
     def derive_conditions(self) -> None:
         """Derive ModelAccepted and ModelReady across all of the replica's engines.

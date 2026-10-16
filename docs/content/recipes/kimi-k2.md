@@ -17,13 +17,14 @@ gpuNote: 8× per node
 ---
 <!-- vale write-good.Passive = NO -->
 A 1T MoE (1 trillion parameters) served prefill/decode disaggregated across two
-H200 nodes: two engines, one per phase, with Modelplane composing the llm-d
-routing layer between them. This recipe serves an INT4 quantization of the
-model; the native FP8 weights need four such nodes.
+H200 nodes, one engine for each phase. The llm-d endpoint picker and sidecar
+route between them. This recipe serves an INT4 quantization of the model; the
+native FP8 weights need four such nodes.
 
-This recipe was run end to end; the `InferenceClass` and `ModelDeployment` are
-the exact manifests from that run. Apply the platform side first, then the ML
-side. Edit the EC2 capacity reservation placeholder in the `InferenceCluster`
+The engines ran end to end with the `InferenceClass` below. The
+`ModelDeployment` now writes its own routing, as
+[Configure Routing]({{< ref "/models/routing" >}}) describes, and hasn't run
+live in that form yet. Apply the platform side first, then the ML side. Edit the EC2 capacity reservation placeholder in the `InferenceCluster`
 before applying it.
 
 ## Validated deployments

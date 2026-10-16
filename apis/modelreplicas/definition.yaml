@@ -68,17 +68,38 @@ spec:
                     minLength: 1
               serving:
                 type: object
+                x-kubernetes-validations:
+                - rule: "!has(self.endpointPicker) || (has(self.router) && self.router == 'EndpointPicker')"
+                  message: "serving.endpointPicker may only be set when serving.router is EndpointPicker"
+                - rule: "self.mode != 'PrefillDecode' || (has(self.endpointPicker) && has(self.endpointPicker.config))"
+                  message: "PrefillDecode serving requires serving.router EndpointPicker and serving.endpointPicker.config"
                 description: >-
-                  Serving mode, inherited verbatim from the parent
-                  ModelDeployment. PrefillDecode fronts the engines with an
-                  InferencePool + endpoint picker and role-labels the engine
-                  each marks with its phase; Unified (or absent) fronts them
-                  with a Service.
+                  Serving, inherited verbatim from the parent
+                  ModelDeployment. Both modes front the serving pods with an
+                  InferencePool and an endpoint picker, which endpointPicker
+                  can configure. PrefillDecode also role-labels the engine
+                  each marks with its phase.
                 properties:
                   mode:
                     type: string
                     enum: [Unified, PrefillDecode]
                     default: Unified
+                  router:
+                    type: string
+                    enum: [EndpointPicker]
+                  endpointPicker:
+                    type: object
+                    x-kubernetes-validations:
+                    - rule: "has(self.config) == has(self.image)"
+                      message: "endpointPicker.image and endpointPicker.config must be set together"
+                    properties:
+                      image:
+                        type: string
+                        minLength: 1
+                      config:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                        minProperties: 1
               engines:
                 type: array
                 description: >-
@@ -154,6 +175,14 @@ spec:
                         x-kubernetes-validations:
                         - rule: "!has(self.worker) || self.role == 'Worker'"
                           message: "worker may only be set on a Worker member"
+                        - rule: "(has(self.role) && self.role == 'Worker') || !has(self.template.spec) || self.template.spec.containers.filter(c, has(c.ports) && c.ports.exists(p, p.containerPort == 8000)).size() <= 1"
+                          message: "at most one container in a serving pod may declare containerPort 8000"
+                        - rule: "(has(self.role) && self.role == 'Worker') || !has(self.template.spec) || !self.template.spec.containers.exists(c, c.name != 'engine' && has(c.ports) && c.ports.exists(p, p.containerPort == 8000)) || self.template.spec.containers.exists(c, c.name == 'engine' && has(c.ports) && c.ports.exists(p, has(p.name) && p.name == 'http' && p.containerPort != 8000))"
+                          message: "when another container declares containerPort 8000, the engine container must declare its 'http' port on a different port"
+                        - rule: "(has(self.role) && self.role == 'Worker') || !has(self.template.spec) || !self.template.spec.containers.exists(c, c.name == 'engine' && has(c.ports) && c.ports.exists(p, has(p.name) && p.name == 'http' && p.containerPort != 8000)) || self.template.spec.containers.exists(c, c.name != 'engine' && has(c.ports) && c.ports.exists(p, p.containerPort == 8000))"
+                          message: "when the engine container's 'http' port isn't 8000, another container in its pod must declare containerPort 8000"
+                        - rule: "(has(self.role) && self.role == 'Worker') || !has(self.template.spec) || !self.template.spec.containers.exists(c, c.name == 'engine' && has(c.ports) && c.ports.exists(p, p.containerPort == 8000 && has(p.name) && p.name != 'http'))"
+                          message: "the engine container may name containerPort 8000 only 'http'"
                         properties:
                           role:
                             type: string
@@ -291,10 +320,12 @@ spec:
                                   containers:
                                     type: array
                                     minItems: 1
-                                    maxItems: 1
+                                    maxItems: 8
+                                    x-kubernetes-list-type: map
+                                    x-kubernetes-list-map-keys: [name]
                                     x-kubernetes-validations:
                                     - rule: "self.exists_one(c, c.name == 'engine')"
-                                      message: "the single container must be named 'engine'"
+                                      message: "exactly one container must be named 'engine'"
                                     items:
                                       type: object
                                       required: [name, image]
@@ -302,6 +333,8 @@ spec:
                                         name:
                                           type: string
                                           minLength: 1
+                                          maxLength: 63
+                                          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
                                         image:
                                           type: string
                                           minLength: 1
@@ -359,6 +392,27 @@ spec:
                                                         type: string
                                                       apiVersion:
                                                         type: string
+                                        ports:
+                                          type: array
+                                          maxItems: 8
+                                          x-kubernetes-list-type: map
+                                          x-kubernetes-list-map-keys: [containerPort]
+                                          x-kubernetes-validations:
+                                          - rule: "self.all(p, !has(p.name) || self.exists_one(q, has(q.name) && q.name == p.name))"
+                                            message: "port names must be unique within a container"
+                                          items:
+                                            type: object
+                                            required: [containerPort]
+                                            properties:
+                                              name:
+                                                type: string
+                                                minLength: 1
+                                                maxLength: 15
+                                                pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                                              containerPort:
+                                                type: integer
+                                                minimum: 1
+                                                maximum: 65535
                                   imagePullSecrets:
                                     type: array
                                     items:

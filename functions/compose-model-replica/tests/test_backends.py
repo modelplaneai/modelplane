@@ -101,12 +101,42 @@ class KvBlockSizeCase:
 
 
 @dataclasses.dataclass
-class DisaggregatedConfigCase:
-    """A test case for routing._disaggregated_epp_config_yaml."""
+class UnifiedBlockSizeCase:
+    """A test case for the blockSizeTokens routing._unified_epp_config_yaml renders."""
 
     name: str
     reason: str
     block_size: int
+    want: str
+
+
+@dataclasses.dataclass
+class PickerCase:
+    """A test case for routing._picker."""
+
+    name: str
+    reason: str
+    serving: v1alpha1.Serving | None
+    want: tuple[str, str]
+
+
+@dataclasses.dataclass
+class RoutingMissingCase:
+    """A test case for routing.prefill_decode_routing_missing."""
+
+    name: str
+    reason: str
+    serving: v1alpha1.Serving | None
+    want: bool
+
+
+@dataclasses.dataclass
+class RenderPickerConfigCase:
+    """A test case for routing._render_picker_config."""
+
+    name: str
+    reason: str
+    config: dict
     want: str
 
 
@@ -189,7 +219,7 @@ def _inference_pool() -> dict:
     }
 
 
-def _epp(*, labels: dict, config_checksum: str) -> dict:
+def _epp(*, labels: dict, config_checksum: str, image: str) -> dict:
     """The Object composing the endpoint picker's Deployment, its pod labeled and rolled by its config's checksum.
 
     The picker serves its metrics on a port named http, which the collector's
@@ -223,7 +253,7 @@ def _epp(*, labels: dict, config_checksum: str) -> dict:
                                 "containers": [
                                     {
                                         "name": "epp",
-                                        "image": "ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                                        "image": image,
                                         "args": [
                                             "--pool-name=r-pool",
                                             "--pool-namespace=mp-ml-team-51733",
@@ -238,6 +268,7 @@ def _epp(*, labels: dict, config_checksum: str) -> dict:
                                             {"name": "grpc-health", "containerPort": 9003},
                                             {"name": "http", "containerPort": 9090},
                                         ],
+                                        "readinessProbe": {"grpc": {"port": 9003}, "periodSeconds": 2},
                                         "volumeMounts": [{"name": "config", "mountPath": "/config"}],
                                     }
                                 ],
@@ -677,6 +708,199 @@ BUILD_CASES = [
                         },
                         "resources": {"claims": [{"name": "devices"}]},
                     }
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+        },
+    ),
+    # A sidecar takes 8000, so the engine declares its http port elsewhere, and
+    # the probe and the collector follow it there. The sidecar is the user's and
+    # passes through as written: no claim, env, mounts or probe.
+    BuildCase(
+        name="StandaloneSidecar",
+        reason=(
+            "A Standalone member with a container beside the engine composes both into the pod, probing the engine "
+            "on the http port it declares and passing the other container through as written."
+        ),
+        backend=native.NativeBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=1,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="sidecar",
+                                            image="ghcr.io/llm-d/llm-d-router-disagg-sidecar:v0.9.0",
+                                            args=["--kv-connector=sglang", "--vllm-port=8001"],
+                                            ports=[v1alpha1.Port(containerPort=8000)],
+                                        ),
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="lmsysorg/sglang:latest",
+                                            args=["--port=8001"],
+                                            ports=[v1alpha1.Port(name="http", containerPort=8001)],
+                                        ),
+                                    ]
+                                )
+                            ),
+                        )
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": _deployment(
+                name="r-main-bb4e3",
+                claim_template_name="r-main-standalone-devices-f456f",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "main",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "r",
+                        "modelplane.ai/workload": "r-main-bb4e3",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "lmsysorg/sglang:latest",
+                        "args": ["--port=8001"],
+                        "ports": [{"name": "http", "containerPort": 8001}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8001},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    },
+                    {
+                        "name": "sidecar",
+                        "image": "ghcr.io/llm-d/llm-d-router-disagg-sidecar:v0.9.0",
+                        "args": ["--kv-connector=sglang", "--vllm-port=8001"],
+                        "ports": [{"containerPort": 8000}],
+                    },
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+        },
+    ),
+    # An unnamed port 8000 on the engine is its http port, not a second entry.
+    BuildCase(
+        name="StandaloneUnnamedEnginePort",
+        reason=(
+            "An engine that declares port 8000 without a name gets it named http rather than a second 8000 entry, "
+            "and composes first even when another container is listed before it."
+        ),
+        backend=native.NativeBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=1,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(name="log-tail", image="busybox:1.36"),
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="lmsysorg/sglang:latest",
+                                            ports=[v1alpha1.Port(containerPort=8000)],
+                                        ),
+                                    ]
+                                )
+                            ),
+                        )
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": _deployment(
+                name="r-main-bb4e3",
+                claim_template_name="r-main-standalone-devices-f456f",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "main",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "r",
+                        "modelplane.ai/workload": "r-main-bb4e3",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "lmsysorg/sglang:latest",
+                        "args": [],
+                        "ports": [{"containerPort": 8000, "name": "http"}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    },
+                    {"name": "log-tail", "image": "busybox:1.36"},
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
@@ -1741,6 +1965,231 @@ BUILD_CASES = [
                                             }
                                         ],
                                     }
+                                ],
+                                "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                                "schedulerName": "kai-scheduler",
+                                "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                "resourceClaims": [
+                                    {
+                                        "name": "devices",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                    }
+                                ],
+                                "tolerations": [
+                                    {
+                                        "key": "nvidia.com/gpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    }
+                                ],
+                            },
+                        },
+                    },
+                ],
+            ),
+            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
+            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+        },
+    ),
+    # A Grove leader behind a sidecar, and a worker carrying its own ports and
+    # an extra container.
+    BuildCase(
+        name="GroveSidecars",
+        reason=(
+            "On Grove, a leader behind a sidecar is probed on the engine's http port, and a worker's engine ports and "
+            "extra container pass through as written."
+        ),
+        backend=grove.GroveBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            command=[
+                                                "/bin/sh",
+                                                "-c",
+                                                "ray start --head --port=6379; exec vllm serve --model=meta-llama/Llama-3.1-405B --tensor-parallel-size=8 --pipeline-parallel-size=2 --port=8001",
+                                            ],
+                                            ports=[v1alpha1.Port(name="http", containerPort=8001)],
+                                        ),
+                                        v1alpha1.Container(
+                                            name="proxy",
+                                            image="example.com/proxy:v1",
+                                            ports=[v1alpha1.Port(containerPort=8000)],
+                                        ),
+                                    ]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            command=[
+                                                "/bin/sh",
+                                                "-c",
+                                                "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block",
+                                            ],
+                                            ports=[v1alpha1.Port(name="nixl", containerPort=5557)],
+                                        ),
+                                        v1alpha1.Container(name="log-tail", image="busybox:1.36"),
+                                    ]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Dynamo",
+        want={
+            "model-serving-main": _pod_clique_set(
+                name="r-main-bb4e3",
+                cliques=[
+                    {
+                        "name": "leader",
+                        "labels": {
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Leader",
+                            "modelplane.ai/serving": "r",
+                            "kai.scheduler/queue": "modelplane",
+                            "modelplane.ai/clique-role": "leader",
+                        },
+                        "spec": {
+                            "roleName": "leader",
+                            "replicas": 1,
+                            "minAvailable": 1,
+                            "podSpec": {
+                                "containers": [
+                                    {
+                                        "name": "engine",
+                                        "image": "vllm/vllm-openai:latest",
+                                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                                        "resources": {"claims": [{"name": "devices"}]},
+                                        "command": [
+                                            "/bin/sh",
+                                            "-c",
+                                            "ray start --head --port=6379; exec vllm serve --model=meta-llama/Llama-3.1-405B --tensor-parallel-size=8 --pipeline-parallel-size=2 --port=8001",
+                                        ],
+                                        "env": [
+                                            {
+                                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                                "value": "$(GROVE_PCSG_NAME)-$(GROVE_PCSG_INDEX)-leader-0.$(GROVE_HEADLESS_SERVICE)",
+                                            }
+                                        ],
+                                        "ports": [{"name": "http", "containerPort": 8001}],
+                                        "readinessProbe": {
+                                            "httpGet": {"path": "/health", "port": 8001},
+                                            "initialDelaySeconds": 30,
+                                            "periodSeconds": 10,
+                                            "timeoutSeconds": 5,
+                                        },
+                                    },
+                                    {
+                                        "name": "proxy",
+                                        "image": "example.com/proxy:v1",
+                                        "ports": [{"containerPort": 8000}],
+                                    },
+                                ],
+                                "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                                "schedulerName": "kai-scheduler",
+                                "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                "resourceClaims": [
+                                    {
+                                        "name": "devices",
+                                        "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                    }
+                                ],
+                                "tolerations": [
+                                    {
+                                        "key": "nvidia.com/gpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    }
+                                ],
+                            },
+                        },
+                    },
+                    {
+                        "name": "worker",
+                        "labels": {
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Worker",
+                            "kai.scheduler/queue": "modelplane",
+                        },
+                        "spec": {
+                            "roleName": "worker",
+                            "replicas": 1,
+                            "minAvailable": 1,
+                            "podSpec": {
+                                "containers": [
+                                    {
+                                        "name": "engine",
+                                        "image": "vllm/vllm-openai:latest",
+                                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                                        "resources": {"claims": [{"name": "devices"}]},
+                                        "command": [
+                                            "/bin/sh",
+                                            "-c",
+                                            "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block",
+                                        ],
+                                        "env": [
+                                            {
+                                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                                "value": "$(GROVE_PCSG_NAME)-$(GROVE_PCSG_INDEX)-leader-0.$(GROVE_HEADLESS_SERVICE)",
+                                            }
+                                        ],
+                                        "ports": [{"name": "nixl", "containerPort": 5557}],
+                                    },
+                                    {"name": "log-tail", "image": "busybox:1.36"},
                                 ],
                                 "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
                                 "schedulerName": "kai-scheduler",
@@ -3750,6 +4199,256 @@ BUILD_CASES = [
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
         },
     ),
+    # Each member has its own template, so a container the user adds to the
+    # Leader runs only in the leader pod.
+    BuildCase(
+        name="LLMDLeaderSidecar",
+        reason="A container beside the engine in a Leader's template runs in the leader pod and not in the workers.",
+        backend=llmd.LLMDBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            ports=[v1alpha1.Port(name="http", containerPort=8001)],
+                                        ),
+                                        v1alpha1.Container(name="proxy", image="example.com/proxy:v1"),
+                                    ]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": _leader_worker_set(
+                replicas=1,
+                size=2,
+                leader_containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "resources": {"claims": [{"name": "devices"}]},
+                        "env": [
+                            {
+                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                "value": "$(LWS_LEADER_ADDRESS)",
+                            },
+                            {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                        ],
+                        "ports": [{"name": "http", "containerPort": 8001}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8001},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                    },
+                    {"name": "proxy", "image": "example.com/proxy:v1"},
+                ],
+                leader_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                worker_containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "resources": {"claims": [{"name": "devices"}]},
+                        "env": [
+                            {
+                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                "value": "$(LWS_LEADER_ADDRESS)",
+                            },
+                            {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                        ],
+                    }
+                ],
+                worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
+            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+        },
+    ),
+    # A Worker doesn't serve: its ports pass through and nothing probes it.
+    BuildCase(
+        name="LLMDWorkerSidecar",
+        reason="A Worker's engine ports and the container beside it pass through as written, with no probe.",
+        backend=llmd.LLMDBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest"),
+                                    ]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            ports=[v1alpha1.Port(name="nixl", containerPort=5557)],
+                                        ),
+                                        v1alpha1.Container(name="log-tail", image="busybox:1.36"),
+                                    ]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": _leader_worker_set(
+                replicas=1,
+                size=2,
+                leader_containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "resources": {"claims": [{"name": "devices"}]},
+                        "env": [
+                            {
+                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                "value": "$(LWS_LEADER_ADDRESS)",
+                            },
+                            {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                        ],
+                        "ports": [{"name": "http", "containerPort": 8000}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                    },
+                ],
+                leader_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                worker_containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "resources": {"claims": [{"name": "devices"}]},
+                        "env": [
+                            {
+                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                "value": "$(LWS_LEADER_ADDRESS)",
+                            },
+                            {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                        ],
+                        "ports": [{"name": "nixl", "containerPort": 5557}],
+                    },
+                    {"name": "log-tail", "image": "busybox:1.36"},
+                ],
+                worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
+            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+        },
+    ),
     # Modelplane is unopinionated about the engine: each member's command passes
     # through verbatim, so a launch convention Modelplane has never heard of
     # still works.
@@ -4584,28 +5283,14 @@ def test_cache_env(case: CacheEnvCase) -> None:
 
 
 APPLY_CASES = [
-    # Both engines get the NIXL plumbing the schema can't express: a Memory
-    # /dev/shm, and VLLM_NIXL_SIDE_CHANNEL_HOST set to the pod IP. The decode
-    # engine moves to port 8001, behind the pd-sidecar on 8000, and keeps the
-    # port name http: the collector's engine job keeps a pod on that name, so a
-    # decode pod with no named port is one nothing scrapes. The sidecar's port
-    # is unnamed, because it serves inference rather than /metrics.
-    #
-    # PrefillDecode silently serves decode-only unless the picker's config arms
-    # the prefix-based PD decider. That needs nonCachedTokens > 0, the
-    # approx-prefix-cache-producer that populates the attribute it reads, pinned
-    # to autoTune: false, and no prepareDataPlugins feature gate, which the
-    # v0.8.0 EPP image rejects and crashloops on. The picker watches
-    # InferenceObjectives, so its Role must allow that.
-    #
-    # A wrong picker or sidecar image tag, or a stale EndpointPickerConfig API
-    # group, would otherwise only surface as a crashloop at deploy. Pinning them
-    # here means a bump shows up to be reviewed.
+    # Routing only labels the engines' serving pods: the sidecar and any KV
+    # transfer environment are the user's, and the picker runs the config the
+    # replica sets.
     ApplyCase(
         name="PrefillDecode",
         reason=(
-            "PrefillDecode role-labels its prefill and decode engines, sidecars decode, and fronts both with an "
-            "InferencePool and endpoint picker."
+            "PrefillDecode role-labels its prefill and decode engines and fronts both with an InferencePool and "
+            "endpoint picker."
         ),
         composed={
             "model-serving-prefill": _deployment(
@@ -4677,7 +5362,14 @@ APPLY_CASES = [
             cluster_name="cluster-a",
             labels=None,
             model_cache_ref=None,
-            serving=v1alpha1.Serving(mode="PrefillDecode"),
+            serving=v1alpha1.Serving(
+                mode="PrefillDecode",
+                router="EndpointPicker",
+                endpointPicker=v1alpha1.EndpointPicker(
+                    image="ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                    config={"kind": "EndpointPickerConfig"},
+                ),
+            ),
             engines=[
                 v1alpha1.Engine(
                     name="prefill",
@@ -4780,18 +5472,10 @@ APPLY_CASES = [
                             "timeoutSeconds": 5,
                         },
                         "resources": {"claims": [{"name": "devices"}]},
-                        "env": [
-                            {
-                                "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
-                                "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}},
-                            },
-                            {"name": "VLLM_NIXL_SIDE_CHANNEL_PORT", "value": "5557"},
-                        ],
                     }
                 ],
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
-                    {"name": "nixl-shm", "emptyDir": {"medium": "Memory"}},
                 ],
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
@@ -4815,43 +5499,19 @@ APPLY_CASES = [
                         "name": "engine",
                         "image": "vllm/vllm-openai:latest",
                         "args": ["--model=Qwen/Qwen3-0.6B"],
-                        "ports": [{"name": "http", "containerPort": 8001}],
+                        "ports": [{"name": "http", "containerPort": 8000}],
                         "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
-                        "readinessProbe": {
-                            "httpGet": {"path": "/health", "port": 8001},
-                            "initialDelaySeconds": 30,
-                            "periodSeconds": 10,
-                            "timeoutSeconds": 5,
-                        },
-                        "resources": {"claims": [{"name": "devices"}]},
-                        "env": [
-                            {
-                                "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
-                                "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}},
-                            },
-                            {"name": "VLLM_NIXL_SIDE_CHANNEL_PORT", "value": "5557"},
-                        ],
-                    },
-                    {
-                        "name": "pd-sidecar",
-                        "image": "ghcr.io/llm-d/llm-d-router-disagg-sidecar:v0.9.0",
-                        "args": [
-                            "--secure-proxy=false",
-                            "--kv-connector=nixlv2",
-                            "--vllm-port=8001",
-                        ],
-                        "ports": [{"containerPort": 8000}],
                         "readinessProbe": {
                             "httpGet": {"path": "/health", "port": 8000},
                             "initialDelaySeconds": 30,
                             "periodSeconds": 10,
                             "timeoutSeconds": 5,
                         },
+                        "resources": {"claims": [{"name": "devices"}]},
                     },
                 ],
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
-                    {"name": "nixl-shm", "emptyDir": {"medium": "Memory"}},
                 ],
             ),
             "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
@@ -4860,57 +5520,18 @@ APPLY_CASES = [
             "epp-serviceaccount": _epp_service_account(),
             "epp-role": _epp_role(),
             "epp-rolebinding": _epp_role_binding(),
-            "epp-config": _epp_config(
-                config="apiVersion: llm-d.ai/v1alpha1\n"
-                "kind: EndpointPickerConfig\n"
-                "plugins:\n"
-                "- type: approx-prefix-cache-producer\n"
-                "  parameters:\n"
-                "    autoTune: false\n"
-                "    blockSizeTokens: 16\n"
-                "    maxPrefixBlocksToMatch: 256\n"
-                "    lruCapacityPerServer: 31250\n"
-                "- type: prefix-cache-scorer\n"
-                "- type: disagg-headers-handler\n"
-                "- type: queue-scorer\n"
-                "- type: prefill-filter\n"
-                "- type: decode-filter\n"
-                "- type: max-score-picker\n"
-                "- type: prefix-based-pd-decider\n"
-                "  parameters:\n"
-                "    nonCachedTokens: 16\n"
-                "- type: disagg-profile-handler\n"
-                "  parameters:\n"
-                "    deciders:\n"
-                "      prefill: prefix-based-pd-decider\n"
-                "schedulingProfiles:\n"
-                "- name: prefill\n"
-                "  plugins:\n"
-                "  - pluginRef: prefill-filter\n"
-                "  - pluginRef: max-score-picker\n"
-                "  - pluginRef: prefix-cache-scorer\n"
-                "    weight: 2\n"
-                "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
-                "- name: decode\n"
-                "  plugins:\n"
-                "  - pluginRef: decode-filter\n"
-                "  - pluginRef: max-score-picker\n"
-                "  - pluginRef: prefix-cache-scorer\n"
-                "    weight: 2\n"
-                "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
-            ),
+            "epp-config": _epp_config(config=json.dumps({"kind": "EndpointPickerConfig"}, indent=2, sort_keys=True)),
             "epp": _epp(
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
-                config_checksum="f715f3024f37e7042d42628f10cbb04c7da78b96dc65953dac0f289ef2c7ef98",
+                image="ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                config_checksum="a9d9c5892fd25b535b127de68f30159b3d132f91f37c4c96b9e784b358d4b842",
             ),
             "epp-service": _epp_service(),
         },
     ),
     ApplyCase(
-        name="DecodeUserPort",
-        reason="A decode engine run with --port=9000 serves on that port, and its sidecar forwards to it there.",
+        name="EndpointPicker",
+        reason="serving.endpointPicker sets the picker image, and its config replaces the default configuration.",
         composed={
             "model-serving-prefill": _deployment(
                 name="r-prefill-d90b0",
@@ -4959,7 +5580,7 @@ APPLY_CASES = [
                     {
                         "name": "engine",
                         "image": "vllm/vllm-openai:latest",
-                        "args": ["--model=m", "--port=9000"],
+                        "args": ["--model=m", "--block-size=64"],
                         "ports": [{"name": "http", "containerPort": 8000}],
                         "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
                         "readinessProbe": {
@@ -4981,7 +5602,18 @@ APPLY_CASES = [
             cluster_name="cluster-a",
             labels=None,
             model_cache_ref=None,
-            serving=v1alpha1.Serving(mode="PrefillDecode"),
+            serving=v1alpha1.Serving(
+                mode="PrefillDecode",
+                router="EndpointPicker",
+                endpointPicker=v1alpha1.EndpointPicker(
+                    image="example.com/picker:v2",
+                    config={
+                        "apiVersion": "llm-d.ai/v1alpha1",
+                        "kind": "EndpointPickerConfig",
+                        "plugins": [{"type": "always-disagg-pd-decider"}],
+                    },
+                ),
+            ),
             engines=[
                 v1alpha1.Engine(
                     name="prefill",
@@ -5043,7 +5675,7 @@ APPLY_CASES = [
                                         v1alpha1.Container(
                                             name="engine",
                                             image="vllm/vllm-openai:latest",
-                                            args=["--model=m", "--port=9000"],
+                                            args=["--model=m", "--block-size=64"],
                                         )
                                     ]
                                 )
@@ -5084,18 +5716,10 @@ APPLY_CASES = [
                             "timeoutSeconds": 5,
                         },
                         "resources": {"claims": [{"name": "devices"}]},
-                        "env": [
-                            {
-                                "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
-                                "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}},
-                            },
-                            {"name": "VLLM_NIXL_SIDE_CHANNEL_PORT", "value": "5557"},
-                        ],
                     }
                 ],
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
-                    {"name": "nixl-shm", "emptyDir": {"medium": "Memory"}},
                 ],
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
@@ -5118,44 +5742,20 @@ APPLY_CASES = [
                     {
                         "name": "engine",
                         "image": "vllm/vllm-openai:latest",
-                        "args": ["--model=m", "--port=9000"],
-                        "ports": [{"name": "http", "containerPort": 9000}],
+                        "args": ["--model=m", "--block-size=64"],
+                        "ports": [{"name": "http", "containerPort": 8000}],
                         "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
-                        "readinessProbe": {
-                            "httpGet": {"path": "/health", "port": 9000},
-                            "initialDelaySeconds": 30,
-                            "periodSeconds": 10,
-                            "timeoutSeconds": 5,
-                        },
-                        "resources": {"claims": [{"name": "devices"}]},
-                        "env": [
-                            {
-                                "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
-                                "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}},
-                            },
-                            {"name": "VLLM_NIXL_SIDE_CHANNEL_PORT", "value": "5557"},
-                        ],
-                    },
-                    {
-                        "name": "pd-sidecar",
-                        "image": "ghcr.io/llm-d/llm-d-router-disagg-sidecar:v0.9.0",
-                        "args": [
-                            "--secure-proxy=false",
-                            "--kv-connector=nixlv2",
-                            "--vllm-port=9000",
-                        ],
-                        "ports": [{"containerPort": 8000}],
                         "readinessProbe": {
                             "httpGet": {"path": "/health", "port": 8000},
                             "initialDelaySeconds": 30,
                             "periodSeconds": 10,
                             "timeoutSeconds": 5,
                         },
+                        "resources": {"claims": [{"name": "devices"}]},
                     },
                 ],
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
-                    {"name": "nixl-shm", "emptyDir": {"medium": "Memory"}},
                 ],
             ),
             "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
@@ -5164,50 +5764,22 @@ APPLY_CASES = [
             "epp-serviceaccount": _epp_service_account(),
             "epp-role": _epp_role(),
             "epp-rolebinding": _epp_role_binding(),
+            # A user config is rendered as JSON, which is YAML, in the order the user wrote it.
             "epp-config": _epp_config(
-                config="apiVersion: llm-d.ai/v1alpha1\n"
-                "kind: EndpointPickerConfig\n"
-                "plugins:\n"
-                "- type: approx-prefix-cache-producer\n"
-                "  parameters:\n"
-                "    autoTune: false\n"
-                "    blockSizeTokens: 16\n"
-                "    maxPrefixBlocksToMatch: 256\n"
-                "    lruCapacityPerServer: 31250\n"
-                "- type: prefix-cache-scorer\n"
-                "- type: disagg-headers-handler\n"
-                "- type: queue-scorer\n"
-                "- type: prefill-filter\n"
-                "- type: decode-filter\n"
-                "- type: max-score-picker\n"
-                "- type: prefix-based-pd-decider\n"
-                "  parameters:\n"
-                "    nonCachedTokens: 16\n"
-                "- type: disagg-profile-handler\n"
-                "  parameters:\n"
-                "    deciders:\n"
-                "      prefill: prefix-based-pd-decider\n"
-                "schedulingProfiles:\n"
-                "- name: prefill\n"
-                "  plugins:\n"
-                "  - pluginRef: prefill-filter\n"
-                "  - pluginRef: max-score-picker\n"
-                "  - pluginRef: prefix-cache-scorer\n"
-                "    weight: 2\n"
-                "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
-                "- name: decode\n"
-                "  plugins:\n"
-                "  - pluginRef: decode-filter\n"
-                "  - pluginRef: max-score-picker\n"
-                "  - pluginRef: prefix-cache-scorer\n"
-                "    weight: 2\n"
-                "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
+                config=json.dumps(
+                    {
+                        "apiVersion": "llm-d.ai/v1alpha1",
+                        "kind": "EndpointPickerConfig",
+                        "plugins": [{"type": "always-disagg-pd-decider"}],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
             ),
             "epp": _epp(
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
-                config_checksum="f715f3024f37e7042d42628f10cbb04c7da78b96dc65953dac0f289ef2c7ef98",
+                config_checksum="b556a38fb374352df960ae5caa04221c7dde46ca6fe483ad6869b7ef2db0dd75",
+                image="example.com/picker:v2",
             ),
             "epp-service": _epp_service(),
         },
@@ -5216,7 +5788,7 @@ APPLY_CASES = [
         name="EngineNamesUnlikePhases",
         reason=(
             "Engines named alpha and beta take their PrefillDecode roles from their phases, so alpha, the Decode "
-            "engine, gets the sidecar."
+            "engine, gets the decode role."
         ),
         composed={
             "model-serving-alpha": _deployment(
@@ -5288,7 +5860,14 @@ APPLY_CASES = [
             cluster_name="cluster-a",
             labels=None,
             model_cache_ref=None,
-            serving=v1alpha1.Serving(mode="PrefillDecode"),
+            serving=v1alpha1.Serving(
+                mode="PrefillDecode",
+                router="EndpointPicker",
+                endpointPicker=v1alpha1.EndpointPicker(
+                    image="ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                    config={"kind": "EndpointPickerConfig"},
+                ),
+            ),
             engines=[
                 v1alpha1.Engine(
                     name="alpha",
@@ -5382,43 +5961,19 @@ APPLY_CASES = [
                         "name": "engine",
                         "image": "vllm/vllm-openai:latest",
                         "args": ["--model=Qwen/Qwen3-0.6B"],
-                        "ports": [{"name": "http", "containerPort": 8001}],
+                        "ports": [{"name": "http", "containerPort": 8000}],
                         "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
-                        "readinessProbe": {
-                            "httpGet": {"path": "/health", "port": 8001},
-                            "initialDelaySeconds": 30,
-                            "periodSeconds": 10,
-                            "timeoutSeconds": 5,
-                        },
-                        "resources": {"claims": [{"name": "devices"}]},
-                        "env": [
-                            {
-                                "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
-                                "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}},
-                            },
-                            {"name": "VLLM_NIXL_SIDE_CHANNEL_PORT", "value": "5557"},
-                        ],
-                    },
-                    {
-                        "name": "pd-sidecar",
-                        "image": "ghcr.io/llm-d/llm-d-router-disagg-sidecar:v0.9.0",
-                        "args": [
-                            "--secure-proxy=false",
-                            "--kv-connector=nixlv2",
-                            "--vllm-port=8001",
-                        ],
-                        "ports": [{"containerPort": 8000}],
                         "readinessProbe": {
                             "httpGet": {"path": "/health", "port": 8000},
                             "initialDelaySeconds": 30,
                             "periodSeconds": 10,
                             "timeoutSeconds": 5,
                         },
+                        "resources": {"claims": [{"name": "devices"}]},
                     },
                 ],
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
-                    {"name": "nixl-shm", "emptyDir": {"medium": "Memory"}},
                 ],
             ),
             "resource-claim-alpha-standalone": _claim_template(name="r-alpha-standalone-devices-9ec1c", count=1),
@@ -5451,18 +6006,10 @@ APPLY_CASES = [
                             "timeoutSeconds": 5,
                         },
                         "resources": {"claims": [{"name": "devices"}]},
-                        "env": [
-                            {
-                                "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
-                                "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}},
-                            },
-                            {"name": "VLLM_NIXL_SIDE_CHANNEL_PORT", "value": "5557"},
-                        ],
                     }
                 ],
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
-                    {"name": "nixl-shm", "emptyDir": {"medium": "Memory"}},
                 ],
             ),
             "resource-claim-beta-standalone": _claim_template(name="r-beta-standalone-devices-9d8b1", count=1),
@@ -5471,56 +6018,17 @@ APPLY_CASES = [
             "epp-serviceaccount": _epp_service_account(),
             "epp-role": _epp_role(),
             "epp-rolebinding": _epp_role_binding(),
-            "epp-config": _epp_config(
-                config="apiVersion: llm-d.ai/v1alpha1\n"
-                "kind: EndpointPickerConfig\n"
-                "plugins:\n"
-                "- type: approx-prefix-cache-producer\n"
-                "  parameters:\n"
-                "    autoTune: false\n"
-                "    blockSizeTokens: 16\n"
-                "    maxPrefixBlocksToMatch: 256\n"
-                "    lruCapacityPerServer: 31250\n"
-                "- type: prefix-cache-scorer\n"
-                "- type: disagg-headers-handler\n"
-                "- type: queue-scorer\n"
-                "- type: prefill-filter\n"
-                "- type: decode-filter\n"
-                "- type: max-score-picker\n"
-                "- type: prefix-based-pd-decider\n"
-                "  parameters:\n"
-                "    nonCachedTokens: 16\n"
-                "- type: disagg-profile-handler\n"
-                "  parameters:\n"
-                "    deciders:\n"
-                "      prefill: prefix-based-pd-decider\n"
-                "schedulingProfiles:\n"
-                "- name: prefill\n"
-                "  plugins:\n"
-                "  - pluginRef: prefill-filter\n"
-                "  - pluginRef: max-score-picker\n"
-                "  - pluginRef: prefix-cache-scorer\n"
-                "    weight: 2\n"
-                "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
-                "- name: decode\n"
-                "  plugins:\n"
-                "  - pluginRef: decode-filter\n"
-                "  - pluginRef: max-score-picker\n"
-                "  - pluginRef: prefix-cache-scorer\n"
-                "    weight: 2\n"
-                "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
-            ),
+            "epp-config": _epp_config(config=json.dumps({"kind": "EndpointPickerConfig"}, indent=2, sort_keys=True)),
             "epp": _epp(
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
-                config_checksum="f715f3024f37e7042d42628f10cbb04c7da78b96dc65953dac0f289ef2c7ef98",
+                image="ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                config_checksum="a9d9c5892fd25b535b127de68f30159b3d132f91f37c4c96b9e784b358d4b842",
             ),
             "epp-service": _epp_service(),
         },
     ),
-    # The leader clique gets the llm-d role, inference-serving and app labels,
-    # the pd-sidecar and the NIXL plumbing. The worker clique never serves.
+    # The leader clique gets the llm-d role, inference-serving and app labels.
+    # The worker clique never serves.
     ApplyCase(
         name="GroveDecodeGang",
         reason=(
@@ -5682,7 +6190,14 @@ APPLY_CASES = [
             cluster_name="cluster-a",
             labels=None,
             model_cache_ref=None,
-            serving=v1alpha1.Serving(mode="PrefillDecode"),
+            serving=v1alpha1.Serving(
+                mode="PrefillDecode",
+                router="EndpointPicker",
+                endpointPicker=v1alpha1.EndpointPicker(
+                    image="ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                    config={"kind": "EndpointPickerConfig"},
+                ),
+            ),
             engines=[
                 v1alpha1.Engine(
                     name="prefill",
@@ -5821,18 +6336,10 @@ APPLY_CASES = [
                             "timeoutSeconds": 5,
                         },
                         "resources": {"claims": [{"name": "devices"}]},
-                        "env": [
-                            {
-                                "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
-                                "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}},
-                            },
-                            {"name": "VLLM_NIXL_SIDE_CHANNEL_PORT", "value": "5557"},
-                        ],
                     }
                 ],
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
-                    {"name": "nixl-shm", "emptyDir": {"medium": "Memory"}},
                 ],
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
@@ -5872,32 +6379,8 @@ APPLY_CASES = [
                                                 "name": "MODELPLANE_LEADER_ADDRESS",
                                                 "value": "$(GROVE_PCSG_NAME)-$(GROVE_PCSG_INDEX)-leader-0.$(GROVE_HEADLESS_SERVICE)",
                                             },
-                                            {
-                                                "name": "VLLM_NIXL_SIDE_CHANNEL_HOST",
-                                                "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}},
-                                            },
-                                            {
-                                                "name": "VLLM_NIXL_SIDE_CHANNEL_PORT",
-                                                "value": "5557",
-                                            },
                                         ],
-                                        "ports": [{"name": "http", "containerPort": 8001}],
-                                        "readinessProbe": {
-                                            "httpGet": {"path": "/health", "port": 8001},
-                                            "initialDelaySeconds": 30,
-                                            "periodSeconds": 10,
-                                            "timeoutSeconds": 5,
-                                        },
-                                    },
-                                    {
-                                        "name": "pd-sidecar",
-                                        "image": "ghcr.io/llm-d/llm-d-router-disagg-sidecar:v0.9.0",
-                                        "args": [
-                                            "--secure-proxy=false",
-                                            "--kv-connector=nixlv2",
-                                            "--vllm-port=8001",
-                                        ],
-                                        "ports": [{"containerPort": 8000}],
+                                        "ports": [{"name": "http", "containerPort": 8000}],
                                         "readinessProbe": {
                                             "httpGet": {"path": "/health", "port": 8000},
                                             "initialDelaySeconds": 30,
@@ -5908,7 +6391,6 @@ APPLY_CASES = [
                                 ],
                                 "volumes": [
                                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
-                                    {"name": "nixl-shm", "emptyDir": {"medium": "Memory"}},
                                 ],
                                 "schedulerName": "kai-scheduler",
                                 "nodeSelector": {"modelplane.ai/pool": "frontier"},
@@ -5987,50 +6469,11 @@ APPLY_CASES = [
             "epp-serviceaccount": _epp_service_account(),
             "epp-role": _epp_role(),
             "epp-rolebinding": _epp_role_binding(),
-            "epp-config": _epp_config(
-                config="apiVersion: llm-d.ai/v1alpha1\n"
-                "kind: EndpointPickerConfig\n"
-                "plugins:\n"
-                "- type: approx-prefix-cache-producer\n"
-                "  parameters:\n"
-                "    autoTune: false\n"
-                "    blockSizeTokens: 16\n"
-                "    maxPrefixBlocksToMatch: 256\n"
-                "    lruCapacityPerServer: 31250\n"
-                "- type: prefix-cache-scorer\n"
-                "- type: disagg-headers-handler\n"
-                "- type: queue-scorer\n"
-                "- type: prefill-filter\n"
-                "- type: decode-filter\n"
-                "- type: max-score-picker\n"
-                "- type: prefix-based-pd-decider\n"
-                "  parameters:\n"
-                "    nonCachedTokens: 16\n"
-                "- type: disagg-profile-handler\n"
-                "  parameters:\n"
-                "    deciders:\n"
-                "      prefill: prefix-based-pd-decider\n"
-                "schedulingProfiles:\n"
-                "- name: prefill\n"
-                "  plugins:\n"
-                "  - pluginRef: prefill-filter\n"
-                "  - pluginRef: max-score-picker\n"
-                "  - pluginRef: prefix-cache-scorer\n"
-                "    weight: 2\n"
-                "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
-                "- name: decode\n"
-                "  plugins:\n"
-                "  - pluginRef: decode-filter\n"
-                "  - pluginRef: max-score-picker\n"
-                "  - pluginRef: prefix-cache-scorer\n"
-                "    weight: 2\n"
-                "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
-            ),
+            "epp-config": _epp_config(config=json.dumps({"kind": "EndpointPickerConfig"}, indent=2, sort_keys=True)),
             "epp": _epp(
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
-                config_checksum="f715f3024f37e7042d42628f10cbb04c7da78b96dc65953dac0f289ef2c7ef98",
+                image="ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                config_checksum="a9d9c5892fd25b535b127de68f30159b3d132f91f37c4c96b9e784b358d4b842",
             ),
             "epp-service": _epp_service(),
         },
@@ -6174,7 +6617,7 @@ APPLY_CASES = [
                 "- type: approx-prefix-cache-producer\n"
                 "  parameters:\n"
                 "    autoTune: false\n"
-                "    blockSizeTokens: 16\n"
+                "    blockSizeTokens: 64\n"
                 "    maxPrefixBlocksToMatch: 256\n"
                 "    lruCapacityPerServer: 31250\n"
                 "- type: prefix-cache-scorer\n"
@@ -6191,7 +6634,8 @@ APPLY_CASES = [
             ),
             "epp": _epp(
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
-                config_checksum="20c1dfea3fc4ad41e335cc74edbeb1e8689a607bc4bf7395849ffd2cf0bb2ae1",
+                image="ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                config_checksum="bf2146be008c2e12bb555e5406e1d419b2b8159aa3b2984623e385d3cf934007",
             ),
             "epp-service": _epp_service(),
         },
@@ -6330,7 +6774,7 @@ APPLY_CASES = [
                 "- type: approx-prefix-cache-producer\n"
                 "  parameters:\n"
                 "    autoTune: false\n"
-                "    blockSizeTokens: 16\n"
+                "    blockSizeTokens: 64\n"
                 "    maxPrefixBlocksToMatch: 256\n"
                 "    lruCapacityPerServer: 31250\n"
                 "- type: prefix-cache-scorer\n"
@@ -6352,7 +6796,8 @@ APPLY_CASES = [
                     "modelplane.ai/deployment": "qwen3-8b",
                     "modelplane.ai/replica": "2",
                 },
-                config_checksum="20c1dfea3fc4ad41e335cc74edbeb1e8689a607bc4bf7395849ffd2cf0bb2ae1",
+                image="ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                config_checksum="bf2146be008c2e12bb555e5406e1d419b2b8159aa3b2984623e385d3cf934007",
             ),
             "epp-service": _epp_service(),
         },
@@ -6483,7 +6928,7 @@ APPLY_CASES = [
                 "- type: approx-prefix-cache-producer\n"
                 "  parameters:\n"
                 "    autoTune: false\n"
-                "    blockSizeTokens: 16\n"
+                "    blockSizeTokens: 64\n"
                 "    maxPrefixBlocksToMatch: 256\n"
                 "    lruCapacityPerServer: 31250\n"
                 "- type: prefix-cache-scorer\n"
@@ -6500,7 +6945,8 @@ APPLY_CASES = [
             ),
             "epp": _epp(
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
-                config_checksum="20c1dfea3fc4ad41e335cc74edbeb1e8689a607bc4bf7395849ffd2cf0bb2ae1",
+                image="ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                config_checksum="bf2146be008c2e12bb555e5406e1d419b2b8159aa3b2984623e385d3cf934007",
             ),
             "epp-service": _epp_service(),
         },
@@ -6719,7 +7165,7 @@ APPLY_CASES = [
                 "- type: approx-prefix-cache-producer\n"
                 "  parameters:\n"
                 "    autoTune: false\n"
-                "    blockSizeTokens: 16\n"
+                "    blockSizeTokens: 64\n"
                 "    maxPrefixBlocksToMatch: 256\n"
                 "    lruCapacityPerServer: 31250\n"
                 "- type: prefix-cache-scorer\n"
@@ -6736,7 +7182,8 @@ APPLY_CASES = [
             ),
             "epp": _epp(
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
-                config_checksum="20c1dfea3fc4ad41e335cc74edbeb1e8689a607bc4bf7395849ffd2cf0bb2ae1",
+                image="ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                config_checksum="bf2146be008c2e12bb555e5406e1d419b2b8159aa3b2984623e385d3cf934007",
             ),
             "epp-service": _epp_service(),
         },
@@ -6800,60 +7247,182 @@ def test_kv_block_size(case: KvBlockSizeCase) -> None:
     assert routing._kv_block_size(case.engine_args) == case.want, case.reason
 
 
-DISAGGREGATED_CONFIG_CASES = [
-    DisaggregatedConfigCase(
-        name="BlockSize32",
-        reason="A block size of 32 renders in place of the config's placeholder.",
-        block_size=32,
-        want=(
-            "apiVersion: llm-d.ai/v1alpha1\n"
-            "kind: EndpointPickerConfig\n"
-            "plugins:\n"
-            "- type: approx-prefix-cache-producer\n"
-            "  parameters:\n"
-            "    autoTune: false\n"
-            "    blockSizeTokens: 32\n"
-            "    maxPrefixBlocksToMatch: 256\n"
-            "    lruCapacityPerServer: 31250\n"
-            "- type: prefix-cache-scorer\n"
-            "- type: disagg-headers-handler\n"
-            "- type: queue-scorer\n"
-            "- type: prefill-filter\n"
-            "- type: decode-filter\n"
-            "- type: max-score-picker\n"
-            "- type: prefix-based-pd-decider\n"
-            "  parameters:\n"
-            "    nonCachedTokens: 16\n"
-            "- type: disagg-profile-handler\n"
-            "  parameters:\n"
-            "    deciders:\n"
-            "      prefill: prefix-based-pd-decider\n"
-            "schedulingProfiles:\n"
-            "- name: prefill\n"
-            "  plugins:\n"
-            "  - pluginRef: prefill-filter\n"
-            "  - pluginRef: max-score-picker\n"
-            "  - pluginRef: prefix-cache-scorer\n"
-            "    weight: 2\n"
-            "  - pluginRef: queue-scorer\n"
-            "    weight: 1\n"
-            "- name: decode\n"
-            "  plugins:\n"
-            "  - pluginRef: decode-filter\n"
-            "  - pluginRef: max-score-picker\n"
-            "  - pluginRef: prefix-cache-scorer\n"
-            "    weight: 2\n"
-            "  - pluginRef: queue-scorer\n"
-            "    weight: 1\n"
-        ),
+UNIFIED_BLOCK_SIZE_CASES = [
+    UnifiedBlockSizeCase(
+        name="BelowMinimum",
+        reason="A block size below 64 renders as 64, the smallest the picker uses.",
+        block_size=16,
+        want="    blockSizeTokens: 64\n",
+    ),
+    UnifiedBlockSizeCase(
+        name="AtMinimum",
+        reason="A block size of 64 renders as is.",
+        block_size=64,
+        want="    blockSizeTokens: 64\n",
+    ),
+    UnifiedBlockSizeCase(
+        name="AboveMinimum",
+        reason="A block size above 64 renders as is.",
+        block_size=128,
+        want="    blockSizeTokens: 128\n",
     ),
 ]
 
 
-@pytest.mark.parametrize("case", DISAGGREGATED_CONFIG_CASES, ids=lambda case: case.name)
-def test_disaggregated_config(case: DisaggregatedConfigCase) -> None:
-    """The disaggregated EPP config renders with the engine's KV block size."""
-    assert routing._disaggregated_epp_config_yaml(case.block_size) == case.want, case.reason
+@pytest.mark.parametrize("case", UNIFIED_BLOCK_SIZE_CASES, ids=lambda case: case.name)
+def test_unified_block_size(case: UnifiedBlockSizeCase) -> None:
+    """The unified config's blockSizeTokens is the engine's block size, at least 64."""
+    assert case.want in routing._unified_epp_config_yaml(case.block_size), case.reason
+
+
+PICKER_CASES = [
+    PickerCase(
+        name="NoServing",
+        reason="A replica with no serving block runs the default picker image and configuration.",
+        serving=None,
+        want=("ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0", "default"),
+    ),
+    PickerCase(
+        name="ImageAndConfig",
+        reason="An endpointPicker with an image and a config runs both, the config replacing the default.",
+        serving=v1alpha1.Serving(
+            mode="Unified",
+            router="EndpointPicker",
+            endpointPicker=v1alpha1.EndpointPicker(image="example.com/picker:v2", config={"kind": "K"}),
+        ),
+        want=("example.com/picker:v2", '{\n  "kind": "K"\n}'),
+    ),
+]
+
+
+@pytest.mark.parametrize("case", PICKER_CASES, ids=lambda case: case.name)
+def test_picker(case: PickerCase) -> None:
+    """The picker runs the user's image and config where set, and the defaults otherwise."""
+    replica = _replica(
+        name="r",
+        namespace="ml-team",
+        cluster_name="cluster-a",
+        labels=None,
+        model_cache_ref=None,
+        serving=case.serving,
+        engines=[
+            v1alpha1.Engine(
+                name="main",
+                members=[
+                    v1alpha1.Member(
+                        role="Standalone",
+                        nodePoolName="frontier",
+                        template=v1alpha1.Template(
+                            spec=v1alpha1.Spec(containers=[v1alpha1.Container(name="engine", image="e")])
+                        ),
+                    )
+                ],
+            )
+        ],
+    )
+    assert routing._picker(replica, "default") == case.want, case.reason
+
+
+ROUTING_MISSING_CASES = [
+    RoutingMissingCase(
+        name="Unified",
+        reason="A Unified replica needs no routing of its own.",
+        serving=v1alpha1.Serving(mode="Unified"),
+        want=False,
+    ),
+    RoutingMissingCase(
+        name="PrefillDecodeWithRouting",
+        reason="A PrefillDecode replica with a router and a picker config has its routing.",
+        serving=v1alpha1.Serving(
+            mode="PrefillDecode",
+            router="EndpointPicker",
+            endpointPicker=v1alpha1.EndpointPicker(image="example.com/picker:v2", config={"kind": "K"}),
+        ),
+        want=False,
+    ),
+    RoutingMissingCase(
+        name="PrefillDecodeStored",
+        reason="A PrefillDecode replica without router or picker config lacks its routing.",
+        serving=v1alpha1.Serving(mode="PrefillDecode"),
+        want=True,
+    ),
+    RoutingMissingCase(
+        name="PrefillDecodeNoConfig",
+        reason="A PrefillDecode replica with a router but no picker config lacks its routing.",
+        serving=v1alpha1.Serving(
+            mode="PrefillDecode",
+            router="EndpointPicker",
+            endpointPicker=v1alpha1.EndpointPicker(image="example.com/picker:v2"),
+        ),
+        want=True,
+    ),
+]
+
+
+@pytest.mark.parametrize("case", ROUTING_MISSING_CASES, ids=lambda case: case.name)
+def test_routing_missing(case: RoutingMissingCase) -> None:
+    """A PrefillDecode replica without its routing is caught before it's composed."""
+    replica = _replica(
+        name="r",
+        namespace="ml-team",
+        cluster_name="cluster-a",
+        labels=None,
+        model_cache_ref=None,
+        serving=case.serving,
+        engines=[
+            v1alpha1.Engine(
+                name="main",
+                members=[
+                    v1alpha1.Member(
+                        role="Standalone",
+                        nodePoolName="frontier",
+                        template=v1alpha1.Template(
+                            spec=v1alpha1.Spec(containers=[v1alpha1.Container(name="engine", image="e")])
+                        ),
+                    )
+                ],
+            )
+        ],
+    )
+    assert routing.prefill_decode_routing_missing(replica) == case.want, case.reason
+
+
+# A user's config reaches the function through a protobuf Struct, which keeps no
+# key order and turns every number into a float. Either would change the
+# rendering, and so the checksum that rolls the picker, between runs.
+RENDER_PICKER_CONFIG_CASES = [
+    RenderPickerConfigCase(
+        name="KeysSorted",
+        reason="Keys render sorted at every level, whatever order they arrive in.",
+        config={"plugins": [{"type": "queue-scorer", "parameters": {"b": "x", "a": "y"}}], "kind": "K"},
+        want=(
+            "{\n"
+            '  "kind": "K",\n'
+            '  "plugins": [\n'
+            "    {\n"
+            '      "parameters": {\n'
+            '        "a": "y",\n'
+            '        "b": "x"\n'
+            "      },\n"
+            '      "type": "queue-scorer"\n'
+            "    }\n"
+            "  ]\n"
+            "}"
+        ),
+    ),
+    RenderPickerConfigCase(
+        name="WholeFloatsAsInts",
+        reason="A whole float renders as an int, and a fractional float stays a float.",
+        config={"blockSizeTokens": 64.0, "weights": [2.0, 0.5]},
+        want='{\n  "blockSizeTokens": 64,\n  "weights": [\n    2,\n    0.5\n  ]\n}',
+    ),
+]
+
+
+@pytest.mark.parametrize("case", RENDER_PICKER_CONFIG_CASES, ids=lambda case: case.name)
+def test_render_picker_config(case: RenderPickerConfigCase) -> None:
+    """A user's picker config renders the same way every run."""
+    assert routing._render_picker_config(case.config) == case.want, case.reason
 
 
 # compose-inference-cluster creates the namespace a replica's objects land in,

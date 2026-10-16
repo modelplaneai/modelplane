@@ -953,6 +953,9 @@ class Composer:
             ),
             namespace=_NAMESPACE_SYSTEM,
             gpuPools=gpu_pools,  # gpu_pools builds the by-alias wire form; pydantic coerces it to GpuPool
+            # Every cluster composes an InferencePool for a picker the replica
+            # names, on either stack. A stack that can't would leave it out.
+            routers=["EndpointPicker"],
         )
         cache_storage_class = self.observed_cache_storage_class()
         if cache_storage_class:

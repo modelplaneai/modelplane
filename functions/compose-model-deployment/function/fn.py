@@ -87,18 +87,21 @@ SERVED_MODEL_NAME_ENV = "MODELPLANE_SERVED_MODEL_NAME"
 
 
 def _inject_served_model_name(template: mrv1alpha1.Template, served: str) -> None:
-    """Put SERVED_MODEL_NAME_ENV ahead of a container's own env entries.
+    """Put SERVED_MODEL_NAME_ENV ahead of the engine container's own env entries.
 
     Ahead, because env expansion is left to right, so an arg or a later env
     entry referencing $(MODELPLANE_SERVED_MODEL_NAME) only resolves if this
     comes first. A user entry of the same name is dropped rather than
     duplicated: the whole point is that Modelplane decides this value, and
     honouring an override would let the engine answer to a name nothing routes
-    to.
+    to. Only the engine answers to the name, so a sidecar beside it doesn't get
+    it.
     """
     if template.spec is None:
         return
     for container in template.spec.containers:
+        if container.name != "engine":
+            continue
         existing = [e for e in container.env or [] if e.name != SERVED_MODEL_NAME_ENV]
         container.env = [mrv1alpha1.EnvItem(name=SERVED_MODEL_NAME_ENV, value=served), *existing]
 

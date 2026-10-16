@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, Field, conint, constr
 
@@ -118,6 +118,20 @@ class EnvItem(BaseModel):
     valueFrom: ValueFrom | None = None
 
 
+class Port(BaseModel):
+    containerPort: conint(ge=1, le=65535)
+    """
+    Port number the container listens on.
+    """
+    name: (
+        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
+        | None
+    ) = None
+    """
+    Port name. The engine container's port named "http" is where Modelplane probes the engine and scrapes its metrics.
+    """
+
+
 class Container(BaseModel):
     args: list[str] | None = None
     """
@@ -136,9 +150,15 @@ class Container(BaseModel):
     """
     Container image.
     """
-    name: constr(min_length=1)
+    name: constr(
+        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
+    )
     """
     Container name. The container named "engine" is the inference engine.
+    """
+    ports: list[Port] | None = Field(None, max_length=8)
+    """
+    Ports the container listens on. The engine container's port named "http" is where Modelplane probes the engine and scrapes its metrics. Without one, the engine serves on 8000, and an unnamed port 8000 is its "http" port. A container in front of the engine declares 8000, and the engine then declares its "http" port elsewhere. A Worker's ports pass through as written.
     """
 
 
@@ -147,9 +167,9 @@ class ImagePullSecret(BaseModel):
 
 
 class Spec(BaseModel):
-    containers: list[Container] = Field(..., max_length=1, min_length=1)
+    containers: list[Container] = Field(..., max_length=8, min_length=1)
     """
-    Containers for the engine pod. v0.1 supports a single container, which must be named "engine" (the inference engine). Sidecar / multi-container support is tracked separately.
+    Containers for the engine pod. Exactly one is named "engine", the inference engine. The others run beside it, such as a routing sidecar. Modelplane adds device claims, MODELPLANE_ environment, ModelCache mounts, /dev/shm and the readiness probe to the engine container only.
     """
     imagePullSecrets: list[ImagePullSecret] | None = None
     """
@@ -220,10 +240,29 @@ class ModelCacheRef(BaseModel):
     """
 
 
+class EndpointPicker(BaseModel):
+    config: dict[str, Any] | None = Field(None, min_length=1)
+    """
+    The picker's configuration, such as an llm-d EndpointPickerConfig, passed to the picker without Modelplane reading it. Required under PrefillDecode. It replaces Modelplane's default configuration whole.
+    """
+    image: constr(min_length=1) | None = None
+    """
+    The endpoint picker image. Set together with config, since a configuration is written for one picker release. Omitted, under Unified, means the image this Modelplane release uses.
+    """
+
+
 class Serving(BaseModel):
+    endpointPicker: EndpointPicker | None = None
+    """
+    The endpoint picker, when router is EndpointPicker. Required, with its config, under PrefillDecode. Under Unified, omitted means Modelplane's picker and default configuration. Modelplane composes the picker's pool, Service and RBAC around it.
+    """
     mode: Literal['Unified', 'PrefillDecode']
     """
     Unified serves prefill and decode on one engine. PrefillDecode splits them across two engines, each marking its phase as Prefill or Decode.
+    """
+    router: Literal['EndpointPicker'] | None = None
+    """
+    The router the user writes. Required under PrefillDecode. Omitted under Unified, the cluster routes the deployment. EndpointPicker runs the endpoint picker set in endpointPicker, and the user writes any sidecar the picker needs as a container in the member templates.
     """
 
 
@@ -258,7 +297,7 @@ class SpecModel(BaseModel):
     """
     serving: Serving | None = None
     """
-    How the deployment is served from the cluster edge to its engines. Unified (the default) fronts the engines with a Service. PrefillDecode serves prefill and decode from the two engines marking those phases, with inference-aware routing that sequences prefill then decode. Omitted means Unified.
+    How the deployment is served from the cluster edge to its engines. Modelplane fronts the serving pods with an InferencePool and an endpoint picker in both modes. Unified (the default) serves prefill and decode on each engine. PrefillDecode serves them from the two engines marking those phases, with routing that sequences prefill then decode. Omitted means Unified.
     """
     tolerations: list[Toleration] | None = None
     """

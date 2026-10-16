@@ -87,13 +87,17 @@ engine binds the right interface instead of guessing it.
 The prefill and decode phases have opposite hardware profiles, and on one engine
 a prefill burst stalls the decodes already running. Set
 `spec.template.spec.serving.mode: PrefillDecode` to run them as two engines, one
-marking `phase: Prefill` and the other `phase: Decode`. Modelplane fronts the
-pair with inference-aware routing that sequences prefill then decode, moving the
-KV cache between them. Each phase can sit on the GPU class that suits it.
+marking `phase: Prefill` and the other `phase: Decode`. The routing sequences
+prefill then decode, and the engines move the KV cache between them. Each phase
+can sit on the GPU class that suits it.
 
 ```yaml {nocopy=true}
 serving:
   mode: PrefillDecode       # the two engines below are one P/D pair
+  router: EndpointPicker    # required under PrefillDecode
+  endpointPicker:
+    image: ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0
+    config: {...}           # required under PrefillDecode
 engines:
 - name: prefill
   phase: Prefill
@@ -101,16 +105,22 @@ engines:
   phase: Decode
 ```
 
+A `PrefillDecode` deployment writes its own routing. The endpoint picker's
+configuration must suit your engines, and the llm-d sidecar in the decode pod
+must match their KV connector. Set `serving.router: EndpointPicker` and
+`serving.endpointPicker`, as [Configure Routing]({{< ref "routing.md" >}})
+describes. The [Kimi-K2 recipe]({{< ref "/recipes/kimi-k2" >}}) is a complete
+vLLM example.
+
 Disaggregation pays off for large models under load with strict latency targets
 and long context. For small models or low traffic, the KV-transfer overhead
 outweighs the benefit, so unified serving is the default.
 
-It requires an engine image that includes the **NIXL** KV-transfer runtime.
-vLLM's `NixlConnector` (and SGLang's prefill/decode transfer) import the `nixl`
-package, so disaggregated engines crash at startup with `NIXL is not available`
-on an image that lacks it. Recent vanilla `vllm/vllm-openai` images include NIXL,
-so pin a current tag rather than an old one. The engine image is yours to choose,
-so this is a prerequisite Modelplane does not bundle for you.
+With a NIXL connector, the engine image must include the **NIXL** KV-transfer
+runtime. vLLM's `NixlConnector` (and SGLang's NIXL transfer backend) import the
+`nixl` package. On an image without it, the engines crash at startup with
+`NIXL is not available`. Recent vanilla `vllm/vllm-openai` images include NIXL,
+so pin a current tag rather than an old one.
 
 ## Requesting GPUs
 
@@ -252,6 +262,9 @@ autoscaling.
 {{< /tab >}}
 {{< tab "Multi-node" >}}
 {{< manifests "concepts/model-deployment-multinode.yaml" >}}
+{{< /tab >}}
+{{< tab "Disaggregated" >}}
+{{< manifests "recipes/kimi-k2/model-deployment.yaml" >}}
 {{< /tab >}}
 {{< /tabs >}}
 <!-- vale write-good.Passive = YES -->

@@ -450,11 +450,16 @@ Each member has:
   node runs one worker pod, so this is how big the gang is: a leader plus
   `worker.nodes` workers. Defaults to 1.
 - `template`: a curated subset of a Kubernetes `PodTemplateSpec`, in the same
-  structural shape so fields can be added without restructuring. It carries a
-  single container named `engine` (the inference engine) with its image, command,
-  args, and env, plus `imagePullSecrets`. Secret references are passed through;
-  the referenced objects must exist on every InferenceCluster the deployment may
-  target.
+  structural shape so fields can be added without restructuring. It carries
+  one container named `engine` (the inference engine) with its image, command,
+  args, env, and ports, plus `imagePullSecrets`. It can carry other containers
+  beside `engine`, such as a routing sidecar, which Modelplane passes through as
+  written; Modelplane decorates only `engine`. The engine's port named `http`
+  is where Modelplane probes it and scrapes its metrics, 8000 by default.
+  Exactly one container in a serving pod serves 8000: a container in front of
+  the engine declares 8000, and the engine then declares its `http` port
+  elsewhere. Secret references are passed through; the referenced objects must
+  exist on every InferenceCluster the deployment may target.
 
 A `Standalone` engine composes to a Deployment. A `Leader`/`Worker` engine
 composes to a LeaderWorkerSet whose gang size is one leader plus its
@@ -570,15 +575,25 @@ URL per ModelService. It can only route to the InferenceCluster edge. Each
 InferenceCluster also runs a gateway, responsible for routing from cluster edge
 to the actual model engines (vLLM etc). This is what `spec.serving` configures.
 
-Modelplane is pretty opinionated about this layer. We consider which inference
-gateway we use an implementation detail, like using LWS or llm-d. Where possible
-we infer this layer's configuration from the shape of the `engines` block.
+Modelplane composes this layer's wiring, and is opinionated about it for
+`Unified` serving. We consider which inference gateway we use an implementation
+detail, like using LWS or llm-d. Where possible we infer this layer's
+configuration from the shape of the `engines` block.
+
+A `Unified` deployment gets its cluster's routing by default. A
+`PrefillDecode` deployment writes its own: it sets
+`serving.router: EndpointPicker`, the endpoint picker's image and configuration
+in `serving.endpointPicker`, and the sidecar the picker needs as a container in
+the decode member's template. A wrong prefill/decode default reports Ready and
+rejects requests, so there isn't one. See
+[user-authored routing](./user-authored-routing.md).
 
 By default, under `Unified` serving, Modelplane assumes:
 
 - Every Standalone or Leader member exposes an OpenAI endpoint on port 8000.
-- Every Standalone or Leader member should be part of one Kubernetes Service.
-- The Kubernetes Service should be exposed by a Gateway API HTTPRoute.
+- Every Standalone or Leader member should be part of one GAIE InferencePool,
+  fronted by Modelplane's default endpoint picker.
+- The InferencePool should be exposed by a Gateway API HTTPRoute.
 
 The only other valid mode is `PrefillDecode`, for disaggregated serving, where
 each engine marks its `phase` as `Prefill` or `Decode` (the full spec is below).
@@ -589,8 +604,8 @@ and `phase` may not be set under any other mode. The mode enum leaves room for
 other topologies with special serving needs (e.g. `EncodePrefillDecode` for
 multimodal models, where a third engine would mark `phase: Encode`).
 
-Under `PrefillDecode` Modelplane configures inference-aware routing optimized
-for disaggregated serving and assumes:
+Under `PrefillDecode` Modelplane composes the InferencePool and runs the picker
+for the routing the user writes, and assumes:
 
 - Every Standalone or Leader member exposes an OpenAI endpoint on port 8000.
 - Every Standalone or Leader member should be part of one GAIE InferencePool.
@@ -599,9 +614,9 @@ for disaggregated serving and assumes:
 Disaggregated serving requires an endpoint picker (EPP) to pick a decode and a
 prefill worker for each request. The decode worker runs a sidecar that
 dispatches prefill to the chosen worker; the engines themselves transfer the KV
-cache over their configured connector. Modelplane injects the sidecar, labels
-the pods as either prefill or decode, and configures the endpoint picker
-accordingly.
+cache over their configured connector. The user writes the sidecar and the
+picker configuration, and any KV transfer environment the engines need.
+Modelplane labels the pods as either prefill or decode, and runs the picker.
 
 Because the engines transfer the KV cache over their connector (e.g. vLLM's
 `NixlConnector`), the engine image must ship that connector's runtime: the NIXL
@@ -615,6 +630,8 @@ A disaggregated deployment splits prefill and decode into separate engines on
 their own hardware, serving the same model: three single-GPU prefill copies and
 two two-GPU decode copies, sized by each engine's `copies`. Decode gets more GPU
 per copy for KV-cache capacity. The KV producer/consumer roles are engine flags.
+The decode engine listens on 8001, behind the sidecar the deployment writes on
+8000, and both engines set the NIXL address.
 Everything that differs between the phases, hardware and KV role and copy count,
 is carried by the two engines. It schedules as 7 nodes co-located in one network
 domain on one cluster: 3×1 GPU for prefill and 2×2 GPU for decode, in
@@ -624,6 +641,10 @@ potentially different pools.
 spec:
   serving:
     mode: PrefillDecode
+    router: EndpointPicker
+    endpointPicker:
+      image: ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0
+      config: {...}   # an EndpointPickerConfig with a prefill/decode decider
   engines:
   - name: prefill
     phase: Prefill
@@ -644,6 +665,12 @@ spec:
             args:
             - --model=meta-llama/Llama-3.1-8B-Instruct
             - --kv-transfer-config={"kv_connector":"NixlConnector","kv_role":"kv_producer"}
+            env:
+            - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+              valueFrom:
+                fieldRef: {fieldPath: status.podIP}
+            - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+              value: "5557"
   - name: decode
     phase: Decode
     copies: 2
@@ -658,12 +685,27 @@ spec:
       template:
         spec:
           containers:
+          - name: sidecar
+            image: ghcr.io/llm-d/llm-d-router-disagg-sidecar:v0.9.0
+            args: [--secure-proxy=false, --kv-connector=nixlv2, --vllm-port=8001]
+            ports:
+            - containerPort: 8000
           - name: engine
             image: vllm/vllm-openai:v0.11.0
             args:
             - --model=meta-llama/Llama-3.1-8B-Instruct
             - --tensor-parallel-size=2
+            - --port=8001
             - --kv-transfer-config={"kv_connector":"NixlConnector","kv_role":"kv_consumer"}
+            env:
+            - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+              valueFrom:
+                fieldRef: {fieldPath: status.podIP}
+            - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+              value: "5557"
+            ports:
+            - name: http
+              containerPort: 8001
 ```
 
 ### ModelReplica

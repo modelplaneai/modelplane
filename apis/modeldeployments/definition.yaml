@@ -132,12 +132,19 @@ spec:
                             minLength: 1
                       serving:
                         type: object
+                        x-kubernetes-validations:
+                        - rule: "!has(self.endpointPicker) || (has(self.router) && self.router == 'EndpointPicker')"
+                          message: "serving.endpointPicker may only be set when serving.router is EndpointPicker"
+                        - rule: "self.mode != 'PrefillDecode' || (has(self.endpointPicker) && has(self.endpointPicker.config))"
+                          message: "PrefillDecode serving requires serving.router EndpointPicker and serving.endpointPicker.config"
                         description: >-
                           How the deployment is served from the cluster edge to its
-                          engines. Unified (the default) fronts the engines with a
-                          Service. PrefillDecode serves prefill and decode from the two
-                          engines marking those phases, with inference-aware routing that
-                          sequences prefill then decode. Omitted means Unified.
+                          engines. Modelplane fronts the serving pods with an
+                          InferencePool and an endpoint picker in both modes. Unified
+                          (the default) serves prefill and decode on each engine.
+                          PrefillDecode serves them from the two engines marking those
+                          phases, with routing that sequences prefill then decode.
+                          Omitted means Unified.
                         required: [mode]
                         properties:
                           mode:
@@ -148,6 +155,43 @@ spec:
                               Unified serves prefill and decode on one engine.
                               PrefillDecode splits them across two engines, each marking
                               its phase as Prefill or Decode.
+                          router:
+                            type: string
+                            enum: [EndpointPicker]
+                            description: >-
+                              The router the user writes. Required under PrefillDecode.
+                              Omitted under Unified, the cluster routes the deployment.
+                              EndpointPicker runs the endpoint picker set in endpointPicker,
+                              and the user writes any sidecar the picker needs as a container
+                              in the member templates.
+                          endpointPicker:
+                            type: object
+                            description: >-
+                              The endpoint picker, when router is EndpointPicker. Required,
+                              with its config, under PrefillDecode. Under Unified, omitted
+                              means Modelplane's picker and default configuration.
+                              Modelplane composes the picker's pool, Service and RBAC
+                              around it.
+                            x-kubernetes-validations:
+                            - rule: "has(self.config) == has(self.image)"
+                              message: "endpointPicker.image and endpointPicker.config must be set together"
+                            properties:
+                              image:
+                                type: string
+                                minLength: 1
+                                description: >-
+                                  The endpoint picker image. Set together with config, since
+                                  a configuration is written for one picker release. Omitted,
+                                  under Unified, means the image this Modelplane release uses.
+                              config:
+                                type: object
+                                x-kubernetes-preserve-unknown-fields: true
+                                minProperties: 1
+                                description: >-
+                                  The picker's configuration, such as an llm-d
+                                  EndpointPickerConfig, passed to the picker without
+                                  Modelplane reading it. Required under PrefillDecode. It
+                                  replaces Modelplane's default configuration whole.
                       tolerations:
                         type: array
                         description: >-
@@ -273,6 +317,14 @@ spec:
                                 x-kubernetes-validations:
                                 - rule: "!has(self.worker) || self.role == 'Worker'"
                                   message: "worker may only be set on a Worker member"
+                                - rule: "(has(self.role) && self.role == 'Worker') || !has(self.template.spec) || self.template.spec.containers.filter(c, has(c.ports) && c.ports.exists(p, p.containerPort == 8000)).size() <= 1"
+                                  message: "at most one container in a serving pod may declare containerPort 8000"
+                                - rule: "(has(self.role) && self.role == 'Worker') || !has(self.template.spec) || !self.template.spec.containers.exists(c, c.name != 'engine' && has(c.ports) && c.ports.exists(p, p.containerPort == 8000)) || self.template.spec.containers.exists(c, c.name == 'engine' && has(c.ports) && c.ports.exists(p, has(p.name) && p.name == 'http' && p.containerPort != 8000))"
+                                  message: "when another container declares containerPort 8000, the engine container must declare its 'http' port on a different port"
+                                - rule: "(has(self.role) && self.role == 'Worker') || !has(self.template.spec) || !self.template.spec.containers.exists(c, c.name == 'engine' && has(c.ports) && c.ports.exists(p, has(p.name) && p.name == 'http' && p.containerPort != 8000)) || self.template.spec.containers.exists(c, c.name != 'engine' && has(c.ports) && c.ports.exists(p, p.containerPort == 8000))"
+                                  message: "when the engine container's 'http' port isn't 8000, another container in its pod must declare containerPort 8000"
+                                - rule: "(has(self.role) && self.role == 'Worker') || !has(self.template.spec) || !self.template.spec.containers.exists(c, c.name == 'engine' && has(c.ports) && c.ports.exists(p, p.containerPort == 8000 && has(p.name) && p.name != 'http'))"
+                                  message: "the engine container may name containerPort 8000 only 'http'"
                                 properties:
                                   role:
                                     type: string
@@ -453,16 +505,18 @@ spec:
                                           containers:
                                             type: array
                                             minItems: 1
-                                            maxItems: 1
+                                            maxItems: 8
+                                            x-kubernetes-list-type: map
+                                            x-kubernetes-list-map-keys: [name]
                                             description: >-
-                                              Containers for the engine pod. v0.1 supports
-                                              a single container, which must be named
-                                              "engine" (the inference engine). Sidecar /
-                                              multi-container support is tracked
-                                              separately.
+                                              Containers for the engine pod. Exactly one is named "engine",
+                                              the inference engine. The others run beside it, such as a
+                                              routing sidecar. Modelplane adds device claims, MODELPLANE_
+                                              environment, ModelCache mounts, /dev/shm and the readiness
+                                              probe to the engine container only.
                                             x-kubernetes-validations:
                                             - rule: "self.exists_one(c, c.name == 'engine')"
-                                              message: "the single container must be named 'engine'"
+                                              message: "exactly one container must be named 'engine'"
                                             items:
                                               type: object
                                               required: [name, image]
@@ -470,6 +524,8 @@ spec:
                                                 name:
                                                   type: string
                                                   minLength: 1
+                                                  maxLength: 63
+                                                  pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
                                                   description: >-
                                                     Container name. The container named
                                                     "engine" is the inference engine.
@@ -567,6 +623,39 @@ spec:
                                                                 type: string
                                                               apiVersion:
                                                                 type: string
+                                                ports:
+                                                  type: array
+                                                  maxItems: 8
+                                                  x-kubernetes-list-type: map
+                                                  x-kubernetes-list-map-keys: [containerPort]
+                                                  x-kubernetes-validations:
+                                                  - rule: "self.all(p, !has(p.name) || self.exists_one(q, has(q.name) && q.name == p.name))"
+                                                    message: "port names must be unique within a container"
+                                                  description: >-
+                                                    Ports the container listens on. The engine container's
+                                                    port named "http" is where Modelplane probes the engine
+                                                    and scrapes its metrics. Without one, the engine serves
+                                                    on 8000, and an unnamed port 8000 is its "http" port. A
+                                                    container in front of the engine declares 8000, and the
+                                                    engine then declares its "http" port elsewhere. A Worker's
+                                                    ports pass through as written.
+                                                  items:
+                                                    type: object
+                                                    required: [containerPort]
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                        minLength: 1
+                                                        maxLength: 15
+                                                        pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                                                        description: >-
+                                                          Port name. The engine container's port named "http" is
+                                                          where Modelplane probes the engine and scrapes its metrics.
+                                                      containerPort:
+                                                        type: integer
+                                                        minimum: 1
+                                                        maximum: 65535
+                                                        description: Port number the container listens on.
                                           imagePullSecrets:
                                             type: array
                                             description: >-

@@ -401,6 +401,10 @@ class Status(BaseModel):
     Namespace where the internal XRs (cluster, backend) were created.
     """
     providerConfigRef: ProviderConfigRef | None = None
+    routers: list[Literal['EndpointPicker']] | None = Field(None, max_length=8)
+    """
+    The serving.router values this cluster can compose. Every serving stack composes an InferencePool for a named endpoint picker, so every cluster lists EndpointPicker. Placement by serving stack (#418) will use it to keep a deployment off clusters that can't compose its router.
+    """
 
 
 class InferenceCluster(BaseModel):

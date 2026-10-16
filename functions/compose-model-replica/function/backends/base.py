@@ -228,9 +228,11 @@ def remote_namespace(replica: v1alpha1.ModelReplica) -> str:
 # the ModelEndpoint URLs, so it must not diverge between backends.
 ENGINE_PORT = 8000
 
-# The name given to that port. Named because the collector's engine scrape job
-# selects on it: matching by number instead would find the pd-sidecar's port on
-# a disaggregated pod rather than the engine behind it.
+# The name given to the engine's port. Named because the collector's engine
+# scrape job selects on it: matching by number instead would find a sidecar's
+# port, such as the disaggregation sidecar on a decode pod, rather than the
+# engine behind it. The collector also matches the engine container by name, so
+# another container that names a port http isn't scraped.
 ENGINE_PORT_NAME = "http"
 
 # Pod label carrying the serving identity (the replica name). The replica's one
@@ -535,17 +537,68 @@ def serving_label(replica: v1alpha1.ModelReplica) -> str:
 def engine_container(member: v1alpha1.Member) -> v1alpha1.Container:
     """Return a member's container named 'engine'. The XRD's CEL validation
     guarantees exactly one exists per member, so this always succeeds.
-
-    v0.1 constrains the template to a single container (the engine) via the
-    XRD (containers maxItems: 1), so there is nothing to drop. Sidecar /
-    multi-container support is tracked in #108 — it needs design for the Grove
-    gang (which containers run on the leader vs the worker clique).
     """
     # An engine member carries its container in template.spec. The XRD types
     # spec as optional but a member with no spec defines no pod to serve, so
     # reaching here without one is a malformed replica.
     assert member.template.spec is not None
     return next(c for c in member.template.spec.containers if c.name == "engine")
+
+
+def sidecar_containers(member: v1alpha1.Member) -> list[dict]:
+    """A member's containers other than 'engine', as the user wrote them.
+
+    Modelplane decorates only the engine container (claims, env, mounts, probe),
+    so these pass through untouched. Each member has its own template, so the
+    user chooses which pods of a gang run them.
+    """
+    assert member.template.spec is not None
+    return [c.model_dump(exclude_none=True) for c in member.template.spec.containers if c.name != "engine"]
+
+
+def engine_ports(container: v1alpha1.Container) -> list[dict]:
+    """A serving engine container's ports, always including the http port.
+
+    The engine declares its http port when another container takes
+    ENGINE_PORT, as the disaggregation sidecar does on a decode pod; the XRD
+    requires that whenever another container declares 8000. Otherwise the
+    engine serves on ENGINE_PORT.
+    """
+    ports = declared_ports(container)
+    if any(p.get("name") == ENGINE_PORT_NAME for p in ports):
+        return ports
+    # An engine that declares ENGINE_PORT without a name serves its API there,
+    # so that port is the http port. The XRD rejects any other name for it.
+    for p in ports:
+        if p["containerPort"] == ENGINE_PORT:
+            p["name"] = ENGINE_PORT_NAME
+            return ports
+    ports.insert(0, {"name": ENGINE_PORT_NAME, "containerPort": ENGINE_PORT})
+    return ports
+
+
+def declared_ports(container: v1alpha1.Container) -> list[dict]:
+    """A container's ports as the user wrote them, for a pod that doesn't serve."""
+    return [p.model_dump(exclude_none=True) for p in container.ports or []]
+
+
+def engine_http_port(container: v1alpha1.Container) -> int:
+    """The port a serving engine container serves its API, health and metrics on."""
+    return next(p["containerPort"] for p in engine_ports(container) if p.get("name") == ENGINE_PORT_NAME)
+
+
+def readiness_probe(port: int) -> dict:
+    """The readiness probe for a serving engine container on its http port."""
+    return {
+        "httpGet": {"path": "/health", "port": port},
+        "initialDelaySeconds": 30,
+        "periodSeconds": 10,
+        # Kubernetes defaults the probe timeout to 1s. Some engines' /health
+        # isn't instant - SGLang's sits right at ~1s - so a 1s timeout flaps the
+        # probe and the pod never goes Ready. 5s gives a slow /health room
+        # without masking a real hang.
+        "timeoutSeconds": 5,
+    }
 
 
 def engine_member(engine: v1alpha1.Engine, role: str) -> v1alpha1.Member | None:

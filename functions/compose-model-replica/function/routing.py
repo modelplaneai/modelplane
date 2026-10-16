@@ -23,18 +23,26 @@ the strategy:
   whether the replica serves from a single pod or many: the picker is vestigial
   for one pod, but the alternative is swapping a Service + HTTPRoute for a pool
   the moment a second pod appears, which would drop in-flight requests.
-- PrefillDecode (disaggregated) role-labels the two phase engines, injects the
-  pd-sidecar on decode, and fronts both with a GAIE InferencePool + endpoint
-  picker, routed to in place of a Service.
+- PrefillDecode (disaggregated) role-labels the two phase engines and fronts
+  both with a GAIE InferencePool + endpoint picker, routed to in place of a
+  Service.
+
+serving.router says who writes the router's behaviour. PrefillDecode requires
+router: EndpointPicker and a picker config (the XRD enforces it), because a
+wrong prefill/decode default reports Ready and rejects requests. The user
+writes the picker's configuration and, as a container in the decode pod, the
+disaggregation sidecar with the --kv-connector that matches their engines; this
+layer injects nothing into their pods. Unified has a default: without a
+router, the cluster routes the replica with Modelplane's picker configuration,
+which reads --block-size from the engine's args (#179).
 
 The backends build no routing of their own, so a strategy only adds resources
-(and, for disaggregated, decorates the decode pod) - nothing is removed.
-
-Engine flags, including --kv-transfer-config for the NixlConnector, are the
-user's; this layer injects none.
+(and decorates the serving pods) - nothing is removed.
 """
 
 import hashlib
+import json
+from typing import Any
 
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
@@ -57,10 +65,10 @@ def _namespace(meta: metav1.ObjectMeta | None) -> str:
     return meta.namespace
 
 
+# The picker image a replica runs when its serving.endpointPicker sets none.
 _EPP_IMAGE = "ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0"
-_SIDECAR_IMAGE = "ghcr.io/llm-d/llm-d-router-disagg-sidecar:v0.9.0"
 
-# ConfigMap key and mount-path filename for each strategy's EPP config.
+
 # ConfigMap key and mount-path filename for the EPP config. One name for both
 # strategies: the ConfigMap is per-replica and carries a single strategy's
 # config, so the mount path never needs to encode which one.
@@ -72,96 +80,20 @@ _EPP_CONFIG_FILE = "epp-config.yaml"
 _EPP_METRICS_PORT = 9090
 _EPP_ROLE = "picker"
 
-# The pd-sidecar takes ENGINE_PORT (8000), so the decode engine listens here.
-_DECODE_ENGINE_PORT = 8001
-
-# NIXL KV-transfer plumbing injected onto every disaggregated engine.
-_NIXL_SHM_VOLUME = "nixl-shm"
-_NIXL_SIDE_CHANNEL_PORT = "5557"
-
-# Selector labels shared by both engines' serving pods (the InferencePool
-# matchLabels) and the per-role label the picker partitions on.
+# Labels llm-d's picker reads on a PrefillDecode replica's serving pods: the
+# role its prefill and decode filters select on, and the inference-serving
+# marker. The InferencePool selects on base.LABEL_SERVING, not on these.
 _LABEL_ROLE = "llm-d.ai/role"
 _LABEL_INFERENCE_SERVING = "llm-d.ai/inference-serving"
-
-# EndpointPickerConfig for the disaggregated profile. The apiVersion is the GIE
-# group the EPP binary registers (inference.networking.x-k8s.io/v1alpha1).
-#
-# The decider in disagg-profile-handler is what makes a request disaggregate: it
-# runs the prefill profile, picks a prefill endpoint, and the handler sets the
-# x-prefiller-host-port header the routing sidecar uses to send the prefill phase
-# there (KV then flows prefill->decode over NIXL). The selective
-# prefix-based-pd-decider disaggregates only when a request's uncached suffix is
-# at least nonCachedTokens long, so short or cache-hot prompts skip the prefill
-# hop (and its KV-transfer cost) and serve decode-only.
-#
-# Three things must line up or it silently never disaggregates, and the EPP
-# image we run (llm-d-inference-scheduler v0.8.0, embedding
-# gateway-api-inference-extension v1.5.0) makes the defaults wrong on every one:
-#   1. nonCachedTokens defaults to 0, which the decider treats as "disabled"
-#      (always decode-only). Set it explicitly.
-#   2. The decider reads a PrefixCacheMatchInfo attribute that prefix-cache-scorer
-#      no longer produces (GIE v1.5.0 split production into a separate plugin and
-#      made prepare-data default-on, so the old `prepareDataPlugins` feature gate
-#      the v0.8.0 docs still mention is *unregistered* and crashes the EPP). The
-#      producer is now an explicit plugin: approx-prefix-cache-producer.
-#   3. That producer defaults to autoTune: true, which leaves its block size 0
-#      and never populates the attribute. Pin autoTune: false + blockSizeTokens.
-# (Verified live: with this config the prefill engine's request_prefill_time
-# counter increments for long prompts and stays flat for short ones; with the
-# defaults it stayed at zero for everything.)
-#
-# blockSizeTokens MUST match the engine's KV block size or prefix-cache routing
-# silently degrades (#179). It's derived best-effort from the engine flags via
-# _kv_block_size() (BLOCK_SIZE_TOKENS placeholder), defaulting to vLLM's 16.
-_EPP_CONFIG_TEMPLATE = """\
-apiVersion: llm-d.ai/v1alpha1
-kind: EndpointPickerConfig
-plugins:
-- type: approx-prefix-cache-producer
-  parameters:
-    autoTune: false
-    blockSizeTokens: BLOCK_SIZE_TOKENS
-    maxPrefixBlocksToMatch: 256
-    lruCapacityPerServer: 31250
-- type: prefix-cache-scorer
-- type: disagg-headers-handler
-- type: queue-scorer
-- type: prefill-filter
-- type: decode-filter
-- type: max-score-picker
-- type: prefix-based-pd-decider
-  parameters:
-    nonCachedTokens: 16
-- type: disagg-profile-handler
-  parameters:
-    deciders:
-      prefill: prefix-based-pd-decider
-schedulingProfiles:
-- name: prefill
-  plugins:
-  - pluginRef: prefill-filter
-  - pluginRef: max-score-picker
-  - pluginRef: prefix-cache-scorer
-    weight: 2
-  - pluginRef: queue-scorer
-    weight: 1
-- name: decode
-  plugins:
-  - pluginRef: decode-filter
-  - pluginRef: max-score-picker
-  - pluginRef: prefix-cache-scorer
-    weight: 2
-  - pluginRef: queue-scorer
-    weight: 1
-"""
 
 # EndpointPickerConfig for Unified serving: one profile scoring by prefix cache
 # and queue depth, with no prefill/decode split. A single schedulingProfile makes
 # the EPP fall back to its SingleProfileHandler, and prefix-cache-scorer still
 # needs approx-prefix-cache-producer to populate the prefix-match attribute it
-# scores on (see the disaggregated config above for why the producer pins
-# autoTune and blockSizeTokens). prefix-cache-scorer is weighted 2 to
+# scores on. The producer pins autoTune: false and blockSizeTokens, because its
+# autoTune default leaves the block size 0 and never populates that attribute,
+# and blockSizeTokens follows the engine's KV block size (#179), at least
+# _MIN_BLOCK_SIZE_TOKENS. prefix-cache-scorer is weighted 2 to
 # queue-scorer's 1: cache locality dominates placement until queue depths
 # diverge, when the queue score breaks the tie. It's a starting default, not a
 # tuned one.
@@ -190,15 +122,17 @@ schedulingProfiles:
 
 _DEFAULT_KV_BLOCK_SIZE = 16
 
-
-def _disaggregated_epp_config_yaml(block_size: int) -> str:
-    """Render the disaggregated EPP config with the engine's KV block size."""
-    return _EPP_CONFIG_TEMPLATE.replace("BLOCK_SIZE_TOKENS", str(block_size))
+# The smallest blockSizeTokens the picker uses. llm-d-router raises a smaller
+# value to 64 at request time and logs a warning at startup, because a small
+# block size grows the prefix index until the picker runs out of memory
+# (llm-d/llm-d-router#1158). Rendering it here keeps the config the picker
+# reports equal to the one it runs.
+_MIN_BLOCK_SIZE_TOKENS = 64
 
 
 def _unified_epp_config_yaml(block_size: int) -> str:
-    """Render the unified EPP config with the engine's KV block size."""
-    return _UNIFIED_EPP_CONFIG_TEMPLATE.replace("BLOCK_SIZE_TOKENS", str(block_size))
+    """Render the unified EPP config with the engine's KV block size, at least _MIN_BLOCK_SIZE_TOKENS."""
+    return _UNIFIED_EPP_CONFIG_TEMPLATE.replace("BLOCK_SIZE_TOKENS", str(max(block_size, _MIN_BLOCK_SIZE_TOKENS)))
 
 
 def _flag_value(args: list, *flags: str) -> str | None:
@@ -223,8 +157,7 @@ def _kv_block_size(engine_args: list) -> int:
     We peek for the common flags — vLLM's --block-size and SGLang's --page-size
     — and fall back to vLLM's default of 16. A mismatch silently degrades
     prefix-cache routing with no error (#179), so deriving it beats hardcoding.
-    The durable fix is a typed/overridable knob on the serving block (#179);
-    until then, this peek.
+    A deployment that needs another value writes serving.endpointPicker.config.
     """
     raw = _flag_value(engine_args, "--block-size", "--page-size")
     if raw is not None:
@@ -242,6 +175,71 @@ def _engine_args(obj: k8sobjv1alpha1.Object) -> list:
             if c.get("name") == "engine":
                 return c.get("args", [])
     return []
+
+
+def _user_routed(replica: v1alpha1.ModelReplica) -> bool:
+    """Whether the user writes the router (serving.router: EndpointPicker).
+
+    Otherwise the cluster routes the replica, which the XRD allows only under
+    Unified.
+    """
+    serving = replica.spec.serving
+    return serving is not None and serving.router == "EndpointPicker"
+
+
+def prefill_decode_routing_missing(replica: v1alpha1.ModelReplica) -> bool:
+    """Whether a PrefillDecode replica lacks the routing the XRD requires.
+
+    The XRD rejects a PrefillDecode replica without router: EndpointPicker and
+    a picker config, but CEL rules don't apply to an object stored before them
+    and left unchanged, so such a replica can still reach the function.
+    Composing it would leave its decode pods without a sidecar, a pair that
+    reports Ready and serves decode alone, so the caller stops instead and
+    leaves what's running in place.
+    """
+    serving = replica.spec.serving
+    if not serving or serving.mode != "PrefillDecode":
+        return False
+    picker = serving.endpointPicker
+    return not (_user_routed(replica) and picker is not None and picker.config is not None)
+
+
+def _picker(replica: v1alpha1.ModelReplica, default_config_yaml: str) -> tuple[str, str]:
+    """The picker image and configuration the replica runs.
+
+    With router: EndpointPicker, serving.endpointPicker overrides either (the
+    XRD allows it only then). A user config replaces the default whole rather
+    than merging with it, and the XRD requires an image alongside it, since a
+    picker config is written for one picker release.
+    """
+    serving = replica.spec.serving
+    picker = serving.endpointPicker if serving and _user_routed(replica) else None
+    image = picker.image if picker and picker.image else _EPP_IMAGE
+    if picker and picker.config is not None:
+        return image, _render_picker_config(picker.config)
+    return image, default_config_yaml
+
+
+def _render_picker_config(config: dict[str, Any]) -> str:
+    """Render a user's picker config as JSON, which is YAML.
+
+    The config reaches the function through a protobuf Struct, which keeps no key
+    order and stores every number as a float. Sorted keys keep the rendering, and
+    so the checksum that rolls the picker, the same from one run to the next.
+    Whole floats go back to ints, since the picker decodes integer parameters
+    strictly and rejects 64.0 where it wants 64.
+    """
+
+    def ints(value: object) -> object:
+        if isinstance(value, float) and value.is_integer():
+            return int(value)
+        if isinstance(value, dict):
+            return {k: ints(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [ints(v) for v in value]
+        return value
+
+    return json.dumps(ints(config), indent=2, sort_keys=True)
 
 
 def apply(
@@ -281,11 +279,12 @@ def _unified(
     # The prefix-cache producer must chunk prefixes at the engine's KV block
     # size; derive it from the first engine's flags (HACK, #179).
     block_size = _kv_block_size(_engine_args(out[base.workload_key(replica.spec.engines[0])]))
+    image, config_yaml = _picker(replica, _unified_epp_config_yaml(block_size))
     selector = {base.LABEL_SERVING: base.serving_label(replica)}
     ns = base.remote_namespace(replica)
     out["inference-pool"] = base.wrap_object(provider_config, _inference_pool(name, ns, selector))
     out[base.ROUTE_KEY] = base.wrap_object(provider_config, _http_route(replica, name))
-    out.update(_epp_objects(name, ns, provider_config, _unified_epp_config_yaml(block_size), replica))
+    out.update(_epp_objects(name, ns, provider_config, image, config_yaml, replica))
     return out
 
 
@@ -296,17 +295,16 @@ def _disaggregated(
 ) -> dict[str, k8sobjv1alpha1.Object]:
     """Front the prefill and decode engines with an InferencePool + endpoint picker.
 
-    Role-labels the two engines marking phase Prefill and Decode, adds the
-    pd-sidecar to decode, and adds the InferencePool, endpoint picker, and an
-    HTTPRoute pointing at the pool. The engine workloads are reused as-is apart
-    from the label/sidecar decoration.
+    Role-labels the two engines marking phase Prefill and Decode, and adds the
+    InferencePool, endpoint picker, and an HTTPRoute pointing at the pool. The
+    engine workloads are reused as-is apart from the labels. The decode pod's
+    sidecar is the user's container; a decode pod without one sends every
+    request to decode alone.
 
-    Engine-image prerequisite: PrefillDecode needs the engine image to ship the
-    NIXL runtime. vLLM's NixlConnector (and SGLang's PD transfer) import the
-    `nixl` package, so an image without it crashloops at startup with "NIXL is
-    not available". Recent vanilla vllm/vllm-openai images ship NIXL, so pin a
-    current tag. Engine images are the user's (#137), so Modelplane can't bundle
-    this; it is a deployment prerequisite, not something the composition provides.
+    The picker runs the user's config: the XRD requires router: EndpointPicker
+    and serving.endpointPicker.config under PrefillDecode, and fn.py stops before
+    composing a replica that lacks them (prefill_decode_routing_missing). The
+    engine image must ship its KV connector's runtime, which is the user's.
     """
     name = _name(replica.metadata)
     prefill = next(e for e in replica.spec.engines if e.phase == "Prefill")
@@ -317,16 +315,10 @@ def _disaggregated(
     decode_key = base.workload_key(decode)
     _label_role(out[prefill_key], role="prefill", app=name)
     _label_role(out[decode_key], role="decode", app=name)
-    _add_sidecar_to_decode(out[decode_key])
 
-    # Both engines need NIXL KV-transfer plumbing the ModelDeployment schema
-    # can't express (no fieldRef env, no volumes). Inject it for them.
-    _inject_nixl_plumbing(out[prefill_key])
-    _inject_nixl_plumbing(out[decode_key])
-
-    # The EPP's prefix-cache producer must chunk prefixes at the decode engine's
-    # KV block size; derive it from the decode engine's flags (HACK, #179).
-    block_size = _kv_block_size(_engine_args(out[decode_key]))
+    if prefill_decode_routing_missing(replica):
+        raise ValueError("PrefillDecode routing needs serving.endpointPicker.config")
+    image, config_yaml = _picker(replica, "")
     # Select the replica's serving pods by the serving label they already carry,
     # the same as unified. The phase (role) labels _label_role adds are for the
     # EPP's prefill/decode filters, not for pool membership.
@@ -334,7 +326,7 @@ def _disaggregated(
     ns = base.remote_namespace(replica)
     out["inference-pool"] = base.wrap_object(provider_config, _inference_pool(name, ns, selector))
     out[base.ROUTE_KEY] = base.wrap_object(provider_config, _http_route(replica, name))
-    out.update(_epp_objects(name, ns, provider_config, _disaggregated_epp_config_yaml(block_size), replica))
+    out.update(_epp_objects(name, ns, provider_config, image, config_yaml, replica))
     return out
 
 
@@ -366,100 +358,13 @@ def _serving_pod_templates(manifest: dict) -> list[dict]:
 
 
 def _label_role(obj: k8sobjv1alpha1.Object, *, role: str, app: str) -> None:
-    """Stamp the role + InferencePool selector labels on an engine's serving pods."""
+    """Stamp the labels llm-d's picker reads on an engine's serving pods."""
     manifest = obj.spec.forProvider.manifest
     for tmpl in _serving_pod_templates(manifest):
         labels = tmpl["labels"]
         labels[_LABEL_ROLE] = role
         labels[_LABEL_INFERENCE_SERVING] = "true"
         labels["app"] = app
-
-
-def _decode_port(engine: dict) -> int:
-    """The port the decode engine serves on.
-
-    The pd-sidecar takes the external ENGINE_PORT (8000) and forwards to the
-    decode engine, so the engine must listen on a different port: Modelplane
-    expects _DECODE_ENGINE_PORT. The user owns the engine flags (per #137), so we
-    also best-effort honor an explicit --port override rather than assume one.
-    """
-    raw = _flag_value(engine.get("args", []), "--port")
-    return int(raw) if raw is not None else _DECODE_ENGINE_PORT
-
-
-def _add_sidecar_to_decode(obj: k8sobjv1alpha1.Object) -> None:
-    """Front the decode engine with the pd-sidecar on ENGINE_PORT.
-
-    The sidecar takes the external serving port (8000) and forwards to the engine
-    on its own --port (read from the user's args); the engine's containerPort and
-    probe follow that port so they match what vLLM actually listens on.
-    """
-    for tmpl in _serving_pod_templates(obj.spec.forProvider.manifest):
-        containers = tmpl["spec"]["containers"]
-        engine = next(c for c in containers if c["name"] == "engine")
-        port = _decode_port(engine)
-        # Named, because the collector's engine scrape job selects on the port
-        # name: dropping it here would leave a disaggregated decode pod with no
-        # named port at all, and nothing would scrape the engine behind the
-        # sidecar. The sidecar's own port stays unnamed for the same reason -
-        # it serves inference, not /metrics.
-        engine["ports"] = [{"name": base.ENGINE_PORT_NAME, "containerPort": port}]
-        engine["readinessProbe"] = {
-            "httpGet": {"path": "/health", "port": port},
-            "initialDelaySeconds": 30,
-            "periodSeconds": 10,
-            # Match the timeout the backends set on the standalone probe: a slow
-            # but healthy /health (SGLang's sits at ~1s) flaps the 1s default.
-            "timeoutSeconds": 5,
-        }
-        containers.append(
-            {
-                "name": "pd-sidecar",
-                "image": _SIDECAR_IMAGE,
-                "args": ["--secure-proxy=false", "--kv-connector=nixlv2", f"--vllm-port={port}"],
-                "ports": [{"containerPort": base.ENGINE_PORT}],
-                "readinessProbe": {
-                    # The sidecar proxies /health to the same engine, so it's
-                    # just as slow; give it the same 5s timeout.
-                    "httpGet": {"path": "/health", "port": base.ENGINE_PORT},
-                    "initialDelaySeconds": 30,
-                    "periodSeconds": 10,
-                    "timeoutSeconds": 5,
-                },
-            }
-        )
-
-
-def _inject_nixl_plumbing(obj: k8sobjv1alpha1.Object) -> None:
-    """Add the NIXL KV-transfer plumbing every disaggregated engine needs but
-    that the ModelDeployment schema can't express (no fieldRef env, no volumes).
-
-    Two pieces, both infra-level and always-correct for PrefillDecode, so we
-    inject them the same way we inject the sidecar rather than asking the user:
-      - a Memory-backed /dev/shm: vLLM's NixlConnector uses shared memory, and
-        the container default (64Mi) is far too small.
-      - VLLM_NIXL_SIDE_CHANNEL_HOST set to the pod IP (+ a fixed port) so peer
-        engines can reach this one's NIXL metadata channel. Without it the
-        engine advertises an unreachable address and cross-pod KV transfer
-        fails — requests get a 500 with no error in the engine logs.
-    """
-    for tmpl in _serving_pod_templates(obj.spec.forProvider.manifest):
-        spec = tmpl["spec"]
-        volumes = spec.setdefault("volumes", [])
-        if not any(v.get("name") == _NIXL_SHM_VOLUME for v in volumes):
-            volumes.append({"name": _NIXL_SHM_VOLUME, "emptyDir": {"medium": "Memory"}})
-        engine = next(c for c in spec["containers"] if c["name"] == "engine")
-        mounts = engine.setdefault("volumeMounts", [])
-        if not any(m.get("mountPath") == "/dev/shm" for m in mounts):
-            mounts.append({"name": _NIXL_SHM_VOLUME, "mountPath": "/dev/shm"})
-        env = engine.setdefault("env", [])
-        existing = {e.get("name") for e in env}
-        if "VLLM_NIXL_SIDE_CHANNEL_HOST" not in existing:
-            env.append(
-                {"name": "VLLM_NIXL_SIDE_CHANNEL_HOST", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}}
-            )
-        if "VLLM_NIXL_SIDE_CHANNEL_PORT" not in existing:
-            env.append({"name": "VLLM_NIXL_SIDE_CHANNEL_PORT", "value": _NIXL_SIDE_CHANNEL_PORT})
 
 
 def _inference_pool(name: str, namespace: str, selector: dict[str, str]) -> dict:
@@ -505,13 +410,15 @@ def _epp_objects(
     name: str,
     ns: str,
     provider_config: str,
+    image: str,
     config_yaml: str,
     replica: v1alpha1.ModelReplica,
 ) -> dict[str, k8sobjv1alpha1.Object]:
     """The endpoint picker: ServiceAccount, RBAC, ConfigMap, Deployment, Service.
 
-    config_yaml is the rendered EndpointPickerConfig the picker runs with; it
-    differs by serving strategy.
+    image and config_yaml are the picker image and the configuration it runs
+    with: the user's serving.endpointPicker, or the default for the serving
+    strategy.
     """
     epp = f"{name}-epp"
     sa = {"apiVersion": "v1", "kind": "ServiceAccount", "metadata": {"name": epp, "namespace": ns}}
@@ -574,7 +481,7 @@ def _epp_objects(
                     "containers": [
                         {
                             "name": "epp",
-                            "image": _EPP_IMAGE,
+                            "image": image,
                             "args": [
                                 f"--pool-name={name}-pool",
                                 f"--pool-namespace={ns}",
@@ -603,6 +510,13 @@ def _epp_objects(
                                 # which keeps a pod on this name.
                                 {"name": base.ENGINE_PORT_NAME, "containerPort": _EPP_METRICS_PORT},
                             ],
+                            # Ready once the picker has synced its pool. Without
+                            # it a rollout replaces the old picker before the
+                            # new one serves, and the gateway, which fails
+                            # closed, rejects requests in between. No service
+                            # name: the overall check, which every picker on
+                            # this command line answers.
+                            "readinessProbe": {"grpc": {"port": 9003}, "periodSeconds": 2},
                             "volumeMounts": [{"name": "config", "mountPath": "/config"}],
                         }
                     ],
