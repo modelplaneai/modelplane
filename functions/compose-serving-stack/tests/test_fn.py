@@ -224,8 +224,91 @@ def _cert_manager(*, ready: fnv1.Ready) -> fnv1.Resource:
     )
 
 
-def _kube_prometheus_stack(*, ready: fnv1.Ready) -> fnv1.Resource:
-    """The composed kube-prometheus-stack Release."""
+# Civo's DCGM exporter metrics CSV, restated once: both NvLink wants carry
+# it verbatim, and it is too long to repeat beside each. Still a literal
+# independent of civo.py, so a drift there breaks the cases.
+_DCGM_METRICS_CSV = """# Clocks,,
+DCGM_FI_DEV_SM_CLOCK,     gauge, SM clock frequency (in MHz).
+DCGM_FI_DEV_MEM_CLOCK, gauge, Memory clock frequency (in MHz).
+# Temperature,,
+DCGM_FI_DEV_MEMORY_TEMP, gauge, Memory temperature (in C).
+DCGM_FI_DEV_GPU_TEMP,    gauge, GPU temperature (in C).
+# Power,,
+DCGM_FI_DEV_POWER_USAGE,  gauge, Power draw (in W).
+DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION, counter, Total energy consumption since boot (in mJ).
+# PCIe,,
+DCGM_FI_PROF_PCIE_TX_BYTES,  counter, Total number of bytes transmitted through PCIe TX (in KB) via NVML.
+DCGM_FI_PROF_PCIE_RX_BYTES,  counter, Total number of bytes received through PCIe RX (in KB) via NVML.
+DCGM_FI_DEV_PCIE_REPLAY_COUNTER, counter, Total number of PCIe retries.
+# Utilization (the sample period varies depending on the product),,
+DCGM_FI_DEV_GPU_UTIL,      gauge, GPU utilization (in %).
+DCGM_FI_DEV_MEM_COPY_UTIL, gauge, Memory utilization (in %).
+DCGM_FI_DEV_ENC_UTIL,      gauge, Encoder utilization (in %).
+DCGM_FI_DEV_DEC_UTIL,      gauge, Decoder utilization (in %).
+# Errors and violations,,
+DCGM_FI_DEV_XID_ERRORS,            gauge, Value of the last XID error encountered.
+DCGM_FI_DEV_POWER_VIOLATION,       counter, Throttling duration due to power constraints (in us).
+DCGM_FI_DEV_THERMAL_VIOLATION,     counter, Throttling duration due to thermal constraints (in us).
+DCGM_FI_DEV_SYNC_BOOST_VIOLATION,  counter, Throttling duration due to sync-boost constraints (in us).
+DCGM_FI_DEV_BOARD_LIMIT_VIOLATION, counter, Throttling duration due to board limit constraints (in us).
+DCGM_FI_DEV_LOW_UTIL_VIOLATION,    counter, Throttling duration due to low utilization (in us).
+DCGM_FI_DEV_RELIABILITY_VIOLATION, counter, Throttling duration due to reliability constraints (in us).
+# Memory usage,,
+DCGM_FI_DEV_FB_FREE, gauge, Framebuffer memory free (in MiB).
+DCGM_FI_DEV_FB_USED, gauge, Framebuffer memory used (in MiB).
+# Retired pages,,
+DCGM_FI_DEV_RETIRED_SBE,     counter, Total number of retired pages due to single-bit errors.
+DCGM_FI_DEV_RETIRED_DBE,     counter, Total number of retired pages due to double-bit errors.
+DCGM_FI_DEV_RETIRED_PENDING, counter, Total number of pages pending retirement.
+# NVLink,,
+DCGM_FI_DEV_NVLINK_BANDWIDTH_TOTAL, counter, Total number of NVLink bandwidth counters for all lanes
+DCGM_FI_PROF_NVLINK_TX_BYTES,       counter, The rate of data transmitted over NVLink not including protocol headers in bytes per second.
+DCGM_FI_PROF_NVLINK_RX_BYTES,       counter, The rate of data received over NVLink not including protocol headers in bytes per second.
+# Add DCP metrics,,
+DCGM_FI_PROF_GR_ENGINE_ACTIVE,   gauge, Ratio of time the graphics engine is active (in %).
+DCGM_FI_PROF_SM_ACTIVE,          gauge, The ratio of cycles an SM has at least 1 warp assigned (in %).
+DCGM_FI_PROF_SM_OCCUPANCY,       gauge, The ratio of number of warps resident on an SM (in %).
+DCGM_FI_PROF_PIPE_TENSOR_ACTIVE, gauge, Ratio of cycles the tensor (HMMA) pipe is active (in %).
+DCGM_FI_PROF_DRAM_ACTIVE,        gauge, Ratio of cycles the device memory interface is active sending or receiving data (in %).
+DCGM_FI_PROF_PCIE_TX_BYTES,      counter, The number of bytes of active pcie tx data including both header and payload.
+DCGM_FI_PROF_PCIE_RX_BYTES,      counter, The number of bytes of active pcie rx data including both header and payload.
+# BCP Additional metrics
+DCGM_FI_DEV_GPU_NVLINK_ERRORS,      gauge, Identifies a GPU NVLink error type returned by DCGM_FI_DEV_GPU_NVLINK_ERRORS.
+# Added RunAI Additional metrics https://docs.run.ai/latest/developer/metrics/metrics-api/#advanced-metrics
+## NVLink
+DCGM_FI_DEV_NVLINK_BANDWIDTH_L0, counter, The number of bytes of active NVLink rx or tx data including both header and payload.
+## VGPU License status
+DCGM_FI_DEV_VGPU_LICENSE_STATUS, gauge, vGPU License status
+## Remapped rows
+DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS, counter, Number of remapped rows for uncorrectable errors
+DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS, counter, Number of remapped rows for correctable errors
+DCGM_FI_DEV_ROW_REMAP_FAILURE, gauge, Whether remapping of rows has failed
+## Static configuration information. These appear as labels on the other metrics
+DCGM_FI_DRIVER_VERSION, label, Driver Version
+## Profiling metrics
+DCGM_FI_PROF_PIPE_FP64_ACTIVE, gauge, Ratio of cycles the fp64 pipes are active (in %).
+DCGM_FI_PROF_PIPE_FP32_ACTIVE, gauge, Ratio of cycles the fp32 pipes are active (in %).
+DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active (in %).
+"""
+
+
+def _kube_prometheus_stack(*, ready: fnv1.Ready, wait: bool) -> fnv1.Resource:
+    """The composed kube-prometheus-stack Release the hand-written clouds pin, waiting for health if wait is set.
+
+    Civo's waits - its gpu-operator depends on this chart for the Prometheus
+    CRDs the DCGM exporter's ServiceMonitor needs - and the other hand-written
+    clouds' don't.
+    """
+    for_provider: dict = {
+        "chart": {
+            "name": "kube-prometheus-stack",
+            "repository": "https://prometheus-community.github.io/helm-charts",
+            "version": "84.4.0",
+        },
+        "namespace": "monitoring",
+    }
+    if wait:
+        for_provider |= {"wait": True, "waitTimeout": "10m"}
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -237,13 +320,8 @@ def _kube_prometheus_stack(*, ready: fnv1.Ready) -> fnv1.Resource:
                 },
                 "spec": {
                     "providerConfigRef": {"kind": "ProviderConfig", "name": "test-backend-cluster-63fde"},
-                    "forProvider": {
-                        "chart": {
-                            "name": "kube-prometheus-stack",
-                            "repository": "https://prometheus-community.github.io/helm-charts",
-                            "version": "84.4.0",
-                        },
-                        "namespace": "monitoring",
+                    "forProvider": for_provider
+                    | {
                         "values": {
                             "fullnameOverride": "prometheus",
                             "prometheus": {
@@ -1866,7 +1944,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                     ),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED),
+                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED, wait=False),
                     "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_UNSPECIFIED, wait=False),
                     "nvidia-dra-driver-gpu": _nvidia_dra_driver_gpu(ready=fnv1.READY_UNSPECIFIED),
                     "ai-gateway-crds": _ai_gateway_crds(ready=fnv1.READY_UNSPECIFIED),
@@ -2332,7 +2410,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                     ),
                     "cert-manager": _cert_manager(ready=fnv1.READY_TRUE),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_TRUE),
+                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_TRUE, wait=False),
                     "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_TRUE, wait=False),
                     "nvidia-dra-driver-gpu": _nvidia_dra_driver_gpu(ready=fnv1.READY_TRUE),
                     "envoy-gateway": fnv1.Resource(
@@ -3131,7 +3209,7 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED),
+                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED, wait=False),
                     "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_UNSPECIFIED, wait=False),
                     "nvidia-dra-driver-gpu": _nvidia_dra_driver_gpu(ready=fnv1.READY_UNSPECIFIED),
                     "ai-gateway-crds": _ai_gateway_crds(ready=fnv1.READY_UNSPECIFIED),
@@ -3302,7 +3380,7 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED),
+                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED, wait=False),
                     "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_UNSPECIFIED, wait=False),
                     "nvidia-dra-driver-gpu": _nvidia_dra_driver_gpu(ready=fnv1.READY_UNSPECIFIED),
                     "ai-gateway-crds": _ai_gateway_crds(ready=fnv1.READY_UNSPECIFIED),
@@ -3444,7 +3522,7 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED),
+                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED, wait=False),
                     "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_UNSPECIFIED, wait=False),
                     "nvidia-dra-driver-gpu": _nvidia_dra_driver_gpu(ready=fnv1.READY_UNSPECIFIED),
                     "ai-gateway-crds": _ai_gateway_crds(ready=fnv1.READY_UNSPECIFIED),
@@ -3585,7 +3663,7 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_TRUE),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED),
+                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED, wait=True),
                     "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_TRUE, wait=True),
                     "gpu-operator": fnv1.Resource(
                         resource=resource.dict_to_struct(
@@ -3622,8 +3700,19 @@ COMPOSE_CASES = [
                                                     }
                                                 ]
                                             },
-                                            "dcgm": {"enabled": False},
-                                            "dcgmExporter": {"enabled": False},
+                                            "dcgm": {"enabled": True},
+                                            "dcgmExporter": {
+                                                "config": {
+                                                    "create": True,
+                                                    "data": _DCGM_METRICS_CSV,
+                                                    "name": "dcgm-exporter",
+                                                },
+                                                "serviceMonitor": {
+                                                    "enabled": True,
+                                                    "honorLabels": True,
+                                                    "interval": "30s",
+                                                },
+                                            },
                                             "devicePlugin": {"enabled": False},
                                             "driver": {
                                                 "enabled": True,
@@ -3848,6 +3937,14 @@ COMPOSE_CASES = [
                         by_kind="Release",
                         by_key="gpu-operator",
                     ),
+                    "usage-kube-prometheus-stack-by-gpu-operator": _usage(
+                        of_api_version="helm.m.crossplane.io/v1beta1",
+                        of_kind="Release",
+                        of_key="kube-prometheus-stack",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="gpu-operator",
+                    ),
                     "usage-gpu-operator-by-nvidia-dra-driver-gpu": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
                         of_kind="Release",
@@ -3994,7 +4091,7 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED),
+                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED, wait=True),
                     "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_UNSPECIFIED, wait=True),
                     "gpu-operator": fnv1.Resource(
                         resource=resource.dict_to_struct(
@@ -4031,8 +4128,19 @@ COMPOSE_CASES = [
                                                     }
                                                 ]
                                             },
-                                            "dcgm": {"enabled": False},
-                                            "dcgmExporter": {"enabled": False},
+                                            "dcgm": {"enabled": True},
+                                            "dcgmExporter": {
+                                                "config": {
+                                                    "create": True,
+                                                    "data": _DCGM_METRICS_CSV,
+                                                    "name": "dcgm-exporter",
+                                                },
+                                                "serviceMonitor": {
+                                                    "enabled": True,
+                                                    "honorLabels": True,
+                                                    "interval": "30s",
+                                                },
+                                            },
                                             "devicePlugin": {"enabled": False},
                                             "driver": {
                                                 "enabled": True,
@@ -4136,6 +4244,14 @@ COMPOSE_CASES = [
                         of_api_version="helm.m.crossplane.io/v1beta1",
                         of_kind="Release",
                         of_key="cert-manager",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="gpu-operator",
+                    ),
+                    "usage-kube-prometheus-stack-by-gpu-operator": _usage(
+                        of_api_version="helm.m.crossplane.io/v1beta1",
+                        of_kind="Release",
+                        of_key="kube-prometheus-stack",
                         by_api_version="helm.m.crossplane.io/v1beta1",
                         by_kind="Release",
                         by_key="gpu-operator",
@@ -7374,6 +7490,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "nvidia-dra-driver-gpu": _observed_ready(),
                     "gpu-operator": _observed_ready(),
                     "usage-cert-manager-by-gpu-operator": _observed_ready(),
+                    "usage-kube-prometheus-stack-by-gpu-operator": _observed_ready(),
                     "usage-node-feature-discovery-by-gpu-operator": _observed_ready(),
                     "usage-gpu-operator-by-nvidia-dra-driver-gpu": _observed_ready(),
                     "leader-worker-set": _observed_ready(),
@@ -7423,6 +7540,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "nvidia-dra-driver-gpu",
             "gpu-operator",
             "usage-cert-manager-by-gpu-operator",
+            "usage-kube-prometheus-stack-by-gpu-operator",
             "usage-node-feature-discovery-by-gpu-operator",
             "usage-gpu-operator-by-nvidia-dra-driver-gpu",
             # The Standard stack.
@@ -7492,6 +7610,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "nvidia-dra-driver-gpu": _observed_ready(),
                     "gpu-operator": _observed_ready(),
                     "usage-cert-manager-by-gpu-operator": _observed_ready(),
+                    "usage-kube-prometheus-stack-by-gpu-operator": _observed_ready(),
                     "usage-node-feature-discovery-by-gpu-operator": _observed_ready(),
                     "usage-gpu-operator-by-nvidia-dra-driver-gpu": _observed_ready(),
                     "grove": _observed_ready(),
@@ -7555,6 +7674,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "nvidia-dra-driver-gpu",
             "gpu-operator",
             "usage-cert-manager-by-gpu-operator",
+            "usage-kube-prometheus-stack-by-gpu-operator",
             "usage-node-feature-discovery-by-gpu-operator",
             "usage-gpu-operator-by-nvidia-dra-driver-gpu",
             # The Dynamo stack.

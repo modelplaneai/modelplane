@@ -94,6 +94,9 @@ allow-star-arg-any = true
 # Generated serving stack lists carry upstream chart values verbatim; long
 # string literals and unicode arrive from the recipes.
 "functions/*/function/stacks/clouds/generated/**" = ["E501", "RUF001", "RUF002", "RUF003"]
+# The hand-written Civo half states the generated clouds' chart values
+# verbatim, long string literals included, so one review moves both.
+"functions/*/function/stacks/clouds/civo.py" = ["E501"]
 # main.py is the click CLI entrypoint: boolean flags are idiomatic, and it
 # catches Exception at the top level to report startup failures cleanly.
 "functions/*/function/main.py" = ["FBT001", "BLE001"]

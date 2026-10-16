@@ -246,6 +246,9 @@ GPU
 GPUs
 CDI
 CSI
+DCGM
+dcgm-exporter
+millijoules
 DRA
 NIC
 NFS

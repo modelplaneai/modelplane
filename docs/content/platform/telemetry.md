@@ -10,8 +10,11 @@ description: Collect normalized metrics across the fleet and send them to any ba
 
 Modelplane runs an OpenTelemetry collector on every inference cluster. It
 collects from every component Modelplane installs. This includes the inference
-server engine, inference gateway and Envoy proxy, router, and the GPU exporter
-your cloud provides. It renames each component's series to a common
+server engine, inference gateway and Envoy proxy, router, and the cluster's
+GPU exporter - on a provisioned cluster Modelplane or the cloud installs one,
+and on an existing cluster you provide it, as
+[Requirements for an existing cluster]({{< ref "/platform/inference-cluster.md#requirements-for-an-existing-cluster" >}})
+describes. It renames each component's series to a common
 `modelplane_*` vocabulary and exports them to wherever you say - any backend the
 collector has an exporter for, not only OTLP.
 
@@ -359,6 +362,57 @@ spec:
         eos: stop
         max_tokens: length
 ```
+
+## GPUs
+
+The GPU series come from a [DCGM
+exporter](https://github.com/NVIDIA/dcgm-exporter), not from the engine: a GPU
+belongs to a node, and its series have a `node` label rather than a
+deployment. The collector discovers the exporter by its pod - an `app` or
+`app.kubernetes.io/name` label containing `dcgm`, with a container port named
+`metrics` - and scrapes it directly, not through Prometheus.
+
+Where the exporter comes from depends on the cluster:
+
+- **A cluster Modelplane provisions** runs one already: the serving stack
+  installs an exporter wherever the cloud doesn't provide its own.
+- **An existing cluster provides its own**, as [Requirements for an existing
+  cluster]({{< ref "/platform/inference-cluster.md#requirements-for-an-existing-cluster" >}})
+  describes. A GPU Operator install runs one by default; a cluster without
+  one needs NVIDIA's dcgm-exporter chart, tolerating your GPU taint. The
+  chart's pod already has the label and port the collector matches on.
+
+Don't run two exporters: the collector scrapes every matching pod and would
+collect each GPU twice.
+
+The exporter's metrics ConfigMap decides which DCGM fields it publishes.
+Modelplane maps seven to the `modelplane_*` surface and converts units where
+DCGM reports in different ones:
+
+| DCGM field | Becomes | Unit |
+| --- | --- | --- |
+| `DCGM_FI_DEV_FB_USED` | `modelplane_gpu_memory_used_bytes` | MiB, converted to bytes |
+| `DCGM_FI_PROF_GR_ENGINE_ACTIVE` | `modelplane_gpu_compute_active_ratio` | ratio |
+| `DCGM_FI_PROF_PIPE_TENSOR_ACTIVE` | `modelplane_gpu_tensor_active_ratio` | ratio |
+| `DCGM_FI_PROF_DRAM_ACTIVE` | `modelplane_gpu_memory_bandwidth_ratio` | ratio |
+| `DCGM_FI_DEV_GPU_TEMP` | `modelplane_gpu_temperature_celsius` | Celsius |
+| `DCGM_FI_DEV_POWER_USAGE` | `modelplane_gpu_power_watts` | watts |
+| `DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION` | `modelplane_energy_joules_total` | millijoules, converted to joules |
+
+Recent default exporter configurations publish all seven, but older ones left
+the `DCGM_FI_PROF_*` profiling fields out. Check what yours publishes - a
+missing field means its `modelplane_*` series is silently empty:
+
+```bash
+kubectl port-forward -n <exporter-namespace> ds/<exporter> 9400:9400 &
+curl -s localhost:9400/metrics | grep -c -E \
+  'DCGM_FI_DEV_FB_USED|DCGM_FI_PROF_GR_ENGINE_ACTIVE|DCGM_FI_PROF_PIPE_TENSOR_ACTIVE|DCGM_FI_PROF_DRAM_ACTIVE|DCGM_FI_DEV_GPU_TEMP|DCGM_FI_DEV_POWER_USAGE|DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION'
+```
+
+If fields are missing, extend the exporter's metrics ConfigMap - on a GPU
+Operator install that's the `dcgmExporter.config` chart value. The
+configuration Modelplane installs on the clouds it provisions publishes each
+of these fields.
 
 ## Why engine latency and gateway latency differ
 

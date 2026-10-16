@@ -82,6 +82,22 @@ An existing cluster must meet what Modelplane would otherwise set up for you:
 - **Any multi-node fabric you need.** For multi-node serving you provide and
   configure the RDMA or InfiniBand fabric and its drivers. Modelplane installs
   those only on the clouds it provisions.
+- **A DCGM exporter, if you want GPU metrics.** The
+  [telemetry]({{< ref "/platform/telemetry.md" >}}) collector discovers the
+  cluster's GPU exporter by its pod: an `app` or `app.kubernetes.io/name`
+  label containing `dcgm`, with a container port named `metrics`. The
+  [NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/index.html)
+  runs a matching exporter by default, as does GKE's managed one in
+  `gke-managed-system`. A cluster with neither needs
+  [NVIDIA's dcgm-exporter](https://github.com/NVIDIA/dcgm-exporter) installed,
+  tolerating your GPU taint and publishing the seven DCGM fields behind the
+  `modelplane_gpu_*` series -
+  [GPUs]({{< ref "/platform/telemetry.md#gpus" >}}) lists them and shows how
+  to check what your exporter publishes. Don't run two exporters: the collector
+  scrapes every matching pod and would collect each GPU twice.
+  Without one, engine and gateway series arrive and every GPU series stays
+  empty. Modelplane doesn't install an exporter here because it can't know
+  whether your cluster already runs one.
 
 ## Serving stack
 
