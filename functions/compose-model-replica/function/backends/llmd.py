@@ -65,7 +65,7 @@ class LLMDBackend:
         # Leader and one Worker member, so both are always present here.
         assert leader is not None
         assert worker is not None
-        name = base.engine_name(replica, engine)
+        name = base.lws_name(replica, engine)
 
         # Gang size: the leader plus the worker's nodes (one follower pod each).
         size = 1 + (int(worker.worker.nodes) if worker.worker else 1)

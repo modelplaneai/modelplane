@@ -19,9 +19,11 @@ composed ModelReplica, its ModelEndpoint, and the backend workloads all
 agree. Two kinds of identifier live here:
 
 * Object names (replica): the metadata.name of a replica's ModelReplica and
-  ModelEndpoint - a DNS-label-safe, stable, opaque handle. The replica name is
-  also the per-placement routing key baked into the endpoint URL, so both the
-  replica and the endpoint must derive it identically.
+  ModelEndpoint - a stable, opaque handle of at most 63 characters. It keeps
+  the deployment name's dots, so it's a DNS-1123 subdomain rather than a
+  label. The replica name is also the per-placement routing key baked into
+  the endpoint URL, so both the replica and the endpoint must derive it
+  identically.
 * Desired-resource keys (replica_key/endpoint_key): function-local handles into
   the desired-resources map. Not Kubernetes names, so they need no DNS-safety -
   they only have to be distinct per co-located replica and deterministic from
@@ -34,14 +36,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from function import scheduling
 
-# DNS label limit and hash suffix length for opaque child names, matching
-# crossplane's resource.child_name so names stay valid 63-char DNS labels.
-_DNS_LABEL_MAX = 63
+# Name length limit and hash suffix length for opaque child names, matching
+# crossplane's resource.child_name.
+_NAME_MAX = 63
 _HASH_LEN = 5
 
 
 def opaque_name(visible: str, *discriminators: str) -> str:
-    """A DNS-label-safe name that reads as visible-<hash>.
+    """A name of at most 63 characters that reads as visible-<hash>.
 
     Like crossplane's resource.child_name, but the discriminators are folded
     into the hash WITHOUT appearing in the readable prefix. child_name joins all
@@ -50,16 +52,19 @@ def opaque_name(visible: str, *discriminators: str) -> str:
     only the visible name in the prefix. The hash makes co-located replicas
     distinct and stable; identity lives in labels, not the name (like a Pod's
     name doesn't encode its node).
+
+    A truncated prefix drops a trailing '.' as well as a '-', since a
+    subdomain can't have a '.' next to a '-'.
     """
     full = "-".join((visible, *discriminators))
     h = hashlib.sha256(full.encode()).hexdigest()[:_HASH_LEN]
-    max_prefix = _DNS_LABEL_MAX - _HASH_LEN - 1
-    prefix = visible[:max_prefix].rstrip("-")
+    max_prefix = _NAME_MAX - _HASH_LEN - 1
+    prefix = visible[:max_prefix].rstrip("-.")
     return f"{prefix}-{h}"
 
 
 def replica(deployment_name: str, candidate: "scheduling.Candidate") -> str:
-    """The opaque, DNS-safe name for a replica's resources.
+    """The opaque name, of at most 63 characters, for a replica's resources.
 
     Hashed from (deployment, cluster, index) so co-located replicas get distinct
     names. Cluster and index are not exposed in the readable prefix - identity

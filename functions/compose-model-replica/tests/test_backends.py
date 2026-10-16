@@ -120,7 +120,39 @@ class RemoteNamespaceCase:
     want: str
 
 
-def _route() -> dict:
+@dataclasses.dataclass
+class LwsNameCase:
+    """A test case for base.lws_name, of the replica's only engine."""
+
+    name: str
+    reason: str
+    replica: v1alpha1.ModelReplica
+    want: str
+
+
+@dataclasses.dataclass
+class GrovePcsNameCase:
+    """A test case for base.grove_pcs_name, of the replica's only engine."""
+
+    name: str
+    reason: str
+    replica: v1alpha1.ModelReplica
+    want: str
+
+
+@dataclasses.dataclass
+class Dns1035LabelCase:
+    """A test case for base.dns_1035_label."""
+
+    name: str
+    reason: str
+    candidate: str
+    prefix: str
+    max_length: int
+    want: str
+
+
+def _route(*, name: str, path: str, pool: str) -> dict:
     """The Object composing the replica's HTTPRoute to its InferencePool."""
     return {
         "spec": {
@@ -130,12 +162,12 @@ def _route() -> dict:
                 "manifest": {
                     "apiVersion": "gateway.networking.k8s.io/v1",
                     "kind": "HTTPRoute",
-                    "metadata": {"name": "r", "namespace": "mp-ml-team-51733"},
+                    "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
                     "spec": {
                         "parentRefs": [{"name": "cluster-gateway", "namespace": "modelplane-system"}],
                         "rules": [
                             {
-                                "matches": [{"path": {"type": "PathPrefix", "value": "/ml-team/r/"}}],
+                                "matches": [{"path": {"type": "PathPrefix", "value": path}}],
                                 # No request timeout, so long token streams
                                 # aren't severed.
                                 "timeouts": {"request": "0s"},
@@ -151,7 +183,7 @@ def _route() -> dict:
                                     {
                                         "group": "inference.networking.k8s.io",
                                         "kind": "InferencePool",
-                                        "name": "r-pool",
+                                        "name": pool,
                                     }
                                 ],
                             }
@@ -163,7 +195,7 @@ def _route() -> dict:
     }
 
 
-def _inference_pool() -> dict:
+def _inference_pool(*, name: str, serving: str, picker: str) -> dict:
     """The Object composing the InferencePool that fronts the replica's serving pods."""
     return {
         "spec": {
@@ -173,12 +205,12 @@ def _inference_pool() -> dict:
                 "manifest": {
                     "apiVersion": "inference.networking.k8s.io/v1",
                     "kind": "InferencePool",
-                    "metadata": {"name": "r-pool", "namespace": "mp-ml-team-51733"},
+                    "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
                     "spec": {
-                        "selector": {"matchLabels": {"modelplane.ai/serving": "r"}},
+                        "selector": {"matchLabels": {"modelplane.ai/serving": serving}},
                         "targetPorts": [{"number": 8000}],
                         "endpointPickerRef": {
-                            "name": "r-epp",
+                            "name": picker,
                             "port": {"number": 9002},
                             "failureMode": "FailOpen",
                         },
@@ -189,7 +221,7 @@ def _inference_pool() -> dict:
     }
 
 
-def _epp(*, labels: dict, config_checksum: str) -> dict:
+def _epp(*, name: str, app: str, pool: str, labels: dict, config_checksum: str) -> dict:
     """The Object composing the endpoint picker's Deployment, its pod labeled and rolled by its config's checksum.
 
     The picker serves its metrics on a port named http, which the collector's
@@ -209,23 +241,23 @@ def _epp(*, labels: dict, config_checksum: str) -> dict:
                 "manifest": {
                     "apiVersion": "apps/v1",
                     "kind": "Deployment",
-                    "metadata": {"name": "r-epp", "namespace": "mp-ml-team-51733"},
+                    "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
                     "spec": {
                         "replicas": 1,
-                        "selector": {"matchLabels": {"app": "r-epp"}},
+                        "selector": {"matchLabels": {"app": app}},
                         "template": {
                             "metadata": {
                                 "labels": labels,
                                 "annotations": {"modelplane.ai/epp-config-checksum": config_checksum},
                             },
                             "spec": {
-                                "serviceAccountName": "r-epp",
+                                "serviceAccountName": name,
                                 "containers": [
                                     {
                                         "name": "epp",
                                         "image": "ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
                                         "args": [
-                                            "--pool-name=r-pool",
+                                            f"--pool-name={pool}",
                                             "--pool-namespace=mp-ml-team-51733",
                                             "--pool-group=inference.networking.k8s.io",
                                             "--config-file=/config/epp-config.yaml",
@@ -241,7 +273,7 @@ def _epp(*, labels: dict, config_checksum: str) -> dict:
                                         "volumeMounts": [{"name": "config", "mountPath": "/config"}],
                                     }
                                 ],
-                                "volumes": [{"name": "config", "configMap": {"name": "r-epp"}}],
+                                "volumes": [{"name": "config", "configMap": {"name": name}}],
                             },
                         },
                     },
@@ -251,7 +283,7 @@ def _epp(*, labels: dict, config_checksum: str) -> dict:
     }
 
 
-def _epp_config(*, config: str) -> dict:
+def _epp_config(*, name: str, config: str) -> dict:
     """The Object composing the ConfigMap that holds the endpoint picker's config."""
     return {
         "spec": {
@@ -261,7 +293,7 @@ def _epp_config(*, config: str) -> dict:
                 "manifest": {
                     "apiVersion": "v1",
                     "kind": "ConfigMap",
-                    "metadata": {"name": "r-epp", "namespace": "mp-ml-team-51733"},
+                    "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
                     "data": {"epp-config.yaml": config},
                 }
             },
@@ -269,7 +301,7 @@ def _epp_config(*, config: str) -> dict:
     }
 
 
-def _epp_role() -> dict:
+def _epp_role(*, name: str) -> dict:
     """The Object composing the endpoint picker's Role."""
     return {
         "spec": {
@@ -279,7 +311,7 @@ def _epp_role() -> dict:
                 "manifest": {
                     "apiVersion": "rbac.authorization.k8s.io/v1",
                     "kind": "Role",
-                    "metadata": {"name": "r-epp", "namespace": "mp-ml-team-51733"},
+                    "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
                     "rules": [
                         {"apiGroups": [""], "resources": ["pods"], "verbs": ["get", "watch", "list"]},
                         {
@@ -299,7 +331,7 @@ def _epp_role() -> dict:
     }
 
 
-def _epp_role_binding() -> dict:
+def _epp_role_binding(*, name: str) -> dict:
     """The Object composing the endpoint picker's RoleBinding."""
     return {
         "spec": {
@@ -309,16 +341,16 @@ def _epp_role_binding() -> dict:
                 "manifest": {
                     "apiVersion": "rbac.authorization.k8s.io/v1",
                     "kind": "RoleBinding",
-                    "metadata": {"name": "r-epp", "namespace": "mp-ml-team-51733"},
-                    "subjects": [{"kind": "ServiceAccount", "name": "r-epp", "namespace": "mp-ml-team-51733"}],
-                    "roleRef": {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "r-epp"},
+                    "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
+                    "subjects": [{"kind": "ServiceAccount", "name": name, "namespace": "mp-ml-team-51733"}],
+                    "roleRef": {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": name},
                 }
             },
         }
     }
 
 
-def _epp_service_account() -> dict:
+def _epp_service_account(*, name: str) -> dict:
     """The Object composing the endpoint picker's ServiceAccount."""
     return {
         "spec": {
@@ -328,14 +360,14 @@ def _epp_service_account() -> dict:
                 "manifest": {
                     "apiVersion": "v1",
                     "kind": "ServiceAccount",
-                    "metadata": {"name": "r-epp", "namespace": "mp-ml-team-51733"},
+                    "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
                 }
             },
         }
     }
 
 
-def _epp_service() -> dict:
+def _epp_service(*, name: str, app: str) -> dict:
     """The Object composing the endpoint picker's Service."""
     return {
         "spec": {
@@ -345,9 +377,9 @@ def _epp_service() -> dict:
                 "manifest": {
                     "apiVersion": "v1",
                     "kind": "Service",
-                    "metadata": {"name": "r-epp", "namespace": "mp-ml-team-51733"},
+                    "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
                     "spec": {
-                        "selector": {"app": "r-epp"},
+                        "selector": {"app": app},
                         "ports": [{"name": "grpc-ext-proc", "port": 9002, "targetPort": 9002, "appProtocol": "http2"}],
                     },
                 }
@@ -407,6 +439,10 @@ def _deployment(
 
 def _leader_worker_set(
     *,
+    name: str,
+    serving: str,
+    leader_claim_template_name: str,
+    worker_claim_template_name: str,
     replicas: int,
     size: int,
     leader_containers: list[dict],
@@ -426,7 +462,7 @@ def _leader_worker_set(
                 "manifest": {
                     "apiVersion": "leaderworkerset.x-k8s.io/v1",
                     "kind": "LeaderWorkerSet",
-                    "metadata": {"name": "r-main-bb4e3", "namespace": "mp-ml-team-51733"},
+                    "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
                     "spec": {
                         "replicas": replicas,
                         "leaderWorkerTemplate": {
@@ -436,7 +472,7 @@ def _leader_worker_set(
                                     "labels": {
                                         "modelplane.ai/engine": "main",
                                         "modelplane.ai/role": "Leader",
-                                        "modelplane.ai/serving": "r",
+                                        "modelplane.ai/serving": serving,
                                         "modelplane.ai/lws-role": "leader",
                                     }
                                 },
@@ -447,7 +483,7 @@ def _leader_worker_set(
                                     "resourceClaims": [
                                         {
                                             "name": "devices",
-                                            "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                            "resourceClaimTemplateName": leader_claim_template_name,
                                         }
                                     ],
                                     "tolerations": [
@@ -466,7 +502,7 @@ def _leader_worker_set(
                                     "resourceClaims": [
                                         {
                                             "name": "devices",
-                                            "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                            "resourceClaimTemplateName": worker_claim_template_name,
                                         }
                                     ],
                                     "tolerations": [
@@ -3704,6 +3740,10 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _leader_worker_set(
+                name="r-main-bb4e3",
+                serving="r",
+                leader_claim_template_name="r-main-leader-devices-f58c6",
+                worker_claim_template_name="r-main-worker-devices-99b8a",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -3748,6 +3788,130 @@ BUILD_CASES = [
             ),
             "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+        },
+    ),
+    # LWS names a LeaderWorkerSet's headless Service after it, so its webhook
+    # rejects a name that isn't a DNS-1035 label. A claim template's name may
+    # be a subdomain, so it keeps the dot.
+    BuildCase(
+        name="LLMDDottedReplica",
+        reason=(
+            "A Leader/Worker engine of a dotted replica on llm-d composes a LeaderWorkerSet named by a hashed "
+            "DNS-1035 label, and claim templates that keep the dot."
+        ),
+        backend=llmd.LLMDBackend(),
+        replica=_replica(
+            name="qwen2.5",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="qwen2.5",
+        stack="Standard",
+        want={
+            "model-serving-main": _leader_worker_set(
+                name="lws-qwen2-5-main-b2784-6d975",
+                serving="qwen2.5",
+                leader_claim_template_name="qwen2.5-main-leader-devices-5743a",
+                worker_claim_template_name="qwen2.5-main-worker-devices-4d4ac",
+                replicas=1,
+                size=2,
+                leader_containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "resources": {"claims": [{"name": "devices"}]},
+                        "env": [
+                            {
+                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                "value": "$(LWS_LEADER_ADDRESS)",
+                            },
+                            {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                        ],
+                        "ports": [{"name": "http", "containerPort": 8000}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                    }
+                ],
+                leader_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                worker_containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "resources": {"claims": [{"name": "devices"}]},
+                        "env": [
+                            {
+                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                "value": "$(LWS_LEADER_ADDRESS)",
+                            },
+                            {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                        ],
+                    }
+                ],
+                worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-leader": _claim_template(name="qwen2.5-main-leader-devices-5743a", count=8),
+            "resource-claim-main-worker": _claim_template(name="qwen2.5-main-worker-devices-4d4ac", count=8),
         },
     ),
     # Modelplane is unopinionated about the engine: each member's command passes
@@ -3844,6 +4008,10 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _leader_worker_set(
+                name="r-main-bb4e3",
+                serving="r",
+                leader_claim_template_name="r-main-leader-devices-f58c6",
+                worker_claim_template_name="r-main-worker-devices-99b8a",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -3968,6 +4136,10 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _leader_worker_set(
+                name="r-main-bb4e3",
+                serving="r",
+                leader_claim_template_name="r-main-leader-devices-f58c6",
+                worker_claim_template_name="r-main-worker-devices-99b8a",
                 replicas=2,
                 size=4,
                 leader_containers=[
@@ -4085,6 +4257,10 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _leader_worker_set(
+                name="r-main-bb4e3",
+                serving="r",
+                leader_claim_template_name="r-main-leader-devices-f58c6",
+                worker_claim_template_name="r-main-worker-devices-99b8a",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -4855,12 +5031,13 @@ APPLY_CASES = [
                 ],
             ),
             "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
-            "inference-pool": _inference_pool(),
-            "model-route": _route(),
-            "epp-serviceaccount": _epp_service_account(),
-            "epp-role": _epp_role(),
-            "epp-rolebinding": _epp_role_binding(),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
+            "epp-serviceaccount": _epp_service_account(name="r-epp"),
+            "epp-role": _epp_role(name="r-epp"),
+            "epp-rolebinding": _epp_role_binding(name="r-epp"),
             "epp-config": _epp_config(
+                name="r-epp",
                 config="apiVersion: llm-d.ai/v1alpha1\n"
                 "kind: EndpointPickerConfig\n"
                 "plugins:\n"
@@ -4899,13 +5076,16 @@ APPLY_CASES = [
                 "  - pluginRef: prefix-cache-scorer\n"
                 "    weight: 2\n"
                 "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
+                "    weight: 1\n",
             ),
             "epp": _epp(
+                name="r-epp",
+                app="r-epp",
+                pool="r-pool",
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
                 config_checksum="f715f3024f37e7042d42628f10cbb04c7da78b96dc65953dac0f289ef2c7ef98",
             ),
-            "epp-service": _epp_service(),
+            "epp-service": _epp_service(name="r-epp", app="r-epp"),
         },
     ),
     ApplyCase(
@@ -5159,12 +5339,13 @@ APPLY_CASES = [
                 ],
             ),
             "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
-            "inference-pool": _inference_pool(),
-            "model-route": _route(),
-            "epp-serviceaccount": _epp_service_account(),
-            "epp-role": _epp_role(),
-            "epp-rolebinding": _epp_role_binding(),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
+            "epp-serviceaccount": _epp_service_account(name="r-epp"),
+            "epp-role": _epp_role(name="r-epp"),
+            "epp-rolebinding": _epp_role_binding(name="r-epp"),
             "epp-config": _epp_config(
+                name="r-epp",
                 config="apiVersion: llm-d.ai/v1alpha1\n"
                 "kind: EndpointPickerConfig\n"
                 "plugins:\n"
@@ -5203,13 +5384,16 @@ APPLY_CASES = [
                 "  - pluginRef: prefix-cache-scorer\n"
                 "    weight: 2\n"
                 "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
+                "    weight: 1\n",
             ),
             "epp": _epp(
+                name="r-epp",
+                app="r-epp",
+                pool="r-pool",
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
                 config_checksum="f715f3024f37e7042d42628f10cbb04c7da78b96dc65953dac0f289ef2c7ef98",
             ),
-            "epp-service": _epp_service(),
+            "epp-service": _epp_service(name="r-epp", app="r-epp"),
         },
     ),
     ApplyCase(
@@ -5466,12 +5650,13 @@ APPLY_CASES = [
                 ],
             ),
             "resource-claim-beta-standalone": _claim_template(name="r-beta-standalone-devices-9d8b1", count=1),
-            "inference-pool": _inference_pool(),
-            "model-route": _route(),
-            "epp-serviceaccount": _epp_service_account(),
-            "epp-role": _epp_role(),
-            "epp-rolebinding": _epp_role_binding(),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
+            "epp-serviceaccount": _epp_service_account(name="r-epp"),
+            "epp-role": _epp_role(name="r-epp"),
+            "epp-rolebinding": _epp_role_binding(name="r-epp"),
             "epp-config": _epp_config(
+                name="r-epp",
                 config="apiVersion: llm-d.ai/v1alpha1\n"
                 "kind: EndpointPickerConfig\n"
                 "plugins:\n"
@@ -5510,13 +5695,16 @@ APPLY_CASES = [
                 "  - pluginRef: prefix-cache-scorer\n"
                 "    weight: 2\n"
                 "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
+                "    weight: 1\n",
             ),
             "epp": _epp(
+                name="r-epp",
+                app="r-epp",
+                pool="r-pool",
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
                 config_checksum="f715f3024f37e7042d42628f10cbb04c7da78b96dc65953dac0f289ef2c7ef98",
             ),
-            "epp-service": _epp_service(),
+            "epp-service": _epp_service(name="r-epp", app="r-epp"),
         },
     ),
     # The leader clique gets the llm-d role, inference-serving and app labels,
@@ -5982,12 +6170,13 @@ APPLY_CASES = [
             ),
             "resource-claim-decode-leader": _claim_template(name="r-decode-leader-devices-d2e70", count=8),
             "resource-claim-decode-worker": _claim_template(name="r-decode-worker-devices-08d44", count=8),
-            "inference-pool": _inference_pool(),
-            "model-route": _route(),
-            "epp-serviceaccount": _epp_service_account(),
-            "epp-role": _epp_role(),
-            "epp-rolebinding": _epp_role_binding(),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
+            "epp-serviceaccount": _epp_service_account(name="r-epp"),
+            "epp-role": _epp_role(name="r-epp"),
+            "epp-rolebinding": _epp_role_binding(name="r-epp"),
             "epp-config": _epp_config(
+                name="r-epp",
                 config="apiVersion: llm-d.ai/v1alpha1\n"
                 "kind: EndpointPickerConfig\n"
                 "plugins:\n"
@@ -6026,13 +6215,16 @@ APPLY_CASES = [
                 "  - pluginRef: prefix-cache-scorer\n"
                 "    weight: 2\n"
                 "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
+                "    weight: 1\n",
             ),
             "epp": _epp(
+                name="r-epp",
+                app="r-epp",
+                pool="r-pool",
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
                 config_checksum="f715f3024f37e7042d42628f10cbb04c7da78b96dc65953dac0f289ef2c7ef98",
             ),
-            "epp-service": _epp_service(),
+            "epp-service": _epp_service(name="r-epp", app="r-epp"),
         },
     ),
     # A replica with no serving block is served Unified.
@@ -6162,12 +6354,13 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
-            "inference-pool": _inference_pool(),
-            "model-route": _route(),
-            "epp-serviceaccount": _epp_service_account(),
-            "epp-role": _epp_role(),
-            "epp-rolebinding": _epp_role_binding(),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
+            "epp-serviceaccount": _epp_service_account(name="r-epp"),
+            "epp-role": _epp_role(name="r-epp"),
+            "epp-rolebinding": _epp_role_binding(name="r-epp"),
             "epp-config": _epp_config(
+                name="r-epp",
                 config="apiVersion: llm-d.ai/v1alpha1\n"
                 "kind: EndpointPickerConfig\n"
                 "plugins:\n"
@@ -6187,13 +6380,16 @@ APPLY_CASES = [
                 "  - pluginRef: prefix-cache-scorer\n"
                 "    weight: 2\n"
                 "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
+                "    weight: 1\n",
             ),
             "epp": _epp(
+                name="r-epp",
+                app="r-epp",
+                pool="r-pool",
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
                 config_checksum="20c1dfea3fc4ad41e335cc74edbeb1e8689a607bc4bf7395849ffd2cf0bb2ae1",
             ),
-            "epp-service": _epp_service(),
+            "epp-service": _epp_service(name="r-epp", app="r-epp"),
         },
     ),
     # A built-in MetricMapping renames the picker's scheduling latency, and
@@ -6318,12 +6514,13 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
-            "inference-pool": _inference_pool(),
-            "model-route": _route(),
-            "epp-serviceaccount": _epp_service_account(),
-            "epp-role": _epp_role(),
-            "epp-rolebinding": _epp_role_binding(),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
+            "epp-serviceaccount": _epp_service_account(name="r-epp"),
+            "epp-role": _epp_role(name="r-epp"),
+            "epp-rolebinding": _epp_role_binding(name="r-epp"),
             "epp-config": _epp_config(
+                name="r-epp",
                 config="apiVersion: llm-d.ai/v1alpha1\n"
                 "kind: EndpointPickerConfig\n"
                 "plugins:\n"
@@ -6343,9 +6540,12 @@ APPLY_CASES = [
                 "  - pluginRef: prefix-cache-scorer\n"
                 "    weight: 2\n"
                 "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
+                "    weight: 1\n",
             ),
             "epp": _epp(
+                name="r-epp",
+                app="r-epp",
+                pool="r-pool",
                 labels={
                     "app": "r-epp",
                     "modelplane.ai/role": "picker",
@@ -6354,7 +6554,7 @@ APPLY_CASES = [
                 },
                 config_checksum="20c1dfea3fc4ad41e335cc74edbeb1e8689a607bc4bf7395849ffd2cf0bb2ae1",
             ),
-            "epp-service": _epp_service(),
+            "epp-service": _epp_service(name="r-epp", app="r-epp"),
         },
     ),
     ApplyCase(
@@ -6471,12 +6671,13 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
-            "inference-pool": _inference_pool(),
-            "model-route": _route(),
-            "epp-serviceaccount": _epp_service_account(),
-            "epp-role": _epp_role(),
-            "epp-rolebinding": _epp_role_binding(),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
+            "epp-serviceaccount": _epp_service_account(name="r-epp"),
+            "epp-role": _epp_role(name="r-epp"),
+            "epp-rolebinding": _epp_role_binding(name="r-epp"),
             "epp-config": _epp_config(
+                name="r-epp",
                 config="apiVersion: llm-d.ai/v1alpha1\n"
                 "kind: EndpointPickerConfig\n"
                 "plugins:\n"
@@ -6496,13 +6697,16 @@ APPLY_CASES = [
                 "  - pluginRef: prefix-cache-scorer\n"
                 "    weight: 2\n"
                 "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
+                "    weight: 1\n",
             ),
             "epp": _epp(
+                name="r-epp",
+                app="r-epp",
+                pool="r-pool",
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
                 config_checksum="20c1dfea3fc4ad41e335cc74edbeb1e8689a607bc4bf7395849ffd2cf0bb2ae1",
             ),
-            "epp-service": _epp_service(),
+            "epp-service": _epp_service(name="r-epp", app="r-epp"),
         },
     ),
     # Unified routing reads the engine args for the KV block size through
@@ -6516,6 +6720,10 @@ APPLY_CASES = [
         reason="A LeaderWorkerSet with no serving block is fronted by an InferencePool and endpoint picker.",
         composed={
             "model-serving-main": _leader_worker_set(
+                name="r-main-bb4e3",
+                serving="r",
+                leader_claim_template_name="r-main-leader-devices-f58c6",
+                worker_claim_template_name="r-main-worker-devices-99b8a",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -6653,6 +6861,10 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-main": _leader_worker_set(
+                name="r-main-bb4e3",
+                serving="r",
+                leader_claim_template_name="r-main-leader-devices-f58c6",
+                worker_claim_template_name="r-main-worker-devices-99b8a",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -6707,12 +6919,13 @@ APPLY_CASES = [
             ),
             "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
-            "inference-pool": _inference_pool(),
-            "model-route": _route(),
-            "epp-serviceaccount": _epp_service_account(),
-            "epp-role": _epp_role(),
-            "epp-rolebinding": _epp_role_binding(),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
+            "epp-serviceaccount": _epp_service_account(name="r-epp"),
+            "epp-role": _epp_role(name="r-epp"),
+            "epp-rolebinding": _epp_role_binding(name="r-epp"),
             "epp-config": _epp_config(
+                name="r-epp",
                 config="apiVersion: llm-d.ai/v1alpha1\n"
                 "kind: EndpointPickerConfig\n"
                 "plugins:\n"
@@ -6732,13 +6945,342 @@ APPLY_CASES = [
                 "  - pluginRef: prefix-cache-scorer\n"
                 "    weight: 2\n"
                 "  - pluginRef: queue-scorer\n"
-                "    weight: 1\n"
+                "    weight: 1\n",
             ),
             "epp": _epp(
+                name="r-epp",
+                app="r-epp",
+                pool="r-pool",
                 labels={"app": "r-epp", "modelplane.ai/role": "picker"},
                 config_checksum="20c1dfea3fc4ad41e335cc74edbeb1e8689a607bc4bf7395849ffd2cf0bb2ae1",
             ),
-            "epp-service": _epp_service(),
+            "epp-service": _epp_service(name="r-epp", app="r-epp"),
+        },
+    ),
+    # A Service must be named by a DNS-1035 label, which has no dots, and a
+    # replica's name may have them. The picker's other objects accept a dotted
+    # name, so they keep theirs. So does the app label, which a running picker
+    # Deployment has as its immutable selector.
+    ApplyCase(
+        name="UnifiedDottedReplica",
+        reason=(
+            "A replica named with a dot gets a picker Service named by a hashed DNS-1035 label, and keeps its other "
+            "picker names."
+        ),
+        composed={
+            "model-serving-main": _deployment(
+                name="qwen2.5-7b-abcde-main-e910a",
+                claim_template_name="qwen2.5-7b-abcde-main-standalone-devices-771a9",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "main",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "qwen2.5-7b-abcde",
+                        "modelplane.ai/workload": "qwen2.5-7b-abcde-main-e910a",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B"],
+                        "ports": [{"name": "http", "containerPort": 8000}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    }
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-standalone": _claim_template(
+                name="qwen2.5-7b-abcde-main-standalone-devices-771a9", count=1
+            ),
+        },
+        replica=_replica(
+            name="qwen2.5-7b-abcde",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=1,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=Qwen/Qwen3-0.6B"],
+                                        )
+                                    ]
+                                )
+                            ),
+                        )
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        want={
+            "model-serving-main": _deployment(
+                name="qwen2.5-7b-abcde-main-e910a",
+                claim_template_name="qwen2.5-7b-abcde-main-standalone-devices-771a9",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "main",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "qwen2.5-7b-abcde",
+                        "modelplane.ai/workload": "qwen2.5-7b-abcde-main-e910a",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B"],
+                        "ports": [{"name": "http", "containerPort": 8000}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    }
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-standalone": _claim_template(
+                name="qwen2.5-7b-abcde-main-standalone-devices-771a9", count=1
+            ),
+            "inference-pool": _inference_pool(
+                name="qwen2.5-7b-abcde-pool", serving="qwen2.5-7b-abcde", picker="epp-qwen2-5-7b-abcde-epp-da596"
+            ),
+            "model-route": _route(
+                name="qwen2.5-7b-abcde", path="/ml-team/qwen2.5-7b-abcde/", pool="qwen2.5-7b-abcde-pool"
+            ),
+            "epp-serviceaccount": _epp_service_account(name="qwen2.5-7b-abcde-epp"),
+            "epp-role": _epp_role(name="qwen2.5-7b-abcde-epp"),
+            "epp-rolebinding": _epp_role_binding(name="qwen2.5-7b-abcde-epp"),
+            "epp-config": _epp_config(
+                name="qwen2.5-7b-abcde-epp",
+                config="apiVersion: llm-d.ai/v1alpha1\n"
+                "kind: EndpointPickerConfig\n"
+                "plugins:\n"
+                "- type: approx-prefix-cache-producer\n"
+                "  parameters:\n"
+                "    autoTune: false\n"
+                "    blockSizeTokens: 16\n"
+                "    maxPrefixBlocksToMatch: 256\n"
+                "    lruCapacityPerServer: 31250\n"
+                "- type: prefix-cache-scorer\n"
+                "- type: queue-scorer\n"
+                "- type: max-score-picker\n"
+                "schedulingProfiles:\n"
+                "- name: default\n"
+                "  plugins:\n"
+                "  - pluginRef: max-score-picker\n"
+                "  - pluginRef: prefix-cache-scorer\n"
+                "    weight: 2\n"
+                "  - pluginRef: queue-scorer\n"
+                "    weight: 1\n",
+            ),
+            "epp": _epp(
+                name="qwen2.5-7b-abcde-epp",
+                app="qwen2.5-7b-abcde-epp",
+                pool="qwen2.5-7b-abcde-pool",
+                labels={"app": "qwen2.5-7b-abcde-epp", "modelplane.ai/role": "picker"},
+                config_checksum="20c1dfea3fc4ad41e335cc74edbeb1e8689a607bc4bf7395849ffd2cf0bb2ae1",
+            ),
+            "epp-service": _epp_service(name="epp-qwen2-5-7b-abcde-epp-da596", app="qwen2.5-7b-abcde-epp"),
+        },
+    ),
+    # A label value can be at most 63 characters, so a replica name of 60 or
+    # more can't make an app label of {name}-epp. No picker Deployment can
+    # have been created with one, so the label takes the Service's name. The
+    # lengths are the point, so the names are written as repeats.
+    ApplyCase(
+        name="UnifiedLongReplica",
+        reason=(
+            "A replica named too long to suffix with -epp gets its picker Service and app label named by a hashed "
+            "DNS-1035 label."
+        ),
+        composed={
+            "model-serving-main": _deployment(
+                name="a" * 57 + "-88380",
+                claim_template_name="a" * 57 + "-05ced",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "main",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "a" * 57 + "-abcde",
+                        "modelplane.ai/workload": "a" * 57 + "-88380",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B"],
+                        "ports": [{"name": "http", "containerPort": 8000}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    }
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-standalone": _claim_template(name="a" * 57 + "-05ced", count=1),
+        },
+        replica=_replica(
+            name="a" * 57 + "-abcde",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=1,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=Qwen/Qwen3-0.6B"],
+                                        )
+                                    ]
+                                )
+                            ),
+                        )
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        want={
+            "model-serving-main": _deployment(
+                name="a" * 57 + "-88380",
+                claim_template_name="a" * 57 + "-05ced",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "main",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "a" * 57 + "-abcde",
+                        "modelplane.ai/workload": "a" * 57 + "-88380",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B"],
+                        "ports": [{"name": "http", "containerPort": 8000}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    }
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-standalone": _claim_template(name="a" * 57 + "-05ced", count=1),
+            "inference-pool": _inference_pool(
+                name="a" * 57 + "-abcde-pool", serving="a" * 57 + "-abcde", picker="epp-" + "a" * 53 + "-2dd65"
+            ),
+            "model-route": _route(
+                name="a" * 57 + "-abcde", path="/ml-team/" + "a" * 57 + "-abcde/", pool="a" * 57 + "-abcde-pool"
+            ),
+            "epp-serviceaccount": _epp_service_account(name="a" * 57 + "-abcde-epp"),
+            "epp-role": _epp_role(name="a" * 57 + "-abcde-epp"),
+            "epp-rolebinding": _epp_role_binding(name="a" * 57 + "-abcde-epp"),
+            "epp-config": _epp_config(
+                name="a" * 57 + "-abcde-epp",
+                config="apiVersion: llm-d.ai/v1alpha1\n"
+                "kind: EndpointPickerConfig\n"
+                "plugins:\n"
+                "- type: approx-prefix-cache-producer\n"
+                "  parameters:\n"
+                "    autoTune: false\n"
+                "    blockSizeTokens: 16\n"
+                "    maxPrefixBlocksToMatch: 256\n"
+                "    lruCapacityPerServer: 31250\n"
+                "- type: prefix-cache-scorer\n"
+                "- type: queue-scorer\n"
+                "- type: max-score-picker\n"
+                "schedulingProfiles:\n"
+                "- name: default\n"
+                "  plugins:\n"
+                "  - pluginRef: max-score-picker\n"
+                "  - pluginRef: prefix-cache-scorer\n"
+                "    weight: 2\n"
+                "  - pluginRef: queue-scorer\n"
+                "    weight: 1\n",
+            ),
+            "epp": _epp(
+                name="a" * 57 + "-abcde-epp",
+                app="epp-" + "a" * 53 + "-2dd65",
+                pool="a" * 57 + "-abcde-pool",
+                labels={"app": "epp-" + "a" * 53 + "-2dd65", "modelplane.ai/role": "picker"},
+                config_checksum="20c1dfea3fc4ad41e335cc74edbeb1e8689a607bc4bf7395849ffd2cf0bb2ae1",
+            ),
+            "epp-service": _epp_service(name="epp-" + "a" * 53 + "-2dd65", app="epp-" + "a" * 53 + "-2dd65"),
         },
     ),
 ]
@@ -6966,3 +7508,366 @@ REMOTE_NAMESPACE_CASES = [
 def test_remote_namespace(case: RemoteNamespaceCase) -> None:
     """A replica's objects land in a namespace mirroring its own."""
     assert base.remote_namespace(case.replica) == case.want, case.reason
+
+
+# Kubernetes can't create a StatefulSet's pods once its name passes 52
+# characters, and a LeaderWorkerSet of 64 copies, the most an engine can have,
+# names its last group's worker StatefulSet {lws}-63. The lengths are the point
+# of the cases that write names as repeats.
+LWS_NAME_CASES = [
+    LwsNameCase(
+        name="LongestKeptName",
+        reason="An engine name of 49 characters is kept by a LeaderWorkerSet of 64 copies.",
+        replica=_replica(
+            name="a" * 38,
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=64,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        want="a" * 38 + "-main-d1825",
+    ),
+    # With more than ten copies, its last worker StatefulSet's name would pass
+    # 52 characters, so it's replaced at any number of copies, and scaling
+    # never renames it.
+    LwsNameCase(
+        name="TooLongName",
+        reason="An engine name of 50 characters is hashed behind an lws prefix even with one copy.",
+        replica=_replica(
+            name="a" * 39,
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        want="lws-" + "a" * 39 + "-ad679",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", LWS_NAME_CASES, ids=lambda case: case.name)
+def test_lws_name(case: LwsNameCase) -> None:
+    """A gang engine's LeaderWorkerSet is named so LWS accepts it."""
+    assert base.lws_name(case.replica, case.replica.spec.engines[0]) == case.want, case.reason
+
+
+GROVE_PCS_NAME_CASES = [
+    # Grove names a gang's headless Service after its PodCliqueSet, and a
+    # Service name can't contain a dot.
+    GrovePcsNameCase(
+        name="DottedReplica",
+        reason="A dotted replica's PodCliqueSet has its dots replaced by dashes after hashing.",
+        replica=_replica(
+            name="qwen2.5",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        want="qwen2-5-main-b2784",
+    ),
+    # The lengths are the point, so the names are written as repeats.
+    GrovePcsNameCase(
+        name="TruncatedOnDot",
+        reason="A name truncated just after a dot drops the dot rather than replacing it with a second dash.",
+        replica=_replica(
+            name="a" * 17 + ".b",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        want="a" * 17 + "-40511",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", GROVE_PCS_NAME_CASES, ids=lambda case: case.name)
+def test_grove_pcs_name(case: GrovePcsNameCase) -> None:
+    """A gang engine's PodCliqueSet is named within Grove's budget."""
+    assert base.grove_pcs_name(case.replica, case.replica.spec.engines[0]) == case.want, case.reason
+
+
+# The lengths are the point of the cases that write names as repeats.
+DNS_1035_LABEL_CASES = [
+    Dns1035LabelCase(
+        name="ValidLabel",
+        reason="A valid label is returned unchanged.",
+        candidate="r-epp",
+        prefix="epp",
+        max_length=63,
+        want="r-epp",
+    ),
+    Dns1035LabelCase(
+        name="LongestValidLabel",
+        reason="A valid label of max_length characters is returned unchanged.",
+        candidate="a" * 59 + "-epp",
+        prefix="epp",
+        max_length=63,
+        want="a" * 59 + "-epp",
+    ),
+    Dns1035LabelCase(
+        name="TooLong",
+        reason="A name longer than max_length is truncated behind the prefix, followed by a hash.",
+        candidate="a" * 60 + "-epp",
+        prefix="epp",
+        max_length=63,
+        want="epp-" + "a" * 53 + "-84a48",
+    ),
+    Dns1035LabelCase(
+        name="Dotted",
+        reason="A dotted name is hashed behind the prefix, with its dots replaced by dashes.",
+        candidate="qwen2.5-7b-abcde-epp",
+        prefix="epp",
+        max_length=63,
+        want="epp-qwen2-5-7b-abcde-epp-da596",
+    ),
+    Dns1035LabelCase(
+        name="LeadingDigit",
+        reason="A name starting with a digit is hashed behind the prefix, which starts with a letter.",
+        candidate="7b-abcde-epp",
+        prefix="epp",
+        max_length=63,
+        want="epp-7b-abcde-epp-cac62",
+    ),
+    # The hash covers the name before its dots are replaced, so names that
+    # differ only in a dot and a dash don't collide.
+    Dns1035LabelCase(
+        name="DotNotDash",
+        reason="A name with a dot where DashNotDot has a dash gets a different hash.",
+        candidate="7a.b-epp",
+        prefix="epp",
+        max_length=63,
+        want="epp-7a-b-epp-f1ce7",
+    ),
+    Dns1035LabelCase(
+        name="DashNotDot",
+        reason="A name with a dash where DotNotDash has a dot gets a different hash.",
+        candidate="7a-b-epp",
+        prefix="epp",
+        max_length=63,
+        want="epp-7a-b-epp-43c9d",
+    ),
+    Dns1035LabelCase(
+        name="TruncatedOnDot",
+        reason="A name truncated just after a dot drops the dot rather than replacing it with a second dash.",
+        candidate="a" * 52 + ".b-epp",
+        prefix="epp",
+        max_length=63,
+        want="epp-" + "a" * 52 + "-83baf",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", DNS_1035_LABEL_CASES, ids=lambda case: case.name)
+def test_dns_1035_label(case: Dns1035LabelCase) -> None:
+    """A name that can't name a Service is replaced by one that can."""
+    assert base.dns_1035_label(case.candidate, case.prefix, case.max_length) == case.want, case.reason

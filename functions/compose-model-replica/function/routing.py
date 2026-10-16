@@ -75,6 +75,9 @@ _EPP_ROLE = "picker"
 # The pd-sidecar takes ENGINE_PORT (8000), so the decode engine listens here.
 _DECODE_ENGINE_PORT = 8001
 
+# The longest a label value can be.
+_LABEL_VALUE_MAX = 63
+
 # NIXL KV-transfer plumbing injected onto every disaggregated engine.
 _NIXL_SHM_VOLUME = "nixl-shm"
 _NIXL_SIDE_CHANNEL_PORT = "5557"
@@ -470,7 +473,11 @@ def _inference_pool(name: str, namespace: str, selector: dict[str, str]) -> dict
         "spec": {
             "selector": {"matchLabels": selector},
             "targetPorts": [{"number": base.ENGINE_PORT}],
-            "endpointPickerRef": {"name": f"{name}-epp", "port": {"number": 9002}, "failureMode": "FailOpen"},
+            "endpointPickerRef": {
+                "name": base.dns_1035_label(f"{name}-epp", "epp"),
+                "port": {"number": 9002},
+                "failureMode": "FailOpen",
+            },
         },
     }
 
@@ -514,6 +521,16 @@ def _epp_objects(
     differs by serving strategy.
     """
     epp = f"{name}-epp"
+    # Only the Service needs a DNS-1035 label, and the app label a value of at
+    # most 63 characters; the other objects keep {name}-epp, which any
+    # replica name makes a valid name for them, so none is renamed.
+    #
+    # NOTE(negz): Kubernetes accepts a Service name that starts with a digit
+    # from 1.36, so there a replica named that way already had a {name}-epp
+    # Service, which a derived name leaves behind. It selects the same pods, so
+    # it's harmless.
+    service_name = base.dns_1035_label(epp, "epp")
+    app = epp if len(epp) <= _LABEL_VALUE_MAX else service_name
     sa = {"apiVersion": "v1", "kind": "ServiceAccount", "metadata": {"name": epp, "namespace": ns}}
     role = {
         "apiVersion": "rbac.authorization.k8s.io/v1",
@@ -559,14 +576,14 @@ def _epp_objects(
         "metadata": {"name": epp, "namespace": ns},
         "spec": {
             "replicas": 1,
-            "selector": {"matchLabels": {"app": epp}},
+            "selector": {"matchLabels": {"app": app}},
             "template": {
                 "metadata": {
                     # The identity labels beside the selector label: they are
                     # how the collector attributes a series off this pod to the
                     # deployment and replica it routes for. Nothing selects on
                     # them, so they can't collide with the selector above.
-                    "labels": {"app": epp, **base.fleet_labels(replica, _EPP_ROLE)},
+                    "labels": {"app": app, **base.fleet_labels(replica, _EPP_ROLE)},
                     "annotations": {"modelplane.ai/epp-config-checksum": config_checksum},
                 },
                 "spec": {
@@ -614,9 +631,9 @@ def _epp_objects(
     service = {
         "apiVersion": "v1",
         "kind": "Service",
-        "metadata": {"name": epp, "namespace": ns},
+        "metadata": {"name": service_name, "namespace": ns},
         "spec": {
-            "selector": {"app": epp},
+            "selector": {"app": app},
             "ports": [{"name": "grpc-ext-proc", "port": 9002, "targetPort": 9002, "appProtocol": "http2"}],
         },
     }

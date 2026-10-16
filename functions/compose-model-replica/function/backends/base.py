@@ -20,6 +20,7 @@ serving resources. Backends return provider-kubernetes Objects; the dispatcher
 """
 
 import hashlib
+import re
 from typing import Protocol
 
 from crossplane.function import resource
@@ -576,18 +577,61 @@ def engine_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine) -> str:
     Every engine's resources are qualified by the engine name: per-replica so
     co-located replicas of one deployment don't collide on the remote cluster,
     and per-engine so a multi-engine replica's workloads don't collide with each
-    other. Names the native Deployment and the llm-d LeaderWorkerSet; a Grove
-    gang uses grove_pcs_name instead, which budgets for Grove's own name-length
-    validation.
+    other. Names the native Deployment. The llm-d LeaderWorkerSet and the Grove
+    gang use lws_name and grove_pcs_name instead, which budget for their own
+    name rules.
     """
     return resource.child_name(_name(replica.metadata), engine.name)
+
+
+_DNS_1035_LABEL = re.compile(r"[a-z]([-a-z0-9]{0,61}[a-z0-9])?")
+
+
+def dns_1035_label(candidate: str, prefix: str, max_length: int = 63) -> str:
+    """candidate if it's a DNS-1035 label of at most max_length characters, else
+    a name derived from it that is.
+
+    A DNS-1035 label is lowercase alphanumerics and '-', starting with a
+    letter, and names a Service. A replica's name is a DNS-1123 subdomain, so a
+    name built from it may run long, contain dots, or start with a digit. Such a
+    name is hashed behind the prefix, which keeps it starting with a letter. The
+    hash covers the raw name and dots are replaced afterwards, so names
+    differing only in '.' versus '-' stay distinct. A truncated name drops a
+    trailing '.' along with any '-', so replacing it can't leave '--' before
+    the hash. A name that's already valid is returned unchanged, so nothing
+    composed under it is renamed.
+    """
+    if len(candidate) <= max_length and _DNS_1035_LABEL.fullmatch(candidate):
+        return candidate
+    full = f"{prefix}-{candidate}"
+    h = hashlib.sha256(full.encode()).hexdigest()[:5]
+    return f"{full[: max_length - len(h) - 1].rstrip('-.')}-{h}".replace(".", "-")
+
+
+# A LeaderWorkerSet names its headless Service after itself, so LWS's webhook
+# rejects a name that isn't a DNS-1035 label. It also names its StatefulSets
+# after itself, {lws} for the leaders and {lws}-{group} for each group's
+# workers, and Kubernetes can't create a StatefulSet's pods once its name
+# passes 52 characters (kubernetes/kubernetes#64023). The XRD allows an engine
+# 64 copies, so the last group is at most 63.
+_LWS_NAME_MAX = 52 - len("-63")
+
+
+def lws_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine) -> str:
+    """The LeaderWorkerSet name for a gang engine.
+
+    engine_name where LWS can use it with the most copies an engine can have,
+    rather than the copies this one has, so scaling an engine never renames
+    its LeaderWorkerSet.
+    """
+    return dns_1035_label(engine_name(replica, engine), "lws", _LWS_NAME_MAX)
 
 
 # Grove rejects a PodCliqueSet whose resource names sum past 45 characters:
 # len(pcs) + len(pcsg) + len(pclq). With "gang" and "worker" that leaves 35 for
 # the PodCliqueSet name. This reserves more than it has to, since the composed
 # pod name carries replica indices and Grove's own random suffix on top, and
-# it's tighter than the 63-character DNS label budget engine_name() uses.
+# it's tighter than the 63-character budget engine_name() uses.
 _GROVE_PCS_NAME_MAX = 24
 
 
@@ -596,13 +640,19 @@ def grove_pcs_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine) -> s
 
     Same shape as resource.child_name (a deterministic hash suffix keeps two
     truncated-to-the-same-prefix names from colliding), but truncated to
-    Grove's tighter name budget rather than the general 63-character DNS
-    label limit.
+    Grove's tighter name budget rather than the general 63-character limit.
+
+    Dots are replaced after hashing, since Grove names the gang's headless
+    Service after the PodCliqueSet and a Service name can't contain one. A
+    truncated prefix drops a trailing '.' along with any '-', so replacing it
+    can't leave '--' before the hash. A leading digit is left alone:
+    Kubernetes accepts one in a Service name from 1.36, so a PodCliqueSet named
+    that way may be running there, and renaming it would orphan it.
     """
     full = f"{_name(replica.metadata)}-{engine.name}"
     h = hashlib.sha256(full.encode()).hexdigest()[:5]
-    prefix = full[: _GROVE_PCS_NAME_MAX - len(h) - 1].rstrip("-")
-    return f"{prefix}-{h}"
+    prefix = full[: _GROVE_PCS_NAME_MAX - len(h) - 1].rstrip("-.")
+    return f"{prefix}-{h}".replace(".", "-")
 
 
 def claim_template_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine, member: v1alpha1.Member) -> str:
