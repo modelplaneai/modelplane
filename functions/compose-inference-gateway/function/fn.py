@@ -48,6 +48,7 @@ CONDITION_TYPE_GATEWAY_READY = "GatewayReady"
 CONDITION_REASON_GATEWAY_PROGRAMMED = "GatewayProgrammed"
 CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
 CONDITION_REASON_WAITING_FOR_GATEWAY = "WaitingForGateway"
+CONDITION_REASON_WAITING_FOR_AI_GATEWAY_ROUTE = "WaitingForAIGatewayRoute"
 CONDITION_REASON_CLUSTER_TAKEN = "ClusterAlreadyHasGateway"
 CONDITION_REASON_SECRETS_MISSING = "SecretsMissing"
 CONDITION_REASON_AUTH_NOT_ACCEPTED = "CallerAuthNotAccepted"
@@ -77,6 +78,8 @@ _CALLERS_NAME = "inference-gateway-callers"
 _FAILOVER_NAME = "inference-gateway-failover"
 _CLIENT_TRAFFIC_NAME = "inference-gateway-client-traffic"
 _REDIRECT_NAME = "inference-gateway-redirect"
+_AI_GATEWAY_ANCHOR_NAME = "inference-gateway-anchor"
+_AI_GATEWAY_ANCHOR_MODEL = f"{REMOTE_NAMESPACE}/__gateway_anchor__"
 
 # The Gateway's listener names. When the gateway terminates TLS, inference binds
 # to the HTTPS listener alone (compose-model-route sets the AIGatewayRoute's
@@ -149,6 +152,11 @@ _POLICY_ACCEPTED_CEL = (
     "has(object.status) && has(object.status.ancestors) && "
     "object.status.ancestors.exists(a, has(a.conditions) && "
     "a.conditions.exists(c, c.type == 'Accepted' && c.status == 'True'))"
+)
+
+_AI_GATEWAY_ROUTE_ACCEPTED_CEL = (
+    "has(object.status) && has(object.status.conditions) && "
+    "object.status.conditions.exists(c, c.type == 'Accepted' && c.status == 'True')"
 )
 
 # Kubernetes injects ndots:5 into every pod, which tells the resolver to try each
@@ -321,6 +329,7 @@ class Composer:
         self.compose_secrets()
         self.compose_envoy_proxy()
         self.compose_gateway()
+        self.compose_ai_gateway_anchor()
         self.compose_client_pki()
         self.compose_cluster_names()
         self.compose_caller_auth()
@@ -664,6 +673,48 @@ class Composer:
                     },
                 },
                 ready_when=_GATEWAY_READY_CEL,
+            ),
+        )
+
+    def compose_ai_gateway_anchor(self) -> None:
+        """Keep AI Gateway's ext-proc installed before any model route exists."""
+        listener = _LISTENER_HTTPS if self.xr.spec.tls else _LISTENER_HTTP
+        resource.update(
+            self.rsp.desired.resources["ai-gateway-anchor"],
+            _k8s_object(
+                self.pc,
+                {
+                    "apiVersion": "aigateway.envoyproxy.io/v1beta1",
+                    "kind": "AIGatewayRoute",
+                    "metadata": {"name": _AI_GATEWAY_ANCHOR_NAME, "namespace": REMOTE_NAMESPACE},
+                    "spec": {
+                        "parentRefs": [
+                            {
+                                "group": "gateway.networking.k8s.io",
+                                "kind": "Gateway",
+                                "name": _GATEWAY_NAME,
+                                "namespace": REMOTE_NAMESPACE,
+                                "sectionName": listener,
+                            }
+                        ],
+                        "rules": [
+                            {
+                                "matches": [
+                                    {
+                                        "headers": [
+                                            {
+                                                "type": "Exact",
+                                                "name": "x-ai-eg-model",
+                                                "value": _AI_GATEWAY_ANCHOR_MODEL,
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ],
+                    },
+                },
+                ready_when=_AI_GATEWAY_ROUTE_ACCEPTED_CEL,
             ),
         )
 
@@ -1330,16 +1381,16 @@ class Composer:
         return None
 
     def derive_conditions(self) -> None:
-        """GatewayReady tracks the Gateway being programmed and, where the XR
-        asks for auth, its caller policy being accepted.
+        """GatewayReady tracks the Gateway and AI Gateway route being accepted,
+        and, where the XR asks for auth, its caller policy being accepted.
 
         Both, because a gateway whose policy was rejected answers every request
         with a 500 while its Gateway still has an address.
 
         A missing input Secret is reported here (see resolve_secrets). The
-        Gateway's own readiness only tracks having an address, so neither a
-        fail-closed auth policy nor an unprogrammed HTTPS listener would
-        otherwise show.
+        Gateway's own readiness only tracks having an address, so an unaccepted
+        anchor route, fail-closed auth policy, or unprogrammed HTTPS listener
+        would otherwise show late or not at all.
         """
         if self.xr.spec.auth and not self.caller_secrets:
             if "caller-secrets" not in self.req.required_resources:
@@ -1366,9 +1417,12 @@ class Composer:
                 "authentication policy and every request is refused",
             )
             return
+        readiness_keys = ["gateway", "ai-gateway-anchor"]
+        if self.xr.spec.auth:
+            readiness_keys.append("caller-auth")
         waiting = [
             key
-            for key in (["gateway", "caller-auth"] if self.xr.spec.auth else ["gateway"])
+            for key in readiness_keys
             if resource.get_condition(self.req.observed.resources.get(key), "Ready").status != "True"
         ]
         if not waiting:
@@ -1381,10 +1435,16 @@ class Composer:
                 ),
             )
             return
-        if waiting == ["caller-auth"]:
+        if "caller-auth" in waiting and "gateway" not in waiting:
             self.not_ready(
                 CONDITION_REASON_AUTH_NOT_ACCEPTED,
                 "The gateway's caller authentication policy has not been accepted, so every request is refused",
+            )
+            return
+        if "ai-gateway-anchor" in waiting and "gateway" not in waiting:
+            self.not_ready(
+                CONDITION_REASON_WAITING_FOR_AI_GATEWAY_ROUTE,
+                f"Waiting for the AI Gateway anchor route on cluster {self.xr.spec.clusterName} to be accepted",
             )
             return
         self.not_ready(
