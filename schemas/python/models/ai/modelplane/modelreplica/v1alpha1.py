@@ -270,10 +270,25 @@ class Condition(BaseModel):
     type: str
 
 
+class Pool(BaseModel):
+    lastAllocationTime: AwareDatetime
+    """
+    The latest time the cluster agent first saw one of this replica's ResourceClaims allocated devices on the pool. The pool's nodesByFreeDevices accounts for them once its own lastAllocationTime is no earlier than this.
+    """
+    name: str
+    """
+    Node pool name, matching the InferenceCluster's spec.nodePools[].name.
+    """
+
+
 class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    pools: list[Pool] | None = Field(None, max_length=16)
+    """
+    The pools whose nodes this replica's devices are attached to, as the cluster agent observes them.
     """
 
 
