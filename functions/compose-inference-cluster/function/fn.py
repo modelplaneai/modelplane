@@ -123,6 +123,12 @@ _SECRET_TYPE_KUBECONFIG = "Kubeconfig"
 # ClusterProviderConfig secretRefs, and status.namespace.
 _NAMESPACE_SYSTEM = "modelplane-system"
 
+# The cluster agent, which the serving stack installs, reports a pool's nodes
+# and free devices in the status of a PoolObservation. It reports both
+# conditions Unknown, with this reason, when it can't observe the pool.
+_AGENT_API_VERSION = "agent.modelplane.ai/v1alpha1"
+_AGENT_REASON_OBSERVATION_FAILED = "ObservationFailed"
+
 # Accelerator type naming an NVIDIA H100 in an InferenceClass. On Civo,
 # a pool of single-H100 nodes needs the serving stack to load that
 # pool's GPU driver with NVLink disabled (see civo_nvlink_disabled_pools).
@@ -317,6 +323,9 @@ class Composer:
             self.compose_existing(cluster.existing)
         else:
             response.warning(self.rsp, f"unsupported cluster source: {source}")
+            return
+
+        self.compose_pool_observations()
 
     def compose_activation(self, kinds: tuple[str, ...]) -> None:
         """Activate the cloud managed resource kinds the cluster XR composes.
@@ -521,6 +530,77 @@ class Composer:
             key = f"namespace-{ns}"
             resource.update(self.rsp.desired.resources[key], obj)
             self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
+
+    def compose_pool_observations(self) -> None:
+        """Compose a PoolObservation on the cluster for each of its GPU pools.
+
+        The cluster agent reports each pool's nodes and free devices in the
+        status of its PoolObservation, which gpu_pools publishes. The agent and
+        the PoolObservation CRD arrive with the serving stack, so they're first
+        composed once the stack is ready, and kept after.
+
+        provider-kubernetes watches each one, so the agent's reports reach this
+        XR when they change rather than when the Object is next polled. Each is
+        marked ready unconditionally: the scheduler falls back to whole-node
+        accounting for a pool it has no observation of, so a missing one mustn't
+        hold up the cluster.
+
+        Each is composed no-Delete. Nothing holds the cluster until they're
+        gone, so deleting one could race the cluster's own deletion and never
+        finish. A PoolObservation left on a cluster, or for a pool that's since
+        been removed, has no effect on scheduling.
+        """
+        backend_ready = (
+            resource.get_condition(self.req.observed.resources.get(BACKEND_RESOURCE_KEY), "Ready").status == "True"
+        )
+        pc = resource.child_name(_name(self.xr.metadata), "cluster-kubeconfig")
+        for pool in self.xr.spec.nodePools or []:
+            # Only the pools gpu_pools publishes have devices to observe.
+            cls = self.classes.get(pool.className)
+            if not cls or not cls.spec.devices:
+                continue
+            key = f"pool-observation-{pool.name}"
+            if not (backend_ready or key in self.req.observed.resources):
+                continue
+            obj = k8sobjv1alpha1.Object(
+                metadata=metav1.ObjectMeta(namespace=_NAMESPACE_SYSTEM),
+                spec=k8sobjv1alpha1.Spec(
+                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(kind="ClusterProviderConfig", name=pc),
+                    readiness=k8sobjv1alpha1.Readiness(policy="SuccessfulCreate"),
+                    watch=True,
+                    forProvider=k8sobjv1alpha1.ForProvider(
+                        manifest={
+                            "apiVersion": _AGENT_API_VERSION,
+                            "kind": "PoolObservation",
+                            "metadata": {"name": pool.name},
+                            "spec": {"poolName": pool.name},
+                        }
+                    ),
+                ),
+            )
+            obj.spec.managementPolicies = ["Observe", "Create", "Update"]
+            resource.update(self.rsp.desired.resources[key], obj)
+            self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
+
+    def observed_pool(self, pool_name: str) -> dict | None:
+        """The status of a pool's PoolObservation, or None until the agent has observed it.
+
+        The agent reports its conditions Unknown, and no nodes or devices, when
+        it can't observe a pool. That's no observation at all, rather than an
+        observation of an empty pool.
+        """
+        observed = self.req.observed.resources.get(f"pool-observation-{pool_name}")
+        if not observed:
+            return None
+        obj = k8sobjv1alpha1.Object.model_validate(resource.struct_to_dict(observed.resource))
+        if not obj.status or not obj.status.atProvider or not obj.status.atProvider.manifest:
+            return None
+        # The PoolObservation has no model, so its status is read as a dict.
+        status = obj.status.atProvider.manifest.get("status", {})
+        healthy = next((c for c in status.get("conditions", []) if c.get("type") == "Healthy"), None)
+        if healthy is None or healthy.get("reason") == _AGENT_REASON_OBSERVATION_FAILED:
+            return None
+        return status
 
     def resolve_gateway_cas(self) -> None:
         """Collect the client CA of every InferenceGateway in the fleet.
@@ -986,7 +1066,12 @@ class Composer:
             # every request routed to it would be stranded.
             if ca and self.gateway_cas:
                 status.gateway.hostname = _gateway_hostname(_name(self.xr.metadata))
-        resource.update_status(self.rsp.desired.composite, status)
+        # The SDK dumps a model in Python mode, leaving a pool's
+        # lastAllocationTime a datetime a protobuf Struct can't hold.
+        resource.update_status(
+            self.rsp.desired.composite,
+            status.model_dump(mode="json", exclude_unset=True, by_alias=True, warnings=False),
+        )
 
     def derive_conditions(self, *, cluster_ready: bool) -> None:
         """Derive ClusterReady and BackendReady conditions."""
@@ -1821,12 +1906,14 @@ class Composer:
         return None
 
     def gpu_pools(self) -> list[dict[str, object]]:
-        """Derive status.gpuPools from each node pool's class.
+        """Derive status.gpuPools from each node pool's class and observation.
 
         The class declares the node's devices (DRA-style); the pool declares how
-        many nodes. We copy the class's devices verbatim so
+        many nodes it can have. We copy the class's devices verbatim so
         ModelDeployment.nodeSelector can match against them, and record the node
-        count for the scheduler's available-node gate.
+        count. Once the cluster agent has observed the pool, we also record the
+        nodes it has now and how many devices are free on them, which the
+        scheduler fits replicas against.
         """
         gpu_pools = []
         for pool in self.xr.spec.nodePools or []:
@@ -1839,13 +1926,20 @@ class Composer:
             # names (bool/int) rather than the generated bool_/int_ attributes,
             # so the published status matches the InferenceClass schema.
             devices = [d.model_dump(by_alias=True, exclude_none=True) for d in cls.spec.devices]
-            gpu_pools.append(
-                {
-                    "name": pool.name,
-                    "nodes": pool.maxNodeCount or pool.nodeCount,
-                    "devices": devices,
-                }
-            )
+            gpu_pool: dict[str, object] = {
+                "name": pool.name,
+                "nodes": pool.maxNodeCount or pool.nodeCount,
+                "devices": devices,
+            }
+            observed = self.observed_pool(pool.name)
+            if observed is not None:
+                gpu_pool["observedNodes"] = observed.get("nodes", {}).get("total", 0)
+                gpu_pool["nodesByFreeDevices"] = observed.get("nodesByFreeDevices", [])
+                # The agent reports a time once a claim has allocated devices
+                # on the pool.
+                if "lastAllocationTime" in observed:
+                    gpu_pool["lastAllocationTime"] = observed["lastAllocationTime"]
+            gpu_pools.append(gpu_pool)
         return gpu_pools
 
     def observed_gke_secrets(self) -> list[gkev1alpha1.Secret] | None:
