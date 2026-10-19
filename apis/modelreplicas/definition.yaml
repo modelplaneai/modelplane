@@ -607,3 +607,30 @@ spec:
                                           type: string
           status:
             type: object
+            properties:
+              pools:
+                type: array
+                description: >-
+                  The pools whose nodes this replica's devices are attached
+                  to, as the cluster agent observes them.
+                maxItems: 16
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys: [name]
+                items:
+                  type: object
+                  required: [name, lastAllocationTime]
+                  properties:
+                    name:
+                      type: string
+                      description: >-
+                        Node pool name, matching the InferenceCluster's
+                        spec.nodePools[].name.
+                    lastAllocationTime:
+                      type: string
+                      format: date-time
+                      description: >-
+                        The latest time the cluster agent first saw one of
+                        this replica's ResourceClaims allocated devices on the
+                        pool. The pool's nodesByFreeDevices accounts for them
+                        once its own lastAllocationTime is no earlier than
+                        this.
