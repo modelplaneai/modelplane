@@ -268,7 +268,7 @@ LABEL_PHASE = "modelplane.ai/phase"
 
 
 # Set on the ModelReplica by the composite that scheduled it.
-_LABEL_REPLICA_INDEX = "modelplane.ai/replica-index"
+LABEL_REPLICA_INDEX = "modelplane.ai/replica-index"
 
 
 def telemetry_labels(
@@ -292,7 +292,7 @@ def telemetry_labels(
     # one of them is simply lost. The index rather than the pod: it is bounded
     # by the replica count, and it survives a restart and a rolling update,
     # where a pod name is minted afresh each time.
-    if index := own.get(_LABEL_REPLICA_INDEX):
+    if index := own.get(LABEL_REPLICA_INDEX):
         labels[LABEL_REPLICA] = index
     if engine.name:
         labels[LABEL_ENGINE] = engine.name
@@ -319,7 +319,7 @@ def fleet_labels(replica: v1alpha1.ModelReplica, role: str) -> dict[str, str]:
     own = (replica.metadata.labels if replica.metadata else None) or {}
     if name := own.get(LABEL_DEPLOYMENT):
         labels[LABEL_DEPLOYMENT] = name
-    if index := own.get(_LABEL_REPLICA_INDEX):
+    if index := own.get(LABEL_REPLICA_INDEX):
         labels[LABEL_REPLICA] = index
     return labels
 
