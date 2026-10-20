@@ -1,0 +1,96 @@
+name: E2E Clouds
+
+# Every cloud's serving stack on the two-cluster setup from e2e/, with KWOK
+# faking that cloud's tainted GPU pool (see e2e/clouds/). Catches toleration
+# and placement regressions from stack regenerations and hand-written half
+# edits without cloud credentials. Triggered by the paths such regressions
+# come from - `nix run .#stacks`, toleration edits, and the harness itself -
+# rather than the model e2e's test-e2e label: most PRs touching the stack
+# never got the label, while most labelled PRs don't touch the stack and
+# would pay seven ~25 minute jobs per push for nothing.
+on:
+  pull_request:
+    paths:
+      - functions/compose-serving-stack/**
+      - e2e/**
+      - .github/workflows/e2e-clouds.yml
+  workflow_dispatch: {}
+
+# Cancel in-progress runs for the same PR. Runs on main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-clouds:
+    runs-on: ubuntu-24.04
+    # Generous: a cold Nix cache (the Actions cache throttles) rebuilds the
+    # function images, on top of the two-cluster bring-up and serving-stack
+    # install.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        cloud: [eks, aks, gke, civo, nebius, vultr, existing]
+
+    steps:
+      # Two kind clusters and the serving stack need more disk than the runner
+      # has free by default, the same reason the push-package job reclaims space.
+      - name: Cleanup Disk
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          tool-cache: true
+          swap-storage: false
+          large-packages: false
+          docker-images: false
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: log-lines = 500
+
+      # See ci.yml for why use-flakehub is off.
+      - name: Cache Nix store
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
+        with:
+          use-flakehub: false
+
+      # Brings the environment up as this cloud's leg, applies the fake GPU
+      # nodes and the ServingStack, and runs the tests in e2e/clouds/ - the
+      # Ready wait, DaemonSet fan-out, and the placement and toleration
+      # audits. The exact command a developer runs locally.
+      - name: Run e2e
+        run: nix run .#e2e --print-build-logs -- --cloud ${{ matrix.cloud }}
+
+      - name: Collect diagnostics
+        if: failure()
+        run: |
+          mkdir -p e2e-logs
+          nix develop --command bash -c '
+            kind export logs e2e-logs/control-plane --name modelplane-e2e-local || true
+            kind export logs e2e-logs/workload --name modelplane-e2e-workload || true
+            kubectl --context kind-modelplane-e2e-local -n modelplane-system get servingstack -o yaml > e2e-logs/servingstack.yaml 2>&1 || true
+            kubectl --context kind-modelplane-e2e-local get releases.helm.m.crossplane.io,objects.kubernetes.m.crossplane.io -A > e2e-logs/composed.txt 2>&1 || true
+            kubectl --context kind-modelplane-e2e-workload get nodes,pods -A -o wide > e2e-logs/workload-placement.txt 2>&1 || true
+          '
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-clouds-${{ matrix.cloud }}-diagnostics
+          path: e2e-logs
+          if-no-files-found: ignore
+
+      - name: Teardown
+        if: always()
+        run: nix run .#e2e -- --clean

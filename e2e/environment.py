@@ -58,10 +58,11 @@ DEADLOCKING_KUBELETS = ("v1.34.0", "v1.34.1")
 METALLB_URL = "https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml"
 CROSSPLANE_VERSION = "2.4.0"
 
-# KWOK chart version 0.3.0 is appVersion v0.8.0. Cloud legs install it for the
-# fake GPU nodes; the model e2e doesn't use it.
-KWOK_CHART_REPO = "https://kwok.sigs.k8s.io/charts/"
-KWOK_CHART_VERSION = "0.3.0"
+# Cloud legs install KWOK for the fake GPU nodes; the model e2e doesn't use
+# it. Applied from the release's plain manifests the way MetalLB is: kwok.yaml
+# is the controller, stage-fast.yaml the Stages that keep fake nodes Ready and
+# mark the pods scheduled onto them Running.
+KWOK_URL = "https://github.com/kubernetes-sigs/kwok/releases/download/v0.8.0"
 
 # The functions the ServingStack pipeline calls (see
 # apis/servingstacks/composition.yaml). A cloud leg parks the rest.
@@ -101,7 +102,7 @@ def up(*, apply_manifests: bool, cloud: clouds.Cloud | None = None) -> None:
 
 def up_workload(*, cloud: clouds.Cloud | None = None) -> None:
     """Create the workload cluster, and install what Modelplane expects a cluster to have already."""
-    create_workload_cluster()
+    create_workload_cluster(cloud=cloud)
 
     # Both kind clusters share one Docker network. MetalLB hands out
     # LoadBalancer addresses from it, and the control plane must route to them,
@@ -142,16 +143,11 @@ def up_workload(*, cloud: clouds.Cloud | None = None) -> None:
         # cloud pool, while the real kind node stays untouched and plays the
         # untainted system pool.
         log.info("Installing KWOK (fake kubelets) on the workload cluster")
-        run(
-            "helm", "upgrade", "--install", "kwok", "kwok",
-            f"--kube-context={WORKLOAD_CONTEXT}", "--namespace=kube-system",
-            f"--repo={KWOK_CHART_REPO}", f"--version={KWOK_CHART_VERSION}",
-            "--set=hostNetwork=true", "--wait",
-        )  # fmt: skip
-        run(
-            "helm", "upgrade", "--install", "kwok-stages", "stage-fast",
-            f"--kube-context={WORKLOAD_CONTEXT}", "--namespace=kube-system",
-            f"--repo={KWOK_CHART_REPO}", f"--version={KWOK_CHART_VERSION}",
+        kubectl(WORKLOAD_CONTEXT, "apply", f"--filename={KWOK_URL}/kwok.yaml")
+        kubectl(WORKLOAD_CONTEXT, "apply", f"--filename={KWOK_URL}/stage-fast.yaml")
+        kubectl(
+            WORKLOAD_CONTEXT,
+            "rollout", "status", "--namespace=kube-system", "deploy/kwok-controller", "--timeout=180s",
         )  # fmt: skip
         return
 
@@ -179,8 +175,8 @@ def up_workload(*, cloud: clouds.Cloud | None = None) -> None:
     )
 
 
-def create_workload_cluster() -> None:
-    """Create the workload cluster, or reuse one running the pinned Kubernetes minor version."""
+def create_workload_cluster(*, cloud: clouds.Cloud | None = None) -> None:
+    """Create the workload cluster, or reuse one whose version and bring-up mode match."""
     if WORKLOAD not in output("kind", "get", "clusters").split():
         log.info("Creating workload cluster %s (k8s v1.34, for DRA)", WORKLOAD)
         run("kind", "create", "cluster", f"--name={WORKLOAD}", f"--image={WORKLOAD_NODE_IMAGE}")
@@ -207,7 +203,53 @@ def create_workload_cluster() -> None:
             "recreate it with: nix run .#e2e -- --clean"
         )
         raise BringUpError(msg)
+    check_workload_mode(cloud=cloud)
     log.info("Reusing workload cluster %s (%s)", WORKLOAD, version)
+
+
+def check_workload_mode(*, cloud: clouds.Cloud | None) -> None:
+    """Fail a reused workload cluster whose last bring-up conflicts with this one.
+
+    The model e2e and a cloud leg can't share a cluster: reusing one for the
+    other would put InferenceCluster local's serving stack and the leg's
+    ServingStack side by side, colliding on release names, and park
+    composition functions the model path calls. Reusing a leg for a different
+    cloud is as bad: kubectl apply merges Node labels, so the fake GPU nodes
+    would keep the old cloud's shape under the new cloud's stack.
+    """
+    nodes = output(
+        "kubectl", f"--context={WORKLOAD_CONTEXT}",
+        "get", "nodes", "--selector=type=kwok", "--output=json",
+    )  # fmt: skip
+    fakes = json.loads(nodes)["items"]
+    if cloud is None:
+        if fakes:
+            msg = (
+                f"workload cluster {WORKLOAD} has fake GPU nodes from a --cloud run; "
+                "recreate it with: nix run .#e2e -- --clean"
+            )
+            raise BringUpError(msg)
+        return
+    dra = output(
+        "kubectl", f"--context={WORKLOAD_CONTEXT}",
+        "get", "namespace", "dra-example-driver", "--ignore-not-found", "--output=name",
+    )  # fmt: skip
+    if dra:
+        msg = (
+            f"workload cluster {WORKLOAD} ran the model e2e (dra-example-driver is installed); "
+            "recreate it with: nix run .#e2e -- --clean"
+        )
+        raise BringUpError(msg)
+    # The legs' label keys tell their fake nodes apart (clouds/__init__.py).
+    keys = {key for leg in clouds.CLOUDS.values() for key in leg.labels}
+    for node in fakes:
+        labels = {key: val for key, val in node["metadata"]["labels"].items() if key in keys}
+        if labels != cloud.labels:
+            msg = (
+                f"fake GPU node {node['metadata']['name']} is shaped for another cloud's leg; "
+                "recreate the cluster with: nix run .#e2e -- --clean"
+            )
+            raise BringUpError(msg)
 
 
 def kind_subnet_prefix() -> str:

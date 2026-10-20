@@ -95,8 +95,8 @@ runs, so prefer a separate control plane for cloud work.
 cloud's serving stack — the AICR-generated component lists for EKS/AKS/GKE, or
 the hand-written halves for Civo, Nebius, Vultr and Existing — onto the same
 workload kind cluster, with no cloud credentials. The trick is
-[KWOK](https://kwok.sigs.k8s.io): bring-up installs its pinned `kwok` and
-`stage-fast` charts and applies two fake Nodes labelled and tainted exactly
+[KWOK](https://kwok.sigs.k8s.io): bring-up applies its pinned `kwok.yaml` and
+`stage-fast.yaml` manifests and two fake Nodes labelled and tainted exactly
 like that cloud's GPU pools. The real kind node plays the untainted system
 pool, so system components install and run for real; the GPU-toleration
 DaemonSets fan out to the fake nodes, where KWOK marks their pods Running —
@@ -106,6 +106,13 @@ The clouds are one data-driven matrix: each leg in `clouds/__init__.py` holds
 everything cloud-specific — the fake nodes' labels, the GPU taint value, the
 stack's `spec.cloud`, and the DaemonSets expected to fan out to the GPU pool.
 Adding fidelity for a cloud means editing its leg, not a copy of the test.
+
+A leg is itself a copy of what its cloud's cluster composition applies, so it
+can drift from the composition as well as the stack from it. `test_legs.py`
+pins each leg's taint value to the `_GPU_TAINT*` constants of the composition
+it mirrors (GKE's managed taint and BYO pools' come from outside Modelplane).
+The labels are a known limitation: compositions build them per pool at
+compose time, so the legs' copies have to be kept true in review.
 
 The `ServingStack` XR is applied directly rather than through an
 `InferenceCluster`, because `source: Existing` hard-wires `cloud: Existing`;

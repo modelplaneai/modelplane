@@ -126,8 +126,8 @@ verify command is what the label-gated `E2E` workflow runs on CI (add the
 `test-e2e` label to a PR), so a green local `--verify` and a green CI run mean
 the same thing. `-- --cloud <cloud>` instead installs one cloud's serving
 stack onto KWOK-faked GPU pools and audits placement, still with no
-credentials; the same label gates its per-cloud CI matrix. See
-`e2e/README.md`.
+credentials; its per-cloud CI matrix (the `E2E Clouds` workflow) runs on pull
+requests touching the serving stack or `e2e/`. See `e2e/README.md`.
 
 ## Submitting changes
 

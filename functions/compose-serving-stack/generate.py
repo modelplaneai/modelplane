@@ -404,8 +404,17 @@ BUNDLE_EXTRA = {
 # composition's EFA driver), everything else tolerates nothing (SYSTEM)
 # and schedules on the untainted system pool. A toleration the bundle
 # already scoped (AKS's --accelerated-node-toleration form above)
-# passes through untouched.
+# passes through untouched. The wildcard doesn't only arrive under keys
+# named tolerations: nvsentinel's bundle puts one under
+# global.systemNodeTolerations, so the walkers match any *Tolerations
+# key too.
 WILDCARD_TOLERATION = [{"operator": "Exists"}]
+
+
+def tolerations_key(key: str) -> bool:
+    """Return whether a values or manifest key holds a toleration list."""
+    return key == "tolerations" or key.endswith("Tolerations")
+
 
 # Tolerate nothing: schedule on the untainted system pool only.
 SYSTEM: list[Values] = []
@@ -448,8 +457,9 @@ TOLERATIONS = {
         "tolerations": SYSTEM,
     },
     "k8s-ephemeral-storage-metrics": {
-        # A DaemonSet: ephemeral-storage metrics come from every node.
-        "tolerations": GPU,
+        # deploy_type is Deployment: one controller reads every node's
+        # metrics from the API, so it never needs to reach GPU nodes.
+        "tolerations": SYSTEM,
     },
     "gpu-operator": {
         "daemonsets.tolerations": GPU,
@@ -460,10 +470,12 @@ TOLERATIONS = {
         "controller.tolerations": SYSTEM,
     },
     "nvsentinel": {
-        # The chart's one toleration knob is global, shared by its node
-        # health monitors (which must reach GPU nodes) and its control
-        # plane - the GPU taint is the narrowest scope the chart allows.
+        # The chart splits its global knob in two: tolerations goes to
+        # the node health monitors (DaemonSets that must reach GPU
+        # nodes), systemNodeTolerations to its control plane (the
+        # labeler Deployment), which belongs on the system pool.
         "global.tolerations": GPU,
+        "global.systemNodeTolerations": SYSTEM,
     },
     "nodewright-operator": {
         "controllerManager.tolerations": SYSTEM,
@@ -761,7 +773,7 @@ def scope_tolerations(name: str, values: Values) -> list[str]:
     def walk(node: object, prefix: tuple[str, ...]) -> None:
         if isinstance(node, dict):
             for key, val in node.items():
-                if key == "tolerations" and val == WILDCARD_TOLERATION:
+                if tolerations_key(key) and val == WILDCARD_TOLERATION:
                     dotted = ".".join((*prefix, key))
                     if dotted not in table:
                         sys.exit(
@@ -792,7 +804,7 @@ def scope_manifest_tolerations(name: str, manifest: Values) -> list[str]:
     def walk(node: object) -> None:
         if isinstance(node, dict):
             for k, val in node.items():
-                if k == "tolerations" and val == WILDCARD_TOLERATION:
+                if tolerations_key(k) and val == WILDCARD_TOLERATION:
                     if key not in MANIFEST_TOLERATIONS:
                         sys.exit(
                             f"wildcard toleration in manifest {key[1]}/{key[2]} of "

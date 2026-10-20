@@ -24,14 +24,16 @@ it on the system node.
 """
 
 import re
-import time
+
+import pytest
 
 from e2e import clouds, kube, wait
 
 # Pods expected to carry the GPU toleration and land on the fake GPU nodes:
-# the GPU-reaching DaemonSets from generate.py's TOLERATIONS table (the NFD
-# worker, node-exporter, DRA kubelet plugin and gpu-operator operands) plus
-# k8s-ephemeral-storage-metrics, a Deployment that carries the GPU toleration.
+# the GPU-reaching DaemonSets from generate.py's TOLERATIONS table - the NFD
+# worker, node-exporter, DRA kubelet plugin, gpu-operator operands and
+# nvsentinel's node monitors (platform-connectors runs on every node; the
+# health monitors select on labels nvsentinel's labeler applies at runtime).
 # Unanchored where the generated and hand-written halves name the same
 # workload differently. Per-cloud extras come from Cloud.gpu_workloads.
 GPU_WORKLOADS = (
@@ -43,7 +45,10 @@ GPU_WORKLOADS = (
     "^nvidia-mig-manager",
     "^nvidia-operator-validator",
     "^nvidia-cuda-validator",
-    "k8s-ephemeral-storage-metrics",
+    "^gpu-health-monitor",
+    "^syslog-health-monitor",
+    "^metadata-collector",
+    "^platform-connectors",
 )
 
 # GPU-only pods must never run on the system pool: they'd only land there by
@@ -64,12 +69,8 @@ GPU_ONLY = re.compile(
     )
 )
 
-# Cluster infrastructure the serving stack doesn't manage. nvsentinel is
-# exempted wholesale: its node monitors carry the GPU toleration and its
-# system pods a deliberate wildcard (global.systemNodeTolerations is
-# [{operator: Exists}] upstream), and its workload names (labeler,
-# platform-connectors, ...) don't share a prefix to match on.
-EXEMPT_NAMESPACES = ("kube-system", "metallb-system", "local-path-storage", "nvsentinel")
+# Cluster infrastructure the serving stack doesn't manage.
+EXEMPT_NAMESPACES = ("kube-system", "metallb-system", "local-path-storage")
 
 
 def gpu_workloads(cloud: clouds.Cloud) -> re.Pattern[str]:
@@ -77,31 +78,38 @@ def gpu_workloads(cloud: clouds.Cloud) -> re.Pattern[str]:
     return re.compile("|".join(GPU_WORKLOADS + cloud.gpu_workloads))
 
 
-def test_daemonsets_fan_out(workload: kube.Cluster, cloud: clouds.Cloud) -> None:
-    """Every DaemonSet the cloud expects on its GPU pool reaches its ready count.
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """Parametrize the fan-out test from the leg's expected DaemonSets, so a failure names its DaemonSet."""
+    if "daemonset" in metafunc.fixturenames:
+        cloud = clouds.CLOUDS[metafunc.config.getoption("--cloud")]
+        metafunc.parametrize(("daemonset", "want"), cloud.expected_daemonsets.items(), ids=cloud.expected_daemonsets)
 
-    Charts without dependents get no helm --wait, so their rollout can lag the
-    ServingStack's Ready condition; poll with one shared deadline. KWOK fakes
-    the pods on the fake nodes Running, so a shortfall means the scheduler
-    never placed them - a toleration too narrow to reach the tainted pool.
+
+@pytest.mark.usefixtures("installed")
+def test_daemonsets_fan_out(workload: kube.Cluster, daemonset: str, want: int) -> None:
+    """A DaemonSet the cloud expects on its GPU pool reaches its ready count.
+
+    Charts without dependents get no helm --wait, so a rollout can lag the
+    ServingStack's Ready condition; poll. KWOK fakes the pods on the fake
+    nodes Running, so a shortfall means the scheduler never placed them - a
+    toleration too narrow to reach the tainted pool.
     """
-    deadline = time.monotonic() + 10 * 60
-    for entry, want in cloud.expected_daemonsets.items():
-        namespace, name = entry.split("/", 1)
+    namespace, name = daemonset.split("/", 1)
 
-        def fanned_out(namespace: str = namespace, name: str = name, want: int = want) -> None:
-            ds = workload.apps.read_namespaced_daemon_set(name, namespace, _request_timeout=kube.TIMEOUT_SECONDS)
-            ready = ds.status.number_ready or 0
-            assert ready == want, f"DaemonSet {namespace}/{name} is {ready}/{want} ready"
+    def fanned_out() -> None:
+        ds = workload.apps.read_namespaced_daemon_set(name, namespace, _request_timeout=kube.TIMEOUT_SECONDS)
+        ready = ds.status.number_ready or 0
+        assert ready == want, f"DaemonSet {namespace}/{name} is {ready}/{want} ready"
 
-        wait.until(
-            fanned_out,
-            timeout=max(deadline - time.monotonic(), 1),
-            what=f"DaemonSet {namespace}/{name} to reach {want} ready pods",
-            retry=kube.RETRY,
-        )
+    wait.until(
+        fanned_out,
+        timeout=10 * 60,
+        what=f"DaemonSet {namespace}/{name} to reach {want} ready pods",
+        retry=kube.RETRY,
+    )
 
 
+@pytest.mark.usefixtures("installed")
 def test_tolerations_are_scoped(workload: kube.Cluster, cloud: clouds.Cloud) -> None:
     """No pod outside the GPU allowlist tolerates the GPU taint, or every taint.
 
@@ -123,6 +131,7 @@ def test_tolerations_are_scoped(workload: kube.Cluster, cloud: clouds.Cloud) -> 
     assert bad == [], "pods carrying tolerations the system pool must not have"
 
 
+@pytest.mark.usefixtures("installed")
 def test_only_gpu_workloads_on_the_gpu_pool(workload: kube.Cluster, cloud: clouds.Cloud) -> None:
     """Everything on a fake GPU node is an expected GPU workload, and GPU-only workloads stay off the system pool."""
     allowed = gpu_workloads(cloud)

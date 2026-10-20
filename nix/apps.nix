@@ -417,7 +417,6 @@
             pkgs.coreutils
             pkgs.kind
             pkgs.kubectl
-            pkgs.kubernetes-helm
             pkgs.docker-client
           ];
           inheritPath = false;

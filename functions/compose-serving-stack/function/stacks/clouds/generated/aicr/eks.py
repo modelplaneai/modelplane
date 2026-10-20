@@ -330,7 +330,7 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
                 "ephemeral_storage_pod_usage": True,
             },
             "prometheus": {"enable": True, "release": "kube-prometheus-stack"},
-            "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
+            "tolerations": [],
         },
     ),
     Chart(
@@ -371,7 +371,7 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
         values={
             "fullnameOverride": "nvsentinel",
             "global": {
-                "systemNodeTolerations": [{"operator": "Exists"}],
+                "systemNodeTolerations": [],
                 "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
             },
             "janitor-provider": {"csp": {"provider": "generic"}},

@@ -140,13 +140,16 @@ def test_no_wildcard_tolerations(cloud: stacks.Cloud, stack: stacks.Stack) -> No
     # every pod it renders; the generator scopes each one
     # (TOLERATIONS in generate.py). This pins that no keyless
     # toleration survives in any joined stack, chart values and
-    # manifests alike.
+    # manifests alike. Not only under keys named tolerations: the
+    # wildcard once hid under nvsentinel's
+    # global.systemNodeTolerations, which both the generator and
+    # this test matched past.
     wildcards = []
 
     def check(node: object, where: str) -> None:
         if isinstance(node, dict):
             for key, val in node.items():
-                if key == "tolerations" and isinstance(val, list):
+                if (key == "tolerations" or key.endswith("Tolerations")) and isinstance(val, list):
                     wildcards.extend((where, t) for t in val if not (isinstance(t, dict) and "key" in t))
                 else:
                     check(val, where)

@@ -441,7 +441,7 @@ done
                 "ephemeral_storage_pod_usage": True,
             },
             "prometheus": {"enable": True, "release": "kube-prometheus-stack"},
-            "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
+            "tolerations": [],
         },
     ),
     Chart(
@@ -484,7 +484,7 @@ done
         values={
             "fullnameOverride": "nvsentinel",
             "global": {
-                "systemNodeTolerations": [{"operator": "Exists"}],
+                "systemNodeTolerations": [],
                 "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
             },
             "janitor-provider": {"csp": {"provider": "generic"}},

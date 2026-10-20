@@ -48,13 +48,14 @@ def workload() -> kube.Cluster:
     return kube.Cluster(environment.WORKLOAD_CONTEXT)
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def installed(control_plane: kube.Cluster, cloud: clouds.Cloud) -> None:
     """Wait for the ServingStack to install on the workload cluster.
 
     Bring-up returns once the XR is applied, and the install - a dozen Helm
-    releases, gated in waves - reconciles in the background. Every test needs
-    the stack in place, so this waits once for the whole session.
+    releases, gated in waves - reconciles in the background. Every placement
+    test needs the stack in place, so this waits once for the whole session;
+    the source-only tests in test_legs.py don't request it.
     """
 
     def ready() -> None:
