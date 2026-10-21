@@ -99,9 +99,9 @@ class Spec(BaseModel):
     """
     VKE cluster Kubernetes version. VKE requires an exact version string including the build suffix; list current versions with vultr-cli kubernetes versions. Defaults to a version where Dynamic Resource Allocation (how GPUs bind to pods) is generally available.
     """
-    nodePools: list[NodePool] = Field(..., max_length=8, min_length=1)
+    nodePools: list[NodePool] = Field(..., max_length=8)
     """
-    Node pools for the cluster. At least one System pool is required for controllers and infrastructure workloads.
+    Node pools for the cluster. A default system pool for controllers and infrastructure workloads is carried inline on the cluster when the list declares no System pool of its own. May be empty.
     """
     region: constr(min_length=1, max_length=32)
     """

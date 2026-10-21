@@ -74,8 +74,22 @@ def _desired_xr() -> fnv1.Resource:
     )
 
 
-def _cluster(*, ready: fnv1.Ready) -> fnv1.Resource:
-    """The composed VKE cluster."""
+def _cluster(*, ready: fnv1.Ready, inline_pool: dict[str, Any] | None) -> fnv1.Resource:
+    """The composed VKE cluster, carrying inline_pool as its inline node pool.
+
+    With inline_pool None, the inline pool is the system pool the function
+    injects into every cluster whose spec declares no System pool.
+    """
+    if inline_pool is None:
+        inline_pool = {
+            "label": "system",
+            "plan": "vc2-6c-16gb",
+            "nodeQuantity": 1,
+            "autoScaler": True,
+            "minNodes": 1,
+            "maxNodes": 2,
+            "labels": [{"key": "modelplane.ai/pool", "value": "system"}],
+        }
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -88,16 +102,7 @@ def _cluster(*, ready: fnv1.Ready) -> fnv1.Resource:
                         "region": "ewr",
                         "version": "v1.36.2+1",
                         "haControlplanes": True,
-                        # The system node pool the function adds inline to every cluster.
-                        "nodePools": {
-                            "label": "system",
-                            "plan": "vc2-6c-16gb",
-                            "nodeQuantity": 1,
-                            "autoScaler": True,
-                            "minNodes": 1,
-                            "maxNodes": 2,
-                            "labels": [{"key": "modelplane.ai/pool", "value": "system"}],
-                        },
+                        "nodePools": inline_pool,
                     },
                     "writeConnectionSecretToRef": {"name": "test-cluster-kubeconfig-55b57"},
                 },
@@ -107,8 +112,22 @@ def _cluster(*, ready: fnv1.Ready) -> fnv1.Resource:
     )
 
 
-def _observed_cluster(*, ready: bool) -> fnv1.Resource:
-    """The VKE cluster as observed, with a Ready condition that's True if ready and False if not."""
+def _observed_cluster(*, ready: bool, inline_pool: dict[str, Any] | None) -> fnv1.Resource:
+    """The VKE cluster as observed, with a Ready condition that's True if ready and False if not.
+
+    With inline_pool None, the observed inline pool is the injected system
+    pool, as in _cluster.
+    """
+    if inline_pool is None:
+        inline_pool = {
+            "label": "system",
+            "plan": "vc2-6c-16gb",
+            "nodeQuantity": 1,
+            "autoScaler": True,
+            "minNodes": 1,
+            "maxNodes": 2,
+            "labels": [{"key": "modelplane.ai/pool", "value": "system"}],
+        }
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -121,15 +140,7 @@ def _observed_cluster(*, ready: bool) -> fnv1.Resource:
                         "region": "ewr",
                         "version": "v1.36.2+1",
                         "haControlplanes": True,
-                        "nodePools": {
-                            "label": "system",
-                            "plan": "vc2-6c-16gb",
-                            "nodeQuantity": 1,
-                            "autoScaler": True,
-                            "minNodes": 1,
-                            "maxNodes": 2,
-                            "labels": [{"key": "modelplane.ai/pool", "value": "system"}],
-                        },
+                        "nodePools": inline_pool,
                     },
                     "writeConnectionSecretToRef": {"name": "test-cluster-kubeconfig-55b57"},
                 },
@@ -274,7 +285,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(),
                 resources={
-                    "cluster": _cluster(ready=fnv1.READY_UNSPECIFIED),
+                    "cluster": _cluster(ready=fnv1.READY_UNSPECIFIED, inline_pool=None),
                 },
             ),
             context=structpb.Struct(),
@@ -297,7 +308,7 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "cluster": _observed_cluster(ready=True),
+                    "cluster": _observed_cluster(ready=True, inline_pool=None),
                 },
             ),
         ),
@@ -306,7 +317,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(),
                 resources={
-                    "cluster": _cluster(ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(ready=fnv1.READY_TRUE, inline_pool=None),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         node_quantity=1,
                         autoscaling={"autoScaler": True, "minNodes": 1, "maxNodes": 4},
@@ -336,7 +347,7 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "cluster": _observed_cluster(ready=False),
+                    "cluster": _observed_cluster(ready=False, inline_pool=None),
                     "provider-config-kubernetes": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -377,7 +388,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(),
                 resources={
-                    "cluster": _cluster(ready=fnv1.READY_UNSPECIFIED),
+                    "cluster": _cluster(ready=fnv1.READY_UNSPECIFIED, inline_pool=None),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         node_quantity=1,
                         autoscaling={"autoScaler": True, "minNodes": 1, "maxNodes": 4},
@@ -407,7 +418,7 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "cluster": _observed_cluster(ready=False),
+                    "cluster": _observed_cluster(ready=False, inline_pool=None),
                     "node-pool-gpu-l40s": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -452,7 +463,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(),
                 resources={
-                    "cluster": _cluster(ready=fnv1.READY_UNSPECIFIED),
+                    "cluster": _cluster(ready=fnv1.READY_UNSPECIFIED, inline_pool=None),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         node_quantity=1,
                         autoscaling={"autoScaler": True, "minNodes": 1, "maxNodes": 4},
@@ -482,7 +493,7 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "cluster": _observed_cluster(ready=True),
+                    "cluster": _observed_cluster(ready=True, inline_pool=None),
                 },
             ),
         ),
@@ -491,7 +502,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(),
                 resources={
-                    "cluster": _cluster(ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(ready=fnv1.READY_TRUE, inline_pool=None),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         node_quantity=2,
                         autoscaling=None,
@@ -504,15 +515,26 @@ COMPOSE_CASES = [
             context=structpb.Struct(),
         ),
     ),
-    # The pool's nodeCount and minNodeCount are both 2, so this case can't tell
-    # which of them sets the autoscaler's floor.
+    # The workers pool's nodeCount and minNodeCount are both 2, so this case
+    # can't tell which of them sets the autoscaler's floor; the sys pool's
+    # differ, so its inline minNodes does.
     Case(
         name="SystemRolePool",
-        reason="A VultrCluster's System-role pool autoscales from a floor of 2 nodes to maxNodeCount, and gets neither GPU labels nor a taint.",
+        reason="A VultrCluster's first System pool becomes the cluster's inline pool; the second autoscales from a floor of 2 nodes to maxNodeCount as a separate pool with neither GPU labels nor a taint, and with no GPU pools in the spec no GPU observer is composed.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_xr(
                     node_pools=[
+                        # The first System pool takes the cluster's inline
+                        # slot; "workers" composes as a separate pool.
+                        v1alpha1.NodePool(
+                            name="sys",
+                            role="System",
+                            plan="vc2-4c-8gb",
+                            nodeCount=2,
+                            minNodeCount=1,
+                            maxNodeCount=3,
+                        ),
                         v1alpha1.NodePool(
                             name="workers",
                             role="System",
@@ -524,7 +546,18 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "cluster": _observed_cluster(ready=True),
+                    "cluster": _observed_cluster(
+                        ready=True,
+                        inline_pool={
+                            "label": "sys",
+                            "plan": "vc2-4c-8gb",
+                            "nodeQuantity": 2,
+                            "autoScaler": True,
+                            "minNodes": 1,
+                            "maxNodes": 3,
+                            "labels": [{"key": "modelplane.ai/pool", "value": "sys"}],
+                        },
+                    ),
                 },
             ),
         ),
@@ -533,7 +566,18 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(),
                 resources={
-                    "cluster": _cluster(ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        ready=fnv1.READY_TRUE,
+                        inline_pool={
+                            "label": "sys",
+                            "plan": "vc2-4c-8gb",
+                            "nodeQuantity": 2,
+                            "autoScaler": True,
+                            "minNodes": 1,
+                            "maxNodes": 3,
+                            "labels": [{"key": "modelplane.ai/pool", "value": "sys"}],
+                        },
+                    ),
                     "node-pool-workers": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -556,7 +600,127 @@ COMPOSE_CASES = [
                         ),
                     ),
                     "provider-config-kubernetes": _provider_config(),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="TwoSystemPools",
+        reason="A VultrCluster's first declared System pool replaces the injected inline pool, while the second System pool and the GPU pool compose as separate KubernetesNodePools.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="sys",
+                            role="System",
+                            plan="vc2-4c-8gb",
+                            nodeCount=2,
+                            minNodeCount=1,
+                            maxNodeCount=3,
+                        ),
+                        v1alpha1.NodePool(
+                            name="sys2",
+                            role="System",
+                            plan="vc2-6c-16gb",
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=2,
+                        ),
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_cluster(
+                        ready=True,
+                        inline_pool={
+                            "label": "sys",
+                            "plan": "vc2-4c-8gb",
+                            "nodeQuantity": 2,
+                            "autoScaler": True,
+                            "minNodes": 1,
+                            "maxNodes": 3,
+                            "labels": [{"key": "modelplane.ai/pool", "value": "sys"}],
+                        },
+                    ),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "cluster": _cluster(
+                        ready=fnv1.READY_TRUE,
+                        inline_pool={
+                            "label": "sys",
+                            "plan": "vc2-4c-8gb",
+                            "nodeQuantity": 2,
+                            "autoScaler": True,
+                            "minNodes": 1,
+                            "maxNodes": 3,
+                            "labels": [{"key": "modelplane.ai/pool", "value": "sys"}],
+                        },
+                    ),
+                    "node-pool-sys2": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "vke.vultr.m.upbound.io/v1beta1",
+                                "kind": "KubernetesNodePool",
+                                "spec": {
+                                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                                    "forProvider": {
+                                        "label": "sys2",
+                                        "plan": "vc2-6c-16gb",
+                                        "nodeQuantity": 1,
+                                        "labels": [{"key": "modelplane.ai/pool", "value": "sys2"}],
+                                        "clusterIdSelector": {"matchControllerRef": True},
+                                        "autoScaler": True,
+                                        "minNodes": 1,
+                                        "maxNodes": 2,
+                                    },
+                                },
+                            }
+                        ),
+                    ),
+                    "node-pool-gpu-l40s": _node_pool_gpu(
+                        node_quantity=1,
+                        autoscaling={"autoScaler": True, "minNodes": 1, "maxNodes": 4},
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "provider-config-kubernetes": _provider_config(),
                     "gpu-observer": _gpu_observer(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="NoNodePools",
+        reason="A VultrCluster declaring no node pools composes the cluster with the injected inline system pool, no separate KubernetesNodePools, and no GPU observer - there is no GPU stack to validate, so the cluster hosts only the inference gateway.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(node_pools=[]),
+                resources={
+                    "cluster": _observed_cluster(ready=True, inline_pool=None),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "cluster": _cluster(ready=fnv1.READY_TRUE, inline_pool=None),
+                    "provider-config-kubernetes": _provider_config(),
                 },
             ),
             context=structpb.Struct(),
@@ -579,7 +743,7 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "cluster": _observed_cluster(ready=True),
+                    "cluster": _observed_cluster(ready=True, inline_pool=None),
                     "node-pool-gpu-l40s": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -668,7 +832,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(),
                 resources={
-                    "cluster": _cluster(ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(ready=fnv1.READY_TRUE, inline_pool=None),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         node_quantity=1,
                         autoscaling={"autoScaler": True, "minNodes": 1, "maxNodes": 4},

@@ -15,12 +15,12 @@
 """Compose a Civo Kubernetes (k3s) cluster with node pools.
 
 This function provisions a Civo Kubernetes cluster on a dedicated network
-and firewall, with a fixed system node pool and separate NodePool managed
-resources for each user-defined pool. The system pool is inline on the
-cluster resource (create-only, never changes). User pools are separate
-managed resources that gate on the cluster being Ready, giving them an
-independent lifecycle - they can be updated or removed without recreating
-the cluster.
+and firewall, with a system node pool inline on the cluster resource
+(create-only, never changes) and separate NodePool managed resources for
+the other pools. The inline pool is the first declared System pool, or an
+injected default when none is declared. The separate pools gate on the
+cluster being Ready, giving them an independent lifecycle - they can be
+updated or removed without recreating the cluster.
 
 Civo's default Traefik ingress is removed from the cluster (the serving
 stack installs Envoy Gateway as the ingress); the built-in metrics-server
@@ -62,9 +62,11 @@ from models.io.upbound.m.civo.kubernetes.nodepool import v1beta1 as nodepoolv1be
 from models.io.upbound.m.civo.vpc.firewall import v1beta1 as firewallv1beta1
 from models.io.upbound.m.civo.vpc.network import v1beta1 as networkv1beta1
 
-# System pool injected into every Civo cluster to host control-plane
-# components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.). Not part
-# of the user-facing API - compose-inference-cluster only passes GPU pools.
+# System pool injected into a Civo cluster to host control-plane
+# components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.) when the
+# spec declares no System pool of its own. The first System pool (declared
+# or injected) is the cluster's inline pool; remaining pools compose as
+# separate NodePools.
 # The size matches the Nebius and Vultr system pools' shape (16 GB memory);
 # g4p.kube.small is the Performance tier's 4 vCPU / 16 GB Kubernetes size
 # (verified against /v2/sizes - the Standard g4s tier tops out at 8 GB).
@@ -196,6 +198,12 @@ class Composer:
         creds = self.xr.spec.credentials
         return creds.name if creds and creds.name else "default"
 
+    def _default_pool(self) -> v1alpha1.NodePool | None:
+        """The first declared System pool, which becomes the cluster's
+        inline node pool. None when the spec declares no System pool and
+        the injected default is used instead."""
+        return next((pool for pool in self.xr.spec.nodePools if pool.role == "System"), None)
+
     def compose(self) -> None:
         self.compose_network()
         self.compose_firewall()
@@ -278,9 +286,9 @@ class Composer:
         )
 
     def compose_cluster(self) -> None:
-        """Compose the Civo cluster with the fixed system node pool.
-        User-defined pools are separate NodePool resources composed after
-        the cluster is Ready, giving them an independent lifecycle."""
+        """Compose the Civo cluster with a system node pool inline. Other
+        pools are separate NodePool resources composed after the cluster
+        is Ready, giving them an independent lifecycle."""
         fp = clusterv1beta1.ForProvider(
             name=_name(self.xr.metadata),
             region=self.xr.spec.region,
@@ -293,7 +301,7 @@ class Composer:
             firewallIdSelector=clusterv1beta1.FirewallIdSelector(
                 matchControllerRef=True,
             ),
-            pools=self._system_pool(),
+            pools=self._inline_system_pool(),
         )
         # Left unset unless specified: the provider then picks Civo's
         # current default version.
@@ -314,10 +322,13 @@ class Composer:
         resource.update(self.rsp.desired.resources["cluster"], cluster)
 
     def compose_node_pools(self) -> None:
-        """Compose a NodePool for each user-defined pool. Gated on the
-        cluster being Ready so the cluster ID is available for the
-        selector."""
+        """Compose a NodePool for each pool that isn't the cluster's
+        inline pool. Gated on the cluster being Ready so the cluster ID
+        is available for the selector."""
+        default_pool = self._default_pool()
         for pool in self.xr.spec.nodePools:
+            if default_pool is not None and pool.name == default_pool.name:
+                continue
             resource.update(
                 self.rsp.desired.resources[f"node-pool-{pool.name}"],
                 self._node_pool(pool),
@@ -416,13 +427,25 @@ class Composer:
             ),
         )
 
-    def _system_pool(self) -> clusterv1beta1.Pools:
-        """The system node pool for control-plane components."""
+    def _inline_system_pool(self) -> clusterv1beta1.Pools:
+        """The cluster's inline system node pool: the first declared System
+        pool, or the injected default when none is declared. Civo's inline
+        pool is create-only, so post-create changes to it don't apply, and
+        the cluster autoscaler cannot address it (it has no NodePool of its
+        own), so it is always fixed-size."""
+        pool = self._default_pool()
+        if pool is None:
+            return clusterv1beta1.Pools(
+                label=_SYSTEM_POOL_NAME,
+                size=_SYSTEM_POOL_SIZE,
+                nodeCount=_SYSTEM_POOL_NODES,
+                labels={_LABEL_POOL: _SYSTEM_POOL_NAME},
+            )
         return clusterv1beta1.Pools(
-            label=_SYSTEM_POOL_NAME,
-            size=_SYSTEM_POOL_SIZE,
-            nodeCount=_SYSTEM_POOL_NODES,
-            labels={_LABEL_POOL: _SYSTEM_POOL_NAME},
+            label=pool.name,
+            size=pool.size,
+            nodeCount=pool.nodeCount,
+            labels={_LABEL_POOL: pool.name},
         )
 
     def _node_pool(self, pool: v1alpha1.NodePool) -> nodepoolv1beta1.NodePool:

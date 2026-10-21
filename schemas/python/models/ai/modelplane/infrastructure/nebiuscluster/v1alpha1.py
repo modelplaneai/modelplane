@@ -133,9 +133,9 @@ class Spec(BaseModel):
     """
     mk8s cluster Kubernetes version. Must be a version mk8s currently supports. Defaults to a version where Dynamic Resource Allocation (how GPUs bind to pods) is generally available.
     """
-    nodePools: list[NodePool] = Field(..., max_length=8, min_length=1)
+    nodePools: list[NodePool] = Field(..., max_length=8)
     """
-    Node groups for the cluster. At least one System pool is required for controllers and infrastructure workloads.
+    Node groups for the cluster. A default System group for controllers and infrastructure workloads is injected when the list declares no System pool of its own. May be empty.
     """
 
 

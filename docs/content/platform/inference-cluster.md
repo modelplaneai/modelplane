@@ -44,12 +44,62 @@ The `cluster.source` discriminator picks one of two models:
   pools from each pool's `InferenceClass`, labels the pool's nodes so the
   scheduler's placement is enforced, and provisions the storage class for model
   weights. It also injects a non-GPU **system pool** with opinionated defaults to
-  run the inference stack, so you only declare the GPU pools you want.
+  run the inference stack, so you only declare the GPU pools you want. To size
+  the system pool yourself, declare one - see
+  [System node pools](#system-node-pools).
 - **Existing (`Existing`).** A kubeconfig `Secret` provides access to a cluster
   you run yourself. Modelplane installs the serving stack it needs but doesn't
   provision infrastructure, and each pool's `InferenceClass` provides hardware
   capabilities for scheduling only. You're responsible for the cluster meeting
   [Modelplane's requirements](#requirements-for-an-existing-cluster).
+
+## System node pools
+
+A provisioned cluster has a **system pool**: a few non-GPU nodes that run
+the inference stack. Modelplane creates one with sensible defaults, so most
+clusters never mention it.
+
+To pick the machine size or node counts yourself, declare the pool with
+`role: System`:
+
+```yaml
+nodePools:
+  - name: system
+    role: System
+    instanceType: m6i.2xlarge
+    minNodeCount: 1
+    maxNodeCount: 3
+  - name: h100-pool
+    className: h100-8x
+```
+
+A System pool specifies the cloud's machine size directly in `instanceType`
+rather than referencing an `InferenceClass`, and declaring one replaces the
+pool Modelplane would otherwise create. A System pool autoscales between
+`minNodeCount` (keep it at 1 or higher) and `maxNodeCount`, and requires
+both. Civo is the exception: the pool maps to the cluster's create-only
+inline pool, which the cluster autoscaler cannot scale, so `maxNodeCount`
+is rejected there and the pool's node count is the larger of `nodeCount`
+and `minNodeCount`.
+
+Declaring a System pool on a running cluster moves the serving stack:
+
+- On GKE, EKS, and Nebius the injected pool is kept until the declared
+  pool is Ready, then deleted, and the serving stack reschedules onto the
+  new nodes.
+- On AKS the declared pool becomes the cluster's default node pool, which
+  AKS rotates through a temporary pool, recycling every node in it. The
+  rotation also happens when a pool keeps the name `system` but changes
+  its VM size.
+- On Vultr and Civo, System pools map to the cluster's create-only inline
+  pool, so they are immutable: declare them when you create the cluster,
+  and recreate it to change them.
+
+GPU pools are optional too. Omit `nodePools` entirely, or declare only a
+System pool, for a cluster that doesn't serve models of its own, such as
+one that only hosts the inference gateway. The system pool and the serving
+stack still come up, and `status.gpuPools` is empty, so no `ModelDeployment`
+schedules there.
 
 ## Requirements for an existing cluster
 

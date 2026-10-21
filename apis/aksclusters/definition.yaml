@@ -95,9 +95,13 @@ spec:
               nodePools:
                 type: array
                 description: >-
-                  Node pools for the cluster. At least one System pool is
-                  required for controllers and infrastructure workloads.
-                minItems: 1
+                  Node pools for the cluster. A default System pool for
+                  controllers and infrastructure workloads is injected
+                  when the list declares no System pool of its own. May
+                  be empty. The first System pool becomes the cluster's
+                  default node pool, which AKS requires inline on the
+                  cluster; changing which pool is first rotates the
+                  default pool.
                 maxItems: 8
                 x-kubernetes-list-type: map
                 x-kubernetes-list-map-keys:

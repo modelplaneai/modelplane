@@ -66,12 +66,12 @@ from models.io.upbound.m.azure.network.subnet import v1beta1 as subnetv1beta1
 from models.io.upbound.m.azure.network.virtualnetwork import v1beta1 as vnetv1beta1
 from models.io.upbound.m.azure.resourcegroup import v1beta1 as rgv1beta1
 
-# System pool injected into every AKS cluster to host control-plane
-# components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.). Not part of
-# the user-facing API - compose-inference-cluster only passes GPU pools. AKS
-# requires every cluster to carry a default node pool, so the system pool is
-# it; user pools are composed as separate User-mode pools whose lifecycle
-# doesn't touch the cluster resource.
+# System pool injected into an AKS cluster to host control-plane
+# components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.) when the
+# spec declares no System pool of its own. AKS requires every cluster to
+# carry a default node pool, so the first System pool (declared or injected)
+# is it; remaining pools are composed as separate agent pools whose
+# lifecycle doesn't touch the cluster resource.
 _SYSTEM_POOL_NAME = "system"
 _SYSTEM_POOL_VM_SIZE = "Standard_D4s_v5"
 _SYSTEM_POOL_MIN_NODE_COUNT = 1
@@ -79,7 +79,8 @@ _SYSTEM_POOL_MAX_NODE_COUNT = 2
 _SYSTEM_POOL_DISK_SIZE_GB = 100
 
 # AKS rotates the default node pool through a temporary pool when a change
-# requires recreating it. The name only has to differ from the pool's own.
+# requires recreating it. The name only has to differ from the pool's own
+# (a declared pool derives one from its own name instead).
 _SYSTEM_POOL_ROTATION_NAME = "systemtmp"
 
 # Labels written on node pools' nodes. compose-model-deployment reads these
@@ -246,6 +247,12 @@ class Composer:
         creds = self.xr.spec.credentials
         return creds.name if creds and creds.name else "default"
 
+    def _default_pool(self) -> v1alpha1.NodePool | None:
+        """The first declared System pool, which becomes the cluster's
+        required default node pool. None when the spec declares no System
+        pool and the injected default is used instead."""
+        return next((pool for pool in self.xr.spec.nodePools if pool.role == "System"), None)
+
     def compose_resource_group(self) -> None:
         """Compose a dedicated resource group holding every Azure resource of
         the cluster, so tearing down the AKSCluster leaves nothing behind."""
@@ -314,9 +321,50 @@ class Composer:
             ),
         )
 
+    def _default_node_pool(self) -> clusterv1beta1.DefaultNodePool:
+        """The cluster's required default node pool: the first declared
+        System pool, or the injected default when none is declared."""
+        pool = self._default_pool()
+        if pool is None:
+            return clusterv1beta1.DefaultNodePool(
+                name=_SYSTEM_POOL_NAME,
+                vmSize=_SYSTEM_POOL_VM_SIZE,
+                autoScalingEnabled=True,
+                minCount=_SYSTEM_POOL_MIN_NODE_COUNT,
+                maxCount=_SYSTEM_POOL_MAX_NODE_COUNT,
+                osDiskSizeGb=_SYSTEM_POOL_DISK_SIZE_GB,
+                temporaryNameForRotation=_SYSTEM_POOL_ROTATION_NAME,
+                nodeLabels={_LABEL_POOL: _SYSTEM_POOL_NAME},
+                upgradeSettings=clusterv1beta1.UpgradeSettings(maxSurge=_MAX_SURGE),
+                vnetSubnetIdSelector=clusterv1beta1.VnetSubnetIdSelector(
+                    matchControllerRef=True,
+                ),
+            )
+        # Keep the rotation name within Azure's 12-character pool name
+        # limit while distinct from the pool's own name: a 12-character
+        # name ending in tmp would derive itself, so it rotates through
+        # a rot suffix instead.
+        rotation_name = f"{pool.name[:9]}tmp"
+        if rotation_name == pool.name:
+            rotation_name = f"{pool.name[:9]}rot"
+        return clusterv1beta1.DefaultNodePool(
+            name=pool.name,
+            vmSize=pool.vmSize,
+            autoScalingEnabled=True,
+            minCount=pool.minNodeCount,
+            maxCount=pool.maxNodeCount,
+            osDiskSizeGb=pool.diskSizeGb,
+            temporaryNameForRotation=rotation_name,
+            nodeLabels={_LABEL_POOL: pool.name},
+            upgradeSettings=clusterv1beta1.UpgradeSettings(maxSurge=_MAX_SURGE),
+            vnetSubnetIdSelector=clusterv1beta1.VnetSubnetIdSelector(
+                matchControllerRef=True,
+            ),
+        )
+
     def compose_cluster(self) -> None:
-        """Compose the AKS cluster with the injected system pool as its
-        required default node pool.
+        """Compose the AKS cluster with a System pool as its required
+        default node pool.
 
         Local accounts stay enabled: the connection secret's kubeconfig
         embeds a client certificate for the clusterAdmin local account, and
@@ -343,20 +391,7 @@ class Composer:
                         matchControllerRef=True,
                     ),
                     identity=clusterv1beta1.Identity(type="SystemAssigned"),
-                    defaultNodePool=clusterv1beta1.DefaultNodePool(
-                        name=_SYSTEM_POOL_NAME,
-                        vmSize=_SYSTEM_POOL_VM_SIZE,
-                        autoScalingEnabled=True,
-                        minCount=_SYSTEM_POOL_MIN_NODE_COUNT,
-                        maxCount=_SYSTEM_POOL_MAX_NODE_COUNT,
-                        osDiskSizeGb=_SYSTEM_POOL_DISK_SIZE_GB,
-                        temporaryNameForRotation=_SYSTEM_POOL_ROTATION_NAME,
-                        nodeLabels={_LABEL_POOL: _SYSTEM_POOL_NAME},
-                        upgradeSettings=clusterv1beta1.UpgradeSettings(maxSurge=_MAX_SURGE),
-                        vnetSubnetIdSelector=clusterv1beta1.VnetSubnetIdSelector(
-                            matchControllerRef=True,
-                        ),
-                    ),
+                    defaultNodePool=self._default_node_pool(),
                     networkProfile=clusterv1beta1.NetworkProfile(
                         networkPlugin=_NETWORK_PLUGIN,
                         networkPluginMode=_NETWORK_PLUGIN_MODE,
@@ -373,13 +408,18 @@ class Composer:
         resource.update(self.rsp.desired.resources["cluster"], cluster)
 
     def compose_node_pools(self) -> None:
-        """Compose one User-mode node pool per XR pool.
+        """Compose one agent pool per XR pool, skipping the System pool that
+        became the cluster's default node pool. Further System pools compose
+        as System-mode agent pools; GPU pools as User-mode ones.
 
         The pool's name in AKS comes from the external-name annotation: agent
         pool names are capped at 12 lowercase alphanumerics (the XRD enforces
         the pattern), which the longer generated MR name would never fit.
         """
+        default_pool = self._default_pool()
         for pool in self.xr.spec.nodePools:
+            if default_pool is not None and pool.name == default_pool.name:
+                continue
             fp = nodepoolv1beta1.ForProvider(
                 kubernetesClusterIdSelector=nodepoolv1beta1.KubernetesClusterIdSelector(
                     matchControllerRef=True,
@@ -387,7 +427,7 @@ class Composer:
                 vnetSubnetIdSelector=nodepoolv1beta1.VnetSubnetIdSelector(
                     matchControllerRef=True,
                 ),
-                mode="User",
+                mode="System" if pool.role == "System" else "User",
                 vmSize=pool.vmSize,
                 osDiskSizeGb=pool.diskSizeGb,
                 orchestratorVersion=self.xr.spec.kubernetesVersion,
@@ -587,7 +627,14 @@ class Composer:
             "subnet",
             "cluster",
         ]
-        managed_resources += [f"nodepool-{pool.name}" for pool in self.xr.spec.nodePools]
+        # The default pool lives inline on the cluster resource, so it has no
+        # agent pool of its own to mark.
+        default_pool = self._default_pool()
+        managed_resources += [
+            f"nodepool-{pool.name}"
+            for pool in self.xr.spec.nodePools
+            if default_pool is None or pool.name != default_pool.name
+        ]
         # The network operator Helm release is only composed once the cluster
         # is observed, so only mark it ready when it's actually in desired
         # state - touching it here otherwise would re-add a resource we gated

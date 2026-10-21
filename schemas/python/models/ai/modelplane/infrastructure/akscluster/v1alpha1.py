@@ -134,9 +134,9 @@ class Spec(BaseModel):
     """
     Virtual network configuration. Azure subnets span all Availability Zones in a region, so one subnet serves every node pool. Override when peering multiple clusters to avoid CIDR collisions. CIDRs must not overlap the cluster's service CIDR (10.96.0.0/16) or the overlay pod CIDR (10.244.0.0/16).
     """
-    nodePools: list[NodePool] = Field(..., max_length=8, min_length=1)
+    nodePools: list[NodePool] = Field(..., max_length=8)
     """
-    Node pools for the cluster. At least one System pool is required for controllers and infrastructure workloads.
+    Node pools for the cluster. A default System pool for controllers and infrastructure workloads is injected when the list declares no System pool of its own. May be empty. The first System pool becomes the cluster's default node pool, which AKS requires inline on the cluster; changing which pool is first rotates the default pool.
     """
 
 

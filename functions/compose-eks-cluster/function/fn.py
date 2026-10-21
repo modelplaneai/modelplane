@@ -101,9 +101,10 @@ _NODE_GROUP_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update"
 # or object rather than erroring.
 _ORPHAN_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update"]
 
-# System node group injected into every EKS cluster to host control-plane
-# components (Envoy Gateway, KEDA, KServe controller, etc.). Not part of
-# the user-facing API — compose-inference-cluster only passes GPU groups.
+# System node group injected into an EKS cluster to host control-plane
+# components when the spec
+# declares no System pool of its own. Declared System pools compose like
+# any other pool and replace this default.
 _SYSTEM_POOL_NAME = "system"
 _SYSTEM_POOL_INSTANCE_TYPE = "m6i.xlarge"
 _SYSTEM_POOL_NODE_COUNT = 1
@@ -406,6 +407,27 @@ class Composer:
     def _cred_name(self) -> str:
         creds = self.xr.spec.credentials
         return creds.name if creds and creds.name else "default"
+
+    def _keep_injected_system_pool(self) -> bool:
+        """Whether to compose the injected default system node group.
+
+        Always when the spec declares no System pool. When it does, an
+        already-existing injected group is kept until a declared System pool
+        is observed Ready, so the serving stack has nodes to run on during
+        the handover; after that the injected group drops out of desired
+        state and is deleted. A declared pool named like the injected one
+        takes over its resource key, so there is nothing to hand over."""
+        system_pools = [p for p in self.xr.spec.nodePools if p.role == "System"]
+        if not system_pools:
+            return True
+        if any(p.name == _SYSTEM_POOL_NAME for p in system_pools):
+            return False
+        if f"nodegroup-{_SYSTEM_POOL_NAME}" not in self.req.observed.resources:
+            return False
+        return not any(
+            resource.get_condition(self.req.observed.resources.get(f"nodegroup-{p.name}"), "Ready").status == "True"
+            for p in system_pools
+        )
 
     def compose(self) -> None:
         self.compose_network()
@@ -838,8 +860,11 @@ class Composer:
         )
 
     def compose_node_groups(self) -> None:
-        """Compose the system and user-declared GPU node groups."""
-        self._compose_system_node_group()
+        """Compose the declared node groups, plus the default system node
+        group when the spec declares no System pool of its own or the
+        handover to a declared one is still in progress."""
+        if self._keep_injected_system_pool():
+            self._compose_system_node_group()
         for pool in self.xr.spec.nodePools:
             capacity_block = pool.capacityBlock
             efa = pool.fabric == _FABRIC_EFA
@@ -1713,7 +1738,6 @@ class Composer:
             "iam-attach-node-ecr",
             "cluster",
             "cluster-auth",
-            f"nodegroup-{_SYSTEM_POOL_NAME}",
             "efs-filesystem",
             "efs-security-group",
             "efs-security-group-ingress",
@@ -1727,6 +1751,8 @@ class Composer:
             "iam-attach-cluster-autoscaler",
             "pod-identity-cluster-autoscaler",
         ]
+        if self._keep_injected_system_pool():
+            managed_resources.append(f"nodegroup-{_SYSTEM_POOL_NAME}")
         for i in range(len(self._networking().subnetCidrs or [])):
             managed_resources.append(f"subnet-{i}")
             managed_resources.append(f"private-subnet-{i}")

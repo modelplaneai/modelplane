@@ -68,9 +68,10 @@ spec:
               nodePools:
                 type: array
                 description: >-
-                  Node groups for the cluster. At least one System pool is
-                  required for controllers and infrastructure workloads.
-                minItems: 1
+                  Node groups for the cluster. A default System group for
+                  controllers and infrastructure workloads is injected
+                  when the list declares no System pool of its own. May
+                  be empty.
                 maxItems: 8
                 x-kubernetes-list-type: map
                 x-kubernetes-list-map-keys:

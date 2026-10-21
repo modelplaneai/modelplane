@@ -99,9 +99,9 @@ class Spec(BaseModel):
     """
     Civo Kubernetes (k3s) version. Civo requires an exact version string including the k3s build suffix (e.g. 1.34.1-k3s1); list current versions with civo kubernetes versions. Choose 1.34 or newer so Dynamic Resource Allocation (how GPUs bind to pods) is generally available. Defaults to Civo's current default version.
     """
-    nodePools: list[NodePool] = Field(..., max_length=8, min_length=1)
+    nodePools: list[NodePool] = Field(..., max_length=8)
     """
-    Node pools for the cluster. At least one System pool is required for controllers and infrastructure workloads.
+    Node pools for the cluster. A default system pool for controllers and infrastructure workloads is carried inline on the cluster when the list declares no System pool of its own. May be empty. The first System pool becomes the cluster's inline pool, which Civo requires and only applies at creation.
     """
     region: constr(min_length=1, max_length=32)
     """

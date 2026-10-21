@@ -134,9 +134,9 @@ class Spec(BaseModel):
     """
     VPC networking configuration. Defaults are suitable for standalone clusters. Override when VPC-peering multiple clusters to avoid CIDR collisions.
     """
-    nodePools: list[NodePool] = Field(..., max_length=8, min_length=1)
+    nodePools: list[NodePool] = Field(..., max_length=8)
     """
-    Node pools for the cluster. At least one System pool is required for controllers and infrastructure workloads.
+    Node pools for the cluster. A default System pool for controllers and infrastructure workloads is injected when the list declares no System pool of its own. May be empty.
     """
     region: constr(min_length=1, max_length=32)
     """

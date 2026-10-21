@@ -32,6 +32,16 @@ spec:
             x-kubernetes-validations:
             - rule: "self.cluster.source != 'Nebius' || !has(self.nodePools) || self.nodePools.all(p, !has(p.fabric) || p.fabric.type != 'InfiniBand' || has(p.fabric.infiniband))"
               message: fabric.infiniband is required when fabric.type is InfiniBand and cluster.source is Nebius.
+            - rule: "self.cluster.source != 'Existing' || !has(self.nodePools) || self.nodePools.all(p, p.role != 'System')"
+              message: System pools only apply to clusters Modelplane provisions, not Existing ones.
+            - rule: "self.cluster.source != 'Civo' || !has(self.nodePools) || self.nodePools.all(p, p.role != 'System' || !has(p.maxNodeCount))"
+              message: a Civo System pool is fixed-size because it becomes the cluster's create-only inline pool, which the cluster autoscaler cannot scale; omit maxNodeCount.
+            - rule: "self.cluster.source == 'Civo' || self.cluster.source == 'Existing' || !has(self.nodePools) || self.nodePools.all(p, p.role != 'System' || has(p.maxNodeCount))"
+              message: a System pool autoscales on this cloud, so it requires maxNodeCount; a fixed-size System pool is only available on Civo.
+            - rule: "!(self.cluster.source in ['Vultr', 'Civo']) || (has(self.nodePools) ? self.nodePools.filter(p, p.role == 'System') : []) == (has(oldSelf.nodePools) ? oldSelf.nodePools.filter(p, p.role == 'System') : [])"
+              message: Vultr and Civo System pools map to the cluster's create-only inline pool and are immutable; recreate the cluster to change them.
+            - rule: "self.cluster.source != 'AKS' || !has(self.nodePools) || self.nodePools.all(p, p.name.matches('^[a-z][a-z0-9]{0,11}$'))"
+              message: an AKS pool name is at most 12 lowercase alphanumeric characters starting with a letter (Azure agent pool naming).
             properties:
               cluster:
                 type: object
@@ -430,29 +440,78 @@ spec:
               nodePools:
                 type: array
                 description: >-
-                  GPU node pools available on this cluster. Each pool
-                  references an InferenceClass that describes the
-                  hardware shape and (for provisioned clusters) how to
-                  create the pool. System pools for control-plane
-                  components are provisioned automatically.
-                minItems: 1
+                  Node pools available on this cluster. GPU pools (the
+                  default role) reference an InferenceClass that describes
+                  the hardware shape and (for provisioned clusters) how to
+                  create the pool. System pools host the serving stack and
+                  other infrastructure components; one is provisioned
+                  automatically unless you declare your own with role
+                  System, in which case only your System pools are created.
+                  Omit nodePools (or declare only System pools) for a
+                  cluster without GPU pools, such as one that only hosts
+                  the inference gateway.
                 maxItems: 8
                 x-kubernetes-list-type: map
                 x-kubernetes-list-map-keys: [name]
                 items:
                   type: object
-                  required: [name, className]
+                  required: [name]
+                  x-kubernetes-validations:
+                  - rule: "self.role != 'GPU' || has(self.className)"
+                    message: className is required for GPU pools.
+                  - rule: "self.role == 'GPU' || !has(self.className)"
+                    message: System pools take an instanceType, not a className.
+                  - rule: "self.role != 'System' || has(self.instanceType)"
+                    message: instanceType is required for System pools.
+                  - rule: "self.role == 'System' || !has(self.instanceType)"
+                    message: instanceType is only valid for System pools; GPU pools get their shape from className.
+                  - rule: "self.role == 'GPU' || !has(self.capacityBlock)"
+                    message: capacityBlock is only valid for GPU pools.
+                  - rule: "self.role == 'GPU' || !has(self.fabric)"
+                    message: fabric is only valid for GPU pools.
+                  - rule: "self.role == 'GPU' || !has(self.zones)"
+                    message: zones is only valid for GPU pools.
+                  - rule: "self.role != 'System' || (has(self.minNodeCount) && self.minNodeCount >= 1)"
+                    message: a System pool must set minNodeCount to 1 or higher; scaling it to zero takes the serving stack down.
+                  - rule: "self.role != 'System' || !has(self.maxNodeCount) || self.maxNodeCount >= self.minNodeCount"
+                    message: a System pool's maxNodeCount must be at least its minNodeCount.
                   properties:
                     name:
                       type: string
                       maxLength: 40
+                    role:
+                      type: string
+                      default: GPU
+                      description: >-
+                        Determines what workloads this pool runs. GPU pools
+                        host inference workloads and take their shape from
+                        className. System pools host the serving stack and
+                        infrastructure components and take their shape from
+                        instanceType; declaring one or more System pools
+                        replaces the automatically provisioned system pool.
+                      enum: [System, GPU]
                     className:
                       type: string
                       description: >-
                         Name of the InferenceClass describing this pool's
-                        hardware.
+                        hardware. Required for GPU pools.
                       minLength: 1
                       maxLength: 253
+                    instanceType:
+                      type: string
+                      description: >-
+                        Machine size for a System pool, in the cloud's
+                        native form: an EC2 instance type on EKS (e.g.
+                        m6i.xlarge), a machine type on GKE (e.g.
+                        e2-standard-4), a VM size on AKS (e.g.
+                        Standard_D4s_v5), a plan on Vultr (e.g.
+                        vc2-6c-16gb), or a Kubernetes size on Civo (e.g.
+                        g4p.kube.small). Nebius sizes a node with a
+                        compute platform and a resource preset; join them
+                        with a dot (e.g. cpu-d3.4vcpu-16gb). Required for
+                        System pools.
+                      minLength: 1
+                      maxLength: 127
                     nodeCount:
                       type: integer
                       default: 1
@@ -612,8 +671,9 @@ spec:
                 type: array
                 description: >-
                   Schedulable GPU node pools on this cluster, derived from the
-                  referenced classes and the per-pool node counts.
-                  ModelDeployment scheduling matches against these.
+                  GPU pools' referenced classes and per-pool node counts.
+                  System pools don't appear here. ModelDeployment scheduling
+                  matches against these.
                 maxItems: 8
                 x-kubernetes-list-type: map
                 x-kubernetes-list-map-keys: [name]

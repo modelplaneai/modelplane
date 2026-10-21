@@ -51,9 +51,10 @@ from models.io.upbound.m.gcp.providerconfig import v1beta1 as gcppcv1beta1
 _RANGE_PODS = "pods"
 _RANGE_SERVICES = "services"
 
-# System pool injected into every GKE cluster to host control-plane
-# components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.). Not part of
-# the user-facing API — compose-inference-cluster only passes GPU pools.
+# System pool injected into a GKE cluster to host control-plane
+# components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.) when the
+# spec declares no System pool of its own. Declared System pools compose
+# like any other pool and replace this default.
 _SYSTEM_POOL_NAME = "system"
 _SYSTEM_POOL_MACHINE_TYPE = "e2-standard-4"
 _SYSTEM_POOL_NODE_COUNT = 1
@@ -171,6 +172,27 @@ class Composer:
     def _cred_name(self) -> str:
         creds = self.xr.spec.credentials
         return creds.name if creds and creds.name else "default"
+
+    def _keep_injected_system_pool(self) -> bool:
+        """Whether to compose the injected default system pool.
+
+        Always when the spec declares no System pool. When it does, an
+        already-existing injected pool is kept until a declared System pool
+        is observed Ready, so the serving stack has nodes to run on during
+        the handover; after that the injected pool drops out of desired
+        state and is deleted. A declared pool named like the injected one
+        takes over its resource key, so there is nothing to hand over."""
+        system_pools = [p for p in self.xr.spec.nodePools if p.role == "System"]
+        if not system_pools:
+            return True
+        if any(p.name == _SYSTEM_POOL_NAME for p in system_pools):
+            return False
+        if f"nodepool-{_SYSTEM_POOL_NAME}" not in self.req.observed.resources:
+            return False
+        return not any(
+            resource.get_condition(self.req.observed.resources.get(f"nodepool-{p.name}"), "Ready").status == "True"
+            for p in system_pools
+        )
 
     def resolve_project(self) -> str | None:
         """Fetch the GCP provider config and return its projectID.
@@ -366,7 +388,8 @@ class Composer:
         )
 
     def compose_node_pools(self) -> None:
-        self._compose_system_pool()
+        if self._keep_injected_system_pool():
+            self._compose_system_pool()
         for pool in self.xr.spec.nodePools:
             node_config = nodepoolv1beta1.NodeConfig(
                 machineType=pool.machineType,
@@ -655,7 +678,8 @@ class Composer:
             "service-account",
             "service-account-key",
         ]
-        managed_resources.append(f"nodepool-{_SYSTEM_POOL_NAME}")
+        if self._keep_injected_system_pool():
+            managed_resources.append(f"nodepool-{_SYSTEM_POOL_NAME}")
         managed_resources += [f"nodepool-{pool.name}" for pool in self.xr.spec.nodePools]
         if self.observed_sa_email():
             managed_resources.append("iam-binding")

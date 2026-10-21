@@ -37,6 +37,9 @@ spec:
             required:
             - region
             - nodePools
+            x-kubernetes-validations:
+            - rule: "self.nodePools.filter(p, p.role == 'System') == oldSelf.nodePools.filter(p, p.role == 'System')"
+              message: System pools map to the cluster's create-only inline pool and are immutable; recreate the cluster to change them.
             properties:
               region:
                 type: string
@@ -78,9 +81,12 @@ spec:
               nodePools:
                 type: array
                 description: >-
-                  Node pools for the cluster. At least one System pool is
-                  required for controllers and infrastructure workloads.
-                minItems: 1
+                  Node pools for the cluster. A default system pool for
+                  controllers and infrastructure workloads is carried
+                  inline on the cluster when the list declares no System
+                  pool of its own. May be empty. The first System pool
+                  becomes the cluster's inline pool, which Civo requires
+                  and only applies at creation.
                 maxItems: 8
                 x-kubernetes-list-type: map
                 x-kubernetes-list-map-keys:
@@ -96,6 +102,8 @@ spec:
                     message: gpu is required when role is GPU.
                   - rule: "!has(self.minNodeCount) || has(self.maxNodeCount)"
                     message: maxNodeCount is required when minNodeCount is set.
+                  - rule: "self.role != 'System' || !has(self.maxNodeCount)"
+                    message: System pools are fixed-size; the first one is the cluster's create-only inline pool, which the cluster autoscaler cannot scale.
                   properties:
                     name:
                       type: string

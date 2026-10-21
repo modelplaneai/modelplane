@@ -115,8 +115,19 @@ def _firewall(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
     )
 
 
-def _cluster(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resource:
-    """The composed Civo Cluster."""
+def _cluster(*, cred_kind: str, cred_name: str, ready: fnv1.Ready, inline_pool: dict[str, Any] | None) -> fnv1.Resource:
+    """The composed Civo Cluster, carrying inline_pool as its inline node pool.
+
+    With inline_pool None, the inline pool is the system pool the function
+    injects into every cluster whose spec declares no System pool.
+    """
+    if inline_pool is None:
+        inline_pool = {
+            "label": "system",
+            "size": "g4p.kube.small",
+            "nodeCount": 2,
+            "labels": {"modelplane.ai/pool": "system"},
+        }
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -132,13 +143,7 @@ def _cluster(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resou
                         "writeKubeconfig": True,
                         "networkIdSelector": {"matchControllerRef": True},
                         "firewallIdSelector": {"matchControllerRef": True},
-                        # The system node pool the function adds inline to every cluster.
-                        "pools": {
-                            "label": "system",
-                            "size": "g4p.kube.small",
-                            "nodeCount": 2,
-                            "labels": {"modelplane.ai/pool": "system"},
-                        },
+                        "pools": inline_pool,
                     },
                     "writeConnectionSecretToRef": {"name": "test-cluster-kubeconfig-55b57"},
                 },
@@ -148,8 +153,21 @@ def _cluster(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resou
     )
 
 
-def _observed_cluster(*, cred_kind: str, cred_name: str, ready: bool) -> fnv1.Resource:
-    """The Civo Cluster as observed, with its Civo ID, and a Ready condition that's True if ready and False if not."""
+def _observed_cluster(
+    *, cred_kind: str, cred_name: str, ready: bool, inline_pool: dict[str, Any] | None
+) -> fnv1.Resource:
+    """The Civo Cluster as observed, with its Civo ID, and a Ready condition that's True if ready and False if not.
+
+    With inline_pool None, the observed inline pool is the injected system
+    pool, as in _cluster.
+    """
+    if inline_pool is None:
+        inline_pool = {
+            "label": "system",
+            "size": "g4p.kube.small",
+            "nodeCount": 2,
+            "labels": {"modelplane.ai/pool": "system"},
+        }
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -168,12 +186,7 @@ def _observed_cluster(*, cred_kind: str, cred_name: str, ready: bool) -> fnv1.Re
                         "writeKubeconfig": True,
                         "networkIdSelector": {"matchControllerRef": True},
                         "firewallIdSelector": {"matchControllerRef": True},
-                        "pools": {
-                            "label": "system",
-                            "size": "g4p.kube.small",
-                            "nodeCount": 2,
-                            "labels": {"modelplane.ai/pool": "system"},
-                        },
+                        "pools": inline_pool,
                     },
                     "writeConnectionSecretToRef": {"name": "test-cluster-kubeconfig-55b57"},
                 },
@@ -331,7 +344,10 @@ COMPOSE_CASES = [
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(
-                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        ready=fnv1.READY_UNSPECIFIED,
+                        inline_pool=None,
                     ),
                 },
             ),
@@ -356,7 +372,9 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=True),
+                    "cluster": _observed_cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=True, inline_pool=None
+                    ),
                 },
             ),
         ),
@@ -367,7 +385,9 @@ COMPOSE_CASES = [
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE, inline_pool=None
+                    ),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         management_policies=["Observe", "Create", "Update", "Delete"],
                         init_node_count=1,
@@ -403,7 +423,9 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=True),
+                    "cluster": _observed_cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=True, inline_pool=None
+                    ),
                     "node-pool-gpu-l40s": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -453,7 +475,9 @@ COMPOSE_CASES = [
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE, inline_pool=None
+                    ),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         management_policies=["Observe", "Create", "Update", "Delete"],
                         init_node_count=1,
@@ -491,7 +515,9 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=False),
+                    "cluster": _observed_cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=False, inline_pool=None
+                    ),
                     "provider-config-helm": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -535,7 +561,10 @@ COMPOSE_CASES = [
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(
-                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        ready=fnv1.READY_UNSPECIFIED,
+                        inline_pool=None,
                     ),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         management_policies=["Observe", "Create", "Update", "Delete"],
@@ -568,7 +597,9 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=True),
+                    "cluster": _observed_cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=True, inline_pool=None
+                    ),
                 },
             ),
         ),
@@ -579,7 +610,9 @@ COMPOSE_CASES = [
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE, inline_pool=None
+                    ),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         management_policies=None,
                         init_node_count=None,
@@ -593,16 +626,126 @@ COMPOSE_CASES = [
             context=structpb.Struct(),
         ),
     ),
+    # The inline pool is create-only and the autoscaler can't address it, so
+    # the declared System pool carries only its fixed nodeCount, never
+    # autoscaling bounds (the XRD rejects maxNodeCount on System pools).
+    Case(
+        name="DeclaredSystemPool",
+        reason="A CivoCluster's first declared System pool replaces the injected inline pool and composes no separate NodePool of its own, while the GPU pool still composes as one.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="syspool",
+                            role="System",
+                            size="g4p.kube.medium",
+                            nodeCount=2,
+                        ),
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            size="an.g1.l40s.kube.x1",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_cluster(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        ready=True,
+                        inline_pool={
+                            "label": "syspool",
+                            "size": "g4p.kube.medium",
+                            "nodeCount": 2,
+                            "labels": {"modelplane.ai/pool": "syspool"},
+                        },
+                    ),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        ready=fnv1.READY_TRUE,
+                        inline_pool={
+                            "label": "syspool",
+                            "size": "g4p.kube.medium",
+                            "nodeCount": 2,
+                            "labels": {"modelplane.ai/pool": "syspool"},
+                        },
+                    ),
+                    "node-pool-gpu-l40s": _node_pool_gpu(
+                        management_policies=["Observe", "Create", "Update", "Delete"],
+                        init_node_count=1,
+                        node_count=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "provider-config-helm": _provider_config(),
+                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[]),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="NoNodePools",
+        reason="A CivoCluster declaring no node pools composes the cluster with the injected inline system pool and no separate NodePools, and once the cluster is Ready still composes the ProviderConfig and an autoscaler with no node groups.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(credentials=None, node_pools=[]),
+                resources={
+                    "cluster": _observed_cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=True, inline_pool=None
+                    ),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE, inline_pool=None
+                    ),
+                    "provider-config-helm": _provider_config(),
+                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[]),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
     # The helm ProviderConfig and the Release reach the cluster through its
     # kubeconfig, so they don't carry the Civo credentials.
     Case(
         name="CustomCredentials",
-        reason="A CivoCluster naming its own ProviderConfig gets it on every Civo resource, and its System-role pool gets no GPU label or taint.",
+        reason="A CivoCluster naming its own ProviderConfig gets it on every Civo resource, and its second System-role pool gets no GPU label or taint.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_xr(
                     credentials=v1alpha1.Credentials(type="ProviderConfig", name="team-a"),
                     node_pools=[
+                        # The first System pool takes the cluster's inline
+                        # slot; "workers" composes as a separate pool.
+                        v1alpha1.NodePool(
+                            name="sys",
+                            role="System",
+                            size="g4p.kube.small",
+                            nodeCount=2,
+                        ),
                         v1alpha1.NodePool(
                             name="workers",
                             role="System",
@@ -612,7 +755,17 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "cluster": _observed_cluster(cred_kind="ProviderConfig", cred_name="team-a", ready=True),
+                    "cluster": _observed_cluster(
+                        cred_kind="ProviderConfig",
+                        cred_name="team-a",
+                        ready=True,
+                        inline_pool={
+                            "label": "sys",
+                            "size": "g4p.kube.small",
+                            "nodeCount": 2,
+                            "labels": {"modelplane.ai/pool": "sys"},
+                        },
+                    ),
                 },
             ),
         ),
@@ -623,7 +776,17 @@ COMPOSE_CASES = [
                 resources={
                     "network": _network(cred_kind="ProviderConfig", cred_name="team-a"),
                     "firewall": _firewall(cred_kind="ProviderConfig", cred_name="team-a"),
-                    "cluster": _cluster(cred_kind="ProviderConfig", cred_name="team-a", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ProviderConfig",
+                        cred_name="team-a",
+                        ready=fnv1.READY_TRUE,
+                        inline_pool={
+                            "label": "sys",
+                            "size": "g4p.kube.small",
+                            "nodeCount": 2,
+                            "labels": {"modelplane.ai/pool": "sys"},
+                        },
+                    ),
                     "node-pool-workers": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {

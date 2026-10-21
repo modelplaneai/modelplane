@@ -152,9 +152,9 @@ class Spec(BaseModel):
     """
     VPC networking configuration. Defaults give a /16 VPC carved into three /20 subnets, one per Availability Zone. Override when VPC-peering multiple clusters to avoid CIDR collisions.
     """
-    nodePools: list[NodePool] = Field(..., max_length=8, min_length=1)
+    nodePools: list[NodePool] = Field(..., max_length=8)
     """
-    Node groups for the cluster. At least one System pool is required for controllers and infrastructure workloads.
+    Node groups for the cluster. A default System group for controllers and infrastructure workloads is injected when the list declares no System pool of its own. May be empty.
     """
     region: constr(min_length=1, max_length=32)
     """

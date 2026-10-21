@@ -132,49 +132,47 @@ def _subnet(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resour
     )
 
 
-def _cluster(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resource:
-    """The composed KubernetesCluster."""
-    return fnv1.Resource(
-        resource=resource.dict_to_struct(
-            {
-                "apiVersion": "containerservice.azure.m.upbound.io/v1beta1",
-                "kind": "KubernetesCluster",
-                "metadata": {"name": "modelplane-system-test-cluster-aks-1173e"},
-                "spec": {
-                    "providerConfigRef": {"kind": cred_kind, "name": cred_name},
-                    "forProvider": {
-                        "location": "westeurope",
-                        "kubernetesVersion": "1.34",
-                        "dnsPrefix": "modelplane-system-test-cluster-aks-1173e",
-                        "nodeResourceGroup": "modelplane-system-test-cluster-aks-1173e-nodes",
-                        "resourceGroupNameSelector": {"matchControllerRef": True},
-                        "identity": {"type": "SystemAssigned"},
-                        "defaultNodePool": {
-                            "name": "system",
-                            "vmSize": "Standard_D4s_v5",
-                            "autoScalingEnabled": True,
-                            "minCount": 1,
-                            "maxCount": 2,
-                            "osDiskSizeGb": 100,
-                            "temporaryNameForRotation": "systemtmp",
-                            "nodeLabels": {"modelplane.ai/pool": "system"},
-                            "upgradeSettings": {"maxSurge": "10%"},
-                            "vnetSubnetIdSelector": {"matchControllerRef": True},
-                        },
-                        "networkProfile": {
-                            "networkPlugin": "azure",
-                            "networkPluginMode": "overlay",
-                            "podCidr": "10.244.0.0/16",
-                            "serviceCidr": "10.96.0.0/16",
-                            "dnsServiceIp": "10.96.0.10",
-                        },
-                    },
-                    "writeConnectionSecretToRef": {"name": "test-cluster-kubeconfig-55b57"},
+def _cluster(*, cred_kind: str, cred_name: str, default_pool: dict | None, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed KubernetesCluster, with default_pool in place of the injected system pool."""
+    cluster = {
+        "apiVersion": "containerservice.azure.m.upbound.io/v1beta1",
+        "kind": "KubernetesCluster",
+        "metadata": {"name": "modelplane-system-test-cluster-aks-1173e"},
+        "spec": {
+            "providerConfigRef": {"kind": cred_kind, "name": cred_name},
+            "forProvider": {
+                "location": "westeurope",
+                "kubernetesVersion": "1.34",
+                "dnsPrefix": "modelplane-system-test-cluster-aks-1173e",
+                "nodeResourceGroup": "modelplane-system-test-cluster-aks-1173e-nodes",
+                "resourceGroupNameSelector": {"matchControllerRef": True},
+                "identity": {"type": "SystemAssigned"},
+                "defaultNodePool": {
+                    "name": "system",
+                    "vmSize": "Standard_D4s_v5",
+                    "autoScalingEnabled": True,
+                    "minCount": 1,
+                    "maxCount": 2,
+                    "osDiskSizeGb": 100,
+                    "temporaryNameForRotation": "systemtmp",
+                    "nodeLabels": {"modelplane.ai/pool": "system"},
+                    "upgradeSettings": {"maxSurge": "10%"},
+                    "vnetSubnetIdSelector": {"matchControllerRef": True},
                 },
-            }
-        ),
-        ready=ready,
-    )
+                "networkProfile": {
+                    "networkPlugin": "azure",
+                    "networkPluginMode": "overlay",
+                    "podCidr": "10.244.0.0/16",
+                    "serviceCidr": "10.96.0.0/16",
+                    "dnsServiceIp": "10.96.0.10",
+                },
+            },
+            "writeConnectionSecretToRef": {"name": "test-cluster-kubeconfig-55b57"},
+        },
+    }
+    if default_pool is not None:
+        cluster["spec"]["forProvider"]["defaultNodePool"] = default_pool
+    return fnv1.Resource(resource=resource.dict_to_struct(cluster), ready=ready)
 
 
 def _nodepool_gpu(*, cred_kind: str, cred_name: str, zones: list[str] | None, ready: fnv1.Ready) -> fnv1.Resource:
@@ -281,7 +279,10 @@ COMPOSE_CASES = [
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
                     "cluster": _cluster(
-                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        default_pool=None,
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "nodepool-gpuh100": _nodepool_gpu(
                         cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_UNSPECIFIED
@@ -331,7 +332,10 @@ COMPOSE_CASES = [
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
                     "cluster": _cluster(
-                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        default_pool=None,
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "nodepool-gpuh100": _nodepool_gpu(
                         cred_kind="ClusterProviderConfig",
@@ -384,7 +388,10 @@ COMPOSE_CASES = [
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
                     "cluster": _cluster(
-                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        default_pool=None,
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "nodepool-gpuh100": _nodepool_gpu(
                         cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_UNSPECIFIED
@@ -485,7 +492,12 @@ COMPOSE_CASES = [
                     "subnet": _subnet(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
-                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        default_pool=None,
+                        ready=fnv1.READY_TRUE,
+                    ),
                     "nodepool-gpuh100": _nodepool_gpu(
                         cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_UNSPECIFIED
                     ),
@@ -616,12 +628,309 @@ COMPOSE_CASES = [
                         cred_kind="ProviderConfig", cred_name="my-azure-account", ready=fnv1.READY_UNSPECIFIED
                     ),
                     "cluster": _cluster(
-                        cred_kind="ProviderConfig", cred_name="my-azure-account", ready=fnv1.READY_UNSPECIFIED
+                        cred_kind="ProviderConfig",
+                        cred_name="my-azure-account",
+                        default_pool=None,
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "nodepool-gpuh100": _nodepool_gpu(
                         cred_kind="ProviderConfig",
                         cred_name="my-azure-account",
                         zones=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="DeclaredSystemPool",
+        reason="A declared System pool becomes the cluster's inline default node pool, so it composes no agent pool of its own.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="syspool",
+                            role="System",
+                            vmSize="Standard_D8s_v5",
+                            diskSizeGb=100,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=3,
+                        ),
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            diskSizeGb=200,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                    ],
+                ),
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "resource-group": _resource_group(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "virtual-network": _virtual_network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        default_pool={
+                            "name": "syspool",
+                            "vmSize": "Standard_D8s_v5",
+                            "autoScalingEnabled": True,
+                            "minCount": 1,
+                            "maxCount": 3,
+                            "osDiskSizeGb": 100,
+                            "temporaryNameForRotation": "syspooltmp",
+                            "nodeLabels": {"modelplane.ai/pool": "syspool"},
+                            "upgradeSettings": {"maxSurge": "10%"},
+                            "vnetSubnetIdSelector": {"matchControllerRef": True},
+                        },
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    # The System pool is the cluster's inline default pool, so
+                    # only the GPU pool composes an agent pool.
+                    "nodepool-gpuh100": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="RotationNameCollision",
+        reason="A declared System pool whose 12-character name ends in tmp would derive its own name for rotation, so the default node pool rotates through a rot suffix instead.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="abcdefghitmp",
+                            role="System",
+                            vmSize="Standard_D8s_v5",
+                            diskSizeGb=100,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=3,
+                        ),
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            diskSizeGb=200,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                    ],
+                ),
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "resource-group": _resource_group(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "virtual-network": _virtual_network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        default_pool={
+                            "name": "abcdefghitmp",
+                            "vmSize": "Standard_D8s_v5",
+                            "autoScalingEnabled": True,
+                            "minCount": 1,
+                            "maxCount": 3,
+                            "osDiskSizeGb": 100,
+                            "temporaryNameForRotation": "abcdefghirot",
+                            "nodeLabels": {"modelplane.ai/pool": "abcdefghitmp"},
+                            "upgradeSettings": {"maxSurge": "10%"},
+                            "vnetSubnetIdSelector": {"matchControllerRef": True},
+                        },
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    # The System pool is the cluster's inline default pool, so
+                    # only the GPU pool composes an agent pool.
+                    "nodepool-gpuh100": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="SecondSystemPool",
+        reason="A second declared System pool composes as a System-mode agent pool while the first stays the cluster's default node pool.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="syspool",
+                            role="System",
+                            vmSize="Standard_D8s_v5",
+                            diskSizeGb=100,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=3,
+                        ),
+                        v1alpha1.NodePool(
+                            name="syspool2",
+                            role="System",
+                            vmSize="Standard_D8s_v5",
+                            diskSizeGb=100,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=2,
+                        ),
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            diskSizeGb=200,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                    ],
+                ),
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "resource-group": _resource_group(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "virtual-network": _virtual_network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        default_pool={
+                            "name": "syspool",
+                            "vmSize": "Standard_D8s_v5",
+                            "autoScalingEnabled": True,
+                            "minCount": 1,
+                            "maxCount": 3,
+                            "osDiskSizeGb": 100,
+                            "temporaryNameForRotation": "syspooltmp",
+                            "nodeLabels": {"modelplane.ai/pool": "syspool"},
+                            "upgradeSettings": {"maxSurge": "10%"},
+                            "vnetSubnetIdSelector": {"matchControllerRef": True},
+                        },
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "nodepool-syspool2": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "containerservice.azure.m.upbound.io/v1beta1",
+                                "kind": "KubernetesClusterNodePool",
+                                "metadata": {"annotations": {"crossplane.io/external-name": "syspool2"}},
+                                "spec": {
+                                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                                    "managementPolicies": ["Observe", "Create", "Update", "Delete"],
+                                    "initProvider": {"nodeCount": 1},
+                                    "forProvider": {
+                                        "kubernetesClusterIdSelector": {"matchControllerRef": True},
+                                        "vnetSubnetIdSelector": {"matchControllerRef": True},
+                                        "mode": "System",
+                                        "vmSize": "Standard_D8s_v5",
+                                        "osDiskSizeGb": 100,
+                                        "orchestratorVersion": "1.34",
+                                        "autoScalingEnabled": True,
+                                        "minCount": 1,
+                                        "maxCount": 2,
+                                        "nodeLabels": {"modelplane.ai/pool": "syspool2"},
+                                        "upgradeSettings": {"maxSurge": "10%"},
+                                    },
+                                },
+                            }
+                        ),
+                    ),
+                    "nodepool-gpuh100": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="NoNodePools",
+        reason="An AKSCluster with no node pools composes the injected default system pool inline and no agent pools, so a cluster can host only the inference gateway.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[],
+                ),
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "resource-group": _resource_group(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "virtual-network": _virtual_network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        default_pool=None,
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
@@ -834,7 +1143,12 @@ COMPOSE_CASES = [
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
                     ),
                     "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
-                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        default_pool=None,
+                        ready=fnv1.READY_TRUE,
+                    ),
                     "storage-class-rwx-fs": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
