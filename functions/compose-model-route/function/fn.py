@@ -264,6 +264,8 @@ class Composer:
         self.provider_config = ""
         self.address: str | None = None
         self.inference_listener = _LISTENER_HTTP
+        self.gateway_ready = False
+        self.gateway_not_ready_message = ""
         # Endpoints per priority, as (entry weight, endpoints) so weights can be
         # distributed within a tier.
         self.tiers: dict[int, list[tuple[int, list[mev1alpha1.ModelEndpoint]]]] = {}
@@ -367,6 +369,24 @@ class Composer:
             )
             return False
         gw = igv1alpha1.InferenceGateway.model_validate(gateways[0])
+
+        gateway_conditions = gw.status.conditions if gw.status else None
+        gateway_ready = next(
+            (condition for condition in gateway_conditions or [] if condition.type == "GatewayReady"),
+            None,
+        )
+        self.gateway_ready = gateway_ready is not None and gateway_ready.status == "True"
+        if not self.gateway_ready:
+            self.gateway_not_ready_message = (
+                gateway_ready.message
+                if gateway_ready and gateway_ready.message
+                else f"InferenceGateway {self.xr.spec.gatewayName} is not ready"
+            )
+            # Do not create a route before its gateway is serving, but keep an
+            # existing route in desired state during a gateway rollout.
+            if "route" not in self.req.observed.resources:
+                self.not_ready(CONDITION_REASON_WAITING_FOR_GATEWAY, self.gateway_not_ready_message)
+                return False
 
         if not (gw.status and gw.status.clientCACertificate):
             self.not_ready(
@@ -874,6 +894,9 @@ class Composer:
 
     def derive_conditions(self) -> None:
         """RoutingReady once the composed route has been accepted."""
+        if not self.gateway_ready:
+            self.not_ready(CONDITION_REASON_WAITING_FOR_GATEWAY, self.gateway_not_ready_message)
+            return
         if resource.get_condition(self.req.observed.resources.get("route"), "Ready").status != "True":
             self.not_ready(
                 CONDITION_REASON_WAITING_FOR_ROUTE,
