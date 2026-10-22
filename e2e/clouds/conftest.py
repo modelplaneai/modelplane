@@ -54,8 +54,7 @@ def installed(control_plane: kube.Cluster, cloud: clouds.Cloud) -> None:
 
     Bring-up returns once the XR is applied, and the install - a dozen Helm
     releases, gated in waves - reconciles in the background. Every placement
-    test needs the stack in place, so this waits once for the whole session;
-    the source-only tests in test_legs.py don't request it.
+    test needs the stack in place, so this waits once for the whole session.
     """
 
     def ready() -> None:

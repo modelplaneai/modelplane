@@ -19,7 +19,9 @@ itself a copy of what its cloud's cluster composition applies, and a copy can
 drift too: if compose-aks-cluster changed its taint value, the AKS stack's
 Equal/true tolerations would miss real GPU nodes while the leg's fake ones
 still matched. These tests need no cluster - they read the compositions'
-source, so they pin the copy to its original in the same session.
+source - so they live outside e2e/clouds/ (whose fixtures need a live
+environment) and run in the e2e-legs flake check, where a change to a cluster
+composition triggers them even when nothing under e2e/ changed.
 """
 
 import ast
@@ -29,7 +31,7 @@ import pytest
 
 from e2e import clouds
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # The cluster composition whose GPU taint each leg copies. No GKE or
 # Existing entry: GKE's managed taint comes from GKE itself, and

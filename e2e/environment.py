@@ -183,11 +183,14 @@ def create_workload_cluster(*, cloud: clouds.Cloud | None = None) -> None:
         return
 
     # An older cluster lacks the DRA APIs, and would fail the run confusingly
-    # later.
+    # later. Only the real node's kubelet counts: a cluster a --cloud run left
+    # behind also has the fake GPU nodes, whose kubelet is KWOK reporting a
+    # kwok-* version.
     try:
         version = output(
             "kubectl", f"--context={WORKLOAD_CONTEXT}",
-            "get", "nodes", "--output=jsonpath={.items[0].status.nodeInfo.kubeletVersion}",
+            "get", "nodes", "--selector=type!=kwok",
+            "--output=jsonpath={.items[0].status.nodeInfo.kubeletVersion}",
         )  # fmt: skip
     except subprocess.CalledProcessError:
         version = "unreachable"
@@ -213,17 +216,17 @@ def check_workload_mode(*, cloud: clouds.Cloud | None) -> None:
     The model e2e and a cloud leg can't share a cluster: reusing one for the
     other would put InferenceCluster local's serving stack and the leg's
     ServingStack side by side, colliding on release names, and park
-    composition functions the model path calls. Reusing a leg for a different
-    cloud is as bad: kubectl apply merges Node labels, so the fake GPU nodes
-    would keep the old cloud's shape under the new cloud's stack.
+    composition functions the model path calls. One leg reusing another's
+    cluster needs no check: re-applying the fake nodes resets their labels and
+    taint to the new leg's shape (apply prunes what the manifest dropped), and
+    re-applying the ServingStack recomposes it for the new cloud.
     """
-    nodes = output(
-        "kubectl", f"--context={WORKLOAD_CONTEXT}",
-        "get", "nodes", "--selector=type=kwok", "--output=json",
-    )  # fmt: skip
-    fakes = json.loads(nodes)["items"]
     if cloud is None:
-        if fakes:
+        nodes = output(
+            "kubectl", f"--context={WORKLOAD_CONTEXT}",
+            "get", "nodes", "--selector=type=kwok", "--output=json",
+        )  # fmt: skip
+        if json.loads(nodes)["items"]:
             msg = (
                 f"workload cluster {WORKLOAD} has fake GPU nodes from a --cloud run; "
                 "recreate it with: nix run .#e2e -- --clean"
@@ -240,16 +243,6 @@ def check_workload_mode(*, cloud: clouds.Cloud | None) -> None:
             "recreate it with: nix run .#e2e -- --clean"
         )
         raise BringUpError(msg)
-    # The legs' label keys tell their fake nodes apart (clouds/__init__.py).
-    keys = {key for leg in clouds.CLOUDS.values() for key in leg.labels}
-    for node in fakes:
-        labels = {key: val for key, val in node["metadata"]["labels"].items() if key in keys}
-        if labels != cloud.labels:
-            msg = (
-                f"fake GPU node {node['metadata']['name']} is shaped for another cloud's leg; "
-                "recreate the cluster with: nix run .#e2e -- --clean"
-            )
-            raise BringUpError(msg)
 
 
 def kind_subnet_prefix() -> str:

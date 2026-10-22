@@ -60,6 +60,25 @@ in
       touch $out/.docs-manifests-validated
     '';
 
+  # Each cloud leg in e2e/clouds/ copies the GPU taint its cloud's cluster
+  # composition applies, and the copy can drift. e2e/test_legs.py pins each
+  # leg to its composition's source. It needs no cluster, and the E2E Clouds
+  # workflow doesn't trigger on the cluster compositions, so it runs here,
+  # where a composition-only change does. It imports only e2e.clouds (standard
+  # library) and reads the compositions' fn.py sources from the tree.
+  e2e-legs =
+    let
+      venv = pythonSet.mkVirtualEnv "e2e-legs-test-env" { pytest = [ ]; };
+    in
+    pkgs.runCommand "modelplane-e2e-legs" { } ''
+      cp -r ${self}/e2e e2e
+      cp -r ${self}/functions functions
+      cp ${self}/pyproject.toml pyproject.toml
+      ${venv}/bin/python -m pytest e2e/test_legs.py
+      mkdir -p $out
+      touch $out/.e2e-legs-passed
+    '';
+
   # Check the function unit tests against the rules in CONTRIBUTING.md's Tests
   # section that an AST can decide, such as how a table and its test are laid
   # out and what a case's name and reason look like. The checker uses only the

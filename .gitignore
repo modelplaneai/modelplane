@@ -3,6 +3,7 @@
 _output
 .up
 result
+result-*
 .direnv
 __pycache__/
 .coverage
