@@ -28,6 +28,21 @@ spread across its nodes: four free GPUs on one node fit a pod claiming two, and
 one free GPU on each of four nodes doesn't. The control plane can't see that
 today.
 
+## Goals
+
+GPUs are scarce and expensive, so the fleet should use every one it can. This
+design should:
+
+- Let replicas that claim less than a node share one, such as several Qwen3-8B
+  replicas on a 4×L4 node, or prefill and decode on one 8-GPU node.
+- Choose only a cluster and a pool, and leave the choice of node to the
+  cluster's scheduler.
+- Keep the scheduler a pure function of what clusters publish.
+- Keep what each cluster publishes bounded, however many nodes its pools have.
+
+It doesn't recover a replica placed on a pool that can't fit it, which can
+happen when the pods placed on a pool claim different devices.
+
 ## Proposal
 
 I propose a cluster agent that runs on every InferenceCluster and reports a
@@ -183,6 +198,21 @@ the scheduler exactly where each pod could go. A pool's status would then grow
 with its node count. Whether a pod fits depends on how many devices each node
 has free, not on which node it is. The histogram gives the same fit at a size
 bounded by devices per node.
+
+### Pin pods to nodes
+
+The fleet scheduler could choose a node for each pod and pin the pod to it. Its
+predictions would then be exact. Pods of different sizes couldn't strand a
+replica, and no gang could end up with only some of its pods started.
+
+The cluster's scheduler would then have nothing left to decide, and Modelplane
+would become the node-level scheduler for every cluster in the fleet. It would
+take on the gang scheduling, topology, priority and preemption that clusters
+run kube-scheduler, Volcano, KAI or Kueue for, and it would have to do that
+across a fleet potentially far larger than the largest cluster. Splitting the
+decision lets each level scale. The fleet scheduler chooses among pools, and
+each cluster's scheduler chooses among its own nodes from live state. Pinning
+also couldn't use nodes an autoscaled pool hasn't created yet.
 
 ### Fall back on stale observations
 
