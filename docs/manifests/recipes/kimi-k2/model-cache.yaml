@@ -1,0 +1,16 @@
+# The shared, read-write-many cache both P/D engines serve from. Hydrated once
+# per matched cluster; both phases mount the same RWX volume at /mnt/models.
+#
+# This validated run served an INT4 quantization of Kimi K2 rather than the
+# native 1T-parameter FP8 model, which would need four 8x H200 nodes. The quant
+# repo is public, so no authSecret is needed here.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: kimi-k2
+  namespace: ml-team
+spec:
+  source: HuggingFace
+  huggingFace:
+    repo: RedHatAI/Kimi-K2-Instruct-quantized.w4a16
+    sizeGiB: 600

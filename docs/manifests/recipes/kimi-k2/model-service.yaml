@@ -1,0 +1,14 @@
+# Exposes the kimi-k2 deployment as one model a caller can name.
+# Name the model, ml-team/kimi-k2, in a request to an
+# InferenceGateway that serves it.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: kimi-k2
+  namespace: ml-team
+spec:
+  endpoints:
+  - name: kimi-k2
+    selector:
+      matchLabels:
+        modelplane.ai/deployment: kimi-k2
