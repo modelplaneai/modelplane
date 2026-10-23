@@ -612,8 +612,9 @@ spec:
                 type: array
                 description: >-
                   Schedulable GPU node pools on this cluster, derived from the
-                  referenced classes and the per-pool node counts.
-                  ModelDeployment scheduling matches against these.
+                  referenced classes, the per-pool node counts, and what the
+                  cluster agent observes of each pool. ModelDeployment
+                  scheduling matches against these.
                 maxItems: 8
                 x-kubernetes-list-type: map
                 x-kubernetes-list-map-keys: [name]
@@ -630,8 +631,53 @@ spec:
                     nodes:
                       type: integer
                       description: >-
-                        Number of nodes in this pool. Derived from
+                        The most nodes this pool can have. Derived from
                         maxNodeCount (if autoscaling) or nodeCount.
+                    observedNodes:
+                      type: integer
+                      minimum: 0
+                      description: >-
+                        The nodes this pool has now, ready or not, as the
+                        cluster agent observes them. Absent until the agent
+                        reports on the pool, and while it can't observe it.
+                    lastAllocationTime:
+                      type: string
+                      format: date-time
+                      description: >-
+                        The latest time the cluster agent first saw a
+                        ResourceClaim allocated devices on this pool's nodes.
+                        nodesByFreeDevices accounts for the devices of a
+                        ModelReplica whose lastAllocationTime for this pool is
+                        no later than this. Published with observedNodes, once
+                        a claim has allocated devices on the pool.
+                    nodesByFreeDevices:
+                      type: array
+                      description: >-
+                        A histogram of this pool's schedulable nodes by how
+                        many devices of each DeviceClass are free on them, as
+                        the cluster agent observes them. Nodes with the same
+                        number of free devices of every class share a bucket.
+                        Published with observedNodes.
+                      maxItems: 256
+                      x-kubernetes-list-type: atomic
+                      items:
+                        type: object
+                        required: [nodes]
+                        properties:
+                          freeDevices:
+                            type: object
+                            description: >-
+                              Each node's free devices, keyed by DeviceClass.
+                              A class the nodes publish no devices of is
+                              absent.
+                            maxProperties: 32
+                            additionalProperties:
+                              type: integer
+                              minimum: 0
+                          nodes:
+                            type: integer
+                            minimum: 1
+                            description: Nodes with these free devices.
                     devices:
                       type: array
                       description: >-

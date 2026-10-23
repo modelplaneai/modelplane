@@ -19,8 +19,10 @@ Pydantic models directly and call schedule() to exercise the core
 logic without the protobuf/gRPC ceremony of the fn tests.
 
 Pool selection is driven by nodeSelector device requests (DRA CEL matched
-against a pool's devices) plus the available-node gate. Per-node GPU count is
-expressed as a device request's count, not derived from topology.
+against a pool's devices) plus the pool's free capacity. Per-node GPU count is
+expressed as a device request's count, not derived from topology. A pool with
+no observedNodes is one the cluster agent doesn't report on, so its capacity is
+counted in whole nodes.
 """
 
 import dataclasses
@@ -42,6 +44,8 @@ _MEM_141 = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")
 _MEM_200 = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("200Gi")) >= 0'
 _MEM_LT_200 = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("200Gi")) < 0'
 _IB = 'device.attributes["nic.nvidia.com"].linkType == "infiniband"'
+_MEM_20 = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0'
+_EFA = 'device.driver == "dra.net"'
 
 _Role = Literal["Standalone", "Leader", "Worker"]
 
@@ -74,17 +78,18 @@ def _member(*, role: _Role, worker_nodes: int | None, devices: list[mdv1alpha1.D
 def _deployment(
     *,
     replicas: int,
+    copies: int,
     members: list[mdv1alpha1.Member],
     tolerations: list[mdv1alpha1.Toleration] | None,
 ) -> mdv1alpha1.ModelDeployment:
-    """The ModelDeployment my-model, whose one engine, main, has the given members."""
+    """The ModelDeployment my-model, whose one engine, main, runs copies of the given members."""
     return mdv1alpha1.ModelDeployment(
         metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
         spec=mdv1alpha1.SpecModel2(
             replicas=replicas,
             template=mdv1alpha1.TemplateModel1(
                 spec=mdv1alpha1.SpecModel1(
-                    engines=[mdv1alpha1.Engine(name="main", copies=1, members=members)],
+                    engines=[mdv1alpha1.Engine(name="main", copies=copies, members=members)],
                     tolerations=tolerations,
                 ),
             ),
@@ -177,9 +182,22 @@ def _replica_member(
 
 
 def _replica(
-    *, name: str, deployment: str, cluster: str, index: int, members: list[mrv1alpha1.Member]
+    *,
+    name: str,
+    deployment: str,
+    cluster: str,
+    index: int,
+    copies: int,
+    pods_scheduled: bool,
+    pools: list[mrv1alpha1.Pool] | None,
+    members: list[mrv1alpha1.Member],
 ) -> mrv1alpha1.ModelReplica:
-    """An observed ModelReplica of deployment, pinned to (cluster, index), whose one engine, main, has members."""
+    """An observed ModelReplica of deployment, pinned to (cluster, index), whose one engine, main, has members.
+
+    Its pods have all scheduled if pods_scheduled, and the cluster agent saw
+    their claims allocated on pools. It has no status if neither, like a replica
+    that's just been created.
+    """
     return mrv1alpha1.ModelReplica(
         metadata=metav1.ObjectMeta(
             name=name,
@@ -191,7 +209,22 @@ def _replica(
             },
         ),
         spec=mrv1alpha1.SpecModel1(
-            clusterName=cluster, engines=[mrv1alpha1.Engine(name="main", copies=1, members=members)]
+            clusterName=cluster, engines=[mrv1alpha1.Engine(name="main", copies=copies, members=members)]
+        ),
+        status=(
+            mrv1alpha1.Status(
+                conditions=[
+                    mrv1alpha1.Condition(
+                        type="PodsScheduled",
+                        status="True" if pods_scheduled else "False",
+                        reason="PodsScheduled" if pods_scheduled else "SchedulingPending",
+                        lastTransitionTime=datetime.datetime(2026, 10, 1, 12, 0, tzinfo=datetime.UTC),
+                    )
+                ],
+                pools=pools,
+            )
+            if pods_scheduled or pools is not None
+            else None
         ),
     )
 
@@ -223,6 +256,7 @@ SCHEDULE_CASES = [
         reason="With no clusters, schedule places nothing.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -242,6 +276,7 @@ SCHEDULE_CASES = [
         reason="A new replica lands on the one ready cluster, with no placement labels because the cluster declares none.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -295,6 +330,7 @@ SCHEDULE_CASES = [
         reason="A cluster that isn't Ready gets no new replica.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -327,6 +363,7 @@ SCHEDULE_CASES = [
         reason="A cluster without a gateway hostname gets no new replica.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -359,6 +396,7 @@ SCHEDULE_CASES = [
         reason="A Leader and a three-node Worker need four nodes, so a two-node pool hosts no replica.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Leader",
@@ -396,6 +434,7 @@ SCHEDULE_CASES = [
         reason="An existing replica on cluster-a stays there with its resolved pool and requests, where fresh placement would also put it as the lower name.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -437,6 +476,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -483,6 +525,7 @@ SCHEDULE_CASES = [
         reason="A replica stays on a cluster that isn't Ready and has no gateway hostname, and its candidate's gateway hostname is empty.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -512,6 +555,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -558,6 +604,7 @@ SCHEDULE_CASES = [
         reason="A replica whose cluster no longer exists is re-placed on another cluster.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -587,6 +634,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -633,6 +683,7 @@ SCHEDULE_CASES = [
         reason="Scaling from one replica to two places the new one on the cluster that has none.",
         deployment=_deployment(
             replicas=2,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -674,6 +725,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -740,6 +794,7 @@ SCHEDULE_CASES = [
         reason="Scaling up when the retained replica fills the only one-node pool places no new replica.",
         deployment=_deployment(
             replicas=2,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -769,6 +824,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -815,6 +873,7 @@ SCHEDULE_CASES = [
         reason="With one cluster to place on, two replicas pack onto it at indices 0 and 1.",
         deployment=_deployment(
             replicas=2,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -888,6 +947,7 @@ SCHEDULE_CASES = [
         reason="Two replicas spread one to each of two clusters, though either cluster could hold both.",
         deployment=_deployment(
             replicas=2,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -973,6 +1033,7 @@ SCHEDULE_CASES = [
         reason="Three replicas spread across two clusters, then the third lands on cluster-a, the lower name at equal load.",
         deployment=_deployment(
             replicas=3,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -1078,6 +1139,7 @@ SCHEDULE_CASES = [
         reason="Three replicas spread one to each cluster, filling cluster-b's one-node pool, and the third lands on cluster-a, which the name tiebreak picks whether or not cluster-b is full.",
         deployment=_deployment(
             replicas=3,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -1183,6 +1245,7 @@ SCHEDULE_CASES = [
         reason="A new replica goes to empty cluster-b rather than doubling up on cluster-a, which already hosts one.",
         deployment=_deployment(
             replicas=2,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -1224,6 +1287,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -1290,6 +1356,7 @@ SCHEDULE_CASES = [
         reason="A new replica on a cluster that hosts indices 0 and 2 takes the free index 1.",
         deployment=_deployment(
             replicas=3,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -1319,6 +1386,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -1340,6 +1410,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=2,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -1426,6 +1499,7 @@ SCHEDULE_CASES = [
         reason="Scaling three replicas to two drops cluster-a's index 1, keeping one replica on each cluster.",
         deployment=_deployment(
             replicas=2,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -1467,6 +1541,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -1488,6 +1565,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=1,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -1509,6 +1589,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-b",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -1579,6 +1662,7 @@ SCHEDULE_CASES = [
         reason="A retained replica costs the two nodes it was placed with, not the deployment's new four, so a second replica fits the six-node pool.",
         deployment=_deployment(
             replicas=2,
+            copies=1,
             members=[
                 _member(
                     role="Leader",
@@ -1613,6 +1697,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Leader",
@@ -1720,6 +1807,7 @@ SCHEDULE_CASES = [
         reason="Scaling three replicas to two drops cluster-a's second replica rather than cluster-b's only one.",
         deployment=_deployment(
             replicas=2,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -1761,6 +1849,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -1782,6 +1873,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=1,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -1803,6 +1897,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-b",
                 index=3,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -1869,6 +1966,7 @@ SCHEDULE_CASES = [
         reason="Two existing replicas on cluster-a, the only cluster, stay at a/0 and a/1, where fresh placement would also put them.",
         deployment=_deployment(
             replicas=2,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -1898,6 +1996,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -1919,6 +2020,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=1,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -1985,6 +2089,7 @@ SCHEDULE_CASES = [
         reason="Scaling two replicas at index 0 down to one keeps cluster-a's, the lower name.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2026,6 +2131,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-b",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -2047,6 +2155,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -2093,6 +2204,7 @@ SCHEDULE_CASES = [
         reason="New replicas go to clusters in name order, whatever order the clusters arrive in.",
         deployment=_deployment(
             replicas=2,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2190,6 +2302,7 @@ SCHEDULE_CASES = [
         reason="Another deployment's replica fills the only node, leaving no room for a new replica.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2219,6 +2332,9 @@ SCHEDULE_CASES = [
                 deployment="other-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -2244,6 +2360,7 @@ SCHEDULE_CASES = [
         reason="An existing replica filling cluster-a's one-node pool stays there, and with the deployment already at its one replica, schedule builds no capacity ledger that could charge it.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2273,6 +2390,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -2322,6 +2442,7 @@ SCHEDULE_CASES = [
         reason="Another deployment's replica pinned to a pool the cluster no longer publishes uses no node, so a new replica takes the free one.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2353,6 +2474,9 @@ SCHEDULE_CASES = [
                 deployment="other-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -2402,6 +2526,7 @@ SCHEDULE_CASES = [
         reason="Of two replicas on the same cluster and index, the one whose name sorts first is retained, whatever their input order.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2434,6 +2559,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -2455,6 +2583,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -2505,6 +2636,7 @@ SCHEDULE_CASES = [
         reason="Without fill and with no existing replicas, nothing is placed.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2537,6 +2669,7 @@ SCHEDULE_CASES = [
         reason="Without fill, an existing replica is still retained.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2566,6 +2699,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -2612,6 +2748,7 @@ SCHEDULE_CASES = [
         reason="Without fill, scaling to three replicas keeps the existing one and places no more.",
         deployment=_deployment(
             replicas=3,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2653,6 +2790,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -2700,6 +2840,7 @@ SCHEDULE_CASES = [
         reason="A device request that matches a pool's GPU places the replica in that pool.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2755,6 +2896,7 @@ SCHEDULE_CASES = [
         reason="A request for a 200Gi GPU matches no 141Gi GPU, so nothing is placed.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2789,6 +2931,7 @@ SCHEDULE_CASES = [
         reason="A request for 8 GPUs doesn't fit a device with only 4, so nothing is placed.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2826,6 +2969,7 @@ SCHEDULE_CASES = [
         reason="A device published with count 0 satisfies no request, so nothing is placed.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2860,6 +3004,7 @@ SCHEDULE_CASES = [
         reason="A pool with a matching GPU but no nodes, say one autoscaled to zero, hosts no replica.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2894,6 +3039,7 @@ SCHEDULE_CASES = [
         reason="A synthetic NIC counts toward matching a pool but, unlike the DRA GPU, isn't among the resolved requests.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2955,6 +3101,7 @@ SCHEDULE_CASES = [
         reason="A pool without the NIC a request selects hosts no replica.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -2993,6 +3140,7 @@ SCHEDULE_CASES = [
         reason="Two requests can't both claim one GPU device of count 1, so the pool doesn't match.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -3032,6 +3180,7 @@ SCHEDULE_CASES = [
         reason="Two requests for 5 GPUs each need 10, more than the device's 8, so the pool doesn't match.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -3069,6 +3218,7 @@ SCHEDULE_CASES = [
         reason="Two requests for 4 GPUs each fit a device of 8, and both resolve.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -3133,6 +3283,7 @@ SCHEDULE_CASES = [
         reason="Of two pools with a GPU, only the one with an infiniband NIC matches, so it's picked though it's listed second.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -3204,6 +3355,7 @@ SCHEDULE_CASES = [
         reason="A request that matches only a synthetic NIC leaves nothing to claim, so nothing is placed.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -3241,6 +3393,7 @@ SCHEDULE_CASES = [
         reason="A replica pinned to the cluster's only pool stays on it, where fresh placement would also put it.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -3272,6 +3425,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -3320,6 +3476,7 @@ SCHEDULE_CASES = [
         reason="A replica pinned to a pool its selector no longer matches is re-placed onto the pool that matches.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -3365,6 +3522,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -3411,6 +3571,7 @@ SCHEDULE_CASES = [
         reason="A replica stays on pool a while that pool still matches, where fresh placement would also put it as the first of two matching pools.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -3456,6 +3617,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -3502,6 +3666,7 @@ SCHEDULE_CASES = [
         reason="A replica whose pool no longer matches is dropped when no other pool matches either.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -3539,6 +3704,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -3564,6 +3732,7 @@ SCHEDULE_CASES = [
         reason="A replica pinned to a pool the cluster no longer publishes is re-placed onto one that matches.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -3601,6 +3770,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -3651,6 +3823,7 @@ SCHEDULE_CASES = [
         reason="A replica dropped for its unpublished pool is re-placed at index 1 on frontier, taking the node a/0 leaves free in the two-node pool.",
         deployment=_deployment(
             replicas=2,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -3682,6 +3855,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -3703,6 +3879,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=1,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -3769,6 +3948,7 @@ SCHEDULE_CASES = [
         reason="A request for 8 GPUs pins to pool b, which has 8, rather than counting pool a's 4 toward a cluster-wide sum.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -3827,6 +4007,7 @@ SCHEDULE_CASES = [
         reason="A leader that matches both pools and a worker that matches only big both go on big.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Leader",
@@ -3902,6 +4083,7 @@ SCHEDULE_CASES = [
         reason="A leader that fits only big and a worker that fits only small leave the replica unplaced.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Leader",
@@ -3942,6 +4124,7 @@ SCHEDULE_CASES = [
         reason="A two-node gang whose only matching pool has one node goes unplaced.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Leader",
@@ -3982,6 +4165,7 @@ SCHEDULE_CASES = [
         reason="A two-node gang too big for cluster-a's matching pool lands whole on cluster-b.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Leader",
@@ -4069,6 +4253,7 @@ SCHEDULE_CASES = [
         reason="A leader that matches only a synthetic device in pool a goes with its gang to pool b, where it can claim a GPU.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Leader",
@@ -4149,6 +4334,7 @@ SCHEDULE_CASES = [
         reason="A leader that matches only the pool's synthetic NIC places claimless alongside its claiming worker.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Leader",
@@ -4217,6 +4403,7 @@ SCHEDULE_CASES = [
         reason="A worker that matches no pool leaves the whole replica unplaced.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Leader",
@@ -4251,9 +4438,10 @@ SCHEDULE_CASES = [
     ),
     Case(
         name="ClaimlessLeader",
-        reason="A leader with no nodeSelector follows the worker's pool at no node cost, so the gang fits a one-node pool.",
+        reason="A leader with no nodeSelector follows the worker's pool without taking capacity, so the gang fits a one-node pool.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(role="Leader", worker_nodes=None, devices=None),
                 _member(
@@ -4315,6 +4503,7 @@ SCHEDULE_CASES = [
         reason="A replica pinned to the cluster's only pool, claimless leader and worker alike, stays there, where fresh placement would also put both members.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(role="Leader", worker_nodes=None, devices=None),
                 _member(
@@ -4347,6 +4536,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(role="Leader", worker_nodes=None, pool="frontier", device_requests=None),
                     _replica_member(
@@ -4401,6 +4593,7 @@ SCHEDULE_CASES = [
         reason="Another deployment's claimless leader uses no node, leaving one of two free for a new replica.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -4430,6 +4623,9 @@ SCHEDULE_CASES = [
                 deployment="other-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(role="Leader", worker_nodes=None, pool="default", device_requests=None),
                     _replica_member(
@@ -4477,6 +4673,7 @@ SCHEDULE_CASES = [
         reason="A replica placed as one Standalone member is re-placed when the deployment grows a Worker.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Leader",
@@ -4511,6 +4708,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -4573,6 +4773,7 @@ SCHEDULE_CASES = [
         reason="A NoSchedule taint keeps a new replica off cluster-a, so it lands on cluster-b.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -4638,6 +4839,7 @@ SCHEDULE_CASES = [
         reason="A NoSchedule taint leaves an existing replica on its cluster.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -4667,6 +4869,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -4713,6 +4918,7 @@ SCHEDULE_CASES = [
         reason="A toleration for a cluster's taint lets a new replica land there.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -4766,6 +4972,7 @@ SCHEDULE_CASES = [
         reason="A NoExecute taint drains an existing replica, which is rescheduled onto an untainted cluster.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -4807,6 +5014,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -4853,6 +5063,7 @@ SCHEDULE_CASES = [
         reason="A toleration for cluster-a's NoExecute taint leaves the replica at cluster-a/0, as it would be even if retain drained it, since fill honours the toleration too.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -4882,6 +5093,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -4929,6 +5143,7 @@ SCHEDULE_CASES = [
         reason="A NoExecute taint drains the only replica, and with no other cluster nothing replaces it.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -4958,6 +5173,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -4983,6 +5201,7 @@ SCHEDULE_CASES = [
         reason="A NoSchedule toleration doesn't cover a NoExecute taint with the same key, so the replica is drained to cluster-b.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -5026,6 +5245,9 @@ SCHEDULE_CASES = [
                 deployment="my-model",
                 cluster="cluster-a",
                 index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
                 members=[
                     _replica_member(
                         role="Standalone",
@@ -5072,6 +5294,7 @@ SCHEDULE_CASES = [
         reason="Tolerating one of a cluster's two taints isn't enough, so a new replica lands on cluster-b.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -5140,6 +5363,7 @@ SCHEDULE_CASES = [
         reason="An Equal toleration whose key and value match the taint's lets a new replica land.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -5193,6 +5417,7 @@ SCHEDULE_CASES = [
         reason="An Equal toleration whose value differs from the taint's keeps a new replica off.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -5225,6 +5450,7 @@ SCHEDULE_CASES = [
         reason="An Exists toleration with no key tolerates both of a cluster's taints.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -5286,6 +5512,7 @@ SCHEDULE_CASES = [
         reason="A cluster's placement labels reach the candidate placed there.",
         deployment=_deployment(
             replicas=1,
+            copies=1,
             members=[
                 _member(
                     role="Standalone",
@@ -5334,6 +5561,1502 @@ SCHEDULE_CASES = [
             ),
         ],
     ),
+    # Pools the cluster agent reports on. The scheduler fits each pod against
+    # the agent's histogram of the pool's nodes by free devices, rather than
+    # charging it a whole node.
+    #
+    # gpu-l4x4-a is a pool of one g6.12xlarge node, four L4s, three of them
+    # allocated, as the agent reported it.
+    Case(
+        name="ObservedPoolFits",
+        reason="A replica claiming one GPU fits a node of an observed pool with one GPU free.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_20)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="gpu-l4x4-a",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 1}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="23034Mi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[
+            _candidate(
+                name="cluster-a",
+                index=0,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="gpu-l4x4-a",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu", device_class_name="gpu.nvidia.com", count=1, cel_selectors=[_MEM_20]
+                            )
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    ),
+    Case(
+        name="ObservedPoolTooFew",
+        reason="A replica claiming two GPUs doesn't fit an observed pool whose only node has one GPU free.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=2, selectors=[mdv1alpha1.Selector(cel=_MEM_20)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="gpu-l4x4-a",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 1}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="23034Mi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[],
+    ),
+    Case(
+        name="ObservedPoolSharesNode",
+        reason="Four replicas claiming one GPU each share an observed pool's one node with four GPUs free.",
+        deployment=_deployment(
+            replicas=4,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_20)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="gpu-l4x4-a",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="23034Mi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[
+            _candidate(
+                name="cluster-a",
+                index=0,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="gpu-l4x4-a",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu", device_class_name="gpu.nvidia.com", count=1, cel_selectors=[_MEM_20]
+                            )
+                        ],
+                    ),
+                ],
+            ),
+            _candidate(
+                name="cluster-a",
+                index=1,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="gpu-l4x4-a",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu", device_class_name="gpu.nvidia.com", count=1, cel_selectors=[_MEM_20]
+                            )
+                        ],
+                    ),
+                ],
+            ),
+            _candidate(
+                name="cluster-a",
+                index=2,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="gpu-l4x4-a",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu", device_class_name="gpu.nvidia.com", count=1, cel_selectors=[_MEM_20]
+                            )
+                        ],
+                    ),
+                ],
+            ),
+            _candidate(
+                name="cluster-a",
+                index=3,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="gpu-l4x4-a",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu", device_class_name="gpu.nvidia.com", count=1, cel_selectors=[_MEM_20]
+                            )
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    ),
+    Case(
+        name="ObservedPoolGrows",
+        reason="An observed pool that can grow by two nodes fits two replicas claiming a whole node each, but not a third.",
+        deployment=_deployment(
+            replicas=3,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_20)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="gpu-l4x4-a",
+                        nodes=3,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 0}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="23034Mi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[
+            _candidate(
+                name="cluster-a",
+                index=0,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="gpu-l4x4-a",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu", device_class_name="gpu.nvidia.com", count=4, cel_selectors=[_MEM_20]
+                            )
+                        ],
+                    ),
+                ],
+            ),
+            _candidate(
+                name="cluster-a",
+                index=1,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="gpu-l4x4-a",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu", device_class_name="gpu.nvidia.com", count=4, cel_selectors=[_MEM_20]
+                            )
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    ),
+    # A disaggregated deployment's phases are two engines. Each must fit on
+    # its own, but they can share a node.
+    Case(
+        name="PrefillDecodeShareNode",
+        reason="Prefill and decode engines claiming four GPUs each share an observed pool's one node with eight GPUs free.",
+        deployment=mdv1alpha1.ModelDeployment(
+            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+            spec=mdv1alpha1.SpecModel2(
+                replicas=1,
+                template=mdv1alpha1.TemplateModel1(
+                    spec=mdv1alpha1.SpecModel1(
+                        engines=[
+                            mdv1alpha1.Engine(
+                                name="prefill",
+                                copies=1,
+                                members=[
+                                    _member(
+                                        role="Standalone",
+                                        worker_nodes=None,
+                                        devices=[
+                                            mdv1alpha1.Device(
+                                                name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_141)]
+                                            )
+                                        ],
+                                    )
+                                ],
+                            ),
+                            mdv1alpha1.Engine(
+                                name="decode",
+                                copies=1,
+                                members=[
+                                    _member(
+                                        role="Standalone",
+                                        worker_nodes=None,
+                                        devices=[
+                                            mdv1alpha1.Device(
+                                                name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_141)]
+                                            )
+                                        ],
+                                    )
+                                ],
+                            ),
+                        ],
+                    ),
+                ),
+            ),
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 8}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[
+            scheduling.Candidate(
+                name="cluster-a",
+                index=0,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                engines=[
+                    scheduling.EnginePlacement(
+                        name="prefill",
+                        members=[
+                            scheduling.MemberPlacement(
+                                role="Standalone",
+                                pool="default",
+                                device_requests=[
+                                    scheduling.DeviceRequest(
+                                        name="gpu",
+                                        device_class_name="gpu.nvidia.com",
+                                        count=4,
+                                        cel_selectors=[_MEM_141],
+                                    )
+                                ],
+                            ),
+                        ],
+                    ),
+                    scheduling.EnginePlacement(
+                        name="decode",
+                        members=[
+                            scheduling.MemberPlacement(
+                                role="Standalone",
+                                pool="default",
+                                device_requests=[
+                                    scheduling.DeviceRequest(
+                                        name="gpu",
+                                        device_class_name="gpu.nvidia.com",
+                                        count=4,
+                                        cel_selectors=[_MEM_141],
+                                    )
+                                ],
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    ),
+    Case(
+        name="SmallestEngineFirst",
+        reason="A replica's engines are placed smallest pod first, so a one-GPU decode takes the node with four GPUs free and the four-GPU prefill declared before it doesn't fit.",
+        deployment=mdv1alpha1.ModelDeployment(
+            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+            spec=mdv1alpha1.SpecModel2(
+                replicas=1,
+                template=mdv1alpha1.TemplateModel1(
+                    spec=mdv1alpha1.SpecModel1(
+                        engines=[
+                            mdv1alpha1.Engine(
+                                name="prefill",
+                                copies=1,
+                                members=[
+                                    _member(
+                                        role="Standalone",
+                                        worker_nodes=None,
+                                        devices=[
+                                            mdv1alpha1.Device(
+                                                name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_141)]
+                                            )
+                                        ],
+                                    )
+                                ],
+                            ),
+                            mdv1alpha1.Engine(
+                                name="decode",
+                                copies=1,
+                                members=[
+                                    _member(
+                                        role="Standalone",
+                                        worker_nodes=None,
+                                        devices=[
+                                            mdv1alpha1.Device(
+                                                name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_141)]
+                                            )
+                                        ],
+                                    )
+                                ],
+                            ),
+                        ],
+                    ),
+                ),
+            ),
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=2,
+                        observedNodes=2,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 1}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[],
+    ),
+    Case(
+        name="ObservedPoolUnscheduledReplica",
+        reason="Another deployment's replica whose pods haven't scheduled is charged against an observed pool, because its histogram can't count them yet.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 8}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[
+            _replica(
+                name="other-model-cluster-a-0",
+                deployment="other-model",
+                cluster="cluster-a",
+                index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
+                members=[
+                    _replica_member(
+                        role="Standalone",
+                        worker_nodes=None,
+                        pool="default",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=8,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        fill=True,
+        want=[],
+    ),
+    # other-model's replica holds four of the node's eight GPUs. They were the
+    # last the agent saw allocated on the pool when it last observed it, so the
+    # histogram counts them.
+    Case(
+        name="ObservedPoolSettledReplica",
+        reason="Another deployment's replica whose claims the agent saw allocated no later than it last observed the pool isn't charged against it, because its histogram counts them.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=1,
+                        observedNodes=1,
+                        lastAllocationTime=datetime.datetime(2026, 10, 1, 11, 58, tzinfo=datetime.UTC),
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[
+            _replica(
+                name="other-model-cluster-a-0",
+                deployment="other-model",
+                cluster="cluster-a",
+                index=0,
+                copies=1,
+                pods_scheduled=True,
+                pools=[
+                    mrv1alpha1.Pool(
+                        name="default", lastAllocationTime=datetime.datetime(2026, 10, 1, 11, 58, tzinfo=datetime.UTC)
+                    )
+                ],
+                members=[
+                    _replica_member(
+                        role="Standalone",
+                        worker_nodes=None,
+                        pool="default",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=4,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        fill=True,
+        want=[
+            _candidate(
+                name="cluster-a",
+                index=0,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="default",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu", device_class_name="gpu.nvidia.com", count=4, cel_selectors=[_MEM_141]
+                            )
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    ),
+    Case(
+        name="UnobservedReplicaCharged",
+        reason="Another deployment's replica whose claims the agent saw allocated after it last observed the pool is still charged against it, because its histogram doesn't count them yet.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=1,
+                        observedNodes=1,
+                        lastAllocationTime=datetime.datetime(2026, 10, 1, 11, 58, tzinfo=datetime.UTC),
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[
+            _replica(
+                name="other-model-cluster-a-0",
+                deployment="other-model",
+                cluster="cluster-a",
+                index=0,
+                copies=1,
+                pods_scheduled=True,
+                pools=[
+                    mrv1alpha1.Pool(
+                        name="default", lastAllocationTime=datetime.datetime(2026, 10, 1, 11, 59, tzinfo=datetime.UTC)
+                    )
+                ],
+                members=[
+                    _replica_member(
+                        role="Standalone",
+                        worker_nodes=None,
+                        pool="default",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=4,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        fill=True,
+        want=[],
+    ),
+    Case(
+        name="DevicesOnDifferentNodes",
+        reason="A replica claiming GPUs and EFA adapters doesn't fit an observed pool whose free GPUs and free adapters are on different nodes.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[
+                        mdv1alpha1.Device(name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_141)]),
+                        mdv1alpha1.Device(name="efa", count=8, selectors=[mdv1alpha1.Selector(cel=_EFA)]),
+                    ],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=2,
+                        observedNodes=2,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(
+                                freeDevices={"efa.networking.k8s.aws": 0, "gpu.nvidia.com": 8}, nodes=1
+                            ),
+                            icv1alpha1.NodesByFreeDevice(
+                                freeDevices={"efa.networking.k8s.aws": 16, "gpu.nvidia.com": 0}, nodes=1
+                            ),
+                        ],
+                        devices=[
+                            _gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi"),
+                            icv1alpha1.Device(
+                                name="efa",
+                                claim="DRA",
+                                driver="dra.net",
+                                deviceClassName="efa.networking.k8s.aws",
+                                count=16,
+                            ),
+                        ],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[],
+    ),
+    # The agent saw other-model's claims allocated before it last observed the
+    # pool, but one of its pods hasn't scheduled.
+    Case(
+        name="UnscheduledReplicaCharged",
+        reason="Another deployment's replica whose pods haven't all scheduled is still charged against an observed pool.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=1,
+                        observedNodes=1,
+                        lastAllocationTime=datetime.datetime(2026, 10, 1, 11, 59, tzinfo=datetime.UTC),
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[
+            _replica(
+                name="other-model-cluster-a-0",
+                deployment="other-model",
+                cluster="cluster-a",
+                index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=[
+                    mrv1alpha1.Pool(
+                        name="default", lastAllocationTime=datetime.datetime(2026, 10, 1, 11, 58, tzinfo=datetime.UTC)
+                    )
+                ],
+                members=[
+                    _replica_member(
+                        role="Standalone",
+                        worker_nodes=None,
+                        pool="default",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=4,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        fill=True,
+        want=[],
+    ),
+    Case(
+        name="NoPoolTimeCharged",
+        reason="Another deployment's replica the agent hasn't seen holding devices on an observed pool is still charged against it.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=1,
+                        observedNodes=1,
+                        lastAllocationTime=datetime.datetime(2026, 10, 1, 11, 59, tzinfo=datetime.UTC),
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[
+            _replica(
+                name="other-model-cluster-a-0",
+                deployment="other-model",
+                cluster="cluster-a",
+                index=0,
+                copies=1,
+                pods_scheduled=True,
+                pools=[
+                    mrv1alpha1.Pool(
+                        name="other", lastAllocationTime=datetime.datetime(2026, 10, 1, 11, 58, tzinfo=datetime.UTC)
+                    )
+                ],
+                members=[
+                    _replica_member(
+                        role="Standalone",
+                        worker_nodes=None,
+                        pool="default",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=4,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        fill=True,
+        want=[],
+    ),
+    # A gang's leader and worker each claim one GPU. They'd fit one node's four
+    # free GPUs, but each needs a node of its own.
+    Case(
+        name="GangNeedsDistinctNodes",
+        reason="A gang whose pods would all fit one node of an observed pool doesn't fit a pool of one node.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Leader",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                ),
+                _member(
+                    role="Worker",
+                    worker_nodes=1,
+                    devices=[mdv1alpha1.Device(name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                ),
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[],
+    ),
+    # Each of the two copies runs its leader on one node and its worker on the
+    # other, so each node ends with two of its four GPUs free.
+    Case(
+        name="GangCopiesShareNodes",
+        reason="Two copies of a gang fit an observed pool of two nodes, because separate copies can share a node.",
+        deployment=_deployment(
+            replicas=1,
+            copies=2,
+            members=[
+                _member(
+                    role="Leader",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                ),
+                _member(
+                    role="Worker",
+                    worker_nodes=1,
+                    devices=[mdv1alpha1.Device(name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                ),
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=2,
+                        observedNodes=2,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=2),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[
+            _candidate(
+                name="cluster-a",
+                index=0,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Leader",
+                        pool="default",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu", device_class_name="gpu.nvidia.com", count=1, cel_selectors=[_MEM_141]
+                            )
+                        ],
+                    ),
+                    scheduling.MemberPlacement(
+                        role="Worker",
+                        pool="default",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu", device_class_name="gpu.nvidia.com", count=1, cel_selectors=[_MEM_141]
+                            )
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    ),
+    # other-model's gang hasn't scheduled, so the histogram doesn't count it.
+    # Its leader takes two of the eight GPUs free on one node, and its worker
+    # two of the four free on the other, leaving six free for the new replica.
+    # Were they on one node, neither would have six free.
+    Case(
+        name="GangChargedDistinctNodes",
+        reason="Another deployment's gang is charged against an observed pool with each of its pods on a different node.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=6, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=2,
+                        observedNodes=2,
+                        lastAllocationTime=datetime.datetime(2026, 10, 1, 11, 58, tzinfo=datetime.UTC),
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 8}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[
+            _replica(
+                name="other-model-cluster-a-0",
+                deployment="other-model",
+                cluster="cluster-a",
+                index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
+                members=[
+                    _replica_member(
+                        role="Leader",
+                        worker_nodes=None,
+                        pool="default",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=2,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    ),
+                    _replica_member(
+                        role="Worker",
+                        worker_nodes=1,
+                        pool="default",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=2,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    ),
+                ],
+            )
+        ],
+        fill=True,
+        want=[
+            _candidate(
+                name="cluster-a",
+                index=0,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="default",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu", device_class_name="gpu.nvidia.com", count=6, cel_selectors=[_MEM_141]
+                            )
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    ),
+    # Standalone copies may share a node, but the node needs room for both.
+    Case(
+        name="TwoCopiesDontFit",
+        reason="Two copies of an engine claiming four GPUs each don't fit an observed pool of one node with four free.",
+        deployment=_deployment(
+            replicas=1,
+            copies=2,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[],
+    ),
+    # other-model's two copies haven't scheduled, so the histogram doesn't count
+    # them. They take all four GPUs between them.
+    Case(
+        name="CopiesCharged",
+        reason="Another deployment's replica is charged against an observed pool for every copy of its engine.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[
+            _replica(
+                name="other-model-cluster-a-0",
+                deployment="other-model",
+                cluster="cluster-a",
+                index=0,
+                copies=2,
+                pods_scheduled=False,
+                pools=None,
+                members=[
+                    _replica_member(
+                        role="Standalone",
+                        worker_nodes=None,
+                        pool="default",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=2,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        fill=True,
+        want=[],
+    ),
+    # other-model's claims are the first allocated on the pool, and the agent
+    # hasn't observed the pool since.
+    Case(
+        name="PoolWithoutTimeCharged",
+        reason="Another deployment's scheduled replica is still charged against an observed pool that publishes no allocation time.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[
+            _replica(
+                name="other-model-cluster-a-0",
+                deployment="other-model",
+                cluster="cluster-a",
+                index=0,
+                copies=1,
+                pods_scheduled=True,
+                pools=[
+                    mrv1alpha1.Pool(
+                        name="default", lastAllocationTime=datetime.datetime(2026, 10, 1, 11, 58, tzinfo=datetime.UTC)
+                    )
+                ],
+                members=[
+                    _replica_member(
+                        role="Standalone",
+                        worker_nodes=None,
+                        pool="default",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=4,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        fill=True,
+        want=[],
+    ),
+    # other-model's leader and worker are pinned to different pools, as they can
+    # be for one reconcile after its deployment's nodeSelectors change. Each
+    # takes the one node of its pool.
+    Case(
+        name="SplitGangCharged",
+        reason="Another deployment's gang whose pods are pinned to two observed pools is charged against each.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="pool-a",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="141Gi")],
+                    ),
+                    icv1alpha1.GpuPool(
+                        name="pool-b",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="141Gi")],
+                    ),
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[
+            _replica(
+                name="other-model-cluster-a-0",
+                deployment="other-model",
+                cluster="cluster-a",
+                index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
+                members=[
+                    _replica_member(
+                        role="Leader",
+                        worker_nodes=None,
+                        pool="pool-a",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=4,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    ),
+                    _replica_member(
+                        role="Worker",
+                        worker_nodes=1,
+                        pool="pool-b",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=4,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    ),
+                ],
+            )
+        ],
+        fill=True,
+        want=[],
+    ),
+    # Pools the cluster agent doesn't report on count whole nodes whether or not
+    # a replica's pods have scheduled, because nothing else counts them.
+    Case(
+        name="WholeNodeSettledReplica",
+        reason="Another deployment's replica whose pods have all scheduled still takes a whole node of a pool the agent doesn't report on.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default", nodes=1, devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")]
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[
+            _replica(
+                name="other-model-cluster-a-0",
+                deployment="other-model",
+                cluster="cluster-a",
+                index=0,
+                copies=1,
+                pods_scheduled=True,
+                pools=[
+                    mrv1alpha1.Pool(
+                        name="default", lastAllocationTime=datetime.datetime(2026, 10, 1, 11, 58, tzinfo=datetime.UTC)
+                    )
+                ],
+                members=[
+                    _replica_member(
+                        role="Standalone",
+                        worker_nodes=None,
+                        pool="default",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=1,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        fill=True,
+        want=[],
+    ),
+    # other-model's replica was stamped when the pool's class declared eight
+    # GPUs a node. It now declares four, but the replica's pods still run.
+    Case(
+        name="WholeNodeStaleClaim",
+        reason="Another deployment's replica claiming more GPUs than its pool's class now declares still takes a whole node of a pool the agent doesn't report on.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_141)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default", nodes=1, devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="141Gi")]
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[
+            _replica(
+                name="other-model-cluster-a-0",
+                deployment="other-model",
+                cluster="cluster-a",
+                index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
+                members=[
+                    _replica_member(
+                        role="Standalone",
+                        worker_nodes=None,
+                        pool="default",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=8,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        fill=True,
+        want=[],
+    ),
 ]
 
 
@@ -5352,6 +7075,7 @@ def test_schedule_error() -> None:
         scheduling.schedule(
             _deployment(
                 replicas=1,
+                copies=1,
                 members=[
                     _member(
                         role="Standalone",

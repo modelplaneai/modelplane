@@ -117,12 +117,13 @@ For each replica, the scheduler picks a `(cluster, pool)` in two steps:
    `nodeSelector.devices` against the pool's `InferenceClass`. A request is based
    on DRA: a `count` and CEL selectors over a device's attributes and capacity, like
    "a GPU with at least 141Gi of memory." A pool fits when it has the devices the
-   model asks for and enough free nodes to hold a replica.
+   model asks for, free on enough of its nodes to fit a replica.
 
-Capacity is accounted at the node level across the fleet, so Modelplane never
-overcommits a pool. Replicas are pinned to their cluster once placed and stay
-there across reconciles; if a cluster is deleted, the scheduler re-places its
-replicas elsewhere. [How it schedules]({{< ref "/architecture/scheduling.md" >}})
+An agent on each cluster reports the free devices on each pool's nodes, and the
+scheduler fits replicas against those, so replicas share a node when it has
+room. Replicas are pinned to their cluster once placed and stay there across
+reconciles; if a cluster is deleted, the scheduler re-places its replicas
+elsewhere. [How it schedules]({{< ref "/architecture/scheduling.md" >}})
 covers the placement rules and their limits in full.
 
 ## Deploying a model

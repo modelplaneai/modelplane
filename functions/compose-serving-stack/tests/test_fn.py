@@ -571,6 +571,34 @@ def _trust_manager(*, ready: fnv1.Ready) -> fnv1.Resource:
     )
 
 
+def _cluster_agent(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed cluster agent Release."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                "kind": "Release",
+                "metadata": {
+                    "annotations": {"crossplane.io/external-name": "mp-cluster-agent"},
+                    "labels": {"modelplane.ai/resource": "cluster-agent"},
+                },
+                "spec": {
+                    "providerConfigRef": {"kind": "ProviderConfig", "name": "test-backend-cluster-63fde"},
+                    "forProvider": {
+                        "chart": {
+                            "name": "cluster-agent",
+                            "repository": "oci://xpkg.upbound.io/modelplane",
+                            "version": "0.1.0",
+                        },
+                        "namespace": "modelplane-system",
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
 def _dra_driver_critical_pods_quota(*, ready: fnv1.Ready) -> fnv1.Resource:
     """The composed ResourceQuota admitting the DRA driver's critical pods."""
     return fnv1.Resource(
@@ -1901,6 +1929,14 @@ COMPOSE_CASES = [
                         by_kind="Object",
                         by_key="gateway-proxy",
                     ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
+                    ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
                         of_kind="Release",
@@ -2325,6 +2361,14 @@ COMPOSE_CASES = [
                         by_kind="Object",
                         by_key="gateway-proxy",
                     ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
+                    ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
                         of_kind="Release",
@@ -2444,6 +2488,7 @@ COMPOSE_CASES = [
                     "nvidia-dra-driver-gpu": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
                     "gaie-crds-inferencepools.inference.networking.k8s.io": _observed_ready(),
@@ -2648,6 +2693,7 @@ COMPOSE_CASES = [
                     ),
                     "gateway-selfsigned-issuer": _gateway_selfsigned_issuer(),
                     "trust-manager": _trust_manager(ready=fnv1.READY_TRUE),
+                    "cluster-agent": _cluster_agent(ready=fnv1.READY_TRUE),
                     "dra-driver-critical-pods-quota": _dra_driver_critical_pods_quota(ready=fnv1.READY_TRUE),
                     "grove": fnv1.Resource(
                         resource=resource.dict_to_struct(
@@ -3060,6 +3106,14 @@ COMPOSE_CASES = [
                         by_kind="Object",
                         by_key="gateway-proxy",
                     ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
+                    ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
                         of_kind="Release",
@@ -3213,6 +3267,14 @@ COMPOSE_CASES = [
                         by_api_version="kubernetes.m.crossplane.io/v1alpha1",
                         by_kind="Object",
                         by_key="gateway-proxy",
+                    ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
                     ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
@@ -3373,6 +3435,14 @@ COMPOSE_CASES = [
                         by_api_version="kubernetes.m.crossplane.io/v1alpha1",
                         by_kind="Object",
                         by_key="gateway-proxy",
+                    ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
                     ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
@@ -3540,6 +3610,14 @@ COMPOSE_CASES = [
                         by_kind="Object",
                         by_key="gateway-proxy",
                     ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
+                    ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
                         of_kind="Release",
@@ -3672,6 +3750,14 @@ COMPOSE_CASES = [
                         by_api_version="kubernetes.m.crossplane.io/v1alpha1",
                         by_kind="Object",
                         by_key="gateway-proxy",
+                    ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
                     ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
@@ -4074,6 +4160,14 @@ COMPOSE_CASES = [
                         by_kind="Object",
                         by_key="gateway-proxy",
                     ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
+                    ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
                         of_kind="Release",
@@ -4364,6 +4458,14 @@ COMPOSE_CASES = [
                         by_api_version="kubernetes.m.crossplane.io/v1alpha1",
                         by_kind="Object",
                         by_key="gateway-proxy",
+                    ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
                     ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
@@ -4661,6 +4763,14 @@ COMPOSE_CASES = [
                         by_api_version="kubernetes.m.crossplane.io/v1alpha1",
                         by_kind="Object",
                         by_key="gateway-proxy",
+                    ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
                     ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
@@ -5029,6 +5139,14 @@ COMPOSE_CASES = [
                         by_kind="Object",
                         by_key="gateway-proxy",
                     ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
+                    ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
                         of_kind="Release",
@@ -5344,6 +5462,14 @@ COMPOSE_CASES = [
                         by_kind="Object",
                         by_key="gateway-proxy",
                     ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
+                    ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
                         of_kind="Release",
@@ -5644,6 +5770,14 @@ COMPOSE_CASES = [
                         by_api_version="kubernetes.m.crossplane.io/v1alpha1",
                         by_kind="Object",
                         by_key="gateway-proxy",
+                    ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
                     ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
@@ -5974,6 +6108,14 @@ COMPOSE_CASES = [
                         by_kind="Object",
                         by_key="gateway-proxy",
                     ),
+                    "usage-gateway-namespace-by-cluster-agent": _usage(
+                        of_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        of_kind="Object",
+                        of_key="gateway-namespace",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="cluster-agent",
+                    ),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
                         of_kind="Release",
@@ -6102,6 +6244,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -6115,6 +6258,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -6160,6 +6304,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -6173,6 +6318,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The EKS half, generated from aicr.
@@ -6243,6 +6389,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -6256,6 +6403,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -6315,6 +6463,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -6328,6 +6477,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The EKS half, generated from aicr.
@@ -6412,6 +6562,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -6425,6 +6576,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -6472,6 +6624,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -6485,6 +6638,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The AKS half, generated from aicr.
@@ -6558,6 +6712,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -6571,6 +6726,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -6632,6 +6788,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -6645,6 +6802,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The AKS half, generated from aicr.
@@ -6732,6 +6890,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -6745,6 +6904,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -6794,6 +6954,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -6807,6 +6968,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The GKE half, generated from aicr.
@@ -6884,6 +7046,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -6897,6 +7060,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -6960,6 +7124,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -6973,6 +7138,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The GKE half, generated from aicr.
@@ -7064,6 +7230,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -7077,6 +7244,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -7105,6 +7273,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -7118,6 +7287,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Nebius half.
@@ -7171,6 +7341,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -7184,6 +7355,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -7226,6 +7398,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -7239,6 +7412,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Nebius half.
@@ -7306,6 +7480,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -7319,6 +7494,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -7346,6 +7522,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -7359,6 +7536,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Vultr half. VKE pre-installs NFD via its managed GPU
@@ -7412,6 +7590,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -7425,6 +7604,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -7466,6 +7646,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -7479,6 +7660,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Vultr half. VKE pre-installs NFD via its managed GPU
@@ -7546,6 +7728,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -7559,6 +7742,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -7591,6 +7775,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -7604,6 +7789,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Civo half. Civo pre-installs no GPU stack at all,
@@ -7664,6 +7850,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -7677,6 +7864,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -7723,6 +7911,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -7736,6 +7925,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Civo half. Civo pre-installs no GPU stack at all,
@@ -7810,6 +8000,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -7823,6 +8014,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -7851,6 +8043,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -7864,6 +8057,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Existing half.
@@ -7917,6 +8111,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -7930,6 +8125,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -7972,6 +8168,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -7985,6 +8182,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Existing half.

@@ -18,7 +18,8 @@ Modelplane's own half of the serving stack, where the Standard and
 Dynamo stacks don't differ: the gateway path (Envoy Gateway, Envoy AI
 Gateway and its CRDs, the Gateway API Inference Extension CRDs, the
 gateway namespace and EnvoyProxy), the gateway's PKI (a self-signed
-Issuer and trust-manager) and the DRA critical-pods quota.
+Issuer and trust-manager), the DRA critical-pods quota and the cluster
+agent.
 
 The GatewayClass and Gateway are deliberately absent: they read
 spec.gateway (className, hostname), which is per-cluster configuration,
@@ -67,6 +68,12 @@ _TRUST_MANAGER_VERSION = "v0.25.0"
 # driver into - generated and hand-written alike - so this quota lands
 # where the kubelet plugin runs.
 _DRA_DRIVER_NAMESPACE = "nvidia-dra-driver"
+
+# The cluster agent is Modelplane's own. Its chart and image share one
+# repository, tagged 0.1.0 and v0.1.0 respectively, and the chart's default
+# image tag is its appVersion.
+_CLUSTER_AGENT_REPO = "oci://xpkg.upbound.io/modelplane"
+_CLUSTER_AGENT_VERSION = "0.1.0"
 
 _CRDS_DIR = pathlib.Path(__file__).parent / "crds"
 
@@ -303,5 +310,19 @@ COMPONENTS: list[Component] = [
                 },
             },
         ],
+    ),
+    # The cluster agent reports the free devices on each GPU pool's nodes,
+    # and whether each replica's pods have scheduled, in the status of the
+    # PoolObservations compose-inference-cluster creates and the
+    # ReplicaObservations compose-model-replica creates. The fleet scheduler
+    # places replicas by what it reports.
+    Chart(
+        key="cluster-agent",
+        release="mp-cluster-agent",
+        namespace="modelplane-system",
+        chart="cluster-agent",
+        repository=_CLUSTER_AGENT_REPO,
+        version=_CLUSTER_AGENT_VERSION,
+        depends_on=["gateway-namespace"],
     ),
 ]

@@ -357,10 +357,25 @@ class Device(BaseModel):
     name: constr(max_length=63)
 
 
+class NodesByFreeDevice(BaseModel):
+    freeDevices: dict[str, conint(ge=0)] | None = Field(None, max_length=32)
+    """
+    Each node's free devices, keyed by DeviceClass. A class the nodes publish no devices of is absent.
+    """
+    nodes: conint(ge=1)
+    """
+    Nodes with these free devices.
+    """
+
+
 class GpuPool(BaseModel):
     devices: list[Device] | None = Field(None, max_length=16)
     """
     Devices copied from the pool's InferenceClass. ModelDeployment.nodeSelector matches against these.
+    """
+    lastAllocationTime: AwareDatetime | None = None
+    """
+    The latest time the cluster agent first saw a ResourceClaim allocated devices on this pool's nodes. nodesByFreeDevices accounts for the devices of a ModelReplica whose lastAllocationTime for this pool is no later than this. Published with observedNodes, once a claim has allocated devices on the pool.
     """
     name: str
     """
@@ -368,7 +383,15 @@ class GpuPool(BaseModel):
     """
     nodes: int | None = None
     """
-    Number of nodes in this pool. Derived from maxNodeCount (if autoscaling) or nodeCount.
+    The most nodes this pool can have. Derived from maxNodeCount (if autoscaling) or nodeCount.
+    """
+    nodesByFreeDevices: list[NodesByFreeDevice] | None = Field(None, max_length=256)
+    """
+    A histogram of this pool's schedulable nodes by how many devices of each DeviceClass are free on them, as the cluster agent observes them. Nodes with the same number of free devices of every class share a bucket. Published with observedNodes.
+    """
+    observedNodes: conint(ge=0) | None = None
+    """
+    The nodes this pool has now, ready or not, as the cluster agent observes them. Absent until the agent reports on the pool, and while it can't observe it.
     """
 
 
@@ -394,7 +417,7 @@ class Status(BaseModel):
     """
     gpuPools: list[GpuPool] | None = Field(None, max_length=8)
     """
-    Schedulable GPU node pools on this cluster, derived from the referenced classes and the per-pool node counts. ModelDeployment scheduling matches against these.
+    Schedulable GPU node pools on this cluster, derived from the referenced classes, the per-pool node counts, and what the cluster agent observes of each pool. ModelDeployment scheduling matches against these.
     """
     namespace: str | None = None
     """

@@ -35,7 +35,7 @@ from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
-from function import routing
+from function import observation, routing
 from function.backends import base, grove, llmd, native
 
 # Condition types and reasons for the ModelReplica XR.
@@ -202,6 +202,18 @@ class Composer:
             image = base.engine_container(self.xr.spec.engines[0].members[0]).image
             response.normal(self.rsp, f"Composing {image} on {self.xr.spec.clusterName}")
 
+        # The observation is first composed once the agent reports on one of
+        # the replica's pools, and kept after. It's optional - the scheduler
+        # counts a replica it can't see scheduled against the cluster's
+        # capacity - so it's marked ready unconditionally rather than holding
+        # the replica up.
+        if observation.KEY not in self.req.observed.resources and not observation.agent_reports(self.ic, self.xr):
+            return
+        obs = observation.compose(self.xr, pc)
+        if obs is not None:
+            resource.update(self.rsp.desired.resources[observation.KEY], obs)
+            self.rsp.desired.resources[observation.KEY].ready = fnv1.READY_TRUE
+
     def derive_conditions(self) -> None:
         """Derive ModelAccepted, ModelServing and ModelReady.
 
@@ -211,7 +223,9 @@ class Composer:
         copy of every engine is ready and the routing in front of them is in
         place, so the replica can take traffic. ModelReady is True once every
         copy is ready, so the replica is at full capacity; the replica's Ready
-        mirrors it.
+        mirrors it. Where the cluster agent observes the replica, it also
+        relays whether the replica's pods have scheduled, and the pools their
+        devices are on.
         """
         engines = self.xr.spec.engines
         observed = self.req.observed.resources
@@ -273,6 +287,19 @@ class Composer:
                 message=f"{sum(ready_copies.values())} of {sum(copies.values())} engine copies ready",
             ),
         )
+
+        if observation.KEY in self.rsp.desired.resources:
+            replica_observation = observed.get(observation.KEY)
+            response.set_conditions(self.rsp, observation.pods_scheduled(self.xr, replica_observation))
+            if pools := observation.pools(replica_observation):
+                # The SDK dumps a model in Python mode, leaving each pool's
+                # lastAllocationTime a datetime a protobuf Struct can't hold.
+                resource.update_status(
+                    self.rsp.desired.composite,
+                    v1alpha1.Status(pools=pools).model_dump(
+                        mode="json", exclude_unset=True, by_alias=True, warnings=False
+                    ),
+                )
 
         # Per-resource readiness. Crossplane gates the XR's Ready on every
         # composed resource being ready, but doesn't read a composed resource's
