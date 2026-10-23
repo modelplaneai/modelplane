@@ -212,6 +212,41 @@ def _nodepool_gpu(*, cred_kind: str, cred_name: str, zones: list[str] | None, re
     return fnv1.Resource(resource=resource.dict_to_struct(nodepool), ready=ready)
 
 
+def _nodepool_cpu(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
+    """The composed cpupool node pool, with the CPU label and taint and no GPU driver."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "containerservice.azure.m.upbound.io/v1beta1",
+                "kind": "KubernetesClusterNodePool",
+                "metadata": {"annotations": {"crossplane.io/external-name": "cpupool"}},
+                "spec": {
+                    "providerConfigRef": {"kind": cred_kind, "name": cred_name},
+                    "managementPolicies": ["Observe", "Create", "Update", "Delete"],
+                    "initProvider": {"nodeCount": 1},
+                    "forProvider": {
+                        "kubernetesClusterIdSelector": {"matchControllerRef": True},
+                        "vnetSubnetIdSelector": {"matchControllerRef": True},
+                        "mode": "User",
+                        "vmSize": "Standard_D8s_v5",
+                        "osDiskSizeGb": 100,
+                        "orchestratorVersion": "1.34",
+                        "autoScalingEnabled": True,
+                        "minCount": 0,
+                        "maxCount": 4,
+                        "nodeLabels": {
+                            "modelplane.ai/pool": "cpupool",
+                            "modelplane.ai/cpu": "true",
+                        },
+                        "nodeTaints": ["modelplane.ai/cpu=true:NoSchedule"],
+                        "upgradeSettings": {"maxSurge": "10%"},
+                    },
+                },
+            }
+        ),
+    )
+
+
 def _provider_config(*, api_version: str) -> fnv1.Resource:
     """A Ready ProviderConfig that reaches the cluster through its kubeconfig Secret."""
     return fnv1.Resource(
@@ -286,6 +321,51 @@ COMPOSE_CASES = [
                     "nodepool-gpuh100": _nodepool_gpu(
                         cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_UNSPECIFIED
                     ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="FirstPassCPUPool",
+        reason="A CPU-role node pool composes with the modelplane.ai/pool and modelplane.ai/cpu labels and the CPU taint, and no GPU driver.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="cpupool",
+                            role="CPU",
+                            vmSize="Standard_D8s_v5",
+                            nodeCount=1,
+                            minNodeCount=0,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "resource-group": _resource_group(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "virtual-network": _virtual_network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-cpupool": _nodepool_cpu(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
                     "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
                 },

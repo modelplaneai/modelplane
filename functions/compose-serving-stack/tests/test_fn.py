@@ -95,13 +95,21 @@ def _serving_stack(
     secrets: list[v1alpha1.Secret],
     gateway: v1alpha1.Gateway,
     gpu: v1alpha1.Gpu | None,
+    dra_drivers: list[str] | None,
 ) -> fnv1.Resource:
-    """The observed ServingStack, test-backend in namespace test-ns."""
+    """The observed ServingStack, test-backend in namespace test-ns.
+
+    dra_drivers populates spec.draDrivers; None leaves the field absent,
+    which disables filtering (a ServingStack from before the field).
+    """
+    spec = v1alpha1.Spec(cloud=cloud, stack=stack, secrets=secrets, gateway=gateway, gpu=gpu)
+    if dra_drivers is not None:
+        spec.draDrivers = [v1alpha1.DraDriver(d) for d in dra_drivers]
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             v1alpha1.ServingStack(
                 metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
-                spec=v1alpha1.Spec(cloud=cloud, stack=stack, secrets=secrets, gateway=gateway, gpu=gpu),
+                spec=spec,
             ).model_dump(exclude_none=True, mode="json", by_alias=True)
         )
     )
@@ -292,8 +300,13 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
 """
 
 
-def _kube_prometheus_stack(*, ready: fnv1.Ready) -> fnv1.Resource:
-    """The composed kube-prometheus-stack Release."""
+def _kube_prometheus_stack(*, ready: fnv1.Ready, node_exporter_tolerations: list[dict]) -> fnv1.Resource:
+    """The composed kube-prometheus-stack Release.
+
+    node_exporter_tolerations is the inference pool taints the cloud's pin
+    lets the node exporter tolerate: every taint a BYO pool may carry on
+    Existing, the NVIDIA and CPU taints elsewhere.
+    """
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -348,13 +361,9 @@ def _kube_prometheus_stack(*, ready: fnv1.Ready) -> fnv1.Resource:
                                     ],
                                 }
                             },
+                            "prometheus-node-exporter": {"tolerations": node_exporter_tolerations},
                             "grafana": {"enabled": False},
                             "alertmanager": {"enabled": False},
-                            "prometheus-node-exporter": {
-                                "tolerations": [
-                                    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
-                                ],
-                            },
                         },
                     },
                 },
@@ -364,11 +373,12 @@ def _kube_prometheus_stack(*, ready: fnv1.Ready) -> fnv1.Resource:
     )
 
 
-def _node_feature_discovery(*, ready: fnv1.Ready, wait: bool) -> fnv1.Resource:
+def _node_feature_discovery(*, ready: fnv1.Ready, wait: bool, worker_tolerations: list[dict]) -> fnv1.Resource:
     """The composed node-feature-discovery Release the hand-written clouds pin, waiting for health if wait is set.
 
-    Civo's waits and Existing's doesn't. GKE's generated half pins its own,
-    _gke_node_feature_discovery.
+    worker_tolerations is the GPU pool taints the cloud's pin lets the
+    worker tolerate: NVIDIA's and AMD's on Existing, NVIDIA's elsewhere.
+    GKE's generated half pins its own, _gke_node_feature_discovery.
     """
     for_provider: dict = {
         "chart": {
@@ -377,9 +387,7 @@ def _node_feature_discovery(*, ready: fnv1.Ready, wait: bool) -> fnv1.Resource:
             "version": "0.19.0",
         },
         "namespace": "node-feature-discovery",
-        "values": {
-            "worker": {"tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]}
-        },
+        "values": {"worker": {"tolerations": worker_tolerations}},
     }
     if wait:
         for_provider |= {"wait": True, "waitTimeout": "10m"}
@@ -1521,12 +1529,12 @@ def _collector_config(
                                         "__meta_kubernetes_pod_label_app",
                                     ],
                                     "action": "keep",
-                                    "regex": ".*dcgm.*",
+                                    "regex": ".*dcgm.*|.*metrics-exporter.*",
                                 },
                                 {
                                     "source_labels": ["__meta_kubernetes_pod_container_port_name"],
                                     "action": "keep",
-                                    "regex": "metrics",
+                                    "regex": "metrics|exporter-port",
                                 },
                                 {"source_labels": ["__meta_kubernetes_pod_node_name"], "target_label": "node"},
                             ],
@@ -1559,7 +1567,7 @@ def _collector_config(
                                         "__meta_kubernetes_pod_label_app",
                                     ],
                                     "action": "drop",
-                                    "regex": ".*dcgm.*",
+                                    "regex": ".*dcgm.*|.*metrics-exporter.*",
                                 },
                                 {
                                     "source_labels": ["__meta_kubernetes_pod_annotation_prometheus_io_path"],
@@ -1626,6 +1634,11 @@ def _collector_config(
                             'scale_metric(1048576.0) where metric.name == "DCGM_FI_DEV_FB_USED"',
                             'scale_metric(1048576.0) where metric.name == "DCGM_FI_DEV_FB_FREE"',
                             'scale_metric(0.001) where metric.name == "DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION"',
+                            'scale_metric(1048576.0) where metric.name == "gpu_used_vram"',
+                            'scale_metric(1048576.0) where metric.name == "gpu_free_vram"',
+                            'scale_metric(0.01) where metric.name == "gpu_gfx_activity"',
+                            'scale_metric(0.01) where metric.name == "gpu_umc_activity"',
+                            'scale_metric(0.000001) where metric.name == "gpu_energy_consumed"',
                         ],
                     },
                     {
@@ -1691,6 +1704,13 @@ def _collector_config(
                             'set(metric.name, "modelplane_gpu_temperature_celsius") where metric.name == "DCGM_FI_DEV_GPU_TEMP"',
                             'set(metric.name, "modelplane_gpu_power_watts") where metric.name == "DCGM_FI_DEV_POWER_USAGE"',
                             'set(metric.name, "modelplane_energy_joules_total") where metric.name == "DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION"',
+                            'set(metric.name, "modelplane_gpu_memory_used_bytes") where metric.name == "gpu_used_vram"',
+                            'set(metric.name, "modelplane_gpu_memory_free_bytes") where metric.name == "gpu_free_vram"',
+                            'set(metric.name, "modelplane_gpu_compute_active_ratio") where metric.name == "gpu_gfx_activity"',
+                            'set(metric.name, "modelplane_gpu_memory_bandwidth_ratio") where metric.name == "gpu_umc_activity"',
+                            'set(metric.name, "modelplane_gpu_temperature_celsius") where metric.name == "gpu_junction_temperature"',
+                            'set(metric.name, "modelplane_gpu_power_watts") where metric.name == "gpu_power_usage"',
+                            'set(metric.name, "modelplane_energy_joules_total") where metric.name == "gpu_energy_consumed"',
                         ],
                     },
                 ]
@@ -1837,6 +1857,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="Existing",
                     stack="Dynamo",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -2002,6 +2023,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="Existing",
                     stack="Dynamo",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -2045,8 +2067,22 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                     ),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED),
-                    "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_UNSPECIFIED, wait=False),
+                    "kube-prometheus-stack": _kube_prometheus_stack(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        node_exporter_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
+                    "node-feature-discovery": _node_feature_discovery(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        wait=True,
+                        worker_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
                     "nvidia-dra-driver-gpu": _nvidia_dra_driver_gpu(ready=fnv1.READY_UNSPECIFIED),
                     "ai-gateway-crds": _ai_gateway_crds(ready=fnv1.READY_UNSPECIFIED),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _gaie_crd(
@@ -2420,6 +2456,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="Existing",
                     stack="Dynamo",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -2511,8 +2548,22 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                     ),
                     "cert-manager": _cert_manager(ready=fnv1.READY_TRUE),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_TRUE),
-                    "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_TRUE, wait=False),
+                    "kube-prometheus-stack": _kube_prometheus_stack(
+                        ready=fnv1.READY_TRUE,
+                        node_exporter_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
+                    "node-feature-discovery": _node_feature_discovery(
+                        ready=fnv1.READY_TRUE,
+                        wait=True,
+                        worker_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
                     "nvidia-dra-driver-gpu": _nvidia_dra_driver_gpu(ready=fnv1.READY_TRUE),
                     "envoy-gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(
@@ -3155,6 +3206,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="Nebius",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(
@@ -3276,6 +3328,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="Existing",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
                     gateway=v1alpha1.Gateway(
                         # A full Service FQDN, so the CA certificate's commonName overflows
@@ -3310,8 +3363,22 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED),
-                    "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_UNSPECIFIED, wait=False),
+                    "kube-prometheus-stack": _kube_prometheus_stack(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        node_exporter_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
+                    "node-feature-discovery": _node_feature_discovery(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        wait=True,
+                        worker_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
                     "nvidia-dra-driver-gpu": _nvidia_dra_driver_gpu(ready=fnv1.READY_UNSPECIFIED),
                     "ai-gateway-crds": _ai_gateway_crds(ready=fnv1.READY_UNSPECIFIED),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _gaie_crd(
@@ -3439,6 +3506,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="Existing",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
                     gateway=v1alpha1.Gateway(
                         hostname="gateway-test-backend-12345.modelplane-system.svc.cluster.local",
@@ -3481,8 +3549,22 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED),
-                    "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_UNSPECIFIED, wait=False),
+                    "kube-prometheus-stack": _kube_prometheus_stack(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        node_exporter_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
+                    "node-feature-discovery": _node_feature_discovery(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        wait=True,
+                        worker_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
                     "nvidia-dra-driver-gpu": _nvidia_dra_driver_gpu(ready=fnv1.READY_UNSPECIFIED),
                     "ai-gateway-crds": _ai_gateway_crds(ready=fnv1.READY_UNSPECIFIED),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _gaie_crd(
@@ -3605,6 +3687,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="Existing",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
                     gateway=v1alpha1.Gateway(hostname="gw.clusters.example.com"),
                     gpu=None,
@@ -3623,8 +3706,22 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED),
-                    "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_UNSPECIFIED, wait=False),
+                    "kube-prometheus-stack": _kube_prometheus_stack(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        node_exporter_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
+                    "node-feature-discovery": _node_feature_discovery(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        wait=True,
+                        worker_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
                     "nvidia-dra-driver-gpu": _nvidia_dra_driver_gpu(ready=fnv1.READY_UNSPECIFIED),
                     "ai-gateway-crds": _ai_gateway_crds(ready=fnv1.READY_UNSPECIFIED),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _gaie_crd(
@@ -3741,6 +3838,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="Civo",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
                     gateway=v1alpha1.Gateway(hostname="test-backend.gateways.example.com"),
                     gpu=v1alpha1.Gpu(pools=[v1alpha1.Pool(name="h100-pool", disableNvLink=True)]),
@@ -3764,8 +3862,20 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_TRUE),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED),
-                    "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_TRUE, wait=True),
+                    "kube-prometheus-stack": _kube_prometheus_stack(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        node_exporter_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
+                    "node-feature-discovery": _node_feature_discovery(
+                        ready=fnv1.READY_TRUE,
+                        wait=True,
+                        worker_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
                     "gpu-operator": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -4161,6 +4271,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="Civo",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
                     gateway=v1alpha1.Gateway(hostname="test-backend.gateways.example.com"),
                     gpu=v1alpha1.Gpu(pools=[v1alpha1.Pool(name="l40s-pool", disableNvLink=False)]),
@@ -4180,8 +4291,20 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
-                    "kube-prometheus-stack": _kube_prometheus_stack(ready=fnv1.READY_UNSPECIFIED),
-                    "node-feature-discovery": _node_feature_discovery(ready=fnv1.READY_UNSPECIFIED, wait=True),
+                    "kube-prometheus-stack": _kube_prometheus_stack(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        node_exporter_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                            {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
+                    "node-feature-discovery": _node_feature_discovery(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        wait=True,
+                        worker_tolerations=[
+                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    ),
                     "gpu-operator": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -4430,6 +4553,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="GKE",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -4529,7 +4653,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="522decbfdd3a589c",
+                        config_hash="27157e659a3a8882",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -4733,6 +4857,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="GKE",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -4886,7 +5011,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                     ),
                     "collector": _collector(
-                        config_hash="52b78175754428dd",
+                        config_hash="159b3bf6c7617256",
                         volumes=[
                             {"name": "config", "configMap": {"name": "modelplane-collector"}},
                             {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -5100,6 +5225,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="GKE",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -5211,7 +5337,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="12df8b0b19eb5fce",
+                        config_hash="c1024ab8dec03d88",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5409,6 +5535,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="GKE",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -5512,7 +5639,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="46ed90b25528eb92",
+                        config_hash="4cd9e55f075ccddc",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5721,6 +5848,7 @@ COMPOSE_CASES = [
                 composite=_serving_stack(
                     cloud="GKE",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -5841,7 +5969,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="522decbfdd3a589c",
+                        config_hash="27157e659a3a8882",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -6071,6 +6199,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="EKS",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -6212,6 +6341,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="EKS",
                     stack="Dynamo",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -6381,6 +6511,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="AKS",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -6527,6 +6658,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="AKS",
                     stack="Dynamo",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -6701,6 +6833,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="GKE",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -6853,6 +6986,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="GKE",
                     stack="Dynamo",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -7033,6 +7167,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="Nebius",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -7140,6 +7275,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="Nebius",
                     stack="Dynamo",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -7275,6 +7411,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="Vultr",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -7381,6 +7518,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="Vultr",
                     stack="Dynamo",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -7515,6 +7653,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="Civo",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -7633,6 +7772,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="Civo",
                     stack="Dynamo",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -7779,6 +7919,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="Existing",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -7886,6 +8027,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="Existing",
                     stack="Dynamo",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -8008,6 +8150,231 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-kai-scheduler-by-kai-queue-root",
             "usage-modelexpress-crds-modelcacheentries.modelexpress.nvidia.com-by-modelexpress-server",
             "usage-modelexpress-crds-modelmetadatas.modelexpress.nvidia.com-by-modelexpress-server",
+        },
+    ),
+    ComposedResourceKeysCase(
+        name="ExistingStandardCPUOnly",
+        reason=(
+            "With draDrivers [dra.cpu], only the CPU device stack joins the untagged components: "
+            "dra-driver-cpu and its critical-pods quota install, and the NVIDIA and AMD stacks - "
+            "NFD included - stay off the cluster."
+        ),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_serving_stack(
+                    cloud="Existing",
+                    stack="Standard",
+                    dra_drivers=["dra.cpu"],
+                    secrets=[
+                        v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
+                    ],
+                    gateway=v1alpha1.Gateway(
+                        hostname="test-backend.gateways.example.com",
+                        clientCAs=[
+                            v1alpha1.ClientCA(
+                                name="eu",
+                                certificate="-----BEGIN CERTIFICATE-----\nfleet\n-----END CERTIFICATE-----\n",
+                            )
+                        ],
+                    ),
+                    gpu=None,
+                ),
+                resources={
+                    "provider-config-kubernetes": _observed_ready(),
+                    "provider-config-helm": _observed_ready(),
+                    "gateway": _observed_ready(),
+                    "gateway-class": _observed_ready(),
+                    "gateway-ca-certificate": _observed_ready(),
+                    "gateway-ca-issuer": _observed_ready(),
+                    "gateway-serving-certificate": _observed_ready(),
+                    "gateway-ca-bundle": _observed_ready(),
+                    "gateway-ca-configmap": _observed_ready(),
+                    "gateway-client-ca-bundle": _observed_ready(),
+                    "gateway-client-auth": _observed_ready(),
+                    "usage-gateway-class-by-gateway": _observed_ready(),
+                    "usage-envoy-gateway-by-gateway-class": _observed_ready(),
+                    "ai-gateway": _observed_ready(),
+                    "ai-gateway-crds": _observed_ready(),
+                    "dra-driver-cpu": _observed_ready(),
+                    "dra-driver-cpu-critical-pods-quota": _observed_ready(),
+                    "envoy-gateway": _observed_ready(),
+                    "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
+                    "gaie-crds-inferencepools.inference.networking.k8s.io": _observed_ready(),
+                    "gaie-crds-inferencepools.inference.networking.x-k8s.io": _observed_ready(),
+                    "gateway-namespace": _observed_ready(),
+                    "gateway-proxy": _observed_ready(),
+                    "gateway-selfsigned-issuer": _observed_ready(),
+                    "trust-manager": _observed_ready(),
+                    "usage-ai-gateway-crds-by-ai-gateway": _observed_ready(),
+                    "usage-cert-manager-by-envoy-gateway": _observed_ready(),
+                    "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
+                    "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
+                    "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
+                    "cert-manager": _observed_ready(),
+                    "kube-prometheus-stack": _observed_ready(),
+                    "leader-worker-set": _observed_ready(),
+                },
+            ),
+        ),
+        want={
+            # Every cloud and stack.
+            "provider-config-kubernetes",
+            "provider-config-helm",
+            "gateway",
+            "gateway-class",
+            "gateway-ca-certificate",
+            "gateway-ca-issuer",
+            "gateway-serving-certificate",
+            "gateway-ca-bundle",
+            "gateway-ca-configmap",
+            "gateway-client-ca-bundle",
+            "gateway-client-auth",
+            "usage-gateway-class-by-gateway",
+            "usage-envoy-gateway-by-gateway-class",
+            # The common components, including the dra.cpu-tagged device
+            # stack this cluster's classes claim.
+            "ai-gateway",
+            "ai-gateway-crds",
+            "dra-driver-cpu",
+            "dra-driver-cpu-critical-pods-quota",
+            "envoy-gateway",
+            "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
+            "gaie-crds-inferencepools.inference.networking.k8s.io",
+            "gaie-crds-inferencepools.inference.networking.x-k8s.io",
+            "gateway-namespace",
+            "gateway-proxy",
+            "gateway-selfsigned-issuer",
+            "trust-manager",
+            "usage-ai-gateway-crds-by-ai-gateway",
+            "usage-cert-manager-by-envoy-gateway",
+            "usage-cert-manager-by-gateway-selfsigned-issuer",
+            "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-gateway-selfsigned-issuer",
+            "usage-gateway-selfsigned-issuer-by-trust-manager",
+            # The hand-written Existing half, less its GPU stacks.
+            "cert-manager",
+            "kube-prometheus-stack",
+            # The Standard stack.
+            "leader-worker-set",
+        },
+    ),
+    ComposedResourceKeysCase(
+        name="ExistingStandardUnfiltered",
+        reason=(
+            "With draDrivers absent - a ServingStack from before the field existed - nothing filters: "
+            "every device stack installs, NVIDIA, AMD and CPU alike, so an upgrade doesn't tear down "
+            "a running stack before the cluster composition stamps the list."
+        ),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_serving_stack(
+                    cloud="Existing",
+                    stack="Standard",
+                    dra_drivers=None,
+                    secrets=[
+                        v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
+                    ],
+                    gateway=v1alpha1.Gateway(
+                        hostname="test-backend.gateways.example.com",
+                        clientCAs=[
+                            v1alpha1.ClientCA(
+                                name="eu",
+                                certificate="-----BEGIN CERTIFICATE-----\nfleet\n-----END CERTIFICATE-----\n",
+                            )
+                        ],
+                    ),
+                    gpu=None,
+                ),
+                resources={
+                    "provider-config-kubernetes": _observed_ready(),
+                    "provider-config-helm": _observed_ready(),
+                    "gateway": _observed_ready(),
+                    "gateway-class": _observed_ready(),
+                    "gateway-ca-certificate": _observed_ready(),
+                    "gateway-ca-issuer": _observed_ready(),
+                    "gateway-serving-certificate": _observed_ready(),
+                    "gateway-ca-bundle": _observed_ready(),
+                    "gateway-ca-configmap": _observed_ready(),
+                    "gateway-client-ca-bundle": _observed_ready(),
+                    "gateway-client-auth": _observed_ready(),
+                    "usage-gateway-class-by-gateway": _observed_ready(),
+                    "usage-envoy-gateway-by-gateway-class": _observed_ready(),
+                    "ai-gateway": _observed_ready(),
+                    "ai-gateway-crds": _observed_ready(),
+                    "amd-gpu-operator": _observed_ready(),
+                    "dra-driver-cpu": _observed_ready(),
+                    "dra-driver-cpu-critical-pods-quota": _observed_ready(),
+                    "dra-driver-critical-pods-quota": _observed_ready(),
+                    "envoy-gateway": _observed_ready(),
+                    "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
+                    "gaie-crds-inferencepools.inference.networking.k8s.io": _observed_ready(),
+                    "gaie-crds-inferencepools.inference.networking.x-k8s.io": _observed_ready(),
+                    "gateway-namespace": _observed_ready(),
+                    "gateway-proxy": _observed_ready(),
+                    "gateway-selfsigned-issuer": _observed_ready(),
+                    "trust-manager": _observed_ready(),
+                    "usage-ai-gateway-crds-by-ai-gateway": _observed_ready(),
+                    "usage-cert-manager-by-amd-gpu-operator": _observed_ready(),
+                    "usage-cert-manager-by-envoy-gateway": _observed_ready(),
+                    "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
+                    "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
+                    "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
+                    "usage-node-feature-discovery-by-amd-gpu-operator": _observed_ready(),
+                    "cert-manager": _observed_ready(),
+                    "kube-prometheus-stack": _observed_ready(),
+                    "node-feature-discovery": _observed_ready(),
+                    "nvidia-dra-driver-gpu": _observed_ready(),
+                    "leader-worker-set": _observed_ready(),
+                },
+            ),
+        ),
+        want={
+            # Every cloud and stack.
+            "provider-config-kubernetes",
+            "provider-config-helm",
+            "gateway",
+            "gateway-class",
+            "gateway-ca-certificate",
+            "gateway-ca-issuer",
+            "gateway-serving-certificate",
+            "gateway-ca-bundle",
+            "gateway-ca-configmap",
+            "gateway-client-ca-bundle",
+            "gateway-client-auth",
+            "usage-gateway-class-by-gateway",
+            "usage-envoy-gateway-by-gateway-class",
+            # The common components, device stacks included.
+            "ai-gateway",
+            "ai-gateway-crds",
+            "dra-driver-cpu",
+            "dra-driver-cpu-critical-pods-quota",
+            "dra-driver-critical-pods-quota",
+            "envoy-gateway",
+            "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
+            "gaie-crds-inferencepools.inference.networking.k8s.io",
+            "gaie-crds-inferencepools.inference.networking.x-k8s.io",
+            "gateway-namespace",
+            "gateway-proxy",
+            "gateway-selfsigned-issuer",
+            "trust-manager",
+            "usage-ai-gateway-crds-by-ai-gateway",
+            "usage-cert-manager-by-envoy-gateway",
+            "usage-cert-manager-by-gateway-selfsigned-issuer",
+            "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-gateway-selfsigned-issuer",
+            "usage-gateway-selfsigned-issuer-by-trust-manager",
+            # The hand-written Existing half, both GPU stacks included.
+            "amd-gpu-operator",
+            "cert-manager",
+            "kube-prometheus-stack",
+            "node-feature-discovery",
+            "nvidia-dra-driver-gpu",
+            "usage-cert-manager-by-amd-gpu-operator",
+            "usage-node-feature-discovery-by-amd-gpu-operator",
+            # The Standard stack.
+            "leader-worker-set",
         },
     ),
 ]

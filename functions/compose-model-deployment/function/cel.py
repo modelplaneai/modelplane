@@ -181,8 +181,8 @@ class Program:
     def matches(self, device: dict) -> bool:
         """Evaluate the selector against one device.
 
-        `device` is the raw dict from a pool's status.gpuPools devices
-        entry, shaped like:
+        `device` is the raw dict from a pool's status.schedulablePools
+        devices entry, shaped like:
 
             device = {
                 "driver": "<driver>",

@@ -114,9 +114,9 @@ class NodePool(BaseModel):
     """
     Resource preset within the platform (e.g. 8gpu-128vcpu-1600gb, 4vcpu-16gb). Determines the GPU, vCPU, and memory shape of each node.
     """
-    role: Literal['System', 'GPU']
+    role: Literal['System', 'GPU', 'CPU']
     """
-    Determines what workloads this group runs. System groups host controllers, gateways, and infrastructure. GPU groups host inference workloads and are tainted to exclude non-GPU pods.
+    Determines what workloads this group runs. System groups host controllers, gateways, and infrastructure. GPU groups host inference workloads and are tainted to exclude non-GPU pods. CPU groups host CPU inference workloads: a CPU platform, no GPU, and the modelplane.ai/cpu label and taint.
     """
 
 

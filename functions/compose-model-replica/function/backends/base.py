@@ -754,12 +754,22 @@ def engine_resources(container: v1alpha1.Container, *, claim: bool) -> dict:
     return resources
 
 
-# Taint GPU node groups carry so non-GPU pods don't land on them. A pod that
-# claims a GPU must tolerate it to schedule there. With GPUs bound via DRA (not
-# the device plugin's extended resource), nothing injects this toleration for us
-# - the ExtendedResourceToleration admission controller only acts on
-# nvidia.com/gpu resource requests, which DRA pods don't make.
-_GPU_TOLERATION = {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}
+# Taints inference node pools carry so unrelated pods don't land on them, one
+# per device stack: the cluster compositions taint NVIDIA GPU pools
+# nvidia.com/gpu and CPU pools modelplane.ai/cpu, and BYO AMD pools carry
+# amd.com/gpu. A pod that claims a device must tolerate its pool's taint to
+# schedule there, and with devices bound via DRA (not a device plugin's
+# extended resource) nothing injects the toleration for us - the
+# ExtendedResourceToleration admission controller only acts on nvidia.com/gpu
+# resource requests, which DRA pods don't make. Every engine pod tolerates the
+# whole list: tolerating a taint its pool never carries is harmless, and the
+# pool nodeSelector is what places the pod, so the accelerator needn't thread
+# through placement.
+_POOL_TOLERATIONS = [
+    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+    {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+    {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+]
 
 # Node label identifying the pool a node belongs to. compose-eks-cluster and
 # compose-gke-cluster stamp it on every node group they provision; the scheduler
@@ -774,9 +784,9 @@ def place_pod(pod_spec: dict, replica: v1alpha1.ModelReplica, engine: v1alpha1.E
     """Constrain a member's serving pod to the placement the scheduler chose.
 
     Pins the pod to its member's scheduled node pool, wires it to claim its
-    GPUs via DRA through the member's claim, and tolerates the GPU node taint.
-    Every pod of one member shares this - a native Deployment pod, a
-    LeaderWorkerSet leader or worker pod, or a Grove leader or worker clique
+    devices via DRA through the member's claim, and tolerates every inference
+    pool taint. Every pod of one member shares this - a native Deployment pod,
+    a LeaderWorkerSet leader or worker pod, or a Grove leader or worker clique
     pod.
 
     The pool nodeSelector is what makes the scheduler's pool choice real: the
@@ -793,14 +803,14 @@ def place_pod(pod_spec: dict, replica: v1alpha1.ModelReplica, engine: v1alpha1.E
     claim. A claimless member - one with no deviceRequests, like a
     coordinator-only leader - gets no claim at all: only the pool pin places
     its pods, packed onto the gang's nodes by the cluster's scheduler. It still
-    tolerates the GPU taint, since the pool it rides along on is a GPU pool.
+    tolerates the pool taints, since the pool it rides along on carries one.
     """
     pod_spec["nodeSelector"] = {_LABEL_POOL: member.nodePoolName}
     if member.deviceRequests:
         pod_spec["resourceClaims"] = [
             {"name": _POD_CLAIM_NAME, "resourceClaimTemplateName": claim_template_name(replica, engine, member)}
         ]
-    pod_spec.setdefault("tolerations", []).append(_GPU_TOLERATION)
+    pod_spec.setdefault("tolerations", []).extend(_POOL_TOLERATIONS)
 
 
 def resource_claim_template(

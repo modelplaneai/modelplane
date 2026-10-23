@@ -1,0 +1,42 @@
+# A small model served on CPUs alone. The device selector matches against
+# the claimable cores the cpu-8vcpu class declares, so >= 4 lands it on the
+# CPU pool; the claim takes the whole NUMA-node device and pins the engine
+# container to its cpuset. The engine is vLLM's CPU build - the default
+# vllm/vllm-openai image is CUDA-only. --block-size=16 matches the block
+# size the endpoint picker assumes when an engine doesn't state one, so
+# prefix-cache routing keeps working; VLLM_CPU_KVCACHE_SPACE sets the KV
+# cache's share of the node's RAM in GiB. No ModelCache: the engine pulls
+# weights straight from Hugging Face.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-cpu-demo
+  namespace: ml-team
+spec:
+  replicas: 1
+  template:
+    spec:
+      engines:
+      - name: qwen
+        members:
+        - role: Standalone
+          nodeSelector:
+            devices:
+            - name: cpu
+              count: 1
+              selectors:
+              - cel: |
+                  device.capacity["dra.cpu"].cpu.compareTo(quantity("4")) >= 0
+          template:
+            spec:
+              containers:
+              - name: engine
+                image: vllm/vllm-openai-cpu:v0.32.0-x86_64
+                args:
+                - --model=Qwen/Qwen2.5-0.5B-Instruct
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
+                - --max-model-len=4096
+                - --block-size=16
+                env:
+                - name: VLLM_CPU_KVCACHE_SPACE
+                  value: "4"

@@ -123,7 +123,7 @@ def _published_count(value: int | None) -> int:
 
     Cluster status counts (a pool's node count, a device's per-node count) are
     unconstrained on the wire: the InferenceCluster XRD puts no minimum on
-    status.gpuPools[].nodes or [].devices[].count, so a published value can be 0
+    status.schedulablePools[].nodes or [].devices[].count, so a published value can be 0
     (an autoscaled-to-zero pool's node count), None, or - in a malformed status -
     negative. All must read as "none available". The load-bearing case is a
     device count of 0: it differs from a deployment-side count, which the XRD
@@ -380,7 +380,7 @@ def _device_satisfies(device: icv1alpha1.Device, programs: list[cel.Program]) ->
     return all(p.matches(raw) for p in programs)
 
 
-def _match_member(pool: icv1alpha1.GpuPool, member: _CompiledMember) -> list[DeviceRequest] | None:
+def _match_member(pool: icv1alpha1.SchedulablePool, member: _CompiledMember) -> list[DeviceRequest] | None:
     """Match a member's requests against a pool.
 
     Returns the resolved claim: DRA DeviceRequests when the pool satisfies
@@ -452,16 +452,16 @@ def _member_cost(member: _CompiledMember, resolved: list[DeviceRequest]) -> int:
     return member.nodes if resolved else 0
 
 
-def _gpu_pools(cluster: icv1alpha1.InferenceCluster) -> list[icv1alpha1.GpuPool]:
-    """The cluster's published GPU pools, empty if it has none yet."""
+def _schedulable_pools(cluster: icv1alpha1.InferenceCluster) -> list[icv1alpha1.SchedulablePool]:
+    """The cluster's published schedulable pools, empty if it has none yet."""
     if not cluster.status:
         return []
-    return cluster.status.gpuPools or []
+    return cluster.status.schedulablePools or []
 
 
-def _pool_by_name(cluster: icv1alpha1.InferenceCluster, pool_name: str) -> icv1alpha1.GpuPool | None:
+def _pool_by_name(cluster: icv1alpha1.InferenceCluster, pool_name: str) -> icv1alpha1.SchedulablePool | None:
     """The cluster's published pool with this name, or None."""
-    for pool in _gpu_pools(cluster):
+    for pool in _schedulable_pools(cluster):
         if (pool.name or "") == pool_name:
             return pool
     return None
@@ -557,7 +557,7 @@ def _build_ledger(
     free: dict[tuple[str, str], int] = {}
     for cluster in clusters:
         name = _name(cluster.metadata)
-        for pool in _gpu_pools(cluster):
+        for pool in _schedulable_pools(cluster):
             free[(name, pool.name or "")] = _published_count(pool.nodes)
 
     def charge(cluster_name: str, pool_name: str, nodes: int) -> None:
@@ -766,7 +766,7 @@ def _place_engines(
     # member so a later member sees capacity an earlier one took. Discarded
     # wholesale when any member fails to place, so partial placement never
     # leaks into the real ledger.
-    trial = {(pool.name or ""): ledger.available(cluster_name, pool.name or "") for pool in _gpu_pools(cluster)}
+    trial = {(pool.name or ""): ledger.available(cluster_name, pool.name or "") for pool in _schedulable_pools(cluster)}
     placements: list[EnginePlacement] = []
     for engine in engines:
         members = _place_engine(cluster, engine, trial)
@@ -808,7 +808,7 @@ def _place_engine(
     Decrements trial as it places; on failure the caller discards the whole
     trial, so partial decrements don't leak.
     """
-    pools = _gpu_pools(cluster)
+    pools = _schedulable_pools(cluster)
     # Whether each member's requests resolve a claimable device on any pool of
     # this cluster, ignoring capacity. Used to refuse a placement that would
     # strand a claim-capable member on a pool where it resolves only synthetic
@@ -832,7 +832,7 @@ def _place_engine(
 
 
 def _match_members(
-    pool: icv1alpha1.GpuPool, engine: _CompiledEngine, claimable: list[bool]
+    pool: icv1alpha1.SchedulablePool, engine: _CompiledEngine, claimable: list[bool]
 ) -> list[MemberPlacement] | None:
     """Match every member of an engine against one pool.
 

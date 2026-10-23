@@ -327,9 +327,19 @@ class Composer:
 
         # The XRD requires and enums both fields, so the join raising means the
         # API and the stacks package disagree on a value, a broken Modelplane
-        # build, not a cluster condition. Let it crash rather than dress it up
-        # as a fatal result.
-        components = stacks.join(self.xr.spec.cloud, self.xr.spec.stack or "Standard")
+        # build, not a cluster condition - or, for a draDrivers entry, that
+        # compose-inference-cluster's hand-kept mirror of the supported
+        # drivers drifted from the stacks package's: it should have gated the
+        # cluster with UnsupportedDevices before composing this ServingStack.
+        # Let it crash rather than dress it up as a fatal result. draDrivers
+        # absent (a ServingStack from before the field) means no filtering,
+        # so the full stack keeps running until the cluster composition
+        # stamps the list.
+        components = stacks.join(
+            self.xr.spec.cloud,
+            self.xr.spec.stack or "Standard",
+            dra_drivers=None if self.xr.spec.draDrivers is None else [d.root for d in self.xr.spec.draDrivers],
+        )
 
         # Per-pool GPU driver configuration is per-cluster state the cluster
         # composition projects into spec.gpu, so it can't live in the

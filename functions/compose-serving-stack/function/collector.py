@@ -139,14 +139,17 @@ def _relabel_pod_identity() -> list[dict[str, Any]]:
     ] + [{"source_labels": ["__meta_kubernetes_namespace"], "target_label": "namespace"}]
 
 
-def _dcgm_selector(action: str) -> dict[str, Any]:
-    """Match a GPU exporter, however it was packaged.
+def _gpu_exporter_selector(action: str) -> dict[str, Any]:
+    """Match a GPU exporter, whichever vendor's and however it was packaged.
 
-    The two spell it differently - gke-managed-dcgm-exporter and dcgm-exporter -
-    and put the name on different labels depending on who packaged it, so both
-    are read and the match is on what they share. One definition, used by the
-    job that keeps them and the job that has to leave them alone, because the
-    two drifting apart is how a series gets collected twice.
+    NVIDIA's DCGM exporters spell it differently - gke-managed-dcgm-exporter
+    and dcgm-exporter - and put the name on different labels depending on who
+    packaged it, so both labels are read and the match is on what they share.
+    The AMD GPU operator names its device-metrics-exporter pods
+    app.kubernetes.io/name: metrics-exporter, which the same pattern's second
+    alternative matches. One definition, used by the job that keeps them and
+    the job that has to leave them alone, because the two drifting apart is
+    how a series gets collected twice.
     """
     return {
         "source_labels": [
@@ -154,7 +157,7 @@ def _dcgm_selector(action: str) -> dict[str, Any]:
             "__meta_kubernetes_pod_label_app",
         ],
         "action": action,
-        "regex": ".*dcgm.*",
+        "regex": ".*dcgm.*|.*metrics-exporter.*",
     }
 
 
@@ -340,8 +343,14 @@ def _scrape_configs() -> list[dict[str, Any]]:
                 # two spell it differently: gke-managed-dcgm-exporter and
                 # dcgm-exporter. Both labels are read, since which one carries
                 # the name depends on who packaged it.
-                _dcgm_selector("keep"),
-                {"source_labels": ["__meta_kubernetes_pod_container_port_name"], "action": "keep", "regex": "metrics"},
+                _gpu_exporter_selector("keep"),
+                # The exporters name their metrics port differently: DCGM's
+                # is metrics, the AMD operator's is exporter-port.
+                {
+                    "source_labels": ["__meta_kubernetes_pod_container_port_name"],
+                    "action": "keep",
+                    "regex": "metrics|exporter-port",
+                },
                 # The node, because a GPU series belongs to hardware rather
                 # than to a deployment. DCGM names the card itself.
                 {"source_labels": ["__meta_kubernetes_pod_node_name"], "target_label": "node"},
@@ -371,7 +380,7 @@ def _scrape_configs() -> list[dict[str, Any]]:
                     "action": "drop",
                     "regex": ".+",
                 },
-                _dcgm_selector("drop"),
+                _gpu_exporter_selector("drop"),
                 # The rest of the same convention, not just the first line of
                 # it. A pod that says scrape me generally also says where: the
                 # cert-manager webhook declares 10250 first and annotates 9402,
@@ -411,6 +420,7 @@ _PART_SUFFIX = {"Count": "_count", "Sum": "_sum"}
 # literal in that position.
 _UNIT_FACTOR = {
     "Millijoules": "0.001",
+    "Microjoules": "0.000001",
     "Milliseconds": "0.001",
     "Nanoseconds": "0.000000001",
     "Mebibytes": "1048576.0",

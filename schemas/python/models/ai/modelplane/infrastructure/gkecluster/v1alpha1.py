@@ -107,9 +107,9 @@ class NodePool(BaseModel):
     """
     Initial number of nodes.
     """
-    role: Literal['System', 'GPU']
+    role: Literal['System', 'GPU', 'CPU']
     """
-    Determines what workloads this pool runs. System pools host controllers, gateways, and infrastructure. GPU pools host inference workloads and are tainted to exclude non-GPU pods.
+    Determines what workloads this pool runs. System pools host controllers, gateways, and infrastructure. GPU pools host inference workloads and are tainted to exclude non-GPU pods. CPU pools host CPU inference workloads: a standard node image, no GPU, and the modelplane.ai/cpu label and taint.
     """
     zones: list[Zone] | None = Field(None, max_length=8, min_length=1)
     """

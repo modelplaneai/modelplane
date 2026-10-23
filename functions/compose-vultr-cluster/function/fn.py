@@ -85,6 +85,12 @@ _GPU_TAINT_KEY = "nvidia.com/gpu"
 _GPU_TAINT_VALUE = "true"
 _GPU_TAINT_EFFECT = "NoSchedule"
 
+# Label and taint on CPU inference pools. The label is what the serving
+# stack's dra-driver-cpu selects its nodes by; the taint keeps system
+# workloads off the pool as the GPU taint does on GPU pools, and engine
+# pods tolerate it (compose-model-replica).
+_LABEL_CPU = "modelplane.ai/cpu"
+
 # Vultr pre-installs the NVIDIA GPU Operator on every VKE GPU cluster. The
 # operator's validator DaemonSet runs a four-stage init sequence (driver →
 # CUDA → device-plugin → full validation). When all pods in the DaemonSet
@@ -160,7 +166,12 @@ class Composer:
         if self._cluster_ready() or self._dependents_observed():
             self.compose_node_pools()
             self.compose_provider_config()
-            self.compose_gpu_observer()
+            # Vultr pre-installs the NVIDIA GPU Operator only on clusters
+            # with GPU pools, so a CPU-only cluster has no validator
+            # DaemonSet to observe - composing the observer anyway would
+            # hold the cluster un-Ready forever.
+            if any(pool.role == "GPU" for pool in self.xr.spec.nodePools):
+                self.compose_gpu_observer()
         self.write_status()
         self.mark_readiness()
 
@@ -290,6 +301,8 @@ class Composer:
         if pool.role == "GPU" and pool.gpu:
             labels.append(vkenodepoolv1beta1.Label(key=_LABEL_GPU, value=pool.gpu.acceleratorType))
             labels.append(vkenodepoolv1beta1.Label(key=_LABEL_DEVICE_PLUGIN_KEY, value=_LABEL_DEVICE_PLUGIN_VALUE))
+        elif pool.role == "CPU":
+            labels.append(vkenodepoolv1beta1.Label(key=_LABEL_CPU, value="true"))
 
         fp = vkenodepoolv1beta1.ForProvider(
             label=pool.name,
@@ -306,6 +319,14 @@ class Composer:
                 vkenodepoolv1beta1.Taint(
                     key=_GPU_TAINT_KEY,
                     value=_GPU_TAINT_VALUE,
+                    effect=_GPU_TAINT_EFFECT,
+                ),
+            ]
+        elif pool.role == "CPU":
+            fp.taints = [
+                vkenodepoolv1beta1.Taint(
+                    key=_LABEL_CPU,
+                    value="true",
                     effect=_GPU_TAINT_EFFECT,
                 ),
             ]

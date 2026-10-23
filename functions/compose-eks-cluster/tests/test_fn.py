@@ -631,6 +631,50 @@ def _nodegroup_gpu(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
     )
 
 
+def _nodegroup_cpu(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
+    """The composed cpu-pool node group, on the standard AMI with the CPU label and taint."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "eks.aws.m.upbound.io/v1beta1",
+                "kind": "NodeGroup",
+                "spec": {
+                    "providerConfigRef": {"kind": cred_kind, "name": cred_name},
+                    "managementPolicies": ["Observe", "Create", "Update", "Delete"],
+                    "initProvider": {"scalingConfig": {"desiredSize": 1}},
+                    "forProvider": {
+                        "region": "us-west-2",
+                        "amiType": "AL2023_x86_64_STANDARD",
+                        "instanceTypes": ["m6i.4xlarge"],
+                        "diskSize": 100,
+                        "clusterNameSelector": {"matchControllerRef": True},
+                        "nodeRoleArnSelector": {
+                            "matchControllerRef": True,
+                            "matchLabels": {"modelplane.ai/iam-role": "node"},
+                        },
+                        "subnetIdSelector": {
+                            "matchControllerRef": True,
+                            "matchLabels": {"modelplane.ai/subnet-tier": "private"},
+                        },
+                        "scalingConfig": {"minSize": 0, "maxSize": 4},
+                        "labels": {
+                            "modelplane.ai/pool": "cpu-pool",
+                            "modelplane.ai/cpu": "true",
+                        },
+                        "taint": [
+                            {
+                                "key": "modelplane.ai/cpu",
+                                "value": "true",
+                                "effect": "NO_SCHEDULE",
+                            },
+                        ],
+                    },
+                },
+            }
+        ),
+    )
+
+
 def _launch_template_efa(*, security_groups: list[str] | None) -> fnv1.Resource:
     """The gpu-h200 EFA launch template, with security_groups on every interface if given."""
     # p5en.48xlarge has 16 network cards; one EFA interface per card.
@@ -1212,6 +1256,199 @@ COMPOSE_CASES = [
                     ),
                     "nodegroup-system": _nodegroup_system(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "nodegroup-gpu-l4": _nodegroup_gpu(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "addon-vpc-cni": _addon(name="vpc-cni", cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "addon-kube-proxy": _addon(
+                        name="kube-proxy", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "addon-coredns": _addon(name="coredns", cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "efs-filesystem": _efs_filesystem(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "efs-security-group": _efs_security_group(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "efs-security-group-ingress": _efs_security_group_ingress(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "efs-mount-target-0": _efs_mount_target(
+                        subnet_name="test-cluster-private-subnet-us-west-2a-6a89f",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "efs-mount-target-1": _efs_mount_target(
+                        subnet_name="test-cluster-private-subnet-us-west-2b-b7832",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "efs-mount-target-2": _efs_mount_target(
+                        subnet_name="test-cluster-private-subnet-us-west-2c-ef57d",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "iam-role-efs-csi": _pod_identity_role(
+                        role="efs-csi", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "iam-attach-efs-csi": _role_policy_attachment(
+                        role="efs-csi",
+                        arn="arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "addon-eks-pod-identity-agent": _addon(
+                        name="eks-pod-identity-agent", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "pod-identity-efs-csi": _pod_identity_association(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "addon-aws-efs-csi-driver": _addon(
+                        name="aws-efs-csi-driver", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "iam-policy-cluster-autoscaler": _autoscaler_policy(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "iam-role-cluster-autoscaler": _pod_identity_role(
+                        role="cluster-autoscaler", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "iam-attach-cluster-autoscaler": _autoscaler_attachment(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "pod-identity-cluster-autoscaler": _autoscaler_pod_identity(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="FirstPassCPUPool",
+        reason="A CPU-role node pool composes its node group on the standard AMI with the modelplane.ai/pool and modelplane.ai/cpu labels and the CPU taint.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="cpu-pool",
+                            role="CPU",
+                            instanceType="m6i.4xlarge",
+                            nodeCount=1,
+                            minNodeCount=0,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "subnet-0": _subnet(
+                        name="test-cluster-subnet-us-west-2a-952dc",
+                        az="us-west-2a",
+                        cidr="10.0.0.0/20",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "subnet-1": _subnet(
+                        name="test-cluster-subnet-us-west-2b-2b80f",
+                        az="us-west-2b",
+                        cidr="10.0.16.0/20",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "subnet-2": _subnet(
+                        name="test-cluster-subnet-us-west-2c-03273",
+                        az="us-west-2c",
+                        cidr="10.0.32.0/20",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "private-subnet-0": _private_subnet(
+                        name="test-cluster-private-subnet-us-west-2a-6a89f",
+                        az="us-west-2a",
+                        cidr="10.0.48.0/20",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "private-subnet-1": _private_subnet(
+                        name="test-cluster-private-subnet-us-west-2b-b7832",
+                        az="us-west-2b",
+                        cidr="10.0.64.0/20",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "private-subnet-2": _private_subnet(
+                        name="test-cluster-private-subnet-us-west-2c-ef57d",
+                        az="us-west-2c",
+                        cidr="10.0.80.0/20",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "internet-gateway": _internet_gateway(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "nat-eip": _nat_eip(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "nat-gateway": _nat_gateway(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "route-table": _route_table(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "route-default": _route_default(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "private-route-table": _private_route_table(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "private-route-default": _private_route_default(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "route-table-association-0": _route_table_association(
+                        az="us-west-2a", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "route-table-association-1": _route_table_association(
+                        az="us-west-2b", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "route-table-association-2": _route_table_association(
+                        az="us-west-2c", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "private-route-table-association-0": _private_route_table_association(
+                        az="us-west-2a", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "private-route-table-association-1": _private_route_table_association(
+                        az="us-west-2b", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "private-route-table-association-2": _private_route_table_association(
+                        az="us-west-2c", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "iam-role-cluster": _cluster_role(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "iam-attach-cluster-policy": _role_policy_attachment(
+                        role="cluster",
+                        arn="arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "iam-role-node": _node_role(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "iam-attach-node-worker": _role_policy_attachment(
+                        role="node",
+                        arn="arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "iam-attach-node-cni": _role_policy_attachment(
+                        role="node",
+                        arn="arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "iam-attach-node-ecr": _role_policy_attachment(
+                        role="node",
+                        arn="arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "cluster": _eks_cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster-auth": _cluster_auth(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodegroup-system": _nodegroup_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "nodegroup-cpu-pool": _nodegroup_cpu(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "addon-vpc-cni": _addon(name="vpc-cni", cred_kind="ClusterProviderConfig", cred_name="default"),
                     "addon-kube-proxy": _addon(
                         name="kube-proxy", cred_kind="ClusterProviderConfig", cred_name="default"

@@ -80,3 +80,27 @@ def test_taint_matches_composition(leg: str) -> None:
         f"the {leg} leg fakes nvidia.com/gpu={clouds.CLOUDS[leg].taint_value}, "
         f"but {COMPOSITIONS[leg]} taints GPU pools with {value}"
     )
+
+
+# The compositions whose CPU pool label-and-taint the legs' fake CPU nodes
+# copy. GKE is included here, unlike COMPOSITIONS: its GPU taint comes from
+# GKE itself, but compose-gke-cluster sets the CPU taint explicitly, since
+# GKE only auto-taints GPU pools. Still no Existing entry: Modelplane
+# doesn't taint BYO pools.
+CPU_COMPOSITIONS = {**COMPOSITIONS, "gke": "compose-gke-cluster"}
+
+
+@pytest.mark.parametrize("leg", sorted(CPU_COMPOSITIONS))
+def test_cpu_taint_matches(leg: str) -> None:
+    """The fake CPU pools' taint key is the one every cluster composition applies.
+
+    The compositions share one key (_LABEL_CPU doubles as the taint key and
+    the label dra-driver-cpu's nodeSelector reads), so the legs share one
+    CPU_TAINT rather than faking it per cloud - this pins both halves of
+    that assumption.
+    """
+    consts = constants(CPU_COMPOSITIONS[leg])
+    assert consts["_LABEL_CPU"] == clouds.CPU_TAINT["key"], (
+        f"the legs fake the CPU taint {clouds.CPU_TAINT['key']}, "
+        f"but {CPU_COMPOSITIONS[leg]} labels and taints CPU pools with {consts['_LABEL_CPU']}"
+    )

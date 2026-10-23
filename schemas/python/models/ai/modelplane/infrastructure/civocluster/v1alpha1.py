@@ -76,9 +76,9 @@ class NodePool(BaseModel):
     """
     Number of nodes. Fixed unless maxNodeCount enables autoscaling.
     """
-    role: Literal['System', 'GPU']
+    role: Literal['System', 'GPU', 'CPU']
     """
-    Determines what workloads this pool runs. System pools host controllers, gateways, and infrastructure. GPU pools host inference workloads and are tainted to exclude non-GPU pods.
+    Determines what workloads this pool runs. System pools host controllers, gateways, and infrastructure. GPU pools host inference workloads and are tainted to exclude non-GPU pods. CPU pools host CPU inference workloads: a non-GPU size and the modelplane.ai/cpu label and taint.
     """
     size: constr(min_length=1, max_length=63)
     """

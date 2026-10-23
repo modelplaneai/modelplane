@@ -426,7 +426,10 @@ checks to trip. In order:
    file is high-churn upstream. The fork is deleted the day
    NVIDIA/aicr#2515 or #2517 lands.
 3. Expect `ALLOW`/`DROP` to fail closed on any component the new catalog
-   adds; classify it with a reason.
+   adds; classify it with a reason. An `ALLOW` entry also names the DRA
+   drivers whose device stacks the component belongs to (empty for a
+   component every cluster needs) - deciding that is part of classifying
+   it; see design/multi-accelerator.md.
 4. Expect the managed-path assertions to fail closed if a values path
    moved or a `--set` stopped landing; re-derive the path from the new
    chart before loosening anything. `MODELPLANE_VALUES` fails closed too

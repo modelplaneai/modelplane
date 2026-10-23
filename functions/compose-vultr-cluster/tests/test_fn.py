@@ -179,6 +179,36 @@ def _node_pool_gpu(*, node_quantity: int, autoscaling: dict | None, ready: fnv1.
     )
 
 
+def _node_pool_cpu(*, node_quantity: int, autoscaling: dict | None, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed KubernetesNodePool for the cpu-pool pool, with the CPU label and taint and no GPU labels."""
+    for_provider: dict[str, Any] = {
+        "label": "cpu-pool",
+        "plan": "vc2-6c-16gb",
+        "nodeQuantity": node_quantity,
+        "labels": [
+            {"key": "modelplane.ai/pool", "value": "cpu-pool"},
+            {"key": "modelplane.ai/cpu", "value": "true"},
+        ],
+        "clusterIdSelector": {"matchControllerRef": True},
+        "taints": [{"key": "modelplane.ai/cpu", "value": "true", "effect": "NoSchedule"}],
+    }
+    if autoscaling is not None:
+        for_provider.update(autoscaling)
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "vke.vultr.m.upbound.io/v1beta1",
+                "kind": "KubernetesNodePool",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                    "forProvider": for_provider,
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
 def _provider_config() -> fnv1.Resource:
     """The composed provider-kubernetes ProviderConfig for the cluster, which is always ready."""
     return fnv1.Resource(
@@ -314,6 +344,47 @@ COMPOSE_CASES = [
                     ),
                     "provider-config-kubernetes": _provider_config(),
                     "gpu-observer": _gpu_observer(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="ClusterReadyCPUPool",
+        reason=(
+            "A CPU-role pool composes with the modelplane.ai/pool and modelplane.ai/cpu labels and the CPU taint, "
+            "no GPU or device-plugin labels, and no GPU observer - Vultr pre-installs the GPU operator only on "
+            "clusters with GPU pools, so there is no validator DaemonSet to observe."
+        ),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="cpu-pool",
+                            role="CPU",
+                            plan="vc2-6c-16gb",
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_cluster(ready=True),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "cluster": _cluster(ready=fnv1.READY_TRUE),
+                    "node-pool-cpu-pool": _node_pool_cpu(
+                        node_quantity=1,
+                        autoscaling={"autoScaler": True, "minNodes": 1, "maxNodes": 4},
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "provider-config-kubernetes": _provider_config(),
                 },
             ),
             context=structpb.Struct(),
@@ -508,7 +579,10 @@ COMPOSE_CASES = [
     # which of them sets the autoscaler's floor.
     Case(
         name="SystemRolePool",
-        reason="A VultrCluster's System-role pool autoscales from a floor of 2 nodes to maxNodeCount, and gets neither GPU labels nor a taint.",
+        reason=(
+            "A VultrCluster's System-role pool autoscales from a floor of 2 nodes to maxNodeCount, and gets "
+            "neither GPU labels nor a taint - and with no GPU pool there is no GPU observer to compose."
+        ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_xr(
@@ -556,7 +630,6 @@ COMPOSE_CASES = [
                         ),
                     ),
                     "provider-config-kubernetes": _provider_config(),
-                    "gpu-observer": _gpu_observer(ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             context=structpb.Struct(),

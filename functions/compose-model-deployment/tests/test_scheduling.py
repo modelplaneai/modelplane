@@ -120,7 +120,7 @@ def _cluster(
     name: str,
     gateway_hostname: str | None,
     ready: bool,
-    pools: list[icv1alpha1.GpuPool],
+    pools: list[icv1alpha1.SchedulablePool],
     taints: list[icv1alpha1.Taint] | None,
     placement_labels: dict[str, str] | None,
 ) -> icv1alpha1.InferenceCluster:
@@ -152,7 +152,7 @@ def _cluster(
             # InferenceGateway addresses a cluster by name.
             gateway=icv1alpha1.Gateway(address="10.0.0.1", hostname=gateway_hostname),
             providerConfigRef=icv1alpha1.ProviderConfigRef(name=name),
-            gpuPools=pools,
+            schedulablePools=pools,
         ),
     )
 
@@ -257,7 +257,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -310,7 +310,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=False,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -342,7 +342,7 @@ SCHEDULE_CASES = [
                 gateway_hostname=None,
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -379,7 +379,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -411,7 +411,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -423,7 +423,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -498,7 +498,7 @@ SCHEDULE_CASES = [
                 gateway_hostname=None,
                 ready=False,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -573,7 +573,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -648,7 +648,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -660,7 +660,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -755,7 +755,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=1, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -830,7 +830,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -903,7 +903,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -915,7 +915,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -988,7 +988,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=4, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -1000,7 +1000,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=4, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -1093,7 +1093,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=4, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -1105,7 +1105,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=1, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -1198,7 +1198,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=4, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -1210,7 +1210,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=4, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -1305,7 +1305,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=4, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -1441,7 +1441,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=4, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -1453,7 +1453,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=4, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -1599,7 +1599,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=6, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -1735,7 +1735,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=4, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -1747,7 +1747,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=4, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -1884,7 +1884,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=4, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -2000,7 +2000,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -2012,7 +2012,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -2108,7 +2108,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-c.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -2120,7 +2120,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -2132,7 +2132,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -2205,7 +2205,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=1, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -2259,7 +2259,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=1, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -2337,7 +2337,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=1,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")],
@@ -2417,10 +2417,10 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="a", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     ),
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="b", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     ),
                 ],
@@ -2520,7 +2520,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -2552,7 +2552,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -2627,7 +2627,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -2639,7 +2639,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -2715,7 +2715,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")],
@@ -2770,7 +2770,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")],
@@ -2804,7 +2804,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="141Gi")],
@@ -2841,7 +2841,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=0, memory="141Gi")],
@@ -2875,7 +2875,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=0,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")],
@@ -2912,7 +2912,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[
@@ -2973,7 +2973,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")],
@@ -3011,7 +3011,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")],
@@ -3050,7 +3050,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")],
@@ -3087,7 +3087,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")],
@@ -3151,7 +3151,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="dev",
                         nodes=2,
                         devices=[
@@ -3159,7 +3159,7 @@ SCHEDULE_CASES = [
                             _nic_device(link_type="gpudirect-tcpx"),
                         ],
                     ),
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[
@@ -3219,7 +3219,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[
@@ -3256,7 +3256,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")],
@@ -3338,7 +3338,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="a",
                         nodes=2,
                         devices=[
@@ -3346,7 +3346,7 @@ SCHEDULE_CASES = [
                             _nic_device(link_type="gpudirect-tcpx"),
                         ],
                     ),
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="b",
                         nodes=2,
                         devices=[
@@ -3429,7 +3429,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="a",
                         nodes=2,
                         devices=[
@@ -3437,7 +3437,7 @@ SCHEDULE_CASES = [
                             _nic_device(link_type="infiniband"),
                         ],
                     ),
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="b",
                         nodes=2,
                         devices=[
@@ -3520,7 +3520,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="a",
                         nodes=2,
                         devices=[
@@ -3582,7 +3582,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[
@@ -3666,7 +3666,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")],
@@ -3784,10 +3784,10 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="a", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=4, memory="141Gi")]
                     ),
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="b", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")]
                     ),
                 ],
@@ -3847,10 +3847,10 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="small", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     ),
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="big", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="200Gi")]
                     ),
                 ],
@@ -3922,10 +3922,10 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="small", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     ),
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="big", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="200Gi")]
                     ),
                 ],
@@ -3962,10 +3962,10 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="small", nodes=8, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="40Gi")]
                     ),
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="big", nodes=1, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     ),
                 ],
@@ -4002,10 +4002,10 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="small", nodes=8, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="40Gi")]
                     ),
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="big", nodes=1, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     ),
                 ],
@@ -4017,7 +4017,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="big", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -4089,7 +4089,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="a",
                         nodes=2,
                         devices=[
@@ -4097,7 +4097,7 @@ SCHEDULE_CASES = [
                             _gpu_device(name="syn", claim="Synthetic", count=1, memory="200Gi"),
                         ],
                     ),
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="b", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="200Gi")]
                     ),
                 ],
@@ -4169,7 +4169,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=2,
                         devices=[
@@ -4237,7 +4237,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -4270,7 +4270,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=1,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")],
@@ -4331,7 +4331,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="frontier",
                         nodes=1,
                         devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")],
@@ -4416,7 +4416,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -4497,7 +4497,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=4, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -4588,7 +4588,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -4600,7 +4600,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -4653,7 +4653,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -4728,7 +4728,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -4781,7 +4781,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -4793,7 +4793,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -4868,7 +4868,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -4944,7 +4944,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -5000,7 +5000,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -5012,7 +5012,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -5087,7 +5087,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -5102,7 +5102,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-b.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -5155,7 +5155,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -5208,7 +5208,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -5240,7 +5240,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -5301,7 +5301,7 @@ SCHEDULE_CASES = [
                 gateway_hostname="cluster-a.clusters.example.com",
                 ready=True,
                 pools=[
-                    icv1alpha1.GpuPool(
+                    icv1alpha1.SchedulablePool(
                         name="default", nodes=2, devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")]
                     )
                 ],
@@ -5371,7 +5371,7 @@ def test_schedule_error() -> None:
                     gateway_hostname="cluster-a.clusters.example.com",
                     ready=True,
                     pools=[
-                        icv1alpha1.GpuPool(
+                        icv1alpha1.SchedulablePool(
                             name="frontier",
                             nodes=2,
                             devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="141Gi")],

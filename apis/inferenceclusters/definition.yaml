@@ -608,10 +608,11 @@ spec:
                       PVCs on this cluster. ModelCache reads this to target
                       the cache PVC.
                     maxLength: 253
-              gpuPools:
+              schedulablePools:
                 type: array
                 description: >-
-                  Schedulable GPU node pools on this cluster, derived from the
+                  Schedulable node pools on this cluster - GPU and CPU alike;
+                  every pool whose class declares devices - derived from the
                   referenced classes and the per-pool node counts.
                   ModelDeployment scheduling matches against these.
                 maxItems: 8

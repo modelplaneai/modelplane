@@ -94,9 +94,20 @@ def up(*, apply_manifests: bool, cloud: clouds.Cloud | None = None) -> None:
         log.info("Applying %s", MANIFESTS)
         kubectl(CONTROL_PLANE_CONTEXT, "apply", f"--filename={MANIFESTS}")
         return
-    log.info("Applying the fake GPU nodes and the %s ServingStack", cloud.cloud)
+    log.info("Applying the fake device-pool nodes and the %s ServingStack", cloud.cloud)
     nodes = {"apiVersion": "v1", "kind": "List", "items": clouds.nodes(cloud)}
     kubectl(WORKLOAD_CONTEXT, "apply", "--filename=-", stdin=json.dumps(nodes))
+    # Apply resets the fake nodes this leg shares with a previous one, but
+    # never prunes whole objects: a leg with fewer pools reusing a cluster
+    # (any leg after Existing's AMD pool) would keep stale fake nodes whose
+    # taints the placement audits then reason about. Delete the leftovers.
+    wanted = {node["metadata"]["name"] for node in clouds.nodes(cloud)}
+    observed = output(
+        "kubectl", f"--context={WORKLOAD_CONTEXT}",
+        "get", "nodes", "--selector=type=kwok", "--output=json",
+    )  # fmt: skip
+    for stale in sorted({node["metadata"]["name"] for node in json.loads(observed)["items"]} - wanted):
+        kubectl(WORKLOAD_CONTEXT, "delete", "node", stale)
     kubectl(CONTROL_PLANE_CONTEXT, "apply", "--filename=-", stdin=json.dumps(clouds.serving_stack(cloud)))
 
 

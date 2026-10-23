@@ -132,10 +132,13 @@ spec:
                         Determines what workloads this group runs. System
                         groups host controllers, gateways, and infrastructure.
                         GPU groups host inference workloads and use a
-                        GPU-enabled AMI.
+                        GPU-enabled AMI. CPU groups host CPU inference
+                        workloads: a standard AMI, no GPU, and the
+                        modelplane.ai/cpu label and taint.
                       enum:
                       - System
                       - GPU
+                      - CPU
                     instanceType:
                       type: string
                       description: >-

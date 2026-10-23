@@ -150,16 +150,16 @@ spec:
                               as the component wrote it.
                     fromUnit:
                       type: string
-                      enum: [Millijoules, Mebibytes, Milliseconds, Nanoseconds, Percent]
+                      enum: [Millijoules, Microjoules, Mebibytes, Milliseconds, Nanoseconds, Percent]
                       description: >-
                         What the component measures this in, when that isn't
                         the unit the name claims. Modelplane converts to the
                         base unit: millijoules and milliseconds are divided by
-                        a thousand, nanoseconds by a billion, percent by a
-                        hundred, and mebibytes multiplied out to bytes. A
-                        histogram is converted whole - its sum, its bounds and
-                        its bucket boundaries - so its quantiles come out in
-                        the target unit too.
+                        a thousand, microjoules by a million, nanoseconds by a
+                        billion, percent by a hundred, and mebibytes multiplied
+                        out to bytes. A histogram is converted whole - its sum,
+                        its bounds and its bucket boundaries - so its quantiles
+                        come out in the target unit too.
 
                         Percent is for a component that counts a saturation
                         from nought to a hundred where the name says a ratio.

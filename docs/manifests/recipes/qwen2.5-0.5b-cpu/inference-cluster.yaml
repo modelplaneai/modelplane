@@ -1,0 +1,19 @@
+# A Civo cluster in NYC1 with a single CPU node offering the class above.
+# The composed ServingStack gets draDrivers: [dra.cpu], so dra-driver-cpu
+# installs and the GPU device stacks stay out - a cluster with no GPU runs
+# no GPU machinery.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: civo-cpu
+  labels:
+    modelplane.ai/region: nyc1
+spec:
+  cluster:
+    source: Civo
+    civo:
+      region: NYC1
+  nodePools:
+  - name: cpu-pool
+    className: civo-cpu-8vcpu
+    nodeCount: 1

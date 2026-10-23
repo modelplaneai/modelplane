@@ -99,19 +99,21 @@ COMPONENTS: list[Component] = [
                     ],
                 },
             },
-            # Disable components we don't need for observability.
-            "grafana": {"enabled": False},
-            "alertmanager": {"enabled": False},
             # The node-exporter chart's default toleration is keyless - it
-            # tolerates every taint, landing the pod on tainted GPU nodes by
-            # accident rather than by intent. Scope it to the GPU taint,
+            # tolerates every taint, landing the pod on tainted nodes by
+            # accident rather than by intent. Scope it to the GPU and CPU pool
+            # taints,
             # mirroring the generated clouds (TOLERATIONS in generate.py); as
             # a DaemonSet it still reaches every untainted node.
             "prometheus-node-exporter": {
                 "tolerations": [
                     {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                    {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
                 ],
             },
+            # Disable components we don't need for observability.
+            "grafana": {"enabled": False},
+            "alertmanager": {"enabled": False},
         },
     ),
     # Publishes each GPU node's devices as DRA ResourceSlices and
@@ -127,6 +129,7 @@ COMPONENTS: list[Component] = [
         chart="dra-driver-nvidia-gpu",
         repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
         version="0.4.1",
+        dra_drivers=["gpu.nvidia.com"],
         values={
             "gpuResourcesEnabledOverride": True,
             "resources": {"computeDomains": {"enabled": False}},

@@ -20,6 +20,15 @@ pins that by hand in the same shape a generator emits. Where a
 component also appears on a generated cloud, this file states the same
 pin, so one review moves both halves when a version changes -
 regenerate, then mirror the shared pins here.
+
+Existing is also the open-ended cloud for devices: the user owns the
+cluster and may have installed any DRA driver on it, so the join treats
+a claimed driver this list doesn't tag as externally installed - it
+installs nothing and rejects nothing. The list still pins device
+stacks like any cloud's, each tagged with its driver so it installs
+only when a class claims it: NVIDIA's today, and AMD's - Existing is
+the one cloud that installs it, for BYO nodes whose images already
+carry the amdgpu kernel driver.
 """
 
 from function.stacks.components import Chart, Component
@@ -90,19 +99,22 @@ COMPONENTS: list[Component] = [
                     ],
                 },
             },
-            # Disable components we don't need for observability.
-            "grafana": {"enabled": False},
-            "alertmanager": {"enabled": False},
             # The node-exporter chart's default toleration is keyless - it
-            # tolerates every taint, landing the pod on tainted GPU nodes by
-            # accident rather than by intent. Scope it to the GPU taint,
+            # tolerates every taint, landing the pod on tainted nodes by
+            # accident rather than by intent. Scope it to the inference pool
+            # taints - a BYO pool may carry any of the three -
             # mirroring the generated clouds (TOLERATIONS in generate.py); as
             # a DaemonSet it still reaches every untainted node.
             "prometheus-node-exporter": {
                 "tolerations": [
                     {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                    {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                    {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
                 ],
             },
+            # Disable components we don't need for observability.
+            "grafana": {"enabled": False},
+            "alertmanager": {"enabled": False},
         },
     ),
     Chart(
@@ -112,21 +124,34 @@ COMPONENTS: list[Component] = [
         chart="node-feature-discovery",
         repository="https://kubernetes-sigs.github.io/node-feature-discovery/charts",
         version="0.19.0",
+        # amd-gpu-operator below depends on this chart, so its Ready must
+        # mean healthy, not just deployed.
+        wait=True,
+        # NFD exists here to label GPU nodes for the DRA drivers, so it
+        # carries both GPU stacks' drivers - NVIDIA's kubelet plugin and
+        # AMD's operator both find their nodes by NFD labels - and stays
+        # off clusters whose classes claim no GPUs.
+        dra_drivers=["gpu.nvidia.com", "gpu.amd.com"],
         # The worker must run on the very nodes it is supposed to label:
         # the DRA driver's kubelet plugin schedules only onto nodes
         # carrying an NFD GPU label (feature.node.kubernetes.io/pci-10de
         # and friends). The cluster compositions taint GPU nodes with
-        # nvidia.com/gpu, and the NFD chart's worker tolerates nothing
-        # by default. Without this toleration the chain breaks silently:
-        # no worker on the GPU node, no pci-10de label, no kubelet
-        # plugin, no ResourceSlices, and every GPU ResourceClaim stays
-        # unallocatable with all components looking healthy. Exists
-        # matches every taint value.
+        # nvidia.com/gpu or amd.com/gpu, and the NFD chart's worker
+        # tolerates nothing by default. Without these tolerations the
+        # chain breaks silently: no worker on the GPU node, no pci-10de
+        # label, no kubelet plugin, no ResourceSlices, and every GPU
+        # ResourceClaim stays unallocatable with all components looking
+        # healthy. Exists matches every taint value.
         values={
             "worker": {
                 "tolerations": [
                     {
                         "key": "nvidia.com/gpu",
+                        "operator": "Exists",
+                        "effect": "NoSchedule",
+                    },
+                    {
+                        "key": "amd.com/gpu",
                         "operator": "Exists",
                         "effect": "NoSchedule",
                     },
@@ -147,9 +172,66 @@ COMPONENTS: list[Component] = [
         chart="dra-driver-nvidia-gpu",
         repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
         version="0.4.1",
+        dra_drivers=["gpu.nvidia.com"],
         values={
             "gpuResourcesEnabledOverride": True,
             "resources": {"computeDomains": {"enabled": False}},
+        },
+    ),
+    # The AMD GPU operator, in DRA mode: the chart's default DeviceConfig
+    # (crds.defaultCR) enables the DRA driver and disables the device
+    # plugin - the two are mutually exclusive allocators - so the
+    # gpu.amd.com DeviceClass the chart registers is the sole path to the
+    # GPUs. Pin validated on Vultr bare metal (8x MI325X); Existing is
+    # the one cloud that installs it today. Driver management (KMM)
+    # stays off: a BYO node's image must already carry the amdgpu kernel
+    # driver, and the chart's in-cluster driver build needs a push
+    # registry configured (driver.image defaults to a docker.io
+    # placeholder), without which KMM loops on a driver image it can
+    # never resolve and the DRA driver - gated on the KMM-ready node
+    # label - never schedules. The node labeller stays on for scheduling
+    # labels; NFD is the standalone instance above, so the chart's
+    # bundled one is off and two instances never race over the same
+    # label namespace. Every per-node component tolerates the
+    # amd.com/gpu taint AMD GPU pools carry - the chart defaults
+    # tolerate nothing, which strands the daemonsets off the very nodes
+    # they serve.
+    Chart(
+        key="amd-gpu-operator",
+        release="mp-gpu-operator-charts",
+        namespace="kube-amd-gpu",
+        chart="gpu-operator-charts",
+        repository="https://rocm.github.io/gpu-operator",
+        version="v1.5.1",
+        depends_on=["cert-manager", "node-feature-discovery"],
+        dra_drivers=["gpu.amd.com"],
+        values={
+            "node-feature-discovery": {"enabled": False},
+            # Argo-based node remediation pulls a workflow controller the
+            # serving stack doesn't need.
+            "remediation": {"enabled": False, "installCRDs": False},
+            "deviceConfig": {
+                "spec": {
+                    "driver": {"enable": False},
+                    "devicePlugin": {
+                        "enableDevicePlugin": False,
+                        "nodeLabellerTolerations": [
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    },
+                    "metricsExporter": {
+                        "tolerations": [
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    },
+                    "draDriver": {
+                        "enable": True,
+                        "tolerations": [
+                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                        ],
+                    },
+                },
+            },
         },
     ),
 ]

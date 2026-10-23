@@ -80,9 +80,9 @@ class NodePool(BaseModel):
     """
     Vultr plan ID for the pool's nodes (e.g. vcg-l40s-16c-180g-48vram, vc2-6c-16gb). This is the instance type used by other clouds; list plans with vultr-cli plans list.
     """
-    role: Literal['System', 'GPU']
+    role: Literal['System', 'GPU', 'CPU']
     """
-    Determines what workloads this pool runs. System pools host controllers, gateways, and infrastructure. GPU pools host inference workloads and are tainted to exclude non-GPU pods.
+    Determines what workloads this pool runs. System pools host controllers, gateways, and infrastructure. GPU pools host inference workloads and are tainted to exclude non-GPU pods. CPU pools host CPU inference workloads: a non-GPU plan and the modelplane.ai/cpu label and taint.
     """
 
 

@@ -267,7 +267,17 @@ def _deployment(*, ready: fnv1.Ready, name: str, claim_template_name: str, label
                                                 "key": "nvidia.com/gpu",
                                                 "operator": "Exists",
                                                 "effect": "NoSchedule",
-                                            }
+                                            },
+                                            {
+                                                "key": "amd.com/gpu",
+                                                "operator": "Exists",
+                                                "effect": "NoSchedule",
+                                            },
+                                            {
+                                                "key": "modelplane.ai/cpu",
+                                                "operator": "Exists",
+                                                "effect": "NoSchedule",
+                                            },
                                         ],
                                     },
                                 },

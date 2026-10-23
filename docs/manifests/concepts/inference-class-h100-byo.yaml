@@ -2,7 +2,7 @@
 #
 # No provisioning block: this class describes hardware that already
 # exists on a bring-your-own cluster. Modelplane copies the devices block
-# onto the cluster's status.gpuPools for the scheduler to match against.
+# onto the cluster's status.schedulablePools for the scheduler to match against.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
 metadata:

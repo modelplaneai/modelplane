@@ -52,7 +52,7 @@ spec:
                     enum: [GKE, EKS, AKS, Nebius, Vultr, Civo]
                   gke:
                     type: object
-                    required: [machineType, accelerator]
+                    required: [machineType]
                     properties:
                       machineType:
                         type: string
@@ -68,7 +68,9 @@ spec:
                           pool. Provisioning input only: the scheduler matches
                           against spec.devices, not this block, so count here is
                           the GCP machine's GPU count and need not be restated in
-                          devices.
+                          devices. Omit for a pool with no GPU, which is
+                          composed with role CPU: a standard node image and the
+                          modelplane.ai/cpu label and taint.
                         required: [type, count]
                         properties:
                           type:
@@ -84,7 +86,7 @@ spec:
                             maximum: 16
                   eks:
                     type: object
-                    required: [instanceType, accelerator]
+                    required: [instanceType]
                     properties:
                       instanceType:
                         type: string
@@ -103,7 +105,10 @@ spec:
                         description: >-
                           GPU accelerator to attach when provisioning the node
                           group. Provisioning input only: the scheduler matches
-                          against spec.devices, not this block.
+                          against spec.devices, not this block. Omit for a
+                          group with no GPU, which is composed with role CPU: a
+                          standard node image and the modelplane.ai/cpu label
+                          and taint.
                         required: [type, count]
                         properties:
                           type:
@@ -120,7 +125,7 @@ spec:
                             maximum: 16
                   aks:
                     type: object
-                    required: [vmSize, accelerator]
+                    required: [vmSize]
                     properties:
                       vmSize:
                         type: string
@@ -139,7 +144,10 @@ spec:
                         description: >-
                           GPU accelerator to attach when provisioning the node
                           pool. Provisioning input only: the scheduler matches
-                          against spec.devices, not this block.
+                          against spec.devices, not this block. Omit for a
+                          pool with no GPU, which is composed with role CPU: a
+                          standard node image and the modelplane.ai/cpu label
+                          and taint.
                         required: [type, count]
                         properties:
                           type:
@@ -156,7 +164,7 @@ spec:
                             maximum: 16
                   nebius:
                     type: object
-                    required: [platform, preset, accelerator]
+                    required: [platform, preset]
                     properties:
                       platform:
                         type: string
@@ -197,7 +205,10 @@ spec:
                         description: >-
                           GPU accelerator to attach when provisioning the node
                           group. Provisioning input only: the scheduler matches
-                          against spec.devices, not this block.
+                          against spec.devices, not this block. Omit for a
+                          group with no GPU, which is composed with role CPU: a
+                          standard node image and the modelplane.ai/cpu label
+                          and taint.
                         required: [type, count]
                         properties:
                           type:
@@ -214,7 +225,7 @@ spec:
                             maximum: 16
                   vultr:
                     type: object
-                    required: [plan, accelerator]
+                    required: [plan]
                     properties:
                       plan:
                         type: string
@@ -229,7 +240,10 @@ spec:
                         description: >-
                           GPU accelerator to attach when provisioning the node
                           pool. Provisioning input only: the scheduler matches
-                          against spec.devices, not this block.
+                          against spec.devices, not this block. Omit for a
+                          pool with no GPU, which is composed with role CPU: a
+                          standard node image and the modelplane.ai/cpu label
+                          and taint.
                         required: [type, count]
                         properties:
                           type:
@@ -246,7 +260,7 @@ spec:
                             maximum: 16
                   civo:
                     type: object
-                    required: [size, accelerator]
+                    required: [size]
                     properties:
                       size:
                         type: string
@@ -261,7 +275,10 @@ spec:
                         description: >-
                           GPU accelerator to attach when provisioning the node
                           pool. Provisioning input only: the scheduler matches
-                          against spec.devices, not this block.
+                          against spec.devices, not this block. Omit for a
+                          pool with no GPU, which is composed with role CPU: a
+                          standard node image and the modelplane.ai/cpu label
+                          and taint.
                         required: [type, count]
                         properties:
                           type:

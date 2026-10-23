@@ -93,7 +93,7 @@ Some examples of the available metrics:
 
 Latency appears twice on purpose. The `frontend_` series are what your caller experienced,
 measured at the gateway. The engine's own series are what the engine spent. For
-example, if the frontend metric is slow and the engine isn't, you can 
+example, if the frontend metric is slow and the engine isn't, you can
 troubleshoot routing, queueing, or networking issues instead of the model.
 
 Saturation gauges are per replica, so how you combine them decides what you see. Average
@@ -223,7 +223,7 @@ Anything else the exporter takes goes under `config`, passed through as you wrot
 Modelplane doesn't define a schema for an exporter's settings so anything under
 the `config` is passed to the collector exactly as written. TLS, retries,
 queueing, compression and headers all work and any new settings in the collector
-are respected and the sink keeps working. 
+are respected and the sink keeps working.
 
 To use an authentication scheme Modelplane doesn't compose, define the extension
 yourself under `spec.extensions`. Then reference it by its key from the sink's
@@ -459,12 +459,16 @@ spec:
 
 ## GPUs
 
-The GPU series come from a [DCGM
-exporter](https://github.com/NVIDIA/dcgm-exporter), not from the engine: a GPU
+The GPU series come from a vendor's GPU exporter, not from the engine: a GPU
 belongs to a node, and its series have a `node` label rather than a
-deployment. The collector discovers the exporter by its pod - an `app` or
-`app.kubernetes.io/name` label containing `dcgm`, with a container port named
-`metrics` - and scrapes it directly, not through Prometheus.
+deployment. On NVIDIA pools that's a [DCGM
+exporter](https://github.com/NVIDIA/dcgm-exporter); on AMD pools it's the AMD
+GPU operator's
+[device-metrics-exporter](https://github.com/ROCm/device-metrics-exporter),
+which the serving stack installs with the AMD stack. The collector discovers
+either by its pod - an `app` or `app.kubernetes.io/name` label containing
+`dcgm` or `metrics-exporter`, with a container port named `metrics` or
+`exporter-port` - and scrapes it directly, not through Prometheus.
 
 Where the exporter comes from depends on the cluster:
 
@@ -503,6 +507,20 @@ kubectl port-forward -n <exporter-namespace> ds/<exporter> 9400:9400 &
 curl -s localhost:9400/metrics | grep -c -E \
   'DCGM_FI_DEV_FB_(USED|FREE)|DCGM_FI_PROF_(GR_ENGINE_ACTIVE|PIPE_TENSOR_ACTIVE|DRAM_ACTIVE)|DCGM_FI_DEV_(GPU_TEMP|POWER_USAGE|TOTAL_ENERGY_CONSUMPTION)'
 ```
+
+On an AMD pool the same `modelplane_*` names come from the
+device-metrics-exporter's fields instead. A dashboard built on them needs no
+change when a deployment moves between vendors' pools.
+
+| AMD field | Becomes | Unit |
+| --- | --- | --- |
+| `gpu_used_vram` | `modelplane_gpu_memory_used_bytes` | MiB, converted to bytes |
+| `gpu_free_vram` | `modelplane_gpu_memory_free_bytes` | MiB, converted to bytes |
+| `gpu_gfx_activity` | `modelplane_gpu_compute_active_ratio` | percent, converted to a ratio |
+| `gpu_umc_activity` | `modelplane_gpu_memory_bandwidth_ratio` | percent, converted to a ratio |
+| `gpu_junction_temperature` | `modelplane_gpu_temperature_celsius` | Celsius |
+| `gpu_power_usage` | `modelplane_gpu_power_watts` | watts |
+| `gpu_energy_consumed` | `modelplane_energy_joules_total` | microjoules, converted to joules |
 
 If fields are missing, extend the exporter's metrics ConfigMap - on a GPU
 Operator install that's the `dcgmExporter.config` chart value. The

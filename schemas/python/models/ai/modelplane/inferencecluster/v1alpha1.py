@@ -336,6 +336,13 @@ class Gateway(BaseModel):
     """
 
 
+class ProviderConfigRef(BaseModel):
+    name: str | None = None
+    """
+    Name of the ProviderConfig targeting the remote cluster. Used by ModelReplica to create resources on the cluster.
+    """
+
+
 class Attributes(BaseModel):
     bool_: bool | None = Field(None, alias='bool')
     int_: int | None = Field(None, alias='int')
@@ -357,7 +364,7 @@ class Device(BaseModel):
     name: constr(max_length=63)
 
 
-class GpuPool(BaseModel):
+class SchedulablePool(BaseModel):
     devices: list[Device] | None = Field(None, max_length=16)
     """
     Devices copied from the pool's InferenceClass. ModelDeployment.nodeSelector matches against these.
@@ -369,13 +376,6 @@ class GpuPool(BaseModel):
     nodes: int | None = None
     """
     Number of nodes in this pool. Derived from maxNodeCount (if autoscaling) or nodeCount.
-    """
-
-
-class ProviderConfigRef(BaseModel):
-    name: str | None = None
-    """
-    Name of the ProviderConfig targeting the remote cluster. Used by ModelReplica to create resources on the cluster.
     """
 
 
@@ -392,15 +392,15 @@ class Status(BaseModel):
     """
     This cluster's own gateway: the Envoy gateway the serving stack runs at the cluster's edge, which an InferenceGateway routes to. These fields are how an InferenceGateway reaches it.
     """
-    gpuPools: list[GpuPool] | None = Field(None, max_length=8)
-    """
-    Schedulable GPU node pools on this cluster, derived from the referenced classes and the per-pool node counts. ModelDeployment scheduling matches against these.
-    """
     namespace: str | None = None
     """
     Namespace where the internal XRs (cluster, backend) were created.
     """
     providerConfigRef: ProviderConfigRef | None = None
+    schedulablePools: list[SchedulablePool] | None = Field(None, max_length=8)
+    """
+    Schedulable node pools on this cluster - GPU and CPU alike; every pool whose class declares devices - derived from the referenced classes and the per-pool node counts. ModelDeployment scheduling matches against these.
+    """
 
 
 class InferenceCluster(BaseModel):

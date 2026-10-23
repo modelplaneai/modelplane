@@ -63,6 +63,24 @@ spec:
                 - Vultr
                 - Civo
                 - Existing
+              draDrivers:
+                type: array
+                description: >-
+                  DRA driver names whose device stacks this cluster needs
+                  (gpu.nvidia.com, dra.cpu, ...), collected by the cluster
+                  composition from the claim: DRA devices of the cluster's
+                  referenced InferenceClasses. A component tagged with a
+                  driver installs only when that driver is listed; untagged
+                  components always install. When the field is absent no
+                  filtering happens and every component installs, so a
+                  ServingStack from before the field existed keeps its
+                  stack until the cluster composition stamps the list.
+                maxItems: 16
+                x-kubernetes-list-type: set
+                items:
+                  type: string
+                  minLength: 1
+                  maxLength: 253
               secrets:
                 type: array
                 description: >-
