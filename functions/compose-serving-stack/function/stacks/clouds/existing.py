@@ -146,7 +146,7 @@ COMPONENTS: list[Component] = [
         namespace="nvidia-dra-driver",
         chart="dra-driver-nvidia-gpu",
         repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
-        version="0.4.1",
+        version="0.5.0",
         values={
             "gpuResourcesEnabledOverride": True,
             "resources": {"computeDomains": {"enabled": False}},

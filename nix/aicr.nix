@@ -11,12 +11,12 @@
 #   https://github.com/NVIDIA/aicr/releases/download/v<version>/aicr_checksums.txt
 _final: prev:
 let
-  version = "0.20.0";
+  version = "1.0.0";
 
   hashes = {
-    linux_amd64 = "a80a7ed1ad7474434c929efbea77223b0eb156f901569319698e9bdb9e1126f9";
-    linux_arm64 = "f8353a56ff430714818879c8b4c4de057c0e3cea11beb34f45e4753db8f300f5";
-    darwin_arm64 = "0e1b735f91383f0ba130aedf2b83299d0255587474e80dabf0392e194460a846";
+    linux_amd64 = "965ad7be114e78c18371e1bf032001eecad811d382d252be1a00be781241af9b";
+    linux_arm64 = "f50d64a69549009e6ad14e6479ccf11787bdb1f8f9384296a4d35fc19893d67a";
+    darwin_arm64 = "cb85cce54a82deb88e826c3e735c26e11a0863173b8aa5ff3ba4ebc2dc6af8b2";
   };
 
   platform =

@@ -302,7 +302,7 @@ WITH_NVLINK_DISABLED_CASES = [
                 namespace="gpu-operator",
                 chart="gpu-operator",
                 repository="https://helm.ngc.nvidia.com/nvidia",
-                version="v26.3.3",
+                version="v26.7.1",
                 wait=True,
                 depends_on=["node-feature-discovery", "cert-manager"],
                 values={
@@ -321,7 +321,7 @@ WITH_NVLINK_DISABLED_CASES = [
                         "enabled": True,
                         "maxParallelUpgrades": 5,
                         "rdma": {"enabled": False},
-                        "useOpenKernelModules": True,
+                        "kernelModuleType": "open",
                         "version": "580.173.02",
                         # deployDefaultCR keeps the chart's default NVIDIADriver
                         # driving the pools the transform doesn't name, so
@@ -352,7 +352,7 @@ WITH_NVLINK_DISABLED_CASES = [
                 namespace="nvidia-dra-driver",
                 chart="dra-driver-nvidia-gpu",
                 repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
-                version="0.4.1",
+                version="0.5.0",
                 depends_on=["gpu-operator", "nvlink-disabled-driver-h100-pool"],
                 values={
                     "gpuResourcesEnabledOverride": True,
@@ -410,7 +410,7 @@ WITH_NVLINK_DISABLED_CASES = [
                 namespace="gpu-operator",
                 chart="gpu-operator",
                 repository="https://helm.ngc.nvidia.com/nvidia",
-                version="v26.3.3",
+                version="v26.7.1",
                 wait=True,
                 depends_on=["node-feature-discovery", "cert-manager"],
                 values={
@@ -429,7 +429,7 @@ WITH_NVLINK_DISABLED_CASES = [
                         "enabled": True,
                         "maxParallelUpgrades": 5,
                         "rdma": {"enabled": False},
-                        "useOpenKernelModules": True,
+                        "kernelModuleType": "open",
                         "version": "580.173.02",
                         "nvidiaDriverCRD": {"enabled": True, "deployDefaultCR": True},
                     },
@@ -457,7 +457,7 @@ WITH_NVLINK_DISABLED_CASES = [
                 namespace="nvidia-dra-driver",
                 chart="dra-driver-nvidia-gpu",
                 repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
-                version="0.4.1",
+                version="0.5.0",
                 depends_on=["gpu-operator", "nvlink-disabled-driver-pool-a", "nvlink-disabled-driver-pool-b"],
                 values={
                     "gpuResourcesEnabledOverride": True,

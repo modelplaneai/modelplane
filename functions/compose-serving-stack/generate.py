@@ -36,10 +36,11 @@ and the gke-cos overlay fork aicr's --data mechanism consumes - is
 embedded below and written to a temporary directory per run, so
 regenerating the stacks needs this one file and the pinned aicr on
 PATH. GKE needs the fork because the `gpuStack` profile locks the
-GPU-advertiser choice at every output boundary (0.20.0 also closed the
-`bundle --set` path 0.18.0 let through), and neither upstream value
-advertises through DRA; the fork adds a third value, `dra`, selected
-with --profile gpuStack=dra.
+GPU-advertiser choice at every output boundary (including `bundle
+--set`), and neither upstream value advertises through DRA; the fork
+adds a third value, `dra`, selected with --profile gpuStack=dra. The
+profile-only --data patch aicr 1.0.0 added (aicr#2985) can't carry it -
+see the fork's header.
 
 Usage:
 
@@ -78,7 +79,7 @@ import yaml
 # release and the ALLOW/DROP tables classify that release's catalog.
 # Moves together with `version` in nix/aicr.nix; see CONTRIBUTING.md,
 # "Bumping aicr".
-AICR_PIN = "0.20.0"
+AICR_PIN = "1.0.0"
 
 ROOT = pathlib.Path(__file__).parent
 OUT = ROOT / "function" / "stacks" / "clouds" / "generated" / "aicr"
@@ -115,7 +116,7 @@ REGISTRY_YAML = """\
 # must carry a registry.yaml, merged with the embedded one by component
 # name. Modelplane contributes no components - the catalog exists only so
 # overlays/gke-cos.yaml can replace the embedded file of the same name.
-apiVersion: aicr.run/v1alpha2
+apiVersion: aicr.run/v1beta1
 kind: ComponentRegistry
 components: []
 """
@@ -136,27 +137,31 @@ GKE_COS_OVERLAY = """\
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# MODELPLANE FORK of aicr v0.20.0 recipes/overlays/gke-cos.yaml.
+# MODELPLANE FORK of aicr v1.0.0 recipes/overlays/gke-cos.yaml.
 #
 # aicr's --data mechanism replaces embedded catalog files wholesale by
-# name, and that is the one supported way to change a configuration
-# profile: the gpuStack profile is locked at every output boundary (a
-# layered overlay can't move its paths, and 0.20.0 rejects `bundle
-# --set` on them too), and neither upstream value advertises GPUs
-# through DRA. Modelplane requires DRA, so this fork adds one profile
-# value, `dra`, and changes nothing else. Union totality requires every
-# value to own the same paths, so the two upstream values gain the DRA
-# selector paths at their stock settings (explicit false).
+# name, and that is the one supported way to add a configuration
+# profile value that owns new paths: the gpuStack profile is locked at
+# every output boundary (a layered overlay can't move its paths, and
+# `bundle --set` on them is rejected), and neither upstream value
+# advertises GPUs through DRA. v1.0.0's profile-only --data patch
+# (aicr#2985) can't replace this fork: it is additive-only and a
+# patched-in value must own exactly the embedded path set, while dra
+# must own the DRA selector paths the upstream values don't - failing
+# union totality by design, per the patch's own contract. So the fork
+# adds one profile value, `dra`, gives the two upstream values the DRA
+# selector paths at their stock settings (explicit false, union
+# totality), raises the Kubernetes floor to DRA's, and changes nothing
+# else.
 #
 # RE-SYNC ON EVERY aicr BUMP: diff this file against the pinned tag's
-# recipes/overlays/gke-cos.yaml and re-apply the dra value. The file is
-# high-churn upstream (on main, driver-installer has already become
-# bundle-installer with an AICR-owned installer component). The fork is
-# deleted the day upstream declares a DRA advertiser value - the asks
-# are tracked in the design's "Remaining work".
+# recipes/overlays/gke-cos.yaml and re-apply the Modelplane changes
+# (marked "Modelplane fork"). The file is high-churn upstream. The fork
+# is deleted the day upstream declares a DRA advertiser value - the ask
+# is NVIDIA/aicr#2517.
 
 kind: RecipeMetadata
-apiVersion: aicr.run/v1alpha3
+apiVersion: aicr.run/v1beta2
 metadata:
   name: gke-cos
 
@@ -166,10 +171,10 @@ spec:
     os: cos
 
   constraints:
-    # Upstream says >= 1.28. Raised here because DRA on GKE needs
-    # Standard >= 1.35 (Google's set-up-dra guide), a profile value may
-    # not restate a constraint name the composed recipe carries, and
-    # this fork is only ever resolved with gpuStack=dra.
+    # Modelplane fork: upstream says >= 1.32. Raised because DRA on GKE
+    # needs Standard >= 1.35 (Google's set-up-dra guide), a profile
+    # value may not restate a constraint name the composed recipe
+    # carries, and this fork is only ever resolved with gpuStack=dra.
     - name: K8s.server.version
       value: ">= 1.35"
 
@@ -180,27 +185,43 @@ spec:
   # disables, so a labeled pool comes up driverless and "GKE-installed
   # driver + another advertiser" is not a reachable state. Any value in
   # which GKE's managed plugin is NOT the advertiser therefore requires
-  # the label and a driver supplied another way.
+  # the label and a driver supplied another way: bundle-installer
+  # carries it in the bundle (the gcp-driver-installer component,
+  # aicr#1716), dra takes Google's standalone nvidia-driver-installer
+  # DaemonSet as an operational prerequisite outside the bundle.
   profile:
     name: gpuStack
     description: >-
       GPU stack shape for GKE GPU node pools - how the driver is installed
-      and which advertiser owns the GPUs. "gke-default" (the default) is
-      the default-provisioned cluster: GKE's bundled driver install plus
-      GKE's managed device plugin as the advertiser. "driver-installer"
-      runs the GPU Operator's device plugin as the sole advertiser on
-      labeled pools, with Google's standalone nvidia-driver-installer
-      DaemonSet supplying the driver. "dra" (Modelplane's value) runs the
-      NVIDIA DRA driver's ResourceSlices as the sole advertiser on the
-      same labeled pool shape, with the driver supplied the same way.
+      and which advertiser owns the GPUs. The GPU Operator itself installs
+      no driver on COS in any value. "gke-default" (the default) is the
+      default-provisioned cluster: GKE's bundled driver install plus GKE's
+      managed device plugin as the advertiser. "bundle-installer" is the
+      opt-out pool shape (gke-no-default-nvidia-gpu-device-plugin=true,
+      pools created with gpu-driver-version=disabled): the GPU Operator's
+      device plugin is the sole advertiser, and the bundle-carried
+      gcp-driver-installer component supplies the driver. "dra"
+      (Modelplane's value) runs the NVIDIA DRA driver's ResourceSlices as
+      the sole advertiser on the same labeled pool shape, with the driver
+      supplied by Google's standalone nvidia-driver-installer DaemonSet.
     default: gke-default
     values:
-      driver-installer:
+      # Bundle-owned driver install (issue #1716): opt-out pools
+      # (gpu-driver-version=disabled + the node label), with the
+      # cos-gpu-installer DaemonSet carried by the gcp-driver-installer
+      # component. The recipe pins the driver version; upgrades roll with
+      # the bundle.
+      bundle-installer:
         componentRefs:
+          - name: gcp-driver-installer
+            overrides:
+              installer: {enabled: true}
           - name: gpu-operator
             overrides:
               devicePlugin:
                 enabled: true
+          # The bundle-carried installer IS a driver pod the NVSentinel
+          # labeler detects, so no preinstalled-driver assumption.
           - name: nvsentinel
             overrides:
               labeler: {assumeDriverInstalled: false}
@@ -214,17 +235,51 @@ spec:
           - name: NodeTopology.gpu-nodes.label
             value: gke-no-default-nvidia-gpu-device-plugin=true
             remediation: >-
-              The driver-installer profile requires the GPU Operator's device
-              plugin to be the sole nvidia.com/gpu advertiser, so every GPU
-              node pool must carry gke-no-default-nvidia-gpu-device-plugin=true
-              at creation PLUS Google's standalone nvidia-driver-installer
-              DaemonSet, with the pools created gpu-driver-version=disabled.
-              See docs/integrator/gke-gpu-setup.md upstream. To use a
+              The bundle-installer profile requires the GPU Operator's
+              device plugin to be the sole nvidia.com/gpu advertiser, so
+              every GPU node pool must carry
+              gke-no-default-nvidia-gpu-device-plugin=true at creation
+              (gcloud container node-pools create ...
+              --node-labels=gke-no-default-nvidia-gpu-device-plugin=true)
+              and be created with gpu-driver-version=disabled - the label
+              forfeits GKE's managed driver install, and the bundle's
+              gcp-driver-installer component supplies the driver instead.
+              See docs/integrator/gke-gpu-setup.md. To use a
               default-provisioned GKE cluster instead, regenerate with the
               default (--profile gpuStack=gke-default).
+          - name: K8s.gke-gpu-pools.gpu-driver-installation
+            value: Disabled
+            remediation: >-
+              The bundle-installer profile requires every GPU node pool to
+              never have GKE's own managed driver install running, so it
+              never races the bundle's own gcp-driver-installer component.
+              This reading is satisfied by an explicit
+              gpu-driver-version=disabled at creation, or by leaving the
+              field unset on a GKE version whose documented default for
+              that case is no install. A pool reporting Installed,
+              NotConfigured, or NotInstalled has neither. An existing
+              pool's driver-installation mode cannot be changed in place,
+              so recreate any pool reporting otherwise with the explicit
+              flag, which is the one fix that works regardless of GKE
+              version (gcloud container node-pools create ...
+              --accelerator type=<type>,count=<n>,gpu-driver-version=disabled).
+              Then recapture the snapshot with
+              --gke-gpu-pools pointed at a fresh `gcloud container
+              node-pools list --cluster <cluster> --format=json` dump.
+              See docs/integrator/gke-gpu-setup.md.
+
+      # GKE-installed driver AND GKE's managed device plugin - a
+      # default-provisioned GKE cluster (no node label required). The
+      # external advertiser is counted as THE nvidia.com/gpu advertiser in
+      # the #1327 exactly-one invariant; the resolved policy value stays
+      # device-plugin-extended-resource (the policy names the request
+      # mechanism, not provider ownership).
       gke-default:
         advertiser: external
         componentRefs:
+          - name: gcp-driver-installer
+            overrides:
+              installer: {enabled: false}
           - name: gpu-operator
             overrides:
               devicePlugin:
@@ -246,7 +301,7 @@ spec:
               device plugin to be the sole nvidia.com/gpu advertiser, so NO
               GPU node may carry the opt-out label
               gke-no-default-nvidia-gpu-device-plugin. Remove the label, or
-              regenerate with --profile gpuStack=driver-installer.
+              regenerate with --profile gpuStack=bundle-installer.
 
       # Modelplane's value: the NVIDIA DRA driver's ResourceSlices are
       # the sole GPU advertiser. The pool shape matches Google's own DRA
@@ -258,12 +313,20 @@ spec:
       # installed separately (Google's standalone nvidia-driver-installer
       # DaemonSet) at /home/kubernetes/bin/nvidia. Google's guide also
       # sets gpuResourcesEnabledOverride and disables computeDomains -
-      # the same values this profile owns. assumeDriverInstalled is true
-      # because the bundler requires it whenever no bundle component
-      # supplies a driver pod - it cannot see the standalone DaemonSet,
-      # which is an operational prerequisite outside the bundle.
+      # the same values this profile owns. The bundle-carried
+      # gcp-driver-installer stays off: its DaemonSet shares the
+      # standalone one's name and Helm will not adopt the pre-existing
+      # object, so flipping existing clusters to the bundle-carried
+      # driver is a separate, operational change, not a bump side
+      # effect. assumeDriverInstalled is true because the bundler
+      # requires it whenever no bundle component supplies a driver pod -
+      # it cannot see the standalone DaemonSet, which is an operational
+      # prerequisite outside the bundle.
       dra:
         componentRefs:
+          - name: gcp-driver-installer
+            overrides:
+              installer: {enabled: false}
           - name: gpu-operator
             overrides:
               devicePlugin:
@@ -299,9 +362,21 @@ spec:
 
   # Upstream componentRefs, unchanged.
   componentRefs:
+    # Values-gated driver installer (issue #1716): present unconditionally so
+    # the gpuStack profile may own its installer.enabled gate (a profile can
+    # change how components are configured, never the component set). Renders
+    # nothing except under bundle-installer, where it supplies the driver.
+    - name: gcp-driver-installer
+      type: Helm
+      valuesFile: components/gcp-driver-installer/values.yaml
+
     - name: gpu-operator
       type: Helm
       valuesFile: components/gpu-operator/values-gke-cos.yaml
+      # Driver must land before GPU Operator operands start. A no-op
+      # dependency under gke-default (empty release).
+      dependencyRefs:
+        - gcp-driver-installer
 
     - name: kube-prometheus-stack
       type: Helm
@@ -512,12 +587,41 @@ ALLOW = {
 # reason; an unclassified component fails the run. The allowlist fails
 # closed.
 DROP = {
+    "gcp-driver-installer": (
+        "values-gated to render nothing under gpuStack=dra; Modelplane's GKE driver "
+        "is Google's standalone nvidia-driver-installer DaemonSet, an operational "
+        "prerequisite outside the stack (see the fork's dra value)"
+    ),
     "agentgateway": "Modelplane routes through an InferencePool behind Envoy AI Gateway",
     "agentgateway-crds": "Modelplane routes through an InferencePool behind Envoy AI Gateway",
+    "dra-node-labeler": (
+        "serves the opt-in DRA driver-upgrade eviction label "
+        "(--dra-eviction-node-label), which Modelplane doesn't opt into; the "
+        "bundler drops it from the bundle without the flag"
+    ),
     "aws-efa": "the EKSCluster installs an EFA DRA driver when a pool asks for the fabric",
     "aws-ebs-csi-driver": "Modelplane's only storage need is RWX, which the EKSCluster serves from EFS",
     "network-operator": "the AKSCluster composition installs it when a pool asks for InfiniBand",
     "kai-scheduler": "contract surface, not hardware surface; Modelplane's pin beside its Queues, in stacks/dynamo.py",
+}
+
+# Component key -> the namespace the release already occupies on
+# existing clusters. Helm release identity is (name, namespace), and
+# provider-helm upgrades in place only while both hold still: on a
+# catalog-side namespace move it finds nothing at the new coordinates
+# and runs a fresh install, which then fails on the
+# meta.helm.sh/release-namespace ownership annotations the old release
+# left on cluster-scoped objects - CRDs, ClusterRoles, webhook
+# configurations (NVIDIA/aicr#2899) - wedging every existing cluster
+# while CI, which only sees fresh installs, stays green. So a release's
+# namespace stays where existing clusters have it; moving one is a
+# documented migration, never a bump side effect.
+# check_namespace_holds() fails the run on any unpinned move.
+NAMESPACE_PINS = {
+    # nodewright 0.19.0 renamed its chart namespace from skyhook (the
+    # project's former name) to nodewright; Modelplane's releases live
+    # in skyhook.
+    "nodewright-operator": "skyhook",
 }
 
 # Long recipe-carried config blobs keep their content, not their
@@ -953,6 +1057,10 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
             else:
                 sys.exit(f"dependency {name} -> {dep!r} names an unclassified component - fail closed")
 
+        namespace = NAMESPACE_PINS.get(key, ref["namespace"])
+        if namespace != ref["namespace"]:
+            findings.append(f"pinned namespace: {name}: {ref['namespace']} -> {namespace} (see NAMESPACE_PINS)")
+
         # The bundler ships pre-manifests at sync-wave N-1 - resources
         # the chart's own pods depend on, like the critical-pods
         # ResourceQuota it synthesizes for gkeCriticalPriority
@@ -970,7 +1078,7 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
                 {
                     "apiVersion": "v1",
                     "kind": "Namespace",
-                    "metadata": {"name": ref["namespace"]},
+                    "metadata": {"name": namespace},
                 },
             ]
             for f in pre:
@@ -992,10 +1100,11 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
         entry = {
             "type": "Chart",
             "key": key,
-            # provider-helm upgrades in place only while a release name
-            # holds still; mp- reserves a namespace (see the design).
+            # provider-helm upgrades in place only while the release
+            # name and namespace hold still; mp- reserves a namespace
+            # (see the design and NAMESPACE_PINS).
             "release": f"mp-{ref['chart']}",
-            "namespace": ref["namespace"],
+            "namespace": namespace,
             "chart": ref["chart"],
             "repository": ref["source"],
             "version": ref["version"],
@@ -1110,6 +1219,38 @@ def floors(
         f"{', '.join(spec['accelerators'])}); XRD default {spec['k8s_default']}"
     )
     return floor, findings
+
+
+def check_namespace_holds(cloud: str, components: list[Values]) -> None:
+    """Fail the run when a component's namespace moves from the last generated file.
+
+    A moved namespace is a wedged upgrade, not a reinstall: provider-helm
+    finds no release at the new coordinates, its fresh install trips over
+    the old release's ownership annotations on cluster-scoped objects,
+    and the ServingStack stays not Ready on every existing cluster while
+    CI - fresh clusters only - passes. Pin the old namespace in
+    NAMESPACE_PINS, or land the move as a documented migration that
+    deletes this check's trip wire deliberately.
+    """
+    path = OUT / f"{cloud}.py"
+    if not path.exists():
+        return
+    previous = {}
+    for node in ast.walk(ast.parse(path.read_text())):
+        if isinstance(node, ast.Call):
+            kw = {k.arg: k.value.value for k in node.keywords if isinstance(k.value, ast.Constant)}
+            if "key" in kw and "namespace" in kw:
+                previous[kw["key"]] = kw["namespace"]
+    for entry in components:
+        was = previous.get(entry.get("key"))
+        if was and was != entry.get("namespace"):
+            sys.exit(
+                f"{cloud}: {entry['key']} moved namespace {was!r} -> "
+                f"{entry['namespace']!r}, which Helm can't do: existing "
+                "clusters would wedge on a fresh-install ownership error "
+                "(NVIDIA/aicr#2899). Pin the old namespace in NAMESPACE_PINS "
+                "or land the move as a documented migration - fail closed"
+            )
 
 
 def pyfmt(value: object) -> str:
@@ -1260,6 +1401,7 @@ def regenerate(cloud: str, workdir: pathlib.Path, catalog: pathlib.Path) -> str:
 
     recipe = yaml.safe_load(recipe_file.read_text())
     components, findings = transform(cloud, recipe, bundle_dir)
+    check_namespace_holds(cloud, components)
     floor, floor_findings = floors(cloud, spec, recipe, workdir, catalog)
     for finding in findings + floor_findings:
         print(f"[{cloud}] {finding}", file=sys.stderr)

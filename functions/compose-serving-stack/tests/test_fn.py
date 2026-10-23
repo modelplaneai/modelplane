@@ -423,7 +423,7 @@ def _nvidia_dra_driver_gpu(*, ready: fnv1.Ready) -> fnv1.Resource:
                         "chart": {
                             "name": "dra-driver-nvidia-gpu",
                             "repository": "oci://registry.k8s.io/dra-driver-nvidia/charts",
-                            "version": "0.4.1",
+                            "version": "0.5.0",
                         },
                         "namespace": "nvidia-dra-driver",
                         "values": {
@@ -1119,7 +1119,7 @@ def _nodewright_operator() -> fnv1.Resource:
                         "chart": {
                             "name": "nodewright",
                             "repository": "oci://ghcr.io/nvidia/nodewright/charts",
-                            "version": "v0.17.1",
+                            "version": "v0.19.0",
                         },
                         "namespace": "skyhook",
                         "values": {
@@ -3784,7 +3784,7 @@ COMPOSE_CASES = [
                                         "chart": {
                                             "name": "gpu-operator",
                                             "repository": "https://helm.ngc.nvidia.com/nvidia",
-                                            "version": "v26.3.3",
+                                            "version": "v26.7.1",
                                         },
                                         "namespace": "gpu-operator",
                                         "wait": True,
@@ -3815,7 +3815,7 @@ COMPOSE_CASES = [
                                                 "enabled": True,
                                                 "maxParallelUpgrades": 5,
                                                 "rdma": {"enabled": False},
-                                                "useOpenKernelModules": True,
+                                                "kernelModuleType": "open",
                                                 "version": "580.173.02",
                                                 "nvidiaDriverCRD": {"enabled": True, "deployDefaultCR": True},
                                             },
@@ -4200,7 +4200,7 @@ COMPOSE_CASES = [
                                         "chart": {
                                             "name": "gpu-operator",
                                             "repository": "https://helm.ngc.nvidia.com/nvidia",
-                                            "version": "v26.3.3",
+                                            "version": "v26.7.1",
                                         },
                                         "namespace": "gpu-operator",
                                         "wait": True,
@@ -4231,7 +4231,7 @@ COMPOSE_CASES = [
                                                 "enabled": True,
                                                 "maxParallelUpgrades": 5,
                                                 "rdma": {"enabled": False},
-                                                "useOpenKernelModules": True,
+                                                "kernelModuleType": "open",
                                                 "version": "580.173.02",
                                             },
                                             "fullnameOverride": "gpu-operator",
@@ -4280,7 +4280,7 @@ COMPOSE_CASES = [
                                         "chart": {
                                             "name": "dra-driver-nvidia-gpu",
                                             "repository": "oci://registry.k8s.io/dra-driver-nvidia/charts",
-                                            "version": "0.4.1",
+                                            "version": "0.5.0",
                                         },
                                         "namespace": "nvidia-dra-driver",
                                         "values": {

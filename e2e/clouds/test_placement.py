@@ -64,6 +64,7 @@ GPU_ONLY = re.compile(
             "^nvidia-operator-validator",
             "^nvidia-cuda-validator",
             "^nvidia-toolkit-hardening",
+            "^nvidia-container-toolkit",
             "^nvidia-driver-daemonset",
         )
     )

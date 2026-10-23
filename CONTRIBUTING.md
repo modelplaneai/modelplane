@@ -421,22 +421,30 @@ checks to trip. In order:
    two must move in lockstep; the generator refuses a mismatched aicr.
 2. Re-sync the embedded gke-cos fork (`GKE_COS_OVERLAY` in generate.py):
    diff it against the new tag's `recipes/overlays/gke-cos.yaml` and
-   re-apply the one change (the `dra` profile value, the 1.35 floor, and
-   the DRA selector paths on the stock values for union totality). The
-   file is high-churn upstream. The fork is deleted the day
-   NVIDIA/aicr#2515 or #2517 lands.
+   re-apply the changes marked "Modelplane fork" (the `dra` profile
+   value, the 1.35 floor, and the DRA selector paths on the stock values
+   for union totality). The file is high-churn upstream. The profile-only
+   `--data` patch aicr 1.0.0 added (NVIDIA/aicr#2985) cannot replace the
+   fork: a patched-in value must own exactly the embedded path set, and
+   `dra` owns the DRA selector paths the upstream values don't. The fork
+   is deleted the day NVIDIA/aicr#2517 lands.
 3. Expect `ALLOW`/`DROP` to fail closed on any component the new catalog
    adds; classify it with a reason.
-4. Expect the managed-path assertions to fail closed if a values path
+4. Expect `check_namespace_holds` to fail closed if the catalog moved a
+   component's chart namespace: Helm can't move a release across
+   namespaces, so existing clusters would wedge on a fresh-install
+   ownership error. Pin the old namespace in `NAMESPACE_PINS`, or land
+   the move as a documented migration.
+5. Expect the managed-path assertions to fail closed if a values path
    moved or a `--set` stopped landing; re-derive the path from the new
    chart before loosening anything. `MODELPLANE_VALUES` fails closed too
    if a new recipe starts carrying one of its paths - decide whose value
    wins and move the path to the right table.
-5. Both embedded catalog documents carry an apiVersion that can move in
+6. Both embedded catalog documents carry an apiVersion that can move in
    any release.
-6. The Kubernetes floor union re-checks against `k8s_default` in
+7. The Kubernetes floor union re-checks against `k8s_default` in
    `CLOUDS`, which must track the cloud cluster XRD defaults.
-7. `nix run .#stacks`, run twice to confirm no diff, and review the
+8. `nix run .#stacks`, run twice to confirm no diff, and review the
    generated diff as the release's stack change. The `stacks-current`
    flake check regenerates in the sandbox and fails CI on a stale or
    hand-edited generated file.

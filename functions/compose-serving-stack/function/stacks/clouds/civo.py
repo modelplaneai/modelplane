@@ -278,7 +278,7 @@ COMPONENTS: list[Component] = [
         namespace="gpu-operator",
         chart="gpu-operator",
         repository="https://helm.ngc.nvidia.com/nvidia",
-        version="v26.3.3",
+        version="v26.7.1",
         wait=True,
         # No kube-prometheus-stack edge, unlike the generated clouds': the
         # DCGM exporter's ServiceMonitor, the one piece that would need
@@ -318,9 +318,9 @@ COMPONENTS: list[Component] = [
             # scopes that to the pool when the ServingStack asks for it.
             "driver": {
                 "enabled": True,
+                "kernelModuleType": "open",
                 "maxParallelUpgrades": 5,
                 "rdma": {"enabled": False},
-                "useOpenKernelModules": True,
                 "version": "580.173.02",
             },
             "fullnameOverride": "gpu-operator",
@@ -361,7 +361,7 @@ COMPONENTS: list[Component] = [
         namespace="nvidia-dra-driver",
         chart="dra-driver-nvidia-gpu",
         repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
-        version="0.4.1",
+        version="0.5.0",
         depends_on=["gpu-operator"],
         values={
             "gpuResourcesEnabledOverride": True,
