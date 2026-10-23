@@ -551,6 +551,7 @@ pipeline-parallel
 Qwen2.5-14B
 
 agent
+agentic
 requirement
 PrefillDecode
 

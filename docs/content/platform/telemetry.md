@@ -79,8 +79,8 @@ Some examples of the available metrics:
 
 | Metric | Means |
 | --- | --- |
-| `modelplane_frontend_ttft_seconds` | Time to the first token, measured at the gateway |
-| `modelplane_frontend_tpot_seconds` | Time per output token, measured at the gateway |
+| `modelplane_frontend_ttft_seconds` | Time to the first token, measured at the gateway. Streaming requests only. |
+| `modelplane_frontend_tpot_seconds` | Time per output token, measured at the gateway. Streaming requests only. |
 | `modelplane_frontend_request_duration_seconds` | What the caller waited, end to end |
 | `modelplane_frontend_requests_active` | Requests open at the gateway, per `ModelService` |
 | `modelplane_request_queue_seconds` | How long a request waited before the engine started |
@@ -95,6 +95,13 @@ Latency appears twice on purpose. The `frontend_` series are what your caller ex
 measured at the gateway. The engine's own series are what the engine spent. For
 example, if the frontend metric is slow and the engine isn't, you can 
 troubleshoot routing, queueing, or networking issues instead of the model.
+
+{{< hint "note" >}}
+The gateway records time to first token (TTFT) and time per output token (TPOT)
+only for streaming responses. A deployment that doesn't serve streaming requests
+has no series for either, so use `modelplane_frontend_request_duration_seconds`
+for it.
+{{</ hint >}}
 
 Saturation gauges are per replica, so how you combine them decides what you see. Average
 across a deployment to plan capacity, and take the maximum to alert: three replicas at 0.3
@@ -263,7 +270,7 @@ credential is held on each of them.
 
 A collector transforms each measurement as it passes it on. It doesn't store past
 measurements, so it can't compute rates or quantiles. Your backend does that. A
-fleet-wide p99:
+fleet-wide p99 of time to first token, which requires streaming traffic:
 
 ```promql
 histogram_quantile(0.99, sum by (le) (
@@ -273,6 +280,18 @@ histogram_quantile(0.99, sum by (le) (
 Modelplane has no dashboards of its own. What it exports is counters and histogram buckets, and
 your backend derives the rates and quantiles at query time. To precompute them instead,
 export to Prometheus and write recording rules there.
+
+The gateway's histograms have fixed upper buckets (AI Gateway v1.1.0):
+
+- Request duration: 81.92 seconds
+- Time to first token: 60 seconds
+- Time per output token: 2.5 seconds
+
+A quantile above the top bucket reads as that bound, no matter how long the request
+took, so a p99 of `modelplane_frontend_request_duration_seconds` on long agentic
+requests reads 81.92 seconds. For long requests, query the engine's
+`modelplane_request_duration_seconds` instead. vLLM's buckets reach 7680
+seconds.
 
 ## Engines
 
