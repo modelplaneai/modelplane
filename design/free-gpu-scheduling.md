@@ -16,11 +16,11 @@ publishes the most nodes each pool can have. Every pod that claims a GPU charges
 a whole node against that, however many of the node's GPUs it claims.
 
 This leaves GPUs idle wherever a pod claims less than a whole node. Qwen3-8B
-fits on one NVIDIA L4. On a pool of g6.12xlarge nodes, which have four L4s each,
-every Qwen3-8B replica charges a whole node and leaves three GPUs idle. A
-replica that serves a large model from one 8-GPU node, with prefill on four GPUs
-and decode on the other four, charges two nodes, so a pool of one node can't
-host it.
+fits on one NVIDIA L4. A pool of two g6.12xlarge nodes, which have four L4s
+each, has room for eight Qwen3-8B replicas, but the scheduler places only two.
+The cluster's scheduler might even put both on one node. A replica that serves
+a large model from one 8-GPU node, with prefill on four GPUs and decode on the
+other four, charges two nodes, so a pool of one node can't host it.
 
 The accounting is deliberately coarse. It leaves contention for devices to DRA
 on the workload cluster. Finer accounting needs to know how a pool's free GPUs
@@ -91,10 +91,14 @@ false, the condition would give the agent's reason, with the cluster scheduler's
 message from when the reason last changed. A Pending replica's status would then
 change only when its reason does.
 
-The scheduler would fit a replica's pods against a pool's histogram one at a
-time, putting each on a node with enough free devices. The pods of one copy of a
-gang would each go to a different node, while separate engines and separate
-copies could share one. Before it placed a new replica, the scheduler would:
+The fleet scheduler would still choose only a cluster and a pool. The histogram
+shows which of a pool's nodes could fit a pod, but the cluster's scheduler
+chooses which one it binds to. To check that a replica plausibly fits, the fleet
+scheduler would fit its pods against the histogram one at a time, guessing that
+each binds to the node with the most of its devices free. The pods of one copy
+of a gang would each go to a different node, while separate engines and
+separate copies could share one. Before it placed a new replica, the scheduler
+would:
 
 1. Start from the published histogram. The agent would leave out cordoned and
    unready nodes, and nodes with taints Modelplane's GPU pods don't tolerate.
@@ -130,14 +134,13 @@ observed against a frozen pool, so the scheduler would keep charging them, and
 GPUs that replicas free would stay taken. A pool could look emptier than it is
 only after a change whole-node accounting misses too, such as a node failing.
 
-The fleet scheduler would predict, and DRA on the cluster would decide, so the
-scheduler could still mispredict. When the pods it places on a pool all claim
-identical devices, outside gangs that span nodes, where each one lands doesn't
-change how many fit. When they
-claim different devices, the cluster's scheduler can place them differently
-than the fleet scheduler predicted. Deployments that place replicas on a pool at
-the same moment, or an autoscaled pool that fails to grow, can overcommit it
-too, as they can today. A mispredicted replica's pods would stay Pending until
+Because it guesses which node each pod binds to, the fleet scheduler could
+mispredict. When the pods it places on a pool all claim identical devices,
+outside gangs that span nodes, which node each binds to doesn't change how many
+fit. When they claim different devices, the cluster's scheduler can place them
+differently than the fleet scheduler predicted. Deployments that place replicas
+on a pool at the same moment, or an autoscaled pool that fails to grow, can
+overcommit it too, as they can today. A mispredicted replica's pods would stay Pending until
 room frees up, which on a full pool that can't grow may be never. Its
 ModelDeployment would report it not ready, and its `PodsScheduled` condition
 would give the cluster scheduler's reason.
