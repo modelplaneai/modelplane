@@ -538,14 +538,15 @@ class _Pool:
 
         The cluster's scheduler decides which node a pod binds to, and the
         scheduler can't know which. It assumes the node with the most of the
-        claimed devices free.
+        claimed devices free. It places the smallest pods first, for the reason
+        _place_engines gives.
         """
         # The nodes this copy's pods are on, by what's left free on them. They
         # stay out of the pool until the copy is placed, so no two of its pods
         # share one.
         used: list[_Free] = []
         fit = True
-        for claim in pods:
+        for claim in sorted(pods, key=lambda c: sum(c.values())):
             if not claim:
                 continue
             fits = [f for f in self.nodes if self.whole_node or all(dict(f).get(c, 0) >= n for c, n in claim.items())]
@@ -677,7 +678,12 @@ def _build_ledger(
         # ones are freeing their devices, and scaled-down ones are going away.
         if ours and (r.spec.clusterName, _replica_index(r)) not in retained_ids:
             continue
-        for engine in r.spec.engines:
+        # Smallest pod first, as _place_engines places them.
+        engines = sorted(
+            r.spec.engines,
+            key=lambda e: max((sum(_observed_claim(m).values()) for m in e.members or []), default=0),
+        )
+        for engine in engines:
             # The pods of one copy of the engine, by the pool they're pinned to.
             by_pool: dict[str, list[_Claim]] = {}
             for member in engine.members or []:
@@ -853,29 +859,38 @@ def _place_engines(
     with the replica's pods placed, when every member fits, or None when any
     member has no eligible pool - the replica can't be co-scheduled here.
 
-    Engines are placed in deployment order, each greedily taking the first
-    eligible pool(s). Like device matching within a pool, this is greedy without
-    backtracking, so it is not complete: when an earlier engine's selector
-    overlaps a pool a later engine also needs and capacity is tight, greedy can
-    consume that pool early and fail to place the later engine even though a
-    different assignment would have fit them both. It stays greedy because the
-    failure is safe - a false reject surfaces as InsufficientCapacity, never an
-    overcommit - and the common shapes don't hit it: a gang's members repeat one
-    nodeSelector (one pool), and disaggregated phases target disjoint hardware
-    (disjoint pools). Overlapping selectors across engines of one replica are the
-    case that can false-reject.
+    Engines are placed smallest pod first, each greedily taking the first
+    eligible pool(s). Small pods then take the emptiest nodes, approximating the
+    worst order the cluster's scheduler could bind them in. A replica of
+    mixed-size pods placed on a better guess could get stuck partly scheduled,
+    holding GPUs it can't serve with.
+
+    TODO(negz): Place largest pod first once we can recover a replica from a
+    bad placement.
+
+    Like device matching within a pool, this is greedy without backtracking, so
+    it is not complete: when an earlier engine's selector overlaps a pool a later
+    engine also needs and capacity is tight, greedy can consume that pool early
+    and fail to place the later engine even though a different assignment would
+    have fit them both. A search wouldn't help much, because the cluster's
+    scheduler doesn't search either: it binds one pod at a time.
     """
     cluster_name = _name(cluster.metadata)
     # Discarded wholesale when any member fails to place, so partial placement
     # never leaks into the real ledger.
     trial = {(pool.name or ""): ledger.pools[(cluster_name, pool.name or "")].copy() for pool in _gpu_pools(cluster)}
-    placements: list[EnginePlacement] = []
-    for engine in engines:
+    placed: dict[str, EnginePlacement] = {}
+    for engine in sorted(engines, key=_largest_pod):
         members = _place_engine(cluster, engine, trial)
         if members is None:
             return None
-        placements.append(EnginePlacement(name=engine.name, members=members))
-    return placements, trial
+        placed[engine.name] = EnginePlacement(name=engine.name, members=members)
+    return [placed[e.name] for e in engines], trial
+
+
+def _largest_pod(engine: _CompiledEngine) -> int:
+    """How many devices the largest of an engine's pods requests, on any pool."""
+    return max((sum(r.count for r in m.requests) for m in engine.members), default=0)
 
 
 def _place_engine(

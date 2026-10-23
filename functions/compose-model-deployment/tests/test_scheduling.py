@@ -5960,6 +5960,76 @@ SCHEDULE_CASES = [
         ],
     ),
     Case(
+        name="SmallestEngineFirst",
+        reason="A replica's engines are placed smallest pod first, so a one-GPU decode takes the node with four GPUs free and the four-GPU prefill declared before it doesn't fit.",
+        deployment=mdv1alpha1.ModelDeployment(
+            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+            spec=mdv1alpha1.SpecModel2(
+                replicas=1,
+                template=mdv1alpha1.TemplateModel1(
+                    spec=mdv1alpha1.SpecModel1(
+                        engines=[
+                            mdv1alpha1.Engine(
+                                name="prefill",
+                                copies=1,
+                                members=[
+                                    _member(
+                                        role="Standalone",
+                                        worker_nodes=None,
+                                        devices=[
+                                            mdv1alpha1.Device(
+                                                name="gpu", count=4, selectors=[mdv1alpha1.Selector(cel=_MEM_141)]
+                                            )
+                                        ],
+                                    )
+                                ],
+                            ),
+                            mdv1alpha1.Engine(
+                                name="decode",
+                                copies=1,
+                                members=[
+                                    _member(
+                                        role="Standalone",
+                                        worker_nodes=None,
+                                        devices=[
+                                            mdv1alpha1.Device(
+                                                name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_141)]
+                                            )
+                                        ],
+                                    )
+                                ],
+                            ),
+                        ],
+                    ),
+                ),
+            ),
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=2,
+                        observedNodes=2,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 4}, nodes=1),
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 1}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=8, memory="141Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[],
+    ),
+    Case(
         name="ObservedPoolUnscheduledReplica",
         reason="Another deployment's replica whose pods haven't scheduled is charged against an observed pool, because its histogram can't count them yet.",
         deployment=_deployment(
