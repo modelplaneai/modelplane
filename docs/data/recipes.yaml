@@ -8,9 +8,6 @@ vendors:
   - name: Qwen
     org: qwen
     icon: brand-qwen
-  - name: Moonshot AI
-    org: moonshotai
-    icon: brand-moonshotai
   - name: Meta
     org: meta-llama
     icon: brand-meta
