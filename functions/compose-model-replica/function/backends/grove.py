@@ -61,6 +61,8 @@ class GroveBackend:
         provider_config: str,
         serving_label: str,
         stack: str,
+        *,
+        observed: Mapping[str, fnv1.Resource],
     ) -> dict[str, k8sobjv1alpha1.Object]:
         leader = base.engine_member(engine, base.ROLE_LEADER)
         worker = base.engine_member(engine, base.ROLE_WORKER)
@@ -222,7 +224,7 @@ class GroveBackend:
             "metadata": {"name": f"{name}-0-{base.GROVE_PCSG}", "namespace": base.remote_namespace(replica)},
         }
         composed = {
-            base.workload_key(engine): base.wrap_object(
+            base.workload_key(engine, base.GROVE, observed): base.wrap_object(
                 provider_config, pod_clique_set, cel_query=base.GROVE_AVAILABLE_CEL, watch=True
             ),
             base.scaling_group_key(engine): base.wrap_object(
@@ -252,5 +254,5 @@ class GroveBackend:
         group = base.observed_status(observed, base.scaling_group_key(engine))
         if group is not None:
             return int(group.get("availableReplicas") or 0)
-        pcs = observed.get(base.workload_key(engine))
+        pcs = observed.get(base.workload_key(engine, base.GROVE, observed))
         return 1 if resource.get_condition(pcs, "Ready").status == "True" else 0

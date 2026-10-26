@@ -90,6 +90,7 @@ class ApplyCase:
     composed: dict[str, dict]
     replica: v1alpha1.ModelReplica
     provider_config: str
+    workload_keys: dict[str, str]
     want: dict[str, dict]
 
 
@@ -142,6 +143,17 @@ class ReadyCopiesCase:
     backend: base.Backend
     observed: dict[str, fnv1.Resource]
     want: int
+
+
+@dataclasses.dataclass
+class WorkloadKeyCase:
+    """A test case for base.workload_key, of an engine named main."""
+
+    name: str
+    reason: str
+    backend: str
+    observed: dict[str, fnv1.Resource]
+    want: str
 
 
 @dataclasses.dataclass
@@ -5215,7 +5227,9 @@ def test_build(case: BuildCase) -> None:
     # build composes one engine, so build each of the replica's engines in turn.
     got: dict[str, k8sobjv1alpha1.Object] = {}
     for engine in case.replica.spec.engines:
-        got.update(case.backend.build(case.replica, engine, case.provider_config, case.serving_label, case.stack))
+        got.update(
+            case.backend.build(case.replica, engine, case.provider_config, case.serving_label, case.stack, observed={})
+        )
     assert _sorted(objects=_to_dicts(objects=got)) == _sorted(objects=case.want), case.reason
 
 
@@ -5817,6 +5831,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"prefill": "model-serving-prefill", "decode": "model-serving-decode"},
         want={
             "model-serving-prefill": _deployment(
                 name="r-prefill-d90b0",
@@ -6088,6 +6103,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"prefill": "model-serving-prefill", "decode": "model-serving-decode"},
         want={
             "model-serving-prefill": _deployment(
                 name="r-prefill-d90b0",
@@ -6415,6 +6431,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"alpha": "model-serving-alpha", "beta": "model-serving-beta"},
         want={
             "model-serving-alpha": _deployment(
                 name="r-alpha-b36ce",
@@ -6803,6 +6820,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"prefill": "model-serving-prefill", "decode": "model-serving-decode"},
         want={
             "model-serving-prefill": _deployment(
                 name="r-prefill-d90b0",
@@ -7073,6 +7091,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"main": "model-serving-main"},
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -7227,6 +7246,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"main": "model-serving-main"},
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -7381,6 +7401,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"main": "model-serving-main"},
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -7569,6 +7590,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"main": "model-serving-main"},
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -7765,6 +7787,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"main": "model-serving-main"},
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -7921,6 +7944,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"main": "model-serving-main"},
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -8084,6 +8108,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"main": "model-serving-main"},
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -8308,6 +8333,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"main": "model-serving-main"},
         want={
             "model-serving-main": _leader_worker_set(
                 name="r-main-bb4e3",
@@ -8499,6 +8525,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"main": "model-serving-main"},
         want={
             "model-serving-main": _deployment(
                 name="qwen2.5-7b-abcde-main-e910a",
@@ -8666,6 +8693,7 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
+        workload_keys={"main": "model-serving-main"},
         want={
             "model-serving-main": _deployment(
                 name="a" * 57 + "-88380",
@@ -8751,7 +8779,7 @@ APPLY_CASES = [
 def test_apply(case: ApplyCase) -> None:
     """routing.apply fronts a replica's engines with the routing its serving mode selects."""
     composed = {key: k8sobjv1alpha1.Object.model_validate(copy.deepcopy(obj)) for key, obj in case.composed.items()}  # noqa: MPT401  # routing.apply edits the manifests in place.
-    got = routing.apply(composed, case.replica, case.provider_config)
+    got = routing.apply(composed, case.replica, case.provider_config, case.workload_keys)
     assert _sorted(objects=_to_dicts(objects=got)) == _sorted(objects=case.want), case.reason
 
 
@@ -9375,6 +9403,27 @@ def _observed(*, status: dict | None, ready: bool) -> fnv1.Resource:
     return fnv1.Resource(resource=resource.dict_to_struct(obj))
 
 
+def _observed_workload(*, kind: str, status: dict, ready: bool) -> fnv1.Resource:
+    """An engine's workload Object as observed back, composing a workload of kind with status."""
+    obj = {
+        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+        "kind": "Object",
+        "spec": {"forProvider": {"manifest": {"kind": kind}}},
+        "status": {
+            "atProvider": {"manifest": {"kind": kind, "status": status}},
+            "conditions": [
+                {
+                    "type": "Ready",
+                    "status": "True" if ready else "False",
+                    "reason": "Available" if ready else "Unavailable",
+                    "lastTransitionTime": "2025-01-01T00:00:00Z",
+                }
+            ],
+        },
+    }
+    return fnv1.Resource(resource=resource.dict_to_struct(obj))
+
+
 def _main_engine() -> v1alpha1.Engine:
     """An engine named main, whose workload and scaling group keys the observed resources use."""
     return v1alpha1.Engine(
@@ -9424,6 +9473,36 @@ READY_COPIES_CASES = [
         want=1,
     ),
     ReadyCopiesCase(
+        name="DeploymentMoved",
+        reason="A Deployment that replaced a LeaderWorkerSet counts copies under its own kind's key.",
+        backend=native.NativeBackend(),
+        observed={
+            "model-serving-main": _observed_workload(kind="LeaderWorkerSet", status={"readyReplicas": 2}, ready=True),
+            "workload-native-main": _observed_workload(kind="Deployment", status={"readyReplicas": 1}, ready=False),
+        },
+        want=1,
+    ),
+    ReadyCopiesCase(
+        name="LeaderWorkerSetMoved",
+        reason="A LeaderWorkerSet that replaced a Deployment counts copies under its own kind's key.",
+        backend=llmd.LLMDBackend(),
+        observed={
+            "model-serving-main": _observed_workload(kind="Deployment", status={"readyReplicas": 2}, ready=True),
+            "workload-llmd-main": _observed_workload(kind="LeaderWorkerSet", status={"readyReplicas": 1}, ready=False),
+        },
+        want=1,
+    ),
+    ReadyCopiesCase(
+        name="PodCliqueSetMoved",
+        reason="Until its scaling group is observed, a PodCliqueSet that replaced a Deployment counts under its own key.",
+        backend=grove.GroveBackend(),
+        observed={
+            "model-serving-main": _observed_workload(kind="Deployment", status={"readyReplicas": 2}, ready=False),
+            "workload-grove-main": _observed_workload(kind="PodCliqueSet", status={}, ready=True),
+        },
+        want=1,
+    ),
+    ReadyCopiesCase(
         name="GroveNotObserved",
         reason="A Grove engine with nothing observed has no copies ready.",
         backend=grove.GroveBackend(),
@@ -9437,3 +9516,97 @@ READY_COPIES_CASES = [
 def test_ready_copies(case: ReadyCopiesCase) -> None:
     """A backend counts an engine's ready copies from its observed workload."""
     assert case.backend.ready_copies(_main_engine(), case.observed) == case.want, case.reason
+
+
+# A workload of a new kind takes a new key, so Crossplane deletes the old
+# Object and with it the old workload. Updating the Object in place would leave
+# the old workload running. A workload whose kind doesn't change keeps the key
+# it's observed under, so it isn't recreated.
+WORKLOAD_KEY_CASES = [
+    WorkloadKeyCase(
+        name="NothingObserved",
+        reason="A new engine's workload takes the engine's key, whatever its kind.",
+        backend=base.LLMD,
+        observed={},
+        want="model-serving-main",
+    ),
+    WorkloadKeyCase(
+        name="DeploymentKept",
+        reason="A Deployment already under the engine's key keeps it.",
+        backend=base.NATIVE,
+        observed={"model-serving-main": _observed_workload(kind="Deployment", status={}, ready=True)},
+        want="model-serving-main",
+    ),
+    WorkloadKeyCase(
+        name="LeaderWorkerSetKept",
+        reason="A LeaderWorkerSet already under the engine's key keeps it.",
+        backend=base.LLMD,
+        observed={"model-serving-main": _observed_workload(kind="LeaderWorkerSet", status={}, ready=True)},
+        want="model-serving-main",
+    ),
+    WorkloadKeyCase(
+        name="PodCliqueSetKept",
+        reason="A PodCliqueSet already under the engine's key keeps it.",
+        backend=base.GROVE,
+        observed={"model-serving-main": _observed_workload(kind="PodCliqueSet", status={}, ready=True)},
+        want="model-serving-main",
+    ),
+    WorkloadKeyCase(
+        name="KindUnknown",
+        reason="An Object under the engine's key whose manifest doesn't set a kind keeps the key, so nothing is deleted.",
+        backend=base.LLMD,
+        observed={"model-serving-main": _observed(status=None, ready=False)},
+        want="model-serving-main",
+    ),
+    WorkloadKeyCase(
+        name="DeploymentToGang",
+        reason="A LeaderWorkerSet replacing a Deployment under the engine's key takes a key of its own kind.",
+        backend=base.LLMD,
+        observed={"model-serving-main": _observed_workload(kind="Deployment", status={}, ready=True)},
+        want="workload-llmd-main",
+    ),
+    WorkloadKeyCase(
+        name="DeploymentToGrove",
+        reason="A PodCliqueSet replacing a Deployment under the engine's key takes a key of its own kind.",
+        backend=base.GROVE,
+        observed={"model-serving-main": _observed_workload(kind="Deployment", status={}, ready=True)},
+        want="workload-grove-main",
+    ),
+    WorkloadKeyCase(
+        name="GangToDeployment",
+        reason="A Deployment replacing a LeaderWorkerSet under the engine's key takes a key of its own kind.",
+        backend=base.NATIVE,
+        observed={"model-serving-main": _observed_workload(kind="LeaderWorkerSet", status={}, ready=True)},
+        want="workload-native-main",
+    ),
+    WorkloadKeyCase(
+        name="OldWorkloadStillObserved",
+        reason="While the old workload is still observed, the new one keeps the key of its own kind.",
+        backend=base.LLMD,
+        observed={
+            "model-serving-main": _observed_workload(kind="Deployment", status={}, ready=True),
+            "workload-llmd-main": _observed_workload(kind="LeaderWorkerSet", status={}, ready=True),
+        },
+        want="workload-llmd-main",
+    ),
+    WorkloadKeyCase(
+        name="KindKeyKept",
+        reason="Once the old workload is gone, a workload under its kind's key keeps that key.",
+        backend=base.LLMD,
+        observed={"workload-llmd-main": _observed_workload(kind="LeaderWorkerSet", status={}, ready=True)},
+        want="workload-llmd-main",
+    ),
+    WorkloadKeyCase(
+        name="SwitchedBack",
+        reason="A Deployment replacing a LeaderWorkerSet under its kind's key takes the engine's key again.",
+        backend=base.NATIVE,
+        observed={"workload-llmd-main": _observed_workload(kind="LeaderWorkerSet", status={}, ready=True)},
+        want="model-serving-main",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", WORKLOAD_KEY_CASES, ids=lambda case: case.name)
+def test_workload_key(case: WorkloadKeyCase) -> None:
+    """An engine's workload keeps the key it's observed under, unless a workload of another kind holds it."""
+    assert base.workload_key(_main_engine(), case.backend, case.observed) == case.want, case.reason
