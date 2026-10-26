@@ -42,6 +42,7 @@ The backends build no routing of their own, so a strategy only adds resources
 
 import hashlib
 import json
+from collections.abc import Mapping
 from typing import Any
 
 from models.ai.modelplane.modelreplica import v1alpha1
@@ -326,22 +327,25 @@ def apply(
     composed: dict[str, k8sobjv1alpha1.Object],
     replica: v1alpha1.ModelReplica,
     provider_config: str,
+    workload_keys: Mapping[str, str],
 ) -> dict[str, k8sobjv1alpha1.Object]:
     """Decorate the engine workloads with the replica's routing surface.
 
     PrefillDecode serving picks the disaggregated stack; Unified (or no serving
     block) fronts the serving pods with an InferencePool + endpoint picker.
+    workload_keys maps each engine's name to its workload's key in composed.
     """
     serving = replica.spec.serving
     if serving and serving.mode == "PrefillDecode":
-        return _disaggregated(composed, replica, provider_config)
-    return _unified(composed, replica, provider_config)
+        return _disaggregated(composed, replica, provider_config, workload_keys)
+    return _unified(composed, replica, provider_config, workload_keys)
 
 
 def _unified(
     composed: dict[str, k8sobjv1alpha1.Object],
     replica: v1alpha1.ModelReplica,
     provider_config: str,
+    workload_keys: Mapping[str, str],
 ) -> dict[str, k8sobjv1alpha1.Object]:
     """Front the replica's serving pods with an InferencePool + endpoint picker.
 
@@ -358,7 +362,7 @@ def _unified(
     out = dict(composed)
     # The prefix-cache producer must chunk prefixes at the engine's KV block
     # size; derive it from the first engine's flags (HACK, #179).
-    block_size = _kv_block_size(_engine_args(out[base.workload_key(replica.spec.engines[0])]))
+    block_size = _kv_block_size(_engine_args(out[workload_keys[replica.spec.engines[0].name]]))
     container, config_yaml, secrets = _picker(replica, _unified_epp_config_yaml(block_size))
     selector = {base.LABEL_SERVING: base.serving_label(replica)}
     ns = base.remote_namespace(replica)
@@ -372,6 +376,7 @@ def _disaggregated(
     composed: dict[str, k8sobjv1alpha1.Object],
     replica: v1alpha1.ModelReplica,
     provider_config: str,
+    workload_keys: Mapping[str, str],
 ) -> dict[str, k8sobjv1alpha1.Object]:
     """Front the prefill and decode engines with an InferencePool + endpoint picker.
 
@@ -391,10 +396,8 @@ def _disaggregated(
     decode = next(e for e in replica.spec.engines if e.phase == "Decode")
 
     out = dict(composed)
-    prefill_key = base.workload_key(prefill)
-    decode_key = base.workload_key(decode)
-    _label_role(out[prefill_key], role="prefill")
-    _label_role(out[decode_key], role="decode")
+    _label_role(out[workload_keys[prefill.name]], role="prefill")
+    _label_role(out[workload_keys[decode.name]], role="decode")
 
     container, config_yaml, secrets = _picker(replica, None)
     # Select the replica's serving pods by the serving label they already carry,
