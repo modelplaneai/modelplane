@@ -23,6 +23,7 @@ ModelService to route to.
 import enum
 
 import grpc
+import pydantic
 from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
@@ -194,9 +195,25 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
         log.info("Running function")
 
         rsp = response.to(req)
-        c = Composer(req, rsp)
+        try:
+            c = Composer(req, rsp)
+        except pydantic.ValidationError as err:
+            # The API server validates a deployment against the XRD, but one
+            # stored before the XRD gained a rule can still break it.
+            response.fatal(rsp, f"The ModelDeployment doesn't match its schema: {schema_problems(err)}")
+            return rsp
         c.compose()
         return rsp
+
+
+def schema_problems(err: pydantic.ValidationError) -> str:
+    """err's problems as field paths and messages, such as
+    spec.template.spec.engines[0].members[0].template.spec: Field required."""
+    problems = []
+    for e in err.errors(include_url=False):
+        path = "".join(f"[{p}]" if isinstance(p, int) else f".{p}" for p in e["loc"]).lstrip(".")
+        problems.append(f"{path}: {e['msg']}")
+    return "; ".join(problems)
 
 
 class Composer:
@@ -318,7 +335,32 @@ class Composer:
             return False
 
         self.clusters = [_inference_cluster(icv1alpha1.InferenceCluster.model_validate(c)) for c in cluster_dicts]
-        self.all_replicas = [mrv1alpha1.ModelReplica.model_validate(r) for r in replica_dicts]
+        # Every deployment reads every replica, so one that doesn't parse is
+        # skipped with a warning rather than failing them all. The replica's own
+        # composition reports the problem as a fatal result. The scheduler can't
+        # count nodes for a replica it can't read, so a skipped replica that is
+        # still running goes uncharged. A member without template.spec never
+        # composed a workload, so skipping one of those charges nothing it uses.
+        # The warning names the replica only when it's in this deployment's
+        # namespace, so one tenant's events don't name another tenant's objects.
+        self.all_replicas = []
+        namespace = _namespace(self.xr.metadata)
+        for r in replica_dicts:
+            try:
+                self.all_replicas.append(mrv1alpha1.ModelReplica.model_validate(r))
+            except pydantic.ValidationError as err:
+                meta = r.get("metadata") or {}
+                if meta.get("namespace") != namespace:
+                    response.warning(
+                        self.rsp,
+                        "Ignoring a ModelReplica in another namespace that doesn't match its schema. "
+                        "Its own Synced condition reports the problem.",
+                    )
+                    continue
+                response.warning(
+                    self.rsp,
+                    f"Ignoring ModelReplica {meta.get('name')}: it doesn't match its schema: {schema_problems(err)}",
+                )
 
         # compose-model-cache stages a cache only onto the clusters its selector
         # matches that report cache storage in status.cache, since the cache's
