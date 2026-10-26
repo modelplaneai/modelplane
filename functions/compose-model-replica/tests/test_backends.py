@@ -155,6 +155,28 @@ class ReadyCopiesCase:
 
 
 @dataclasses.dataclass
+class StalledCopiesDownCase:
+    """A test case for base.stalled_copies_down."""
+
+    name: str
+    reason: str
+    observed: dict[str, fnv1.Resource]
+    key: str
+    want: int
+
+
+@dataclasses.dataclass
+class RollingUpdateCase:
+    """A test case for base.rolling_update."""
+
+    name: str
+    reason: str
+    copies: int
+    down: int
+    want: dict
+
+
+@dataclasses.dataclass
 class Dns1035LabelCase:
     """A test case for base.dns_1035_label."""
 
@@ -446,11 +468,15 @@ def _deployment(
     name: str,
     claim_template_name: str,
     replicas: int,
+    max_unavailable: int | str,
     pod_metadata: dict,
     containers: list[dict],
     volumes: list[dict],
 ) -> dict:
-    """The Object composing a Standalone engine's Deployment."""
+    """The Object composing a Standalone engine's Deployment.
+
+    Its rolling update surges by 25%, and lets max_unavailable copies go down.
+    """
     return {
         "spec": {
             "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
@@ -470,6 +496,10 @@ def _deployment(
                     "spec": {
                         "replicas": replicas,
                         "selector": {"matchLabels": {"modelplane.ai/workload": name}},
+                        "strategy": {
+                            "type": "RollingUpdate",
+                            "rollingUpdate": {"maxSurge": "25%", "maxUnavailable": max_unavailable},
+                        },
                         "template": {
                             "metadata": pod_metadata,
                             "spec": {
@@ -780,6 +810,7 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -877,6 +908,7 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -986,6 +1018,7 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -1087,6 +1120,7 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -1180,6 +1214,7 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -1268,6 +1303,7 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="dep-clusterA-main-3d1d5",
                 claim_template_name="dep-clusterA-main-standalone-devices-145eb",
                 replicas=1,
@@ -1357,6 +1393,7 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="dep-clusterB-main-d6c52",
                 claim_template_name="dep-clusterB-main-standalone-devices-5a8a8",
                 replicas=1,
@@ -1481,6 +1518,7 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-prefill": _deployment(
+                max_unavailable="25%",
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -1512,6 +1550,7 @@ BUILD_CASES = [
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "model-serving-decode": _deployment(
+                max_unavailable="25%",
                 name="r-decode-4b27b",
                 claim_template_name="r-decode-standalone-devices-63392",
                 replicas=1,
@@ -1593,6 +1632,7 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -1712,6 +1752,7 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -1809,6 +1850,7 @@ BUILD_CASES = [
         stack="Standard",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -1915,6 +1957,7 @@ BUILD_CASES = [
         stack="Dynamo",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -5431,7 +5474,9 @@ def test_build(case: BuildCase) -> None:
     # build composes one engine, so build each of the replica's engines in turn.
     got: dict[str, k8sobjv1alpha1.Object] = {}
     for engine in case.replica.spec.engines:
-        got.update(case.backend.build(case.replica, engine, case.provider_config, case.serving_label, case.stack))
+        got.update(
+            case.backend.build(case.replica, engine, case.provider_config, case.serving_label, case.stack, observed={})
+        )
     assert _sorted(objects=_to_dicts(objects=got)) == _sorted(objects=case.want), case.reason
 
 
@@ -6021,6 +6066,7 @@ APPLY_CASES = [
         ),
         composed={
             "model-serving-prefill": _deployment(
+                max_unavailable="25%",
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -6052,6 +6098,7 @@ APPLY_CASES = [
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "model-serving-decode": _deployment(
+                max_unavailable="25%",
                 name="r-decode-4b27b",
                 claim_template_name="r-decode-standalone-devices-63392",
                 replicas=1,
@@ -6190,6 +6237,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-prefill": _deployment(
+                max_unavailable="25%",
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -6224,6 +6272,7 @@ APPLY_CASES = [
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "model-serving-decode": _deployment(
+                max_unavailable="25%",
                 name="r-decode-4b27b",
                 claim_template_name="r-decode-standalone-devices-63392",
                 replicas=1,
@@ -6285,6 +6334,7 @@ APPLY_CASES = [
         ),
         composed={
             "model-serving-prefill": _deployment(
+                max_unavailable="25%",
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -6316,6 +6366,7 @@ APPLY_CASES = [
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "model-serving-decode": _deployment(
+                max_unavailable="25%",
                 name="r-decode-4b27b",
                 claim_template_name="r-decode-standalone-devices-63392",
                 replicas=1,
@@ -6461,6 +6512,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-prefill": _deployment(
+                max_unavailable="25%",
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -6495,6 +6547,7 @@ APPLY_CASES = [
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "model-serving-decode": _deployment(
+                max_unavailable="25%",
                 name="r-decode-4b27b",
                 claim_template_name="r-decode-standalone-devices-63392",
                 replicas=1,
@@ -6619,6 +6672,7 @@ APPLY_CASES = [
         ),
         composed={
             "model-serving-alpha": _deployment(
+                max_unavailable="25%",
                 name="r-alpha-b36ce",
                 claim_template_name="r-alpha-standalone-devices-9ec1c",
                 replicas=1,
@@ -6650,6 +6704,7 @@ APPLY_CASES = [
             ),
             "resource-claim-alpha-standalone": _claim_template(name="r-alpha-standalone-devices-9ec1c", count=1),
             "model-serving-beta": _deployment(
+                max_unavailable="25%",
                 name="r-beta-52d85",
                 claim_template_name="r-beta-standalone-devices-9d8b1",
                 replicas=1,
@@ -6788,6 +6843,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-alpha": _deployment(
+                max_unavailable="25%",
                 name="r-alpha-b36ce",
                 claim_template_name="r-alpha-standalone-devices-9ec1c",
                 replicas=1,
@@ -6822,6 +6878,7 @@ APPLY_CASES = [
             ),
             "resource-claim-alpha-standalone": _claim_template(name="r-alpha-standalone-devices-9ec1c", count=1),
             "model-serving-beta": _deployment(
+                max_unavailable="25%",
                 name="r-beta-52d85",
                 claim_template_name="r-beta-standalone-devices-9d8b1",
                 replicas=1,
@@ -6885,6 +6942,7 @@ APPLY_CASES = [
         ),
         composed={
             "model-serving-prefill": _deployment(
+                max_unavailable="25%",
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -7196,6 +7254,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-prefill": _deployment(
+                max_unavailable="25%",
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -7409,6 +7468,7 @@ APPLY_CASES = [
         ),
         composed={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7486,6 +7546,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7563,6 +7624,7 @@ APPLY_CASES = [
         reason="An engine block size above 64 sets the default picker configuration's blockSizeTokens.",
         composed={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7640,6 +7702,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7717,6 +7780,7 @@ APPLY_CASES = [
         reason="An engine context length above 131072 leaves the default picker configuration's maxPrefixTokensToMatch at 131072.",
         composed={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7794,6 +7858,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7874,6 +7939,7 @@ APPLY_CASES = [
         ),
         composed={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7982,6 +8048,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -8085,6 +8152,7 @@ APPLY_CASES = [
         ),
         composed={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -8178,6 +8246,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -8255,6 +8324,7 @@ APPLY_CASES = [
         reason="A Unified replica labeled with its deployment and index gets an endpoint picker labeled with both.",
         composed={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -8334,6 +8404,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -8420,6 +8491,7 @@ APPLY_CASES = [
         ),
         composed={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=2,
@@ -8497,6 +8569,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=2,
@@ -8833,6 +8906,7 @@ APPLY_CASES = [
         ),
         composed={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="qwen2.5-7b-abcde-main-e910a",
                 claim_template_name="qwen2.5-7b-abcde-main-standalone-devices-771a9",
                 replicas=1,
@@ -8912,6 +8986,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="qwen2.5-7b-abcde-main-e910a",
                 claim_template_name="qwen2.5-7b-abcde-main-standalone-devices-771a9",
                 replicas=1,
@@ -9002,6 +9077,7 @@ APPLY_CASES = [
         ),
         composed={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="a" * 57 + "-88380",
                 claim_template_name="a" * 57 + "-05ced",
                 replicas=1,
@@ -9079,6 +9155,7 @@ APPLY_CASES = [
         provider_config="cluster-a-pc",
         want={
             "model-serving-main": _deployment(
+                max_unavailable="25%",
                 name="a" * 57 + "-88380",
                 claim_template_name="a" * 57 + "-05ced",
                 replicas=1,
@@ -9848,3 +9925,181 @@ READY_COPIES_CASES = [
 def test_ready_copies(case: ReadyCopiesCase) -> None:
     """A backend counts an engine's ready copies from its observed workload."""
     assert case.backend.ready_copies(_main_engine(), case.observed) == case.want, case.reason
+
+
+def _progressing(*, status: str, reason: str) -> dict:
+    """A Deployment's Progressing condition, as its controller sets it."""
+    return {"type": "Progressing", "status": status, "reason": reason}
+
+
+STALLED_COPIES_DOWN_CASES = [
+    StalledCopiesDownCase(
+        name="NotObserved",
+        reason="Until its Deployment is observed, no copies count as down in a stalled rollout.",
+        observed={},
+        key="model-serving-main",
+        want=0,
+    ),
+    StalledCopiesDownCase(
+        name="SteadyState",
+        reason="A Deployment whose last rollout completed has no stalled rollout.",
+        observed={
+            "model-serving-main": _observed(
+                status={
+                    "availableReplicas": 2,
+                    "conditions": [_progressing(status="True", reason="NewReplicaSetAvailable")],
+                },
+                ready=True,
+            )
+        },
+        key="model-serving-main",
+        want=0,
+    ),
+    StalledCopiesDownCase(
+        name="CrashLoopBeforeDeadline",
+        reason="Copies down in a rollout that hasn't passed its progress deadline don't count yet.",
+        observed={
+            "model-serving-main": _observed(
+                status={"conditions": [_progressing(status="True", reason="ReplicaSetUpdated")]},
+                ready=False,
+            )
+        },
+        key="model-serving-main",
+        want=0,
+    ),
+    StalledCopiesDownCase(
+        name="CrashLoopPastDeadline",
+        reason="Once a rollout passes its progress deadline, every copy that isn't available counts as down.",
+        observed={
+            "model-serving-main": _observed(
+                status={"conditions": [_progressing(status="False", reason="ProgressDeadlineExceeded")]},
+                ready=False,
+            )
+        },
+        key="model-serving-main",
+        want=2,
+    ),
+    StalledCopiesDownCase(
+        name="OneDownPastDeadline",
+        reason="Past the deadline, only the copy that isn't available counts as down.",
+        observed={
+            "model-serving-main": _observed(
+                status={
+                    "availableReplicas": 1,
+                    "conditions": [_progressing(status="False", reason="ProgressDeadlineExceeded")],
+                },
+                ready=False,
+            )
+        },
+        key="model-serving-main",
+        want=1,
+    ),
+    StalledCopiesDownCase(
+        name="HealthyStallPastDeadline",
+        reason="A rollout past its deadline with every copy available has no copy down.",
+        observed={
+            "model-serving-main": _observed(
+                status={
+                    "availableReplicas": 2,
+                    "conditions": [_progressing(status="False", reason="ProgressDeadlineExceeded")],
+                },
+                ready=True,
+            )
+        },
+        key="model-serving-main",
+        want=0,
+    ),
+    StalledCopiesDownCase(
+        name="SurgeOvershoot",
+        reason="A surge pod available beside the old ones leaves no copy down.",
+        observed={
+            "model-serving-main": _observed(
+                status={
+                    "availableReplicas": 3,
+                    "conditions": [_progressing(status="False", reason="ProgressDeadlineExceeded")],
+                },
+                ready=True,
+            )
+        },
+        key="model-serving-main",
+        want=0,
+    ),
+    StalledCopiesDownCase(
+        name="OtherKey",
+        reason="The Deployment is read under the key it's composed under, whatever else is observed.",
+        observed={
+            "model-serving-main": _observed(
+                status={
+                    "availableReplicas": 2,
+                    "conditions": [_progressing(status="True", reason="NewReplicaSetAvailable")],
+                },
+                ready=True,
+            ),
+            "workload-native-main": _observed(
+                status={
+                    "availableReplicas": 1,
+                    "conditions": [_progressing(status="False", reason="ProgressDeadlineExceeded")],
+                },
+                ready=False,
+            ),
+        },
+        key="workload-native-main",
+        want=1,
+    ),
+]
+
+
+@pytest.mark.parametrize("case", STALLED_COPIES_DOWN_CASES, ids=lambda case: case.name)
+def test_stalled_copies_down(case: StalledCopiesDownCase) -> None:
+    """An engine's copies down in a stalled rollout come from its observed Deployment."""
+    assert base.stalled_copies_down(_main_engine(), case.observed, case.key) == case.want, case.reason
+
+
+def _rolling_update(*, max_unavailable: int | str) -> dict:
+    """A Deployment strategy that surges by 25% and lets max_unavailable copies go down."""
+    return {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": "25%", "maxUnavailable": max_unavailable}}
+
+
+ROLLING_UPDATE_CASES = [
+    RollingUpdateCase(
+        name="NoneDown",
+        reason="With no copy down in a stalled rollout, the strategy is Kubernetes' default.",
+        copies=1,
+        down=0,
+        want=_rolling_update(max_unavailable="25%"),
+    ),
+    RollingUpdateCase(
+        name="OneCopyDown",
+        reason="A copy down in a stalled rollout is replaced without waiting for its replacement.",
+        copies=1,
+        down=1,
+        want=_rolling_update(max_unavailable=1),
+    ),
+    RollingUpdateCase(
+        name="ThreeCopiesOneDown",
+        reason="Only the copy that's down may be replaced first.",
+        copies=3,
+        down=1,
+        want=_rolling_update(max_unavailable=1),
+    ),
+    RollingUpdateCase(
+        name="EightCopiesOneDown",
+        reason="One copy down is within the 25% of eight copies a rollout may take down anyway.",
+        copies=8,
+        down=1,
+        want=_rolling_update(max_unavailable="25%"),
+    ),
+    RollingUpdateCase(
+        name="EightCopiesThreeDown",
+        reason="Three copies down is more than the 25% of eight, so all three may be replaced first.",
+        copies=8,
+        down=3,
+        want=_rolling_update(max_unavailable=3),
+    ),
+]
+
+
+@pytest.mark.parametrize("case", ROLLING_UPDATE_CASES, ids=lambda case: case.name)
+def test_rolling_update(case: RollingUpdateCase) -> None:
+    """A rollout surges, and replaces the copies down in a stalled rollout first."""
+    assert base.rolling_update(case.copies, case.down) == case.want, case.reason

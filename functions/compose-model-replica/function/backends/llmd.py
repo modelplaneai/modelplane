@@ -60,6 +60,11 @@ class LLMDBackend:
         # backend. Unused here: this backend is Standard-only, so there's no
         # stack to switch on.
         stack: str,  # noqa: ARG002
+        *,
+        # Unused here: the workload's own default rollout replaces a gang
+        # before it starts the new one, so it never waits on devices an old
+        # gang holds.
+        observed: Mapping[str, fnv1.Resource],  # noqa: ARG002
     ) -> dict[str, k8sobjv1alpha1.Object]:
         leader = base.engine_member(engine, base.ROLE_LEADER)
         worker = base.engine_member(engine, base.ROLE_WORKER)

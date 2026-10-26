@@ -61,6 +61,11 @@ class GroveBackend:
         provider_config: str,
         serving_label: str,
         stack: str,
+        *,
+        # Unused here: the workload's own default rollout replaces a gang
+        # before it starts the new one, so it never waits on devices an old
+        # gang holds.
+        observed: Mapping[str, fnv1.Resource],  # noqa: ARG002
     ) -> dict[str, k8sobjv1alpha1.Object]:
         leader = base.engine_member(engine, base.ROLE_LEADER)
         worker = base.engine_member(engine, base.ROLE_WORKER)

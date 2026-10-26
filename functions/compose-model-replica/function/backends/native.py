@@ -42,6 +42,8 @@ class NativeBackend:
         provider_config: str,
         serving_label: str,
         stack: str,
+        *,
+        observed: Mapping[str, fnv1.Resource],
     ) -> dict[str, k8sobjv1alpha1.Object]:
         member = base.engine_member(engine, base.ROLE_STANDALONE)
         # select_backend dispatches the native backend only for an engine with a
@@ -103,13 +105,16 @@ class NativeBackend:
         if tmpl.spec.imagePullSecrets:
             pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in tmpl.spec.imagePullSecrets]
 
+        copies = int(engine.copies or 1)
+        key = base.workload_key(engine)
         deployment = {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
             "metadata": {"name": name, "namespace": base.remote_namespace(replica)},
             "spec": {
-                "replicas": int(engine.copies or 1),
+                "replicas": copies,
                 "selector": {"matchLabels": selector},
+                "strategy": base.rolling_update(copies, base.stalled_copies_down(engine, observed, key)),
                 "template": {
                     "metadata": base.pod_metadata(member, pod_labels, replica=replica, engine=engine),
                     "spec": pod_spec,
@@ -118,9 +123,7 @@ class NativeBackend:
         }
 
         composed = {
-            base.workload_key(engine): base.wrap_object(
-                provider_config, deployment, cel_query=base.ALL_COPIES_READY_CEL, watch=True
-            ),
+            key: base.wrap_object(provider_config, deployment, cel_query=base.ALL_COPIES_READY_CEL, watch=True),
         }
         # Gated like the container's resources above, and for the same reason.
         if member.deviceRequests:

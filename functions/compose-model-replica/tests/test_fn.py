@@ -221,11 +221,20 @@ def _cluster(*, provider_config_ref: str | None, observed: bool) -> fnv1.Resourc
     return fnv1.Resource(resource=resource.dict_to_struct(cluster))
 
 
-def _deployment(*, ready: fnv1.Ready, name: str, claim_template_name: str, labels: dict, copies: int) -> fnv1.Resource:
+def _deployment(
+    *,
+    ready: fnv1.Ready,
+    max_unavailable: int | str,
+    name: str,
+    claim_template_name: str,
+    labels: dict,
+    copies: int,
+) -> fnv1.Resource:
     """The Object composing an engine's Deployment.
 
     Its pod carries the labels the collector attributes the engine's metrics by:
-    the deployment, the replica, the engine and the member's role.
+    the deployment, the replica, the engine and the member's role. Its rolling
+    update surges by 25%, and lets max_unavailable copies go down.
     """
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -250,6 +259,10 @@ def _deployment(*, ready: fnv1.Ready, name: str, claim_template_name: str, label
                             "spec": {
                                 "replicas": copies,
                                 "selector": {"matchLabels": {"modelplane.ai/workload": name}},
+                                "strategy": {
+                                    "type": "RollingUpdate",
+                                    "rollingUpdate": {"maxSurge": "25%", "maxUnavailable": max_unavailable},
+                                },
                                 "template": {
                                     "metadata": {"labels": labels},
                                     "spec": {
@@ -752,15 +765,23 @@ def _replica_observation() -> fnv1.Resource:
     )
 
 
-def _observed_deployment(*, ready: bool, ready_replicas: int) -> fnv1.Resource:
+def _observed_deployment(*, ready: bool, ready_replicas: int, deadline_exceeded: bool) -> fnv1.Resource:
     """The engine's Deployment Object as observed back.
 
     ready sets the Object's derived Ready condition, and ready_replicas the
-    Deployment's status.readyReplicas, which a Deployment leaves out at 0.
+    Deployment's status.readyReplicas and status.availableReplicas, which a
+    Deployment leaves out at 0. With no minReadySeconds a ready pod is
+    available. deadline_exceeded sets the Progressing condition a rollout gets
+    once it passes its progress deadline.
     """
     observed_manifest: dict = {"kind": "Deployment"}
+    status: dict = {}
     if ready_replicas:
-        observed_manifest["status"] = {"readyReplicas": ready_replicas}
+        status = {"readyReplicas": ready_replicas, "availableReplicas": ready_replicas}
+    if deadline_exceeded:
+        status["conditions"] = [{"type": "Progressing", "status": "False", "reason": "ProgressDeadlineExceeded"}]
+    if status:
+        observed_manifest["status"] = status
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -828,8 +849,10 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_prefill_decode_replica(serving=v1alpha1.Serving(mode="PrefillDecode")),
                 resources={
-                    "model-serving-prefill": _observed_deployment(ready=True, ready_replicas=1),
-                    "model-serving-decode": _observed_deployment(ready=True, ready_replicas=1),
+                    "model-serving-prefill": _observed_deployment(
+                        ready=True, ready_replicas=1, deadline_exceeded=False
+                    ),
+                    "model-serving-decode": _observed_deployment(ready=True, ready_replicas=1, deadline_exceeded=False),
                 },
             ),
             required_resources={
@@ -877,8 +900,12 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_prefill_decode_replica(serving=v1alpha1.Serving(mode="PrefillDecode")),
                 resources={
-                    "model-serving-prefill": _observed_deployment(ready=True, ready_replicas=1),
-                    "model-serving-decode": _observed_deployment(ready=False, ready_replicas=0),
+                    "model-serving-prefill": _observed_deployment(
+                        ready=True, ready_replicas=1, deadline_exceeded=False
+                    ),
+                    "model-serving-decode": _observed_deployment(
+                        ready=False, ready_replicas=0, deadline_exceeded=False
+                    ),
                 },
             ),
             required_resources={
@@ -1013,6 +1040,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-prefill": _deployment(
+                        max_unavailable="25%",
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-prefill-10d7e",
@@ -1032,6 +1060,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED, name="test-replica-prefill-standalone-devices-51762"
                     ),
                     "model-serving-decode": _deployment(
+                        max_unavailable="25%",
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-decode-44185",
@@ -1144,6 +1173,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
@@ -1240,6 +1270,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
@@ -1401,6 +1432,7 @@ COMPOSE_CASES = [
                 ),
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
@@ -1547,6 +1579,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
@@ -1635,6 +1668,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
@@ -1776,7 +1810,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=1),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1),
+                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1, deadline_exceeded=False),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                 },
@@ -1790,6 +1824,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
                         copies=1,
                         ready=fnv1.READY_TRUE,
                         name="test-replica-main-6b608",
@@ -1858,7 +1893,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=1),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1),
+                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1, deadline_exceeded=False),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -1879,6 +1914,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
                         copies=1,
                         ready=fnv1.READY_TRUE,
                         name="test-replica-main-6b608",
@@ -1947,7 +1983,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=1),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1),
+                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1, deadline_exceeded=False),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -1968,6 +2004,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
                         copies=1,
                         ready=fnv1.READY_TRUE,
                         name="test-replica-main-6b608",
@@ -2033,7 +2070,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=2),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=1),
+                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=1, deadline_exceeded=False),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -2054,6 +2091,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
                         ready=fnv1.READY_UNSPECIFIED,
                         copies=2,
                         name="test-replica-main-6b608",
@@ -2112,7 +2150,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=2),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=0),
+                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=0, deadline_exceeded=False),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -2133,6 +2171,90 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
+                        ready=fnv1.READY_UNSPECIFIED,
+                        copies=2,
+                        name="test-replica-main-6b608",
+                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        labels={
+                            "modelplane.ai/deployment": "my-deployment",
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/replica": "0",
+                            "modelplane.ai/role": "Standalone",
+                            "modelplane.ai/serving": "test-replica",
+                            "modelplane.ai/workload": "test-replica-main-6b608",
+                        },
+                    ),
+                    "model-route": _route(ready=fnv1.READY_TRUE),
+                    "resource-claim-main-standalone": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    ),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_TRUE),
+                    "epp": _epp(
+                        ready=fnv1.READY_TRUE,
+                        config_checksum="c4f1cefa4a1fe67069eaa6e9dde3e5b9bc7e79d3f807ecd076dd021259b2ab39",
+                    ),
+                    "epp-config": _epp_config(ready=fnv1.READY_TRUE),
+                    "epp-role": _epp_role(ready=fnv1.READY_TRUE),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_TRUE),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_TRUE),
+                    "epp-service": _epp_service(ready=fnv1.READY_TRUE),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ModelAccepted", status=fnv1.STATUS_CONDITION_TRUE, reason="Accepted"),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="ModelStarting"),
+                fnv1.Condition(
+                    type="ModelReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="ModelStarting",
+                    message="0 of 2 engine copies ready",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="RolloutPastDeadline",
+        reason=(
+            "A rollout past its progress deadline with no copy available replaces both copies without waiting for "
+            "their replacements, which may need their devices."
+        ),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_replica(copies=2),
+                resources={
+                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=0, deadline_exceeded=True),
+                    "model-route": _observed_object(ready=True),
+                    "resource-claim-main-standalone": _observed_object(ready=True),
+                    "inference-pool": _observed_object(ready=True),
+                    "epp": _observed_object(ready=True),
+                    "epp-config": _observed_object(ready=True),
+                    "epp-role": _observed_object(ready=True),
+                    "epp-rolebinding": _observed_object(ready=True),
+                    "epp-serviceaccount": _observed_object(ready=True),
+                    "epp-service": _observed_object(ready=True),
+                },
+            ),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc", observed=False)])
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                resources={
+                    "model-serving-main": _deployment(
+                        max_unavailable=2,
                         ready=fnv1.READY_UNSPECIFIED,
                         copies=2,
                         name="test-replica-main-6b608",
@@ -2194,7 +2316,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=2),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=2),
+                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=2, deadline_exceeded=False),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -2215,6 +2337,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
                         ready=fnv1.READY_UNSPECIFIED,
                         copies=2,
                         name="test-replica-main-6b608",
@@ -2273,7 +2396,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=2),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=2),
+                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=2, deadline_exceeded=False),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -2294,6 +2417,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
                         ready=fnv1.READY_TRUE,
                         copies=2,
                         name="test-replica-main-6b608",
@@ -2355,7 +2479,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=2),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=2),
+                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=2, deadline_exceeded=False),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -2376,6 +2500,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        max_unavailable="25%",
                         ready=fnv1.READY_TRUE,
                         copies=2,
                         name="test-replica-main-6b608",
