@@ -34,6 +34,7 @@ This caused these faults:
 - Don't start an engine on a cluster until the model is readable there.
 - Say why a cluster can't read the model yet.
 - Keep a serving replica's engines running when its cache changes.
+- Let a cache download only the files an engine reads.
 
 It's not a goal to add sources other than HuggingFace. That's
 [modelcache-sources.md](https://github.com/modelplaneai/modelplane/pull/505).
@@ -91,6 +92,24 @@ when someone deletes the cache, or when someone adds or switches to a cache
 that isn't ready. Stopping a serving model because its cache changed would
 turn a storage problem into an outage, and moving it onto a cache that's still
 downloading would start it without its model.
+
+### Choosing the files to download
+
+A HuggingFace repository often publishes the same weights more than once, such
+as one large checkpoint beside the same weights split across many files, or one
+copy per format. `spec.huggingFace` gets optional `include` and `exclude` lists
+of glob patterns. The hydration Job passes each to `hf download` as `--include`
+or `--exclude`, quoted for the shell. The user still sets `sizeGiB`.
+
+The cache downloads once, so its `repo`, `revision`, `include` and `exclude`
+can't change. Changing them in place would mean downloading again and
+restarting every engine that reads the cache. A new cache under a new name
+makes that swap an explicit rollout. A CEL transition rule on `spec.huggingFace` rejects an edit to
+them, with a message to create a new `ModelCache`. A user who wants other files
+creates a cache with a new name and points the deployment at it. The running
+engines keep the old cache until the new one publishes a mount. A cache
+recreated under its old name would get its old claim's name, and couldn't
+stage while engines still mount that claim.
 
 ### Messages
 

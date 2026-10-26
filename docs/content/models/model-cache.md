@@ -21,9 +21,41 @@ single-node cold-start optimization.
 The required `source` enum names the kind, with the matching source object set
 alongside it. Setting `source: HuggingFace` selects `spec.huggingFace`, which
 carries the `repo` to fetch, an optional `revision` (branch, tag, or commit), and
-`sizeGiB`, how much storage the weights get on each cluster. Size it to the
-model, since a value below the model's size doesn't leave room to stage the
-weights. `HuggingFace` is the only source today.
+`sizeGiB`, how much storage the weights get on each cluster. `HuggingFace` is
+the only source today.
+
+The cache downloads every file in the repository unless you narrow it. Many
+repositories publish the same weights more than once, such as one large
+checkpoint beside the same weights split across many files, or one copy per
+format. `include` and `exclude` take glob patterns, passed to `hf download` as
+`--include` and `--exclude`. Size the cache to the files it downloads.
+
+This repository holds 90 GiB of weights in two formats. The cache downloads
+only the 45 GiB in Mistral's own format, so the engine must load that format.
+For vLLM, pass `--tokenizer-mode mistral --config-format mistral
+--load-format mistral`, as the model's card does:
+
+```yaml {nocopy=true}
+spec:
+  source: HuggingFace
+  huggingFace:
+    repo: mistralai/Mistral-Small-3.2-24B-Instruct-2506
+    include: ["consolidated.safetensors", "params.json", "tekken.json"]
+    sizeGiB: 50
+```
+
+Make sure the cache contains every file the engine reads at startup, such as
+the tokenizer and the chat template. The engine downloads a file the cache left
+out, or fails to start if it runs offline.
+
+The cache downloads once. The API server rejects a change to `repo`, `revision`,
+`include` or `exclude`, because a change would mean downloading again and
+restarting every engine that reads the cache. To change what a deployment reads,
+create a `ModelCache` with a new name and point the deployment's `modelCacheRef`
+at it. The engines keep the old cache until the new one is ready on their
+cluster. Delete the old cache after they move. A cache recreated under its old
+name gets its old claim's name, and it can't stage while engines still mount
+that claim.
 
 The engine's args name the model the same way with or without a cache. A
 `HuggingFace` source stages into HuggingFace's own cache layout on the mount, and
@@ -60,6 +92,24 @@ its cluster, the engines keep the cache they mount now, or run without one if
 they mount none. This holds when the cache stops being ready, when someone
 deletes it, and when you add a cache to the deployment or switch it to another
 one. The engines restart onto the new cache once it's ready.
+
+## Running without contacting HuggingFace
+
+An engine that loads a cached model still checks HuggingFace when it starts,
+unless you tell it not to. To start without contacting HuggingFace, set
+`HF_HUB_OFFLINE=1` in the engine container's `env`:
+
+```yaml {nocopy=true}
+env:
+- name: HF_HUB_OFFLINE
+  value: "1"
+```
+
+The engine then reads only the cache, so the cache must contain every file it
+needs at the `revision` the engine uses. Modelplane doesn't set the variable itself,
+because it breaks an engine that fetches a second repository at startup, such
+as a separate tokenizer. A `ModelCache` can't stage a second repository for one
+deployment yet ([#281](https://github.com/modelplaneai/modelplane/issues/281)).
 
 ## Authenticating
 
