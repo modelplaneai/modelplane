@@ -362,7 +362,9 @@ def _unified(
     container, config_yaml, secrets = _picker(replica, _unified_epp_config_yaml(block_size))
     selector = {base.LABEL_SERVING: base.serving_label(replica)}
     ns = base.remote_namespace(replica)
-    out["inference-pool"] = base.wrap_object(provider_config, _inference_pool(name, ns, selector))
+    out["inference-pool"] = base.wrap_object(
+        provider_config, _inference_pool(name, ns, selector, base.serving_port(replica))
+    )
     out[base.ROUTE_KEY] = base.wrap_object(provider_config, _http_route(replica, name))
     out.update(_epp_objects(name, ns, provider_config, container, config_yaml, secrets, replica))
     return out
@@ -402,7 +404,9 @@ def _disaggregated(
     # EPP's prefill/decode filters, not for pool membership.
     selector = {base.LABEL_SERVING: base.serving_label(replica)}
     ns = base.remote_namespace(replica)
-    out["inference-pool"] = base.wrap_object(provider_config, _inference_pool(name, ns, selector))
+    out["inference-pool"] = base.wrap_object(
+        provider_config, _inference_pool(name, ns, selector, base.serving_port(replica))
+    )
     out[base.ROUTE_KEY] = base.wrap_object(provider_config, _http_route(replica, name))
     out.update(_epp_objects(name, ns, provider_config, container, config_yaml, secrets, replica))
     return out
@@ -442,14 +446,14 @@ def _label_role(obj: k8sobjv1alpha1.Object, *, role: str) -> None:
         tmpl["labels"][_LABEL_ROLE] = role
 
 
-def _inference_pool(name: str, namespace: str, selector: dict[str, str]) -> dict:
+def _inference_pool(name: str, namespace: str, selector: dict[str, str], port: int) -> dict:
     return {
         "apiVersion": "inference.networking.k8s.io/v1",
         "kind": "InferencePool",
         "metadata": {"name": f"{name}-pool", "namespace": namespace},
         "spec": {
             "selector": {"matchLabels": selector},
-            "targetPorts": [{"number": base.ENGINE_PORT}],
+            "targetPorts": [{"number": port}],
             # Envoy AI Gateway fails closed without a picker whatever the
             # failure mode, so the pool leaves it at its default, FailClose.
             "endpointPickerRef": {

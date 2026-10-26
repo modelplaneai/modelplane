@@ -221,7 +221,7 @@ def _route(*, name: str, path: str, pool: str) -> dict:
     }
 
 
-def _inference_pool(*, name: str, serving: str, picker: str) -> dict:
+def _inference_pool(*, name: str, serving: str, picker: str, port: int) -> dict:
     """The Object composing the InferencePool that fronts the replica's serving pods."""
     return {
         "spec": {
@@ -234,7 +234,7 @@ def _inference_pool(*, name: str, serving: str, picker: str) -> dict:
                     "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
                     "spec": {
                         "selector": {"matchLabels": {"modelplane.ai/serving": serving}},
-                        "targetPorts": [{"number": 8000}],
+                        "targetPorts": [{"number": port}],
                         "endpointPickerRef": {"name": picker, "port": {"number": 9002}},
                     },
                 }
@@ -800,6 +800,178 @@ BUILD_CASES = [
                         "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
                         "readinessProbe": {
                             "httpGet": {"path": "/health", "port": 8000},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    }
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+        },
+    ),
+    BuildCase(
+        name="StandaloneEngineProbe",
+        reason=("A Standalone engine that sets its own readiness probe gets that probe as written, not the default."),
+        backend=native.NativeBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=1,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=Qwen/Qwen3-0.6B"],
+                                            readinessProbe=v1alpha1.ReadinessProbe(
+                                                httpGet=v1alpha1.HttpGet(path="/v1/models", port="http"),
+                                                timeoutSeconds=5,
+                                            ),
+                                        )
+                                    ]
+                                )
+                            ),
+                        )
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": _deployment(
+                name="r-main-bb4e3",
+                claim_template_name="r-main-standalone-devices-f456f",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "main",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "r",
+                        "modelplane.ai/workload": "r-main-bb4e3",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B"],
+                        "ports": [{"name": "http", "containerPort": 8000}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/v1/models", "port": "http"},
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    }
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+        },
+    ),
+    # serving.port moves the engine's default http port, so the probe and the
+    # collector find it there.
+    BuildCase(
+        name="StandaloneServingPort",
+        reason=("A Standalone engine of a replica with a serving port serves there, and the default probe follows it."),
+        backend=native.NativeBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=v1alpha1.Serving(mode="Unified", port=8080),
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=1,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=Qwen/Qwen3-0.6B"],
+                                        )
+                                    ]
+                                )
+                            ),
+                        )
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": _deployment(
+                name="r-main-bb4e3",
+                claim_template_name="r-main-standalone-devices-f456f",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "main",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "r",
+                        "modelplane.ai/workload": "r-main-bb4e3",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B"],
+                        "ports": [{"name": "http", "containerPort": 8080}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8080},
                             "initialDelaySeconds": 30,
                             "periodSeconds": 10,
                             "timeoutSeconds": 5,
@@ -2226,13 +2398,239 @@ BUILD_CASES = [
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
         },
     ),
-    # A Grove leader behind a sidecar, and a worker carrying its own ports and
-    # an extra container.
+    BuildCase(
+        name="GroveServingPort",
+        reason=("A Leader/Worker engine on Grove serves its leader on the replica's serving port, probed there."),
+        backend=grove.GroveBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=v1alpha1.Serving(mode="Unified", port=8080),
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            command=[
+                                                "/bin/sh",
+                                                "-c",
+                                                "ray start --head --port=6379; exec vllm serve --model=meta-llama/Llama-3.1-405B --tensor-parallel-size=8 --pipeline-parallel-size=2 --port=8080",
+                                            ],
+                                        )
+                                    ]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            command=[
+                                                "/bin/sh",
+                                                "-c",
+                                                "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block",
+                                            ],
+                                        )
+                                    ]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Dynamo",
+        want={
+            "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
+            "model-serving-main": _pod_clique_set(
+                name="r-main-bb4e3",
+                cliques=[
+                    {
+                        "name": "leader",
+                        "labels": {
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Leader",
+                            "modelplane.ai/serving": "r",
+                            "kai.scheduler/queue": "modelplane",
+                            "modelplane.ai/clique-role": "leader",
+                        },
+                        "spec": {
+                            "roleName": "leader",
+                            "replicas": 1,
+                            "minAvailable": 1,
+                            "podSpec": {
+                                "containers": [
+                                    {
+                                        "name": "engine",
+                                        "image": "vllm/vllm-openai:latest",
+                                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                                        "resources": {"claims": [{"name": "devices"}]},
+                                        "command": [
+                                            "/bin/sh",
+                                            "-c",
+                                            "ray start --head --port=6379; exec vllm serve --model=meta-llama/Llama-3.1-405B --tensor-parallel-size=8 --pipeline-parallel-size=2 --port=8080",
+                                        ],
+                                        "env": [
+                                            {
+                                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                                "value": "$(GROVE_PCSG_NAME)-$(GROVE_PCSG_INDEX)-leader-0.$(GROVE_HEADLESS_SERVICE)",
+                                            }
+                                        ],
+                                        "ports": [{"name": "http", "containerPort": 8080}],
+                                        "readinessProbe": {
+                                            "httpGet": {"path": "/health", "port": 8080},
+                                            "initialDelaySeconds": 30,
+                                            "periodSeconds": 10,
+                                            "timeoutSeconds": 5,
+                                        },
+                                    }
+                                ],
+                                "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                                "schedulerName": "kai-scheduler",
+                                "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                "resourceClaims": [
+                                    {
+                                        "name": "devices",
+                                        "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                    }
+                                ],
+                                "tolerations": [
+                                    {
+                                        "key": "nvidia.com/gpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    },
+                                    {
+                                        "key": "amd.com/gpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    },
+                                    {
+                                        "key": "modelplane.ai/cpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                    {
+                        "name": "worker",
+                        "labels": {
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Worker",
+                            "kai.scheduler/queue": "modelplane",
+                        },
+                        "spec": {
+                            "roleName": "worker",
+                            "replicas": 1,
+                            "minAvailable": 1,
+                            "podSpec": {
+                                "containers": [
+                                    {
+                                        "name": "engine",
+                                        "image": "vllm/vllm-openai:latest",
+                                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                                        "resources": {"claims": [{"name": "devices"}]},
+                                        "command": [
+                                            "/bin/sh",
+                                            "-c",
+                                            "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block",
+                                        ],
+                                        "env": [
+                                            {
+                                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                                "value": "$(GROVE_PCSG_NAME)-$(GROVE_PCSG_INDEX)-leader-0.$(GROVE_HEADLESS_SERVICE)",
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                                "schedulerName": "kai-scheduler",
+                                "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                "resourceClaims": [
+                                    {
+                                        "name": "devices",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                    }
+                                ],
+                                "tolerations": [
+                                    {
+                                        "key": "nvidia.com/gpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    },
+                                    {
+                                        "key": "amd.com/gpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    },
+                                    {
+                                        "key": "modelplane.ai/cpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                ],
+            ),
+            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
+            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+        },
+    ),
+    # A Grove leader behind a sidecar, and a worker carrying its own ports,
+    # probe and an extra container.
     BuildCase(
         name="GroveSidecars",
         reason=(
-            "On Grove, a leader behind a sidecar is probed on the engine's http port, and a worker's engine ports and "
-            "extra container pass through as written."
+            "On Grove, a leader behind a sidecar is probed on the engine's http port, and a worker's engine ports, "
+            "engine probe and extra container pass through as written."
         ),
         backend=grove.GroveBackend(),
         replica=_replica(
@@ -2312,6 +2710,9 @@ BUILD_CASES = [
                                                 "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block",
                                             ],
                                             ports=[v1alpha1.Port(name="nixl", containerPort=5557)],
+                                            readinessProbe=v1alpha1.ReadinessProbe(
+                                                tcpSocket=v1alpha1.TcpSocket(port="nixl")
+                                            ),
                                         ),
                                         v1alpha1.Container(name="log-tail", image="busybox:1.36"),
                                     ]
@@ -2434,6 +2835,7 @@ BUILD_CASES = [
                                             }
                                         ],
                                         "ports": [{"name": "nixl", "containerPort": 5557}],
+                                        "readinessProbe": {"tcpSocket": {"port": "nixl"}},
                                     },
                                     {"name": "log-tail", "image": "busybox:1.36"},
                                 ],
@@ -4627,6 +5029,130 @@ BUILD_CASES = [
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
         },
     ),
+    BuildCase(
+        name="LLMDServingPort",
+        reason=(
+            "A Leader/Worker engine on llm-d serves on the replica's serving port and gets the leader's own probe, "
+            "while its worker has neither."
+        ),
+        backend=llmd.LLMDBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=v1alpha1.Serving(mode="Unified", port=8080),
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            readinessProbe=v1alpha1.ReadinessProbe(
+                                                httpGet=v1alpha1.HttpGet(path="/v1/models", port="http")
+                                            ),
+                                        )
+                                    ]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": _leader_worker_set(
+                name="r-main-bb4e3",
+                serving="r",
+                leader_claim_template_name="r-main-leader-devices-f58c6",
+                worker_claim_template_name="r-main-worker-devices-99b8a",
+                replicas=1,
+                size=2,
+                leader_containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "resources": {"claims": [{"name": "devices"}]},
+                        "env": [
+                            {
+                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                "value": "$(LWS_LEADER_ADDRESS)",
+                            },
+                            {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                        ],
+                        "ports": [{"name": "http", "containerPort": 8080}],
+                        "readinessProbe": {"httpGet": {"path": "/v1/models", "port": "http"}},
+                    }
+                ],
+                leader_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                worker_containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "resources": {"claims": [{"name": "devices"}]},
+                        "env": [
+                            {
+                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                "value": "$(LWS_LEADER_ADDRESS)",
+                            },
+                            {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                        ],
+                    }
+                ],
+                worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
+            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+        },
+    ),
     # LWS names a LeaderWorkerSet's headless Service after it, so its webhook
     # rejects a name that isn't a DNS-1035 label. A claim template's name may
     # be a subdomain, so it keeps the dot.
@@ -4879,10 +5405,11 @@ BUILD_CASES = [
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
         },
     ),
-    # A Worker doesn't serve: its ports pass through and nothing probes it.
+    # A Worker doesn't serve, so Modelplane gives it no http port or default
+    # probe. What the user writes on it passes through.
     BuildCase(
         name="LLMDWorkerSidecar",
-        reason="A Worker's engine ports and the container beside it pass through as written, with no probe.",
+        reason="A Worker's engine ports and probe and the container beside it pass through as written.",
         backend=llmd.LLMDBackend(),
         replica=_replica(
             name="r",
@@ -4942,6 +5469,9 @@ BUILD_CASES = [
                                             name="engine",
                                             image="vllm/vllm-openai:latest",
                                             ports=[v1alpha1.Port(name="nixl", containerPort=5557)],
+                                            readinessProbe=v1alpha1.ReadinessProbe(
+                                                tcpSocket=v1alpha1.TcpSocket(port="nixl")
+                                            ),
                                         ),
                                         v1alpha1.Container(name="log-tail", image="busybox:1.36"),
                                     ]
@@ -5000,6 +5530,7 @@ BUILD_CASES = [
                             {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
                         ],
                         "ports": [{"name": "nixl", "containerPort": 5557}],
+                        "readinessProbe": {"tcpSocket": {"port": "nixl"}},
                     },
                     {"name": "log-tail", "image": "busybox:1.36"},
                 ],
@@ -6257,7 +6788,291 @@ APPLY_CASES = [
                 ],
             ),
             "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
-            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8000),
+            "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
+            "epp-serviceaccount": _epp_service_account(name="r-epp"),
+            "epp-role": _epp_role(name="r-epp"),
+            "epp-rolebinding": _epp_role_binding(name="r-epp"),
+            "epp-config": _epp_config(name="r-epp", config='{\n  "kind": "EndpointPickerConfig"\n}'),
+            "epp": _epp(
+                name="r-epp",
+                app="r-epp",
+                labels={"app": "r-epp", "modelplane.ai/role": "picker"},
+                annotations={
+                    "modelplane.ai/epp-config-checksum": "a9d9c5892fd25b535b127de68f30159b3d132f91f37c4c96b9e784b358d4b842"
+                },
+                containers=[_llm_d_epp_container(pool="r-pool")],
+                volumes=[{"name": "config", "configMap": {"name": "r-epp"}}],
+                image_pull_secrets=None,
+            ),
+            "epp-service": _epp_service(name="r-epp", app="r-epp"),
+        },
+    ),
+    ApplyCase(
+        name="PrefillDecodeServingPort",
+        reason=(
+            "A PrefillDecode replica with a serving port is fronted by an InferencePool that sends to that port, where "
+            "the prefill engine and the decode sidecar serve."
+        ),
+        composed={
+            "model-serving-prefill": _deployment(
+                name="r-prefill-d90b0",
+                claim_template_name="r-prefill-standalone-devices-f62af",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "prefill",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "r",
+                        "modelplane.ai/workload": "r-prefill-d90b0",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B", "--port=8080"],
+                        "ports": [{"name": "http", "containerPort": 8080}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8080},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    }
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
+            "model-serving-decode": _deployment(
+                name="r-decode-4b27b",
+                claim_template_name="r-decode-standalone-devices-63392",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "decode",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "r",
+                        "modelplane.ai/workload": "r-decode-4b27b",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B", "--port=8001"],
+                        "ports": [{"name": "http", "containerPort": 8001}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8001},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    },
+                    {
+                        "name": "sidecar",
+                        "image": "ghcr.io/llm-d/llm-d-routing-sidecar:v0.9.0",
+                        "args": ["--port=8080", "--vllm-port=8001"],
+                        "ports": [{"containerPort": 8080}],
+                    },
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
+        },
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=v1alpha1.Serving(
+                mode="PrefillDecode",
+                port=8080,
+                router="EndpointPicker",
+                endpointPicker=v1alpha1.EndpointPicker(
+                    template=v1alpha1.TemplateModel(
+                        spec=v1alpha1.SpecModel(
+                            containers=[
+                                v1alpha1.ContainerModel(
+                                    name="epp",
+                                    image="ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0",
+                                    args=[
+                                        "--pool-name=$(MODELPLANE_POOL_NAME)",
+                                        "--pool-namespace=$(MODELPLANE_POOL_NAMESPACE)",
+                                        "--pool-group=inference.networking.k8s.io",
+                                        "--config-file=$(MODELPLANE_PICKER_CONFIG)",
+                                        "--grpc-port=$(MODELPLANE_GRPC_PORT)",
+                                        "--grpc-health-port=$(MODELPLANE_GRPC_HEALTH_PORT)",
+                                        "--metrics-port=$(MODELPLANE_METRICS_PORT)",
+                                        "--metrics-endpoint-auth=false",
+                                    ],
+                                )
+                            ]
+                        )
+                    ),
+                    config={"kind": "EndpointPickerConfig"},
+                ),
+            ),
+            engines=[
+                v1alpha1.Engine(
+                    name="prefill",
+                    phase="Prefill",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=1,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=Qwen/Qwen3-0.6B", "--port=8080"],
+                                        )
+                                    ]
+                                )
+                            ),
+                        )
+                    ],
+                ),
+                v1alpha1.Engine(
+                    name="decode",
+                    phase="Decode",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=1,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=Qwen/Qwen3-0.6B", "--port=8001"],
+                                            ports=[v1alpha1.Port(name="http", containerPort=8001)],
+                                        ),
+                                        v1alpha1.Container(
+                                            name="sidecar",
+                                            image="ghcr.io/llm-d/llm-d-routing-sidecar:v0.9.0",
+                                            args=["--port=8080", "--vllm-port=8001"],
+                                            ports=[v1alpha1.Port(containerPort=8080)],
+                                        ),
+                                    ]
+                                )
+                            ),
+                        )
+                    ],
+                ),
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        want={
+            "model-serving-prefill": _deployment(
+                name="r-prefill-d90b0",
+                claim_template_name="r-prefill-standalone-devices-f62af",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "prefill",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "r",
+                        "modelplane.ai/workload": "r-prefill-d90b0",
+                        "llm-d.ai/role": "prefill",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B", "--port=8080"],
+                        "ports": [{"name": "http", "containerPort": 8080}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8080},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    }
+                ],
+                volumes=[
+                    {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+                ],
+            ),
+            "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
+            "model-serving-decode": _deployment(
+                name="r-decode-4b27b",
+                claim_template_name="r-decode-standalone-devices-63392",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "decode",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "r",
+                        "modelplane.ai/workload": "r-decode-4b27b",
+                        "llm-d.ai/role": "decode",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B", "--port=8001"],
+                        "ports": [{"name": "http", "containerPort": 8001}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8001},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    },
+                    {
+                        "name": "sidecar",
+                        "image": "ghcr.io/llm-d/llm-d-routing-sidecar:v0.9.0",
+                        "args": ["--port=8080", "--vllm-port=8001"],
+                        "ports": [{"containerPort": 8080}],
+                    },
+                ],
+                volumes=[
+                    {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+                ],
+            ),
+            "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8080),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
             "epp-role": _epp_role(name="r-epp"),
@@ -6528,7 +7343,7 @@ APPLY_CASES = [
                 ],
             ),
             "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
-            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8000),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
             "epp-role": _epp_role(name="r-epp"),
@@ -6855,7 +7670,7 @@ APPLY_CASES = [
                 ],
             ),
             "resource-claim-beta-standalone": _claim_template(name="r-beta-standalone-devices-9d8b1", count=1),
-            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8000),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
             "epp-role": _epp_role(name="r-epp"),
@@ -7369,7 +8184,7 @@ APPLY_CASES = [
             ),
             "resource-claim-decode-leader": _claim_template(name="r-decode-leader-devices-d2e70", count=8),
             "resource-claim-decode-worker": _claim_template(name="r-decode-worker-devices-08d44", count=8),
-            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8000),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
             "epp-role": _epp_role(name="r-epp"),
@@ -7516,7 +8331,161 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
-            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8000),
+            "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
+            "epp-serviceaccount": _epp_service_account(name="r-epp"),
+            "epp-role": _epp_role(name="r-epp"),
+            "epp-rolebinding": _epp_role_binding(name="r-epp"),
+            "epp-config": _epp_config(
+                name="r-epp",
+                config="apiVersion: llm-d.ai/v1alpha1\n"
+                "kind: EndpointPickerConfig\n"
+                "plugins:\n"
+                "- type: approx-prefix-cache-producer\n"
+                "  parameters:\n"
+                "    autoTune: false\n"
+                "    blockSizeTokens: 64\n"
+                "    maxPrefixTokensToMatch: 131072\n"
+                "    lruCapacityPerServer: 31250\n"
+                "- type: prefix-cache-scorer\n"
+                "- type: queue-scorer\n"
+                "- type: max-score-picker\n"
+                "schedulingProfiles:\n"
+                "- name: default\n"
+                "  plugins:\n"
+                "  - pluginRef: max-score-picker\n"
+                "  - pluginRef: prefix-cache-scorer\n"
+                "    weight: 2\n"
+                "  - pluginRef: queue-scorer\n"
+                "    weight: 1\n",
+            ),
+            "epp": _epp(
+                name="r-epp",
+                app="r-epp",
+                labels={"app": "r-epp", "modelplane.ai/role": "picker"},
+                annotations={
+                    "modelplane.ai/epp-config-checksum": "c4f1cefa4a1fe67069eaa6e9dde3e5b9bc7e79d3f807ecd076dd021259b2ab39"
+                },
+                containers=[_llm_d_epp_container(pool="r-pool")],
+                volumes=[{"name": "config", "configMap": {"name": "r-epp"}}],
+                image_pull_secrets=None,
+            ),
+            "epp-service": _epp_service(name="r-epp", app="r-epp"),
+        },
+    ),
+    ApplyCase(
+        name="UnifiedServingPort",
+        reason=("A replica with a serving port is fronted by an InferencePool that sends to that port."),
+        composed={
+            "model-serving-main": _deployment(
+                name="r-main-bb4e3",
+                claim_template_name="r-main-standalone-devices-f456f",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "main",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "r",
+                        "modelplane.ai/workload": "r-main-bb4e3",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B"],
+                        "ports": [{"name": "http", "containerPort": 8080}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8080},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    }
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+        },
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=v1alpha1.Serving(mode="Unified", port=8080),
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=1,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=Qwen/Qwen3-0.6B"],
+                                        )
+                                    ]
+                                )
+                            ),
+                        )
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        want={
+            "model-serving-main": _deployment(
+                name="r-main-bb4e3",
+                claim_template_name="r-main-standalone-devices-f456f",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "main",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "r",
+                        "modelplane.ai/workload": "r-main-bb4e3",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B"],
+                        "ports": [{"name": "http", "containerPort": 8080}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8080},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    }
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8080),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
             "epp-role": _epp_role(name="r-epp"),
@@ -7670,7 +8639,7 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
-            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8000),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
             "epp-role": _epp_role(name="r-epp"),
@@ -7824,7 +8793,7 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
-            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8000),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
             "epp-role": _epp_role(name="r-epp"),
@@ -8012,7 +8981,7 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
-            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8000),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
             "epp-role": _epp_role(name="r-epp"),
@@ -8208,7 +9177,7 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
-            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8000),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
             "epp-role": _epp_role(name="r-epp"),
@@ -8366,7 +9335,7 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
-            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8000),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
             "epp-role": _epp_role(name="r-epp"),
@@ -8527,7 +9496,7 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
-            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8000),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
             "epp-role": _epp_role(name="r-epp"),
@@ -8779,7 +9748,7 @@ APPLY_CASES = [
             ),
             "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
-            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
+            "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp", port=8000),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
             "epp-role": _epp_role(name="r-epp"),
@@ -8945,7 +9914,10 @@ APPLY_CASES = [
                 name="qwen2.5-7b-abcde-main-standalone-devices-771a9", count=1
             ),
             "inference-pool": _inference_pool(
-                name="qwen2.5-7b-abcde-pool", serving="qwen2.5-7b-abcde", picker="epp-qwen2-5-7b-abcde-epp-da596"
+                name="qwen2.5-7b-abcde-pool",
+                serving="qwen2.5-7b-abcde",
+                picker="epp-qwen2-5-7b-abcde-epp-da596",
+                port=8000,
             ),
             "model-route": _route(
                 name="qwen2.5-7b-abcde", path="/ml-team/qwen2.5-7b-abcde/", pool="qwen2.5-7b-abcde-pool"
@@ -9110,7 +10082,10 @@ APPLY_CASES = [
             ),
             "resource-claim-main-standalone": _claim_template(name="a" * 57 + "-05ced", count=1),
             "inference-pool": _inference_pool(
-                name="a" * 57 + "-abcde-pool", serving="a" * 57 + "-abcde", picker="epp-" + "a" * 53 + "-2dd65"
+                name="a" * 57 + "-abcde-pool",
+                serving="a" * 57 + "-abcde",
+                picker="epp-" + "a" * 53 + "-2dd65",
+                port=8000,
             ),
             "model-route": _route(
                 name="a" * 57 + "-abcde", path="/ml-team/" + "a" * 57 + "-abcde/", pool="a" * 57 + "-abcde-pool"
