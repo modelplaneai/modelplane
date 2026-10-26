@@ -3,7 +3,9 @@
 # HTTPRoute), so this exercises real routing. The engine is a mock server: it
 # needs no GPU and no model, so the pod goes Ready and answers both
 # /v1/chat/completions (OpenAI) and /v1/messages (Anthropic), the way a vLLM
-# server exposes both, without real inference.
+# server exposes both, without real inference. It listens on 8080 and reports
+# health at /v1/models, so the deployment sets serving.port and the engine's
+# readinessProbe, the way an engine other than vLLM would.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
@@ -13,6 +15,8 @@ spec:
   replicas: 1
   template:
     spec:
+      serving:
+        port: 8080
       engines:
       - name: mock
         members:
@@ -51,9 +55,8 @@ spec:
                           self.end_headers()
                           self.wfile.write(b)
                       def do_GET(self):
-                          if self.path == "/health":
-                              self._s({"status": "ok"})
-                          elif self.path == "/metrics":
+                          # No /health: the readinessProbe below asks /v1/models.
+                          if self.path == "/metrics":
                               # Two real vLLM names, so the collector's built-in
                               # renames have something to act on: one gauge and
                               # one the fleet converts the unit of.
@@ -138,7 +141,7 @@ spec:
                               })
                       def log_message(self, *a):
                           pass
-                  http.server.HTTPServer(("0.0.0.0", 8000), H).serve_forever()
+                  http.server.HTTPServer(("0.0.0.0", 8080), H).serve_forever()
                 # python -c takes the script as its first argument, so this follows
                 # it and arrives as sys.argv[1]. --served-model-name is how a real
                 # engine is told what to answer to, and referencing the env
@@ -146,7 +149,7 @@ spec:
                 # The mock rejects a request naming anything else, so a 200
                 # through the gateway proves the model was rewritten.
                 - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
-                # The ModelDeployment container template is a curated subset
-                # (name/image/command/args/env); the composition wires the port,
-                # readiness, and any GPU resources itself (it assumes port 8000). So
-                # no ports/readinessProbe/resources here — the XRD rejects them.
+                readinessProbe:
+                  httpGet:
+                    path: /v1/models
+                    port: http
