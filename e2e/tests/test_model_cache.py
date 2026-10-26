@@ -17,7 +17,8 @@
 The workload cluster has no ReadWriteMany storage, so the test brings a
 StorageClass with no provisioner, and binds the cache's claim to a hostPath
 volume it creates later. Until then the claim is Pending, and the replica
-must wait. The cache stages a tiny public repository.
+must wait. The cache stages a tiny public repository, filtered to its config
+and tokenizer files.
 
 The local pool has one fake GPU, which mock-demo holds, so the test scales
 mock-demo to zero while it runs and back afterwards. Run it on its own, after
@@ -47,7 +48,7 @@ STORAGE_CLASS = "e2e-model-cache"
 VOLUME = "e2e-model-cache"
 # Deleting the volume leaves its hostPath data on the node, and a cache that
 # finds a previous run's completion marker skips its download. A path of its
-# own per run makes every run download the repository again.
+# own per run makes every run download, and check, the files it filters.
 HOST_PATH = f"/tmp/e2e-model-cache-{uuid.uuid4().hex[:8]}"
 # Where the serving pods run on the workload cluster: the namespace mirroring
 # ml-team.
@@ -82,7 +83,7 @@ def _model_cache() -> dict[str, typing.Any]:
         "metadata": {"name": CACHE, "namespace": NAMESPACE},
         "spec": {
             "source": "HuggingFace",
-            "huggingFace": {"repo": REPO, "sizeGiB": 1},
+            "huggingFace": {"repo": REPO, "include": ["*.json", "*.txt"], "exclude": ["*.msgpack"], "sizeGiB": 1},
         },
     }
 
@@ -298,4 +299,8 @@ def test_replica_mounts_cache(control_plane: kube.Cluster, workload: kube.Cluste
         ["sh", "-c", "ls /mnt/models/models--hf-internal-testing--tiny-random-gpt2/snapshots/*/"],
     )
     assert staged.code == 0, staged.stderr
-    assert "config.json" in staged.stdout.split(), staged.stdout
+    files = staged.stdout.split()
+    assert "config.json" in files, files
+    assert not [f for f in files if f.endswith((".safetensors", ".bin", ".msgpack", ".h5"))], (
+        f"the cache staged files its filters exclude: {files}"
+    )

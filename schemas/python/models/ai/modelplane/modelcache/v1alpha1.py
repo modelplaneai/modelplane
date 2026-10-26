@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, Field, conint, constr
+from pydantic import AwareDatetime, BaseModel, Field, RootModel, conint, constr
 
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
 
@@ -50,10 +50,26 @@ class AuthSecret(BaseModel):
     name: constr(min_length=1)
 
 
+class ExcludeItem(RootModel[constr(min_length=1)]):
+    root: constr(min_length=1)
+
+
+class IncludeItem(RootModel[constr(min_length=1)]):
+    root: constr(min_length=1)
+
+
 class HuggingFace(BaseModel):
     authSecret: AuthSecret | None = None
     """
     Optional Secret holding an HF token for gated or private repos. Names a Secret in the ModelCache's own namespace; Modelplane propagates it to each matched cluster for the hydration Job to read.
+    """
+    exclude: list[ExcludeItem] | None = Field(None, max_length=32)
+    """
+    Glob patterns of the files not to download, such as "original/*". Each is passed to hf download as --exclude.
+    """
+    include: list[IncludeItem] | None = Field(None, max_length=32)
+    """
+    Glob patterns of the files to download, such as "*.safetensors". Each is passed to hf download as --include. Downloads every file in the repository when unset.
     """
     repo: constr(min_length=1)
     """
@@ -80,7 +96,7 @@ class Spec(BaseModel):
     """
     huggingFace: HuggingFace | None = None
     """
-    HuggingFace source. Required when source is HuggingFace.
+    HuggingFace source. Required when source is HuggingFace. The cache downloads once, so repo, revision, include and exclude can't change after the ModelCache is created.
     """
     source: Literal['HuggingFace'] = 'HuggingFace'
     """

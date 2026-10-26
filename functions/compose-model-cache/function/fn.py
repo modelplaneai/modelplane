@@ -21,6 +21,7 @@ at /mnt/models, so weights are downloaded once per cluster and read N
 times by every pod in an LWS gang.
 """
 
+import shlex
 from typing import Literal
 
 import grpc
@@ -170,11 +171,15 @@ def _hf_hydration(hf: v1alpha1.HuggingFace, auth_secret_name: str | None) -> tup
             }
         )
     revision_arg = f" --revision {hf.revision}" if hf.revision else ""
+    # Quoted, because a pattern is a glob and the command runs in a shell.
+    patterns = "".join(f" --include {shlex.quote(p.root)}" for p in hf.include or []) + "".join(
+        f" --exclude {shlex.quote(p.root)}" for p in hf.exclude or []
+    )
     command = (
         "set -e; "
         f"{_SKIP_IF_HYDRATED}"
         "pip install --quiet huggingface_hub; "
-        f"hf download {hf.repo}{revision_arg}; "
+        f"hf download {hf.repo}{revision_arg}{patterns}; "
         f"touch {_HYDRATED_MARKER}"
     )
     return env, command
