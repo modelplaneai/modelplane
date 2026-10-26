@@ -8,7 +8,7 @@
 # The model is bigger than one A100's VRAM, so --n-cpu-moe offloads the MoE
 # expert tensors to host RAM; the GPU runs the active path. That's how a 106B
 # model fits one A100 instead of a multi-GPU node. --port 8000 because llama.cpp
-# defaults to 8080 and Modelplane scrapes 8000.
+# defaults to 8080 and Modelplane's default serving port is 8000.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
