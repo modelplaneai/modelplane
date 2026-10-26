@@ -839,6 +839,72 @@ COMPOSE_CASES = [
         ),
     ),
     Case(
+        name="ShellRevisionQuoted",
+        reason="A revision with shell characters reaches hf download as one argument.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_cache(revision="v1;id", include=None, exclude=None, auth_secret=None, status=None),
+                resources={
+                    "pvc-cluster-a": _observed_pvc_object(),
+                },
+            ),
+            required_resources={
+                "clusters": fnv1.Resources(
+                    items=[
+                        _cluster(
+                            name="cluster-a",
+                            provider_config="cluster-a-pc",
+                            cluster={"source": "GKE", "gke": {"project": "my-project", "region": "us-central1"}},
+                            storage_class="modelplane-rwx",
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_cache(
+                    summary="0/1",
+                    clusters=[
+                        {
+                            "name": "cluster-a",
+                            "phase": "Hydrating",
+                            "message": "Downloading Qwen/Qwen3-0.6B into PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-qwen-17db2",
+                        }
+                    ],
+                    ready=fnv1.READY_UNSPECIFIED,
+                ),
+                resources={
+                    "pvc-cluster-a": _pvc_object(
+                        provider_config="cluster-a-pc",
+                        storage_class="modelplane-rwx",
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "hydrate-cluster-a": _job_object(
+                        provider_config="cluster-a-pc",
+                        command=(
+                            "set -e; if [ -f /mnt/artifact/.modelplane-hydrated ]; then echo 'already hydrated, skipping'; exit 0; fi; "
+                            "pip install --quiet huggingface_hub; hf download Qwen/Qwen3-0.6B --revision 'v1;id'; "
+                            "touch /mnt/artifact/.modelplane-hydrated"
+                        ),
+                        env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClustersMatched", status=fnv1.STATUS_CONDITION_TRUE, reason="Matched"),
+                fnv1.Condition(type="ArtifactReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Hydrating"),
+            ],
+        ),
+    ),
+    Case(
         name="JobFailed",
         reason="With its PVC bound and its hydration Job failed, a ModelCache reports the cluster Failed rather than Hydrating.",
         req=fnv1.RunFunctionRequest(

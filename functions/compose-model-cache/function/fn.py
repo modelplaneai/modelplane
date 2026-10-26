@@ -170,8 +170,9 @@ def _hf_hydration(hf: v1alpha1.HuggingFace, auth_secret_name: str | None) -> tup
                 },
             }
         )
-    revision_arg = f" --revision {hf.revision}" if hf.revision else ""
-    # Quoted, because a pattern is a glob and the command runs in a shell.
+    # Every user value is quoted, because the command runs in a shell and a
+    # pattern is a glob.
+    revision_arg = f" --revision {shlex.quote(hf.revision)}" if hf.revision else ""
     patterns = "".join(f" --include {shlex.quote(p.root)}" for p in hf.include or []) + "".join(
         f" --exclude {shlex.quote(p.root)}" for p in hf.exclude or []
     )
@@ -179,7 +180,7 @@ def _hf_hydration(hf: v1alpha1.HuggingFace, auth_secret_name: str | None) -> tup
         "set -e; "
         f"{_SKIP_IF_HYDRATED}"
         "pip install --quiet huggingface_hub; "
-        f"hf download {hf.repo}{revision_arg}{patterns}; "
+        f"hf download {shlex.quote(hf.repo)}{revision_arg}{patterns}; "
         f"touch {_HYDRATED_MARKER}"
     )
     return env, command
