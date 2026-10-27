@@ -122,6 +122,10 @@ _AUTOSCALER_NAMESPACE = "kube-system"
 _AUTOSCALER_CHART_REPO = "https://kubernetes.github.io/autoscaler"
 _AUTOSCALER_CHART_NAME = "cluster-autoscaler"
 _AUTOSCALER_CHART_VERSION = "9.57.0"
+# provider-helm installs a Release under its external name, which otherwise
+# defaults to the Release's generated name: a long XR name pushes that past
+# Helm's 53-character limit.
+_AUTOSCALER_RELEASE_NAME = "mp-cluster-autoscaler"
 
 # Secret the autoscaler's Civo cloud provider reads its API access from:
 # civo-api-access in kube-system with api-key, api-url, cluster-id, and
@@ -395,7 +399,10 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-cluster-autoscaler"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
+                metadata=metav1.ObjectMeta(
+                    namespace=_namespace(self.xr.metadata),
+                    annotations={_ANNOTATION_EXTERNAL_NAME: _AUTOSCALER_RELEASE_NAME},
+                ),
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(

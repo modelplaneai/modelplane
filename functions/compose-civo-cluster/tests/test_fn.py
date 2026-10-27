@@ -313,7 +313,10 @@ def _autoscaler_release(*, autoscaling_groups: list[dict]) -> fnv1.Resource:
             {
                 "apiVersion": "helm.m.crossplane.io/v1beta1",
                 "kind": "Release",
-                "metadata": {"namespace": "modelplane-system"},
+                "metadata": {
+                    "namespace": "modelplane-system",
+                    "annotations": {"crossplane.io/external-name": "mp-cluster-autoscaler"},
+                },
                 "spec": {
                     "managementPolicies": ["Observe", "Create", "Update"],
                     "providerConfigRef": {

@@ -1070,7 +1070,10 @@ def _autoscaler_release() -> fnv1.Resource:
             {
                 "apiVersion": "helm.m.crossplane.io/v1beta1",
                 "kind": "Release",
-                "metadata": {"namespace": "modelplane-system"},
+                "metadata": {
+                    "namespace": "modelplane-system",
+                    "annotations": {"crossplane.io/external-name": "mp-cluster-autoscaler"},
+                },
                 "spec": {
                     "managementPolicies": ["Observe", "Create", "Update"],
                     "providerConfigRef": {"kind": "ProviderConfig", "name": "test-cluster-kubeconfig-55b57"},
@@ -2769,7 +2772,10 @@ COMPOSE_CASES = [
                             {
                                 "apiVersion": "helm.m.crossplane.io/v1beta1",
                                 "kind": "Release",
-                                "metadata": {"namespace": "modelplane-system"},
+                                "metadata": {
+                                    "namespace": "modelplane-system",
+                                    "annotations": {"crossplane.io/external-name": "mp-aws-dranet"},
+                                },
                                 "spec": {
                                     "managementPolicies": ["Observe", "Create", "Update"],
                                     "providerConfigRef": {
@@ -3005,7 +3011,10 @@ COMPOSE_CASES = [
                             {
                                 "apiVersion": "helm.m.crossplane.io/v1beta1",
                                 "kind": "Release",
-                                "metadata": {"namespace": "modelplane-system"},
+                                "metadata": {
+                                    "namespace": "modelplane-system",
+                                    "annotations": {"crossplane.io/external-name": "mp-aws-dranet"},
+                                },
                                 "spec": {
                                     "managementPolicies": ["Observe", "Create", "Update"],
                                     "providerConfigRef": {

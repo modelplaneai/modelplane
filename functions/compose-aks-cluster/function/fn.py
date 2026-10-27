@@ -155,6 +155,10 @@ _ORPHAN_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update"]
 _NETWORK_OPERATOR_CHART_REPO = "https://helm.ngc.nvidia.com/nvidia"
 _NETWORK_OPERATOR_CHART_NAME = "network-operator"
 _NETWORK_OPERATOR_CHART_VERSION = "26.4.0"
+# provider-helm installs a Release under its external name, which otherwise
+# defaults to the Release's generated name: a long XR name pushes that past
+# Helm's 53-character limit.
+_NETWORK_OPERATOR_RELEASE_NAME = "mp-network-operator"
 _NETWORK_OPERATOR_NAMESPACE = "network-operator"
 
 # Name of the RWX StorageClass Modelplane composes for ModelCache.
@@ -477,7 +481,10 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-network-operator"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
+                metadata=metav1.ObjectMeta(
+                    namespace=_namespace(self.xr.metadata),
+                    annotations={_ANNOTATION_EXTERNAL_NAME: _NETWORK_OPERATOR_RELEASE_NAME},
+                ),
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
