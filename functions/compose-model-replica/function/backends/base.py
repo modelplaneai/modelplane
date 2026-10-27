@@ -55,6 +55,8 @@ class Backend(Protocol):
         provider_config: str,
         serving_label: str,
         stack: str,
+        *,
+        observed: Mapping[str, fnv1.Resource],
     ) -> dict[str, k8sobjv1alpha1.Object]: ...
 
     def ready_copies(self, engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource]) -> int:
@@ -587,6 +589,56 @@ def ready_replicas(engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource
     LeaderWorkerSet's ready groups. Both leave readyReplicas out at 0."""
     status = observed_status(observed, workload_key(engine)) or {}
     return int(status.get("readyReplicas") or 0)
+
+
+def stalled_copies_down(engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource], key: str) -> int:
+    """How many of an engine's copies aren't available once its Deployment's
+    rollout has stalled, or 0 while it hasn't. key is the response key the
+    Deployment is composed under.
+
+    A rollout has stalled once the Deployment controller marks it Progressing
+    False with reason ProgressDeadlineExceeded. It checks the deadline when it
+    next syncs the Deployment after progressDeadlineSeconds (600 by default)
+    with no progress, so this can take longer than the deadline. It marks it
+    Progressing True again as soon as the rollout makes progress, such as a pod
+    becoming available or an old pod being removed.
+    """
+    status = observed_status(observed, key) or {}
+    stalled = any(
+        c.get("type") == "Progressing" and c.get("status") == "False" and c.get("reason") == "ProgressDeadlineExceeded"
+        for c in status.get("conditions") or []
+    )
+    if not stalled:
+        return 0
+    copies = int(engine.copies or 1)
+    return copies - min(int(status.get("availableReplicas") or 0), copies)
+
+
+# Kubernetes' default for both of a rolling update's bounds. Surge rounds up and
+# unavailable rounds down, so an engine of fewer than four copies starts a new
+# pod before it stops an old one.
+_ROLLING_UPDATE_DEFAULT = "25%"
+
+
+def rolling_update(copies: int, down: int) -> dict:
+    """A Deployment strategy that surges, and replaces the copies down in a
+    stalled rollout without waiting for their replacements.
+
+    Waiting would deadlock when the only devices a new pod fits on are held by
+    an old pod that isn't serving, such as one crash-looping on a bad config.
+    Counting copies down only once the rollout has stalled means a copy that's
+    briefly unready while the rollout still progresses isn't removed. A copy
+    that's available stays up until its replacement is available.
+
+    The bounds stay at Kubernetes' defaults until more copies are down than
+    they allow, so a healthy engine's Deployment is composed as it would be
+    defaulted.
+    """
+    max_unavailable: int | str = down if down > copies // 4 else _ROLLING_UPDATE_DEFAULT
+    return {
+        "type": "RollingUpdate",
+        "rollingUpdate": {"maxSurge": _ROLLING_UPDATE_DEFAULT, "maxUnavailable": max_unavailable},
+    }
 
 
 def serving_label(replica: v1alpha1.ModelReplica) -> str:

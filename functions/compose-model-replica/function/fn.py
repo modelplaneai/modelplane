@@ -192,7 +192,7 @@ class Composer:
         composed: dict[str, k8sobjv1alpha1.Object] = {}
         for engine in self.xr.spec.engines:
             backend = _BACKENDS[base.select_backend(engine, stack)]()
-            composed.update(backend.build(self.xr, engine, pc, label, stack))
+            composed.update(backend.build(self.xr, engine, pc, label, stack, observed=self.req.observed.resources))
         composed = routing.apply(composed, self.xr, pc)
         for key, obj in composed.items():
             resource.update(self.rsp.desired.resources[key], obj)
