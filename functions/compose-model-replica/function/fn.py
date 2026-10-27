@@ -32,10 +32,11 @@ from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
+from models.ai.modelplane.modelcache import v1alpha1 as mcv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
-from function import routing
+from function import cache, routing
 from function.backends import base, grove, llmd, native
 
 # Condition types and reasons for the ModelReplica XR.
@@ -44,6 +45,7 @@ CONDITION_TYPE_MODEL_SERVING = "ModelServing"
 CONDITION_TYPE_MODEL_READY = "ModelReady"
 
 CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
+CONDITION_REASON_WAITING_FOR_CACHE = "WaitingForCache"
 CONDITION_REASON_WAITING_FOR_MODEL = "WaitingForModel"
 CONDITION_REASON_DEPLOYING = "Deploying"
 CONDITION_REASON_ACCEPTED = "Accepted"
@@ -93,11 +95,58 @@ class Composer:
     def compose(self) -> None:
         if not self.resolve_inputs():
             return
-        self.compose_model_serving()
+        found, mount = self.resolve_cache()
+        if not found:
+            return
+        self.compose_model_serving(mount)
         self.derive_conditions()
 
+    def resolve_cache(self) -> tuple[bool, mcv1alpha1.Mount | None]:
+        """How the replica's engines read its ModelCache, if it reads one.
+
+        Returns (True, mount) once the cache publishes a mount for the
+        replica's cluster, or (True, None) when the replica reads no cache.
+        A new replica waits for the mount, and composes nothing until then, so
+        its engines don't start before the model is there. A replica whose
+        engines already run keeps the cache volume, mount and env their
+        workload has now, or no cache if it has none, until the cache
+        publishes a mount. So a cache that stops being Ready, is deleted, or
+        is added or switched to before it's Ready doesn't roll a serving
+        model's engines. Returns (False, None) while waiting.
+        """
+        resolution = cache.resolve(self.req, self.xr)
+        if resolution is None:
+            return True, None
+        if resolution.mount is not None:
+            return True, resolution.mount
+        keys = base.workload_keys(self.xr)
+        if any(k in self.req.observed.resources for k in keys):
+            kept = cache.kept(self.xr, self.req.observed.resources, keys)
+            response.warning(self.rsp, kept.waiting)
+            return True, kept.mount
+        response.set_conditions(
+            self.rsp,
+            resource.Condition(
+                typ=CONDITION_TYPE_MODEL_ACCEPTED,
+                status="False",
+                reason=CONDITION_REASON_WAITING_FOR_CACHE,
+                message=resolution.waiting,
+            ),
+            resource.Condition(
+                typ=CONDITION_TYPE_MODEL_SERVING, status="False", reason=CONDITION_REASON_WAITING_FOR_MODEL
+            ),
+            resource.Condition(
+                typ=CONDITION_TYPE_MODEL_READY, status="False", reason=CONDITION_REASON_WAITING_FOR_MODEL
+            ),
+        )
+        # Nothing is composed while waiting, and an XR with no composed
+        # resources would otherwise be trivially ready.
+        self.rsp.desired.composite.ready = fnv1.READY_FALSE
+        return False, None
+
     def resolve_inputs(self) -> bool:
-        """Declare and fetch the referenced InferenceCluster."""
+        """Declare the referenced InferenceCluster and ModelCache, and fetch the cluster."""
+        cache.require(self.rsp, self.xr)
         response.require_resources(
             self.rsp,
             name="cluster",
@@ -153,7 +202,7 @@ class Composer:
 
         return True
 
-    def compose_model_serving(self) -> None:
+    def compose_model_serving(self, mount: mcv1alpha1.Mount | None) -> None:
         """Compose each engine's workload, then the replica's routing surface.
 
         Every engine composes to a Deployment, LeaderWorkerSet, or PodCliqueSet (with its
@@ -192,7 +241,7 @@ class Composer:
         composed: dict[str, k8sobjv1alpha1.Object] = {}
         for engine in self.xr.spec.engines:
             backend = _BACKENDS[base.select_backend(engine, stack)]()
-            composed.update(backend.build(self.xr, engine, pc, label, stack))
+            composed.update(backend.build(self.xr, engine, pc, label, stack, mount))
         composed = routing.apply(composed, self.xr, pc)
         for key, obj in composed.items():
             resource.update(self.rsp.desired.resources[key], obj)

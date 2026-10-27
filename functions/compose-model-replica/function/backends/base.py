@@ -26,6 +26,7 @@ from typing import Protocol
 
 from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
+from models.ai.modelplane.modelcache import v1alpha1 as mcv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -55,6 +56,7 @@ class Backend(Protocol):
         provider_config: str,
         serving_label: str,
         stack: str,
+        cache: mcv1alpha1.Mount | None,
     ) -> dict[str, k8sobjv1alpha1.Object]: ...
 
     def ready_copies(self, engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource]) -> int:
@@ -72,67 +74,47 @@ ROLE_STANDALONE = "Standalone"
 ROLE_LEADER = "Leader"
 ROLE_WORKER = "Worker"
 
-# Mount path the cache PVC is exposed at inside every engine pod. Intrinsic
-# to the cache contract; the deployment points the engine here.
-CACHE_MOUNT_PATH = "/mnt/models"
 
-# Volume name shared by the PVC volume and its mount.
-_CACHE_VOLUME = "model-cache"
+def cache_mounts(cache: mcv1alpha1.Mount | None) -> tuple[list[dict], list[dict]]:
+    """Return (volumes, volumeMounts) that read the replica's cache on its cluster, or ([], []).
 
-
-def cache_pvc_name(namespace: str, cache_name: str) -> str:
-    # MUST stay in sync with compose-model-cache's _pvc_name()
-    # (functions/compose-model-cache/function/fn.py) — both sides share
-    # resource.child_name("modelcache", namespace, name), so a replica mounts the
-    # PVC the cache composes by the same name in the same mirrored namespace.
-    return resource.child_name("modelcache", namespace, cache_name)
-
-
-def cache_mounts(replica: v1alpha1.ModelReplica) -> tuple[list[dict], list[dict]]:
-    """Return (volumes, volumeMounts) for the replica's cache, or ([], []).
-
-    The cache is a per-cache PVC qualified by the replica's namespace
-    (modelCacheRef carries only a name, and the ModelCache is in the replica's
-    own namespace). The PVC is shared across every engine and member of the
-    replica.
+    The ModelCache publishes them for each cluster it has staged the model on,
+    so every engine and member of the replica reads the cache the same way,
+    whatever its source.
     """
-    ref = replica.spec.modelCacheRef
-    if not ref:
+    if cache is None:
         return [], []
-    pvc = cache_pvc_name(_namespace(replica.metadata), ref.name)
-    # Mounted read-write (NOT readOnly): engines write into the model dir
-    # (tokenizer/compile/lock artifacts), and a readOnly mount hard-fails them.
-    # The PVC is ReadWriteMany, so every pod in the gang shares one read-write
-    # mount; the hydration Job populates it once and serving pods read N times.
     return (
-        [{"name": _CACHE_VOLUME, "persistentVolumeClaim": {"claimName": pvc}}],
-        [{"name": _CACHE_VOLUME, "mountPath": CACHE_MOUNT_PATH}],
+        [v.model_dump(exclude_none=True) for v in cache.volumes or []],
+        [m.model_dump(exclude_none=True) for m in cache.volumeMounts or []],
     )
 
 
-def cache_env(replica: v1alpha1.ModelReplica) -> list[dict]:
-    """Env that makes the cache mount resolvable by the model's own name, or [].
+def cache_env(cache: mcv1alpha1.Mount | None) -> list[dict]:
+    """Env that reads the replica's cache, as its ModelCache publishes it, or [].
 
-    compose-model-cache stages a HuggingFace source in HuggingFace's own cache
-    layout, so pointing HF_HUB_CACHE at the mount lets an engine load by repo id
-    against the staged snapshot. The command is then the same cached or not, and
-    Modelplane injects no --model of its own (#407). No HF_HUB_OFFLINE: it isn't
-    needed to resolve the snapshot, and it breaks an engine that fetches a
-    second repo at startup, like kimi-k2's gated tokenizer.
+    A HuggingFace cache sets HF_HUB_CACHE to the mount, so an engine loads the
+    model by its repo ID and its command is the same cached or not (#407).
+    Modelplane sets no HF_HUB_OFFLINE: it isn't needed to find the staged
+    model, and it breaks an engine that fetches a second repo at startup, like
+    kimi-k2's gated tokenizer. An engine that must not reach HuggingFace sets
+    it itself.
 
     An engine must name the revision its cache staged. A bare repo id resolves
     at the default branch, so a cache pinned to a commit or tag misses unless
     the engine passes that revision too.
-
-    HF_HUB_CACHE is a cache root, not a pin, so an engine fetching some other
-    repo by id writes it to the shared PVC rather than its own filesystem.
-
-    HuggingFace-specific because the source is. A second ModelCache source would
-    stage its own layout and gate this on the source.
     """
-    if not replica.spec.modelCacheRef:
+    if cache is None:
         return []
-    return [{"name": "HF_HUB_CACHE", "value": CACHE_MOUNT_PATH}]
+    return [e.model_dump(exclude_none=True) for e in cache.env or []]
+
+
+def _cache_claim(cache: mcv1alpha1.Mount) -> str | None:
+    """The claim the cache's first claim-backed volume reads, or None."""
+    for v in cache.volumes or []:
+        if v.persistentVolumeClaim:
+            return v.persistentVolumeClaim.claimName
+    return None
 
 
 # Well-known name and namespace of the per-cluster shared ModelExpress server
@@ -151,7 +133,7 @@ _MODELEXPRESS_NAMESPACE = "default"
 _MODELEXPRESS_PORT = 8001
 
 
-def modelexpress_env(replica: v1alpha1.ModelReplica, stack: str) -> list[dict]:
+def modelexpress_env(replica: v1alpha1.ModelReplica, stack: str, cache: mcv1alpha1.Mount | None) -> list[dict]:
     """ModelExpress P2P env for an engine pod that references a cache on a
     Dynamo cluster, or [] otherwise.
 
@@ -170,24 +152,24 @@ def modelexpress_env(replica: v1alpha1.ModelReplica, stack: str) -> list[dict]:
     ModelExpress content-addresses from the model name and revision. Two caches
     of the same repo, neither pinning a revision, can hold different commits
     while both engines report none, so a replica could load a peer's other
-    weights. The PVC name is stable across a cache's replicas and distinct
-    across caches and namespaces; the resolved commit would be better, but only
-    the hydration Job sees it. The cost is that identical caches can't share a
-    source.
+    weights. It's the name of the claim the engine mounts, which is stable
+    across a cache's replicas and distinct across caches and namespaces; the
+    resolved commit would be better, but only the hydration Job sees it. The
+    cost is that identical caches can't share a source.
 
     POD_* identify the publishing pod. The pinned 0.4.1 server ignores them. A
     0.5.0 server owns a ModelMetadata CR by its publishing pod, so Kubernetes
     garbage-collects it, but only for a pod in the server's own namespace;
     owner references can't cross namespaces, and engines run in their team's.
     """
-    ref = replica.spec.modelCacheRef
-    if not ref or stack != "Dynamo":
+    claim = _cache_claim(cache) if cache is not None else None
+    if not replica.spec.modelCacheRef or claim is None or stack != "Dynamo":
         return []
     address = f"{_MODELEXPRESS_SERVER_SERVICE}.{_MODELEXPRESS_NAMESPACE}.svc:{_MODELEXPRESS_PORT}"
     return [
         {"name": "MX_SERVER_ADDRESS", "value": address},
         {"name": "MODEL_EXPRESS_URL", "value": address},
-        {"name": "MX_MODEL_REVISION", "value": cache_pvc_name(_namespace(replica.metadata), ref.name)},
+        {"name": "MX_MODEL_REVISION", "value": claim},
         {"name": "MX_P2P_METADATA", "value": "1"},
         {"name": "POD_NAME", "valueFrom": {"fieldRef": {"fieldPath": "metadata.name"}}},
         {"name": "POD_UID", "valueFrom": {"fieldRef": {"fieldPath": "metadata.uid"}}},
@@ -195,11 +177,15 @@ def modelexpress_env(replica: v1alpha1.ModelReplica, stack: str) -> list[dict]:
     ]
 
 
-def modelexpress_security_context(replica: v1alpha1.ModelReplica, stack: str) -> dict | None:
+def modelexpress_security_context(
+    replica: v1alpha1.ModelReplica, stack: str, cache: mcv1alpha1.Mount | None
+) -> dict | None:
     """IPC_LOCK, which GPUDirect RDMA needs to pin memory, or None unless the
-    replica references a cache on a Dynamo cluster.
+    replica mounts a cache on a Dynamo cluster.
 
-    Gated like modelexpress_env, but unlike that env this isn't inert. The
+    Gated like modelexpress_env, on the mount rather than the reference, so a
+    running replica that gains a cache reference keeps its pods as they are
+    until it mounts the cache. Unlike that env this isn't inert. The
     restricted Pod Security Standard permits no added capability except
     NET_BIND_SERVICE, so a workload cluster that labels the serving namespace
     pod-security.kubernetes.io/enforce=restricted rejects every
@@ -211,8 +197,8 @@ def modelexpress_security_context(replica: v1alpha1.ModelReplica, stack: str) ->
     declares a fabric? An engine with no fabric can't do RDMA, so it has no use
     for the capability.
     """
-    ref = replica.spec.modelCacheRef
-    if not ref or stack != "Dynamo":
+    claim = _cache_claim(cache) if cache is not None else None
+    if not replica.spec.modelCacheRef or claim is None or stack != "Dynamo":
         return None
     return {"capabilities": {"add": ["IPC_LOCK"]}}
 

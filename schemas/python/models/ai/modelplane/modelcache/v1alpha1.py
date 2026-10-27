@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, conint, constr
+from pydantic import AwareDatetime, BaseModel, Field, conint, constr
 
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
 
@@ -88,8 +88,50 @@ class Spec(BaseModel):
     """
 
 
+class EnvItem(BaseModel):
+    name: str
+    value: str
+
+
+class VolumeMount(BaseModel):
+    mountPath: str
+    name: str
+    readOnly: bool | None = None
+
+
+class PersistentVolumeClaim(BaseModel):
+    claimName: str
+
+
+class Volume(BaseModel):
+    name: str
+    persistentVolumeClaim: PersistentVolumeClaim | None = None
+
+
+class Mount(BaseModel):
+    env: list[EnvItem] | None = Field(None, max_length=8)
+    """
+    Container environment variables. A variable the engine sets itself takes precedence.
+    """
+    volumeMounts: list[VolumeMount] | None = Field(None, max_length=8)
+    """
+    Container volume mounts, each a subset of a Kubernetes VolumeMount.
+    """
+    volumes: list[Volume] | None = Field(None, max_length=8)
+    """
+    Pod volumes, each a subset of a Kubernetes Volume.
+    """
+
+
 class Cluster(BaseModel):
     message: str | None = None
+    """
+    Why the model isn't readable on this cluster yet, while phase isn't Ready.
+    """
+    mount: Mount | None = None
+    """
+    How an engine pod reads the model on this cluster. Set only while phase is Ready. A ModelReplica adds these to each of its engine pods.
+    """
     name: str
     phase: Literal['Pending', 'Hydrating', 'Ready', 'Failed'] | None = None
 

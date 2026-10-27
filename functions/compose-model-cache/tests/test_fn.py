@@ -244,6 +244,62 @@ def _observed_job_object(*, condition: str, ready: bool) -> fnv1.Resource:
     )
 
 
+def _observed_pending_pvc_object(*, selected_node: str | None) -> fnv1.Resource:
+    """The cache PVC's Object as observed with the PVC Pending, annotated with the node the scheduler chose for it, if any."""
+    manifest: dict[str, Any] = {"status": {"phase": "Pending"}}
+    if selected_node is not None:
+        manifest["metadata"] = {"annotations": {"volume.kubernetes.io/selected-node": selected_node}}
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {"forProvider": {"manifest": {}}},
+                "status": {"atProvider": {"manifest": manifest}},
+            }
+        ),
+    )
+
+
+def _observed_failed_job_object(*, failed: int, message: str) -> fnv1.Resource:
+    """The hydration Job's Object as observed, the Job Failed with message after failed attempts."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {"forProvider": {"manifest": {}}},
+                "status": {
+                    "atProvider": {
+                        "manifest": {
+                            "status": {
+                                "failed": failed,
+                                "conditions": [
+                                    {
+                                        "type": "Failed",
+                                        "status": "True",
+                                        "reason": "BackoffLimitExceeded",
+                                        "message": message,
+                                    }
+                                ],
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+    )
+
+
+def _mount() -> dict:
+    """The qwen ModelCache's mount on a cluster where it's Ready."""
+    return {
+        "volumes": [{"name": "model-cache", "persistentVolumeClaim": {"claimName": "modelcache-ml-team-qwen-17db2"}}],
+        "volumeMounts": [{"name": "model-cache", "mountPath": "/mnt/models"}],
+        "env": [{"name": "HF_HUB_CACHE", "value": "/mnt/models"}],
+    }
+
+
 def _to_dict(msg: message.Message) -> dict:
     """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
     return json.loads(json_format.MessageToJson(msg, sort_keys=True))
@@ -281,7 +337,13 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_model_cache(
                     summary="0/1",
-                    clusters=[{"name": "cluster-a", "phase": "Pending"}],
+                    clusters=[
+                        {
+                            "name": "cluster-a",
+                            "phase": "Pending",
+                            "message": "Waiting for PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-qwen-17db2 to bind",
+                        }
+                    ],
                     ready=fnv1.READY_UNSPECIFIED,
                 ),
                 resources={
@@ -353,7 +415,13 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_model_cache(
                     summary="0/1",
-                    clusters=[{"name": "cluster-a", "phase": "Pending"}],
+                    clusters=[
+                        {
+                            "name": "cluster-a",
+                            "phase": "Pending",
+                            "message": "Waiting for PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-qwen-17db2 to bind",
+                        }
+                    ],
                     ready=fnv1.READY_UNSPECIFIED,
                 ),
                 resources={
@@ -453,7 +521,13 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_model_cache(
                     summary="0/1",
-                    clusters=[{"name": "eks-a", "phase": "Pending"}],
+                    clusters=[
+                        {
+                            "name": "eks-a",
+                            "phase": "Pending",
+                            "message": "Waiting for PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-qwen-17db2 to bind",
+                        }
+                    ],
                     ready=fnv1.READY_UNSPECIFIED,
                 ),
                 resources={
@@ -522,7 +596,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_model_cache(
                     summary="1/1",
-                    clusters=[{"name": "cluster-a", "phase": "Ready"}],
+                    clusters=[{"name": "cluster-a", "phase": "Ready", "mount": _mount()}],
                     ready=fnv1.READY_TRUE,
                 ),
                 resources={
@@ -577,7 +651,13 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_model_cache(
                     summary="0/1",
-                    clusters=[{"name": "cluster-a", "phase": "Hydrating"}],
+                    clusters=[
+                        {
+                            "name": "cluster-a",
+                            "phase": "Hydrating",
+                            "message": "Downloading Qwen/Qwen3-0.6B into PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-qwen-17db2",
+                        }
+                    ],
                     ready=fnv1.READY_UNSPECIFIED,
                 ),
                 resources={
@@ -638,7 +718,13 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_model_cache(
                     summary="0/1",
-                    clusters=[{"name": "cluster-a", "phase": "Failed"}],
+                    clusters=[
+                        {
+                            "name": "cluster-a",
+                            "phase": "Failed",
+                            "message": "Job mp-ml-team-51733/modelcache-ml-team-qwen-hydrate-256ec failed downloading Qwen/Qwen3-0.6B",
+                        }
+                    ],
                     ready=fnv1.READY_UNSPECIFIED,
                 ),
                 resources={
@@ -707,7 +793,14 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_model_cache(
                     summary="1/2",
-                    clusters=[{"name": "a", "phase": "Ready"}, {"name": "b", "phase": "Hydrating"}],
+                    clusters=[
+                        {"name": "a", "phase": "Ready", "mount": _mount()},
+                        {
+                            "name": "b",
+                            "phase": "Hydrating",
+                            "message": "Downloading Qwen/Qwen3-0.6B into PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-qwen-17db2",
+                        },
+                    ],
                     ready=fnv1.READY_UNSPECIFIED,
                 ),
                 resources={
@@ -782,7 +875,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_model_cache(
                     summary="1/1",
-                    clusters=[{"name": "cluster-a", "phase": "Ready"}],
+                    clusters=[{"name": "cluster-a", "phase": "Ready", "mount": _mount()}],
                     ready=fnv1.READY_TRUE,
                 ),
                 resources={
@@ -880,7 +973,13 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_model_cache(
                     summary="0/1",
-                    clusters=[{"name": "cluster-a", "phase": "Pending"}],
+                    clusters=[
+                        {
+                            "name": "cluster-a",
+                            "phase": "Pending",
+                            "message": "Waiting for key HF_TOKEN in Secret ml-team/hf-token",
+                        }
+                    ],
                     ready=fnv1.READY_FALSE,
                 ),
                 resources={
@@ -951,7 +1050,13 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_model_cache(
                     summary="0/1",
-                    clusters=[{"name": "cluster-a", "phase": "Pending"}],
+                    clusters=[
+                        {
+                            "name": "cluster-a",
+                            "phase": "Pending",
+                            "message": "Waiting for key HF_TOKEN in Secret ml-team/hf-token",
+                        }
+                    ],
                     ready=fnv1.READY_FALSE,
                 ),
                 resources={
@@ -1047,7 +1152,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_model_cache(
                     summary="1/1",
-                    clusters=[{"name": "cluster-a", "phase": "Ready"}],
+                    clusters=[{"name": "cluster-a", "phase": "Ready", "mount": _mount()}],
                     ready=fnv1.READY_TRUE,
                 ),
                 resources={
@@ -1125,7 +1230,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_model_cache(
                     summary="1/1",
-                    clusters=[{"name": "cluster-a", "phase": "Ready"}],
+                    clusters=[{"name": "cluster-a", "phase": "Ready", "mount": _mount()}],
                     ready=fnv1.READY_TRUE,
                 ),
                 resources={
@@ -1194,6 +1299,141 @@ COMPOSE_CASES = [
             conditions=[
                 fnv1.Condition(type="ClustersMatched", status=fnv1.STATUS_CONDITION_FALSE, reason="NoClusters"),
                 fnv1.Condition(type="ArtifactReady", status=fnv1.STATUS_CONDITION_FALSE, reason="NoClusters"),
+            ],
+        ),
+    ),
+    Case(
+        name="PendingClaimNamesNode",
+        reason="While its PVC waits to bind, a ModelCache says which claim it waits on, and the node the scheduler chose for it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_cache(revision=None, auth_secret=None, status=None),
+                resources={
+                    "pvc-cluster-a": _observed_pending_pvc_object(selected_node="computeinstance-e05mkw6q6qs5hcmaa7"),
+                },
+            ),
+            required_resources={
+                "clusters": fnv1.Resources(
+                    items=[
+                        _cluster(
+                            name="cluster-a",
+                            provider_config="cluster-a-pc",
+                            cluster={"source": "GKE", "gke": {"project": "my-project", "region": "us-central1"}},
+                            storage_class="modelplane-rwx",
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_cache(
+                    summary="0/1",
+                    clusters=[
+                        {
+                            "name": "cluster-a",
+                            "phase": "Pending",
+                            "message": "Waiting for PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-qwen-17db2 to bind on node computeinstance-e05mkw6q6qs5hcmaa7",
+                        }
+                    ],
+                    ready=fnv1.READY_UNSPECIFIED,
+                ),
+                resources={
+                    "pvc-cluster-a": _pvc_object(
+                        provider_config="cluster-a-pc",
+                        storage_class="modelplane-rwx",
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "hydrate-cluster-a": _job_object(
+                        provider_config="cluster-a-pc",
+                        command=(
+                            "set -e; if [ -f /mnt/artifact/.modelplane-hydrated ]; then echo 'already hydrated, skipping'; exit 0; fi; "
+                            "pip install --quiet huggingface_hub; hf download Qwen/Qwen3-0.6B; "
+                            "touch /mnt/artifact/.modelplane-hydrated"
+                        ),
+                        env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClustersMatched", status=fnv1.STATUS_CONDITION_TRUE, reason="Matched"),
+                fnv1.Condition(type="ArtifactReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Hydrating"),
+            ],
+        ),
+    ),
+    Case(
+        name="FailedJobMessage",
+        reason="A ModelCache whose hydration Job failed says which Job, how many attempts failed, and why.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_cache(revision=None, auth_secret=None, status=None),
+                resources={
+                    "pvc-cluster-a": _observed_pvc_object(),
+                    "hydrate-cluster-a": _observed_failed_job_object(
+                        failed=4, message="Job has reached the specified backoff limit"
+                    ),
+                },
+            ),
+            required_resources={
+                "clusters": fnv1.Resources(
+                    items=[
+                        _cluster(
+                            name="cluster-a",
+                            provider_config="cluster-a-pc",
+                            cluster={"source": "GKE", "gke": {"project": "my-project", "region": "us-central1"}},
+                            storage_class="modelplane-rwx",
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_cache(
+                    summary="0/1",
+                    clusters=[
+                        {
+                            "name": "cluster-a",
+                            "phase": "Failed",
+                            "message": "Job mp-ml-team-51733/modelcache-ml-team-qwen-hydrate-256ec failed 4 times downloading Qwen/Qwen3-0.6B: Job has reached the specified backoff limit",
+                        }
+                    ],
+                    ready=fnv1.READY_UNSPECIFIED,
+                ),
+                resources={
+                    "pvc-cluster-a": _pvc_object(
+                        provider_config="cluster-a-pc",
+                        storage_class="modelplane-rwx",
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "hydrate-cluster-a": _job_object(
+                        provider_config="cluster-a-pc",
+                        command=(
+                            "set -e; if [ -f /mnt/artifact/.modelplane-hydrated ]; then echo 'already hydrated, skipping'; exit 0; fi; "
+                            "pip install --quiet huggingface_hub; hf download Qwen/Qwen3-0.6B; "
+                            "touch /mnt/artifact/.modelplane-hydrated"
+                        ),
+                        env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClustersMatched", status=fnv1.STATUS_CONDITION_TRUE, reason="Matched"),
+                fnv1.Condition(type="ArtifactReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Failed"),
             ],
         ),
     ),
