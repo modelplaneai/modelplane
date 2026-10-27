@@ -261,8 +261,8 @@ whether the model answers requests.
 | `ReplicasReady` | Every replica in `spec.replicas` is at full capacity. |
 | `Ready` | `ReplicasReady` is True and the referenced `ModelCache` exists. |
 
-A deployment with `ReplicasServing=True` and `Ready=False` is degraded. It
-serves from the replicas and copies that are up. `kubectl get` shows
+A deployment with `ReplicasServing=True` and `Ready=False` is degraded, or is
+rolling out an update. It serves from the replicas and copies that are up. `kubectl get` shows
 `ReplicasServing` in the `SERVING` column, and a replica's `ModelServing` in
 its own.
 
@@ -274,9 +274,10 @@ waiting on:
 - `ModelServing`: at least one copy of every engine is ready, and the endpoint
   picker and routes in front of them are in place. The deployment routes to a
   replica only while it's serving.
-- `ModelReady`: every copy is ready. Its message counts the ready copies, and
-  its reason is `Degraded` while the replica serves below full capacity. The
-  replica's `Ready` mirrors it.
+- `ModelReady`: every copy is ready and runs the current spec. Its message
+  counts the ready copies. Its reason is `Degraded` while the replica serves
+  below full capacity, and `RollingOut` while an update replaces copies that
+  still serve. The replica's `Ready` mirrors it.
 
 To see which replica a deployment is waiting on:
 

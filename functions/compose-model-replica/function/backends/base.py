@@ -490,18 +490,32 @@ _POD_CLAIM_NAME = "devices"
 # CEL readiness query matching a Deployment's or LeaderWorkerSet's Available=True
 # condition. Both publish this condition but neither publishes a Ready
 # condition, so provider-kubernetes' DeriveFromObject policy (which only checks a
-# Ready condition) can never mark them ready. The has() guard keeps the query
-# false (not erroring) before the workload first writes status.conditions.
+# Ready condition) can never mark them ready. The has() guards keep the query
+# false (not erroring) before the workload first writes its status.
 AVAILABLE_CEL = (
-    'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
+    "has(object.status) && has(object.status.conditions) && "
+    'object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
 )
 
-# CEL readiness query for an engine's Deployment or LeaderWorkerSet with every
-# copy ready. Available alone isn't enough: a Deployment stays Available with up
-# to its maxUnavailable (25% by default) of copies down. So the query also
-# requires a ready pod, or ready group, per copy.
+# CEL readiness query for an engine's LeaderWorkerSet with every copy ready.
+# lws sets Available only once every group is ready and runs the current
+# template, and the query also requires a ready group per copy.
 ALL_COPIES_READY_CEL = (
     AVAILABLE_CEL + " && has(object.status.readyReplicas) && object.status.readyReplicas >= object.spec.replicas"
+)
+
+# CEL readiness query for an engine's Deployment with every copy ready and
+# running the current spec. Available alone isn't enough: a Deployment stays
+# Available with up to its maxUnavailable (25% by default) of copies down. A
+# ready pod per copy isn't enough either, because readyReplicas also counts
+# the previous ReplicaSet's pods while a rollout replaces them. So the query
+# also requires the Deployment controller to have processed the current spec,
+# every copy to be updated, and no pod from an older ReplicaSet to remain.
+DEPLOYMENT_ALL_COPIES_READY_CEL = (
+    ALL_COPIES_READY_CEL + " && has(object.status.observedGeneration)"
+    " && object.status.observedGeneration == object.metadata.generation"
+    " && has(object.status.updatedReplicas) && object.status.updatedReplicas >= object.spec.replicas"
+    " && has(object.status.replicas) && object.status.replicas == object.status.updatedReplicas"
 )
 
 # Grove publishes no Ready or Available condition on a PodCliqueSet, so

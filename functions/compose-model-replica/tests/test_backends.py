@@ -263,7 +263,8 @@ def _epp(
             "readiness": {
                 "policy": "DeriveFromCelQuery",
                 "celQuery": (
-                    'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
+                    "has(object.status) && has(object.status.conditions) && "
+                    'object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
                     ' && !object.status.conditions.exists(c, c.type == "Progressing" && c.status == "False")'
                 ),
             },
@@ -447,8 +448,13 @@ def _deployment(
             "readiness": {
                 "policy": "DeriveFromCelQuery",
                 "celQuery": (
-                    'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
+                    "has(object.status) && has(object.status.conditions) && "
+                    'object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
                     " && has(object.status.readyReplicas) && object.status.readyReplicas >= object.spec.replicas"
+                    " && has(object.status.observedGeneration)"
+                    " && object.status.observedGeneration == object.metadata.generation"
+                    " && has(object.status.updatedReplicas) && object.status.updatedReplicas >= object.spec.replicas"
+                    " && has(object.status.replicas) && object.status.replicas == object.status.updatedReplicas"
                 ),
             },
             "watch": True,
@@ -504,7 +510,8 @@ def _leader_worker_set(
             "readiness": {
                 "policy": "DeriveFromCelQuery",
                 "celQuery": (
-                    'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
+                    "has(object.status) && has(object.status.conditions) && "
+                    'object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
                     " && has(object.status.readyReplicas) && object.status.readyReplicas >= object.spec.replicas"
                 ),
             },

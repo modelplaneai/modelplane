@@ -245,8 +245,8 @@ class Composer:
         if serving and sum(ready_copies.values()) < sum(copies.values()):
             waiting = CONDITION_REASON_DEGRADED
         elif serving:
-            # Every copy counts as ready but a workload doesn't yet, as during
-            # a LeaderWorkerSet's rolling update.
+            # Each copy counts as ready but a workload doesn't yet, as while a
+            # rolling update replaces copies that still serve.
             waiting = CONDITION_REASON_ROLLING_OUT
         elif accepted and copy_each:
             waiting = CONDITION_REASON_WAITING_FOR_ROUTING
