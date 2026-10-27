@@ -108,14 +108,21 @@ _SELECTED_NODE_ANNOTATION = "volume.kubernetes.io/selected-node"
 # success (to latch Ready and drop the Job) before the TTL fires.
 _JOB_TTL_SECONDS = 180
 
-# Every management policy except Delete. Once a cluster is Ready the Job is
-# dropped from the composition; without Delete, dropping orphans the external Job
-# instead of deleting it, so its own TTL controller cascade-cleans the completed
-# pod that pins the PVC - whereas Crossplane's delete would orphan that pod. (No
-# "all but Delete" shorthand exists, and deletionPolicy: Orphan is ignored once
-# managementPolicies is on.) Re-adding the Job after a flap is a cheap skip.
+# A hydrating Job has every management policy, so deleting the ModelCache
+# before the download finishes deletes the Job too. Otherwise the Job would
+# outlive its cache, and a cache created later under the same name would get a
+# claim of the same name for that Job to download into, whatever its own source.
 _ManagementPolicy = Literal["Observe", "Create", "Update", "Delete", "LateInitialize", "*"]
-_JOB_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update", "LateInitialize"]
+_JOB_HYDRATING: list[_ManagementPolicy] = ["*"]
+
+# Every management policy except Delete, for a finished Job. Once a cluster is
+# Ready the Job is first composed with these, then dropped from the
+# composition; without Delete, dropping orphans the external Job instead of
+# deleting it, so its own TTL controller cascade-cleans the completed pod that
+# pins the PVC - whereas Crossplane's delete would orphan that pod. (No "all but
+# Delete" shorthand exists, and deletionPolicy: Orphan is ignored once
+# managementPolicies is on.) Re-adding the Job after a flap is a cheap skip.
+_JOB_FINISHED: list[_ManagementPolicy] = ["Observe", "Create", "Update", "LateInitialize"]
 
 
 def _storage_class(cluster: icv1alpha1.InferenceCluster) -> str | None:
@@ -331,12 +338,13 @@ class Composer:
     def compose_cluster_resources(self, cluster: icv1alpha1.InferenceCluster, phase: _Phase) -> None:
         """Compose the PVC always, and the hydration Job until the cluster is Ready.
 
-        Once Ready the Job is dropped: with _JOB_MANAGEMENT (no Delete) that
-        orphans the external Job rather than deleting it, so its own TTL
-        controller cascade-cleans the Job and the completed pod pinning the PVC -
-        instead of Crossplane orphaning the pod. Readiness is latched in the XR
-        status, so dropping the Job doesn't regress it, and a flap that re-adds
-        it is a cheap idempotent skip."""
+        Once Ready the Job is composed with _JOB_FINISHED (no Delete) until its
+        Object no longer has Delete, then dropped. Dropping it then orphans the
+        external Job rather than deleting it, so its own TTL controller
+        cascade-cleans the Job and the completed pod pinning the PVC - instead
+        of Crossplane orphaning the pod. Readiness is latched in the XR status,
+        so dropping the Job doesn't regress it, and a flap that re-adds it is a
+        cheap idempotent skip."""
         # match_clusters only returns clusters whose status.providerConfigRef.name
         # is set, so this is never None here.
         assert cluster.status and cluster.status.providerConfigRef and cluster.status.providerConfigRef.name
@@ -356,7 +364,7 @@ class Composer:
         if phase != PHASE_READY and not self._auth_missing():
             # The token Secret is composed before the Job that consumes it, and
             # dropped alongside the Job once the cluster is Ready. Unlike the Job
-            # (orphaned via _JOB_MANAGEMENT, then TTL-cleaned), the Secret keeps
+            # (orphaned via _JOB_FINISHED, then TTL-cleaned), the Secret keeps
             # default management policies, so dropping it DELETES it from the
             # inference cluster. That's deliberate: the token is only needed
             # while hydrating, so removing it afterwards limits its exposure. A
@@ -370,8 +378,22 @@ class Composer:
                 )
             resource.update(
                 self.rsp.desired.resources[self._job_key(name)],
-                self._wrap_remote(pc, self._job_manifest(), _JOB_READY_CEL, management_policies=_JOB_MANAGEMENT),
+                self._wrap_remote(pc, self._job_manifest(), _JOB_READY_CEL, management_policies=_JOB_HYDRATING),
             )
+        elif phase == PHASE_READY and self._job_deletes(name):
+            resource.update(
+                self.rsp.desired.resources[self._job_key(name)],
+                self._wrap_remote(pc, self._job_manifest(), _JOB_READY_CEL, management_policies=_JOB_FINISHED),
+            )
+
+    def _job_deletes(self, cluster_name: str) -> bool:
+        """Whether the cluster's observed hydration Job Object would delete the Job if dropped."""
+        observed = self.req.observed.resources.get(self._job_key(cluster_name))
+        if not observed:
+            return False
+        obj = k8sobjv1alpha1.Object.model_validate(resource.struct_to_dict(observed.resource))
+        policies = obj.spec.managementPolicies
+        return policies is None or any(p in ("*", "Delete") for p in policies)
 
     def _pvc_manifest(self, cluster: icv1alpha1.InferenceCluster) -> dict:
         hf = self.xr.spec.huggingFace

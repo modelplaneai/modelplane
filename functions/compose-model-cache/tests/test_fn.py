@@ -145,7 +145,9 @@ def _pvc_object(*, provider_config: str, storage_class: str, ready: fnv1.Ready) 
     )
 
 
-def _job_object(*, provider_config: str, command: str, env: list[dict]) -> fnv1.Resource:
+def _job_object(
+    *, provider_config: str, command: str, env: list[dict], management_policies: list[str]
+) -> fnv1.Resource:
     """The Object wrapping the qwen ModelCache's hydration Job, which mounts the cache PVC."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -189,7 +191,7 @@ def _job_object(*, provider_config: str, command: str, env: list[dict]) -> fnv1.
                             },
                         },
                     },
-                    "managementPolicies": ["Observe", "Create", "Update", "LateInitialize"],
+                    "managementPolicies": management_policies,
                     "providerConfigRef": {"kind": "ClusterProviderConfig", "name": provider_config},
                     "readiness": {
                         "celQuery": 'object.status.conditions.exists(c, c.type == "Complete" && c.status == "True")',
@@ -225,8 +227,8 @@ def _observed_pvc_object() -> fnv1.Resource:
     )
 
 
-def _observed_job_object(*, condition: str, ready: bool) -> fnv1.Resource:
-    """The hydration Job's Object as observed, the Job reporting condition, with a Ready condition only if ready."""
+def _observed_job_object(*, condition: str, ready: bool, management_policies: list[str]) -> fnv1.Resource:
+    """The hydration Job's Object as observed with its management policies, the Job reporting condition, with a Ready condition only if ready."""
     status: dict[str, Any] = {
         "atProvider": {"manifest": {"status": {"conditions": [{"type": condition, "status": "True"}]}}},
     }
@@ -244,7 +246,7 @@ def _observed_job_object(*, condition: str, ready: bool) -> fnv1.Resource:
             {
                 "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
                 "kind": "Object",
-                "spec": {"forProvider": {"manifest": {}}},
+                "spec": {"forProvider": {"manifest": {}}, "managementPolicies": management_policies},
                 "status": status,
             }
         ),
@@ -367,6 +369,7 @@ COMPOSE_CASES = [
                             "touch /mnt/artifact/.modelplane-hydrated"
                         ),
                         env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                        management_policies=["*"],
                     ),
                 },
             ),
@@ -478,6 +481,7 @@ COMPOSE_CASES = [
                                 },
                             },
                         ],
+                        management_policies=["*"],
                     ),
                 },
             ),
@@ -553,6 +557,7 @@ COMPOSE_CASES = [
                             "touch /mnt/artifact/.modelplane-hydrated"
                         ),
                         env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                        management_policies=["*"],
                     ),
                 },
             ),
@@ -578,13 +583,84 @@ COMPOSE_CASES = [
     # emits the staged one.
     Case(
         name="JobComplete",
-        reason="With its PVC bound and its hydration Job complete, a ModelCache drops the Job and reports Ready.",
+        reason="With its PVC bound and its hydration Job complete, a ModelCache reports Ready and stops its Job's Object deleting the Job before dropping it.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_model_cache(revision=None, include=None, exclude=None, auth_secret=None, status=None),
                 resources={
                     "pvc-cluster-a": _observed_pvc_object(),
-                    "hydrate-cluster-a": _observed_job_object(condition="Complete", ready=True),
+                    "hydrate-cluster-a": _observed_job_object(
+                        condition="Complete", ready=True, management_policies=["*"]
+                    ),
+                },
+            ),
+            required_resources={
+                "clusters": fnv1.Resources(
+                    items=[
+                        _cluster(
+                            name="cluster-a",
+                            provider_config="cluster-a-pc",
+                            cluster={"source": "GKE", "gke": {"project": "my-project", "region": "us-central1"}},
+                            storage_class="modelplane-rwx",
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_cache(
+                    summary="1/1",
+                    clusters=[{"name": "cluster-a", "phase": "Ready", "mount": _mount()}],
+                    ready=fnv1.READY_TRUE,
+                ),
+                resources={
+                    "pvc-cluster-a": _pvc_object(
+                        provider_config="cluster-a-pc",
+                        storage_class="modelplane-rwx",
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "hydrate-cluster-a": _job_object(
+                        provider_config="cluster-a-pc",
+                        command=(
+                            "set -e; if [ -f /mnt/artifact/.modelplane-hydrated ]; then echo 'already hydrated, skipping'; exit 0; fi; "
+                            "pip install --quiet huggingface_hub; hf download Qwen/Qwen3-0.6B; "
+                            "touch /mnt/artifact/.modelplane-hydrated"
+                        ),
+                        env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                        management_policies=["Observe", "Create", "Update", "LateInitialize"],
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Artifact staged on all 1 clusters"),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClustersMatched", status=fnv1.STATUS_CONDITION_TRUE, reason="Matched"),
+                fnv1.Condition(type="ArtifactReady", status=fnv1.STATUS_CONDITION_TRUE, reason="Staged"),
+            ],
+        ),
+    ),
+    Case(
+        name="FinishedJobDropped",
+        reason="With its hydration Job complete and its Object no longer deleting the Job, a ModelCache drops the Job and reports Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_cache(revision=None, include=None, exclude=None, auth_secret=None, status=None),
+                resources={
+                    "pvc-cluster-a": _observed_pvc_object(),
+                    "hydrate-cluster-a": _observed_job_object(
+                        condition="Complete",
+                        ready=True,
+                        management_policies=["Observe", "Create", "Update", "LateInitialize"],
+                    ),
                 },
             ),
             required_resources={
@@ -683,6 +759,7 @@ COMPOSE_CASES = [
                             "touch /mnt/artifact/.modelplane-hydrated"
                         ),
                         env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                        management_policies=["*"],
                     ),
                 },
             ),
@@ -755,6 +832,7 @@ COMPOSE_CASES = [
                             "touch /mnt/artifact/.modelplane-hydrated"
                         ),
                         env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                        management_policies=["*"],
                     ),
                 },
             ),
@@ -823,6 +901,7 @@ COMPOSE_CASES = [
                             "touch /mnt/artifact/.modelplane-hydrated"
                         ),
                         env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                        management_policies=["*"],
                     ),
                 },
             ),
@@ -889,6 +968,7 @@ COMPOSE_CASES = [
                             "touch /mnt/artifact/.modelplane-hydrated"
                         ),
                         env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                        management_policies=["*"],
                     ),
                 },
             ),
@@ -912,7 +992,9 @@ COMPOSE_CASES = [
                 composite=_model_cache(revision=None, include=None, exclude=None, auth_secret=None, status=None),
                 resources={
                     "pvc-cluster-a": _observed_pvc_object(),
-                    "hydrate-cluster-a": _observed_job_object(condition="Failed", ready=False),
+                    "hydrate-cluster-a": _observed_job_object(
+                        condition="Failed", ready=False, management_policies=["*"]
+                    ),
                 },
             ),
             required_resources={
@@ -956,6 +1038,7 @@ COMPOSE_CASES = [
                             "touch /mnt/artifact/.modelplane-hydrated"
                         ),
                         env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                        management_policies=["*"],
                     ),
                 },
             ),
@@ -980,7 +1063,11 @@ COMPOSE_CASES = [
                 composite=_model_cache(revision=None, include=None, exclude=None, auth_secret=None, status=None),
                 resources={
                     "pvc-a": _observed_pvc_object(),
-                    "hydrate-a": _observed_job_object(condition="Complete", ready=True),
+                    "hydrate-a": _observed_job_object(
+                        condition="Complete",
+                        ready=True,
+                        management_policies=["Observe", "Create", "Update", "LateInitialize"],
+                    ),
                     "pvc-b": _observed_pvc_object(),
                 },
             ),
@@ -1029,6 +1116,7 @@ COMPOSE_CASES = [
                             "touch /mnt/artifact/.modelplane-hydrated"
                         ),
                         env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                        management_policies=["*"],
                     ),
                 },
             ),
@@ -1355,7 +1443,11 @@ COMPOSE_CASES = [
                         ),
                     ),
                     "pvc-cluster-a": _observed_pvc_object(),
-                    "hydrate-cluster-a": _observed_job_object(condition="Complete", ready=True),
+                    "hydrate-cluster-a": _observed_job_object(
+                        condition="Complete",
+                        ready=True,
+                        management_policies=["Observe", "Create", "Update", "LateInitialize"],
+                    ),
                 },
             ),
             required_resources={
@@ -1582,6 +1674,7 @@ COMPOSE_CASES = [
                             "touch /mnt/artifact/.modelplane-hydrated"
                         ),
                         env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                        management_policies=["*"],
                     ),
                 },
             ),
@@ -1651,6 +1744,7 @@ COMPOSE_CASES = [
                             "touch /mnt/artifact/.modelplane-hydrated"
                         ),
                         env=[{"name": "HF_HUB_CACHE", "value": "/mnt/artifact"}],
+                        management_policies=["*"],
                     ),
                 },
             ),
