@@ -14,9 +14,9 @@
 # Poolside Laguna support (PR #24204, which also added the poolside_v1 parsers),
 # .post1 is its point bugfix, cu129 for Hopper. The image does not auto-launch a
 # server, so the launch command is set explicitly; SGLang defaults to port
-# 30000, so --port=8000 is required for the Modelplane engine port (Modelplane
-# scrapes 8000). Poolside's trtllm_mha and DFLASH cookbook optimizations are
-# left off (not validated on H100).
+# 30000, so --port=8000 puts it on Modelplane's default serving port. Poolside's
+# trtllm_mha and DFLASH cookbook optimizations are left off (not validated on
+# H100).
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:

@@ -48,6 +48,22 @@ spec:
               message: "PrefillDecode serving requires exactly one engine with phase Decode"
             - rule: "(has(self.serving) && self.serving.mode == 'PrefillDecode') || !self.engines.exists(e, has(e.phase))"
               message: "engine phase may only be set when serving.mode is PrefillDecode"
+            # The ports of a serving pod: a Standalone member or a Leader. A Worker
+            # doesn't serve, so these skip it. The serving port is serving.port, 8000
+            # by default. Keep in sync with apis/modeldeployments/definition.yaml.
+            # - At most one container declares the serving port, where requests arrive.
+            # - If a container beside the engine declares the serving port, the engine
+            #   declares its http port elsewhere, and if the engine's http port is
+            #   elsewhere, a container beside it declares the serving port.
+            # - The engine may name the serving port only http.
+            - rule: "self.engines.all(e, e.members.all(m, (has(m.role) && m.role == 'Worker') || !has(m.template.spec) || m.template.spec.containers.filter(c, has(c.ports) && c.ports.exists(p, p.containerPort == self.?serving.?port.orValue(8000))).size() <= 1))"
+              message: "at most one container in a serving pod may declare the serving port (serving.port, 8000 by default)"
+            - rule: "self.engines.all(e, e.members.all(m, (has(m.role) && m.role == 'Worker') || !has(m.template.spec) || !m.template.spec.containers.exists(c, c.name != 'engine' && has(c.ports) && c.ports.exists(p, p.containerPort == self.?serving.?port.orValue(8000))) || m.template.spec.containers.exists(c, c.name == 'engine' && has(c.ports) && c.ports.exists(p, has(p.name) && p.name == 'http' && p.containerPort != self.?serving.?port.orValue(8000)))))"
+              message: "when another container declares the serving port, the engine container must declare its 'http' port on a different port"
+            - rule: "self.engines.all(e, e.members.all(m, (has(m.role) && m.role == 'Worker') || !has(m.template.spec) || !m.template.spec.containers.exists(c, c.name == 'engine' && has(c.ports) && c.ports.exists(p, has(p.name) && p.name == 'http' && p.containerPort != self.?serving.?port.orValue(8000))) || m.template.spec.containers.exists(c, c.name != 'engine' && has(c.ports) && c.ports.exists(p, p.containerPort == self.?serving.?port.orValue(8000)))))"
+              message: "when the engine container's 'http' port isn't the serving port, another container in its pod must declare the serving port"
+            - rule: "self.engines.all(e, e.members.all(m, (has(m.role) && m.role == 'Worker') || !has(m.template.spec) || !m.template.spec.containers.exists(c, c.name == 'engine' && has(c.ports) && c.ports.exists(p, p.containerPort == self.?serving.?port.orValue(8000) && has(p.name) && p.name != 'http'))))"
+              message: "the engine container may name the serving port only 'http'"
             properties:
               clusterName:
                 type: string
@@ -94,6 +110,15 @@ spec:
                   router:
                     type: string
                     enum: [EndpointPicker]
+                  port:
+                    type: integer
+                    minimum: 1
+                    maximum: 65535
+                    description: >-
+                      The port every serving pod receives requests on, where the
+                      InferencePool sends them. The engine serves its API there unless
+                      a container in front of it, such as a sidecar, declares this port.
+                      Defaults to 8000.
                   endpointPicker:
                     type: object
                     required: [template]
@@ -280,21 +305,8 @@ spec:
                         x-kubernetes-validations:
                         - rule: "!has(self.worker) || self.role == 'Worker'"
                           message: "worker may only be set on a Worker member"
-                        # The ports of a serving pod: a Standalone member or a Leader. A Worker
-                        # doesn't serve, so these skip it. Keep in sync with apis/modeldeployments/definition.yaml.
-                        # - At most one container declares 8000, where requests arrive.
-                        # - If a container beside the engine declares 8000, the engine declares
-                        #   its http port elsewhere, and if the engine's http port is elsewhere,
-                        #   a container beside it declares 8000.
-                        # - The engine may name port 8000 only http.
-                        - rule: "(has(self.role) && self.role == 'Worker') || !has(self.template.spec) || self.template.spec.containers.filter(c, has(c.ports) && c.ports.exists(p, p.containerPort == 8000)).size() <= 1"
-                          message: "at most one container in a serving pod may declare containerPort 8000"
-                        - rule: "(has(self.role) && self.role == 'Worker') || !has(self.template.spec) || !self.template.spec.containers.exists(c, c.name != 'engine' && has(c.ports) && c.ports.exists(p, p.containerPort == 8000)) || self.template.spec.containers.exists(c, c.name == 'engine' && has(c.ports) && c.ports.exists(p, has(p.name) && p.name == 'http' && p.containerPort != 8000))"
-                          message: "when another container declares containerPort 8000, the engine container must declare its 'http' port on a different port"
-                        - rule: "(has(self.role) && self.role == 'Worker') || !has(self.template.spec) || !self.template.spec.containers.exists(c, c.name == 'engine' && has(c.ports) && c.ports.exists(p, has(p.name) && p.name == 'http' && p.containerPort != 8000)) || self.template.spec.containers.exists(c, c.name != 'engine' && has(c.ports) && c.ports.exists(p, p.containerPort == 8000))"
-                          message: "when the engine container's 'http' port isn't 8000, another container in its pod must declare containerPort 8000"
-                        - rule: "(has(self.role) && self.role == 'Worker') || !has(self.template.spec) || !self.template.spec.containers.exists(c, c.name == 'engine' && has(c.ports) && c.ports.exists(p, p.containerPort == 8000 && has(p.name) && p.name != 'http'))"
-                          message: "the engine container may name containerPort 8000 only 'http'"
+                        - rule: "!has(self.role) || self.role != 'Worker' || !has(self.template.spec) || self.template.spec.containers.all(c, c.name != 'engine' || !has(c.readinessProbe) || ((!has(c.readinessProbe.httpGet) || type(c.readinessProbe.httpGet.port) != string || (has(c.ports) && c.ports.exists(p, has(p.name) && p.name == c.readinessProbe.httpGet.port))) && (!has(c.readinessProbe.tcpSocket) || type(c.readinessProbe.tcpSocket.port) != string || (has(c.ports) && c.ports.exists(p, has(p.name) && p.name == c.readinessProbe.tcpSocket.port)))))"
+                          message: "a Worker's engine readinessProbe may name only a port its engine container declares; Modelplane gives a Worker no http port"
                         properties:
                           role:
                             type: string
@@ -438,8 +450,6 @@ spec:
                                     x-kubernetes-validations:
                                     - rule: "self.exists_one(c, c.name == 'engine')"
                                       message: "exactly one container must be named 'engine'"
-                                    - rule: "!self.exists(c, c.name == 'engine' && has(c.readinessProbe))"
-                                      message: "the engine container can't set readinessProbe; Modelplane probes it on its http port"
                                     items:
                                       type: object
                                       required: [name, image]
@@ -530,9 +540,12 @@ spec:
                                         readinessProbe:
                                           type: object
                                           description: >-
-                                            How Kubernetes checks that a container beside the engine is
-                                            ready, such as a sidecar on port 8000. The engine container
-                                            can't set one: Modelplane probes the engine on its http port.
+                                            How Kubernetes checks that the container is ready. Without one,
+                                            Modelplane probes the engine container of a Standalone or Leader
+                                            member with GET /health on its http port. A probe set here replaces
+                                            that default whole, and Kubernetes defaults apply to any field it
+                                            leaves out. A Worker has no http port, so its engine's probe may name
+                                            only a port the engine container declares.
                                           x-kubernetes-validations:
                                           - rule: "[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1"
                                             message: "readinessProbe sets exactly one of httpGet, tcpSocket and grpc"
@@ -540,15 +553,22 @@ spec:
                                             httpGet:
                                               type: object
                                               required: [port]
+                                              x-kubernetes-validations:
+                                              - rule: "type(self.port) == string || (self.port >= 1 && self.port <= 65535)"
+                                                message: "httpGet.port must be a port name or a number from 1 to 65535"
                                               properties:
                                                 path:
                                                   type: string
+                                                  pattern: '^/'
                                                 port:
                                                   anyOf: [{type: integer}, {type: string}]
                                                   x-kubernetes-int-or-string: true
                                             tcpSocket:
                                               type: object
                                               required: [port]
+                                              x-kubernetes-validations:
+                                              - rule: "type(self.port) == string || (self.port >= 1 && self.port <= 65535)"
+                                                message: "tcpSocket.port must be a port name or a number from 1 to 65535"
                                               properties:
                                                 port:
                                                   anyOf: [{type: integer}, {type: string}]
@@ -559,6 +579,8 @@ spec:
                                               properties:
                                                 port:
                                                   type: integer
+                                                  minimum: 1
+                                                  maximum: 65535
                                                 service:
                                                   type: string
                                             initialDelaySeconds:

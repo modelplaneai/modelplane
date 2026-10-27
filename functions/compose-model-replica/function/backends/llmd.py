@@ -74,6 +74,7 @@ class LLMDBackend:
         size = 1 + (int(worker.worker.nodes) if worker.worker else 1)
 
         cache_volumes, cache_volume_mounts = base.cache_mounts(replica)
+        port = base.serving_port(replica)
 
         def container(member: v1alpha1.Member, *, serving: bool) -> dict:
             engine_container = base.engine_container(member)
@@ -104,10 +105,15 @@ class LLMDBackend:
                 env.extend(e.model_dump(exclude_none=True) for e in engine_container.env)
             c["env"] = env
             if serving:
-                c["ports"] = base.engine_ports(engine_container)
-                c["readinessProbe"] = base.readiness_probe(base.engine_http_port(engine_container))
-            elif engine_container.ports:
-                c["ports"] = base.declared_ports(engine_container)
+                c["ports"] = base.engine_ports(engine_container, port)
+                c["readinessProbe"] = base.engine_readiness_probe(engine_container, port)
+            else:
+                # A Worker doesn't serve, so it gets no http port or default
+                # probe. The ports and probe the user wrote pass through.
+                if engine_container.ports:
+                    c["ports"] = base.declared_ports(engine_container)
+                if engine_container.readinessProbe:
+                    c["readinessProbe"] = engine_container.readinessProbe.model_dump(exclude_none=True)
             return c
 
         def pod_spec(member: v1alpha1.Member, c: dict) -> dict:

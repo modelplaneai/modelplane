@@ -200,23 +200,25 @@ don't need the label.
 
 ## Ports
 
-A serving pod receives requests on port 8000. The engine's port named `http` is
-where Modelplane checks the engine's health and the collector reads its
-metrics. It defaults to 8000, so an engine alone in its pod declares nothing.
+A serving pod receives requests on the serving port, which is 8000 unless you
+set `serving.port`. The engine's port named `http` is where Modelplane checks
+the engine's health and the collector reads its metrics. It defaults to the
+serving port, so an engine alone in its pod declares nothing.
 
 When a container is in front of the engine, such as the sidecar:
 
-- That container declares port 8000, and passes requests to the engine. It must
-  pass `/metrics` through too, because the picker reads it there.
+- That container declares the serving port, and passes requests to the engine.
+  It must pass `/metrics` through too, because the picker reads it there.
 - The engine declares its `http` port on another port, such as 8001. The health
   check must reach the engine itself, because the llm-d sidecar answers
   `/health` without asking the engine.
 
 A container that doesn't serve, such as a log shipper, doesn't declare a port,
 and the engine doesn't either. Modelplane rejects a `ModelDeployment` with a pod
-where more than one container declares 8000, or where the engine moves off 8000
-and no other container declares it. A `Worker` member doesn't need a container
-on 8000, because worker pods don't receive requests.
+where more than one container declares the serving port, or where the engine
+moves off the serving port and no other container declares it. A `Worker`
+member doesn't need a container on the serving port, because worker pods don't
+receive requests.
 
 Behind the sidecar, the decode port appears in three places: the `--port` flag
 on the engine, its `http` port, and the sidecar flag that names the engine's
@@ -472,8 +474,8 @@ and its pods and router keep serving as they were. To resume, add:
 
 - `serving.router: EndpointPicker`, with the picker's container and
   configuration in `serving.endpointPicker`.
-- The sidecar in the decode member, on port 8000, with the engine's `http` port
-  declared.
+- The sidecar in the decode member, on the serving port, with the engine's
+  `http` port declared.
 - `VLLM_NIXL_SIDE_CHANNEL_HOST` and `VLLM_NIXL_SIDE_CHANNEL_PORT` on both
   engines, for vLLM with NIXL.
 

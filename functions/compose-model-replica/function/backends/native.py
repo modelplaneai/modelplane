@@ -59,15 +59,16 @@ class NativeBackend:
         selector = {base.LABEL_WORKLOAD: name}
 
         cache_volumes, cache_volume_mounts = base.cache_mounts(replica)
+        port = base.serving_port(replica)
 
         container = {
             "name": "engine",
             "image": engine_container.image,
             "args": list(engine_container.args or []),
-            "ports": base.engine_ports(engine_container),
+            "ports": base.engine_ports(engine_container, port),
             # vLLM tensor parallelism and NIXL KV transfer need a large /dev/shm.
             "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}, *cache_volume_mounts],
-            "readinessProbe": base.readiness_probe(base.engine_http_port(engine_container)),
+            "readinessProbe": base.engine_readiness_probe(engine_container, port),
         }
         # GPUs bind via DRA: the container references the pod-level claim
         # backed by the member's ResourceClaimTemplate. A Standalone member

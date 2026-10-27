@@ -231,9 +231,10 @@ def remote_namespace(replica: v1alpha1.ModelReplica) -> str:
     return resource.child_name(_NS_PREFIX, _namespace(replica.metadata))
 
 
-# Port the engine serves its OpenAI-compatible API on. A contract shared with
-# the ModelEndpoint URLs, so it must not diverge between backends.
-ENGINE_PORT = 8000
+# Port a serving pod receives requests on when serving.port is unset. The
+# InferencePool sends to it, and an engine with no http port of its own serves
+# there.
+DEFAULT_SERVING_PORT = 8000
 
 # The name given to the engine's port. Named because the collector's engine
 # scrape job selects on it: matching by number instead would find a sidecar's
@@ -620,24 +621,36 @@ def sidecar_containers(member: v1alpha1.Member) -> list[dict]:
     return [c.model_dump(exclude_none=True) for c in member.template.spec.containers if c.name != "engine"]
 
 
-def engine_ports(container: v1alpha1.Container) -> list[dict]:
+def serving_port(replica: v1alpha1.ModelReplica) -> int:
+    """The port the replica's serving pods receive requests on.
+
+    The InferencePool sends every request there, so it's one port for every
+    engine of the replica.
+    """
+    serving = replica.spec.serving
+    if serving and serving.port:
+        return serving.port
+    return DEFAULT_SERVING_PORT
+
+
+def engine_ports(container: v1alpha1.Container, port: int) -> list[dict]:
     """A serving engine container's ports, always including the http port.
 
-    The engine declares its http port when another container takes
-    ENGINE_PORT, as the disaggregation sidecar does on a decode pod; the XRD
-    requires that whenever another container declares 8000. Otherwise the
-    engine serves on ENGINE_PORT.
+    port is the serving port. The engine declares its http port when another
+    container takes the serving port, as the disaggregation sidecar does on a
+    decode pod; the XRD requires that whenever another container declares it.
+    Otherwise the engine serves on the serving port.
     """
     ports = declared_ports(container)
     if any(p.get("name") == ENGINE_PORT_NAME for p in ports):
         return ports
-    # An engine that declares ENGINE_PORT without a name serves its API there,
-    # so that port is the http port. The XRD rejects any other name for it.
+    # An engine that declares the serving port without a name serves its API
+    # there, so that port is the http port. The XRD rejects any other name for it.
     for p in ports:
-        if p["containerPort"] == ENGINE_PORT:
+        if p["containerPort"] == port:
             p["name"] = ENGINE_PORT_NAME
             return ports
-    ports.insert(0, {"name": ENGINE_PORT_NAME, "containerPort": ENGINE_PORT})
+    ports.insert(0, {"name": ENGINE_PORT_NAME, "containerPort": port})
     return ports
 
 
@@ -646,15 +659,17 @@ def declared_ports(container: v1alpha1.Container) -> list[dict]:
     return [p.model_dump(exclude_none=True) for p in container.ports or []]
 
 
-def engine_http_port(container: v1alpha1.Container) -> int:
-    """The port a serving engine container serves its API, health and metrics on."""
-    return next(p["containerPort"] for p in engine_ports(container) if p.get("name") == ENGINE_PORT_NAME)
+def engine_readiness_probe(container: v1alpha1.Container, port: int) -> dict:
+    """The readiness probe for a serving engine container.
 
-
-def readiness_probe(port: int) -> dict:
-    """The readiness probe for a serving engine container on its http port."""
+    The engine's own probe if it sets one, as written. Otherwise GET /health on
+    its http port, which defaults to port, the serving port.
+    """
+    if container.readinessProbe:
+        return container.readinessProbe.model_dump(exclude_none=True)
+    http = next(p["containerPort"] for p in engine_ports(container, port) if p.get("name") == ENGINE_PORT_NAME)
     return {
-        "httpGet": {"path": "/health", "port": port},
+        "httpGet": {"path": "/health", "port": http},
         "initialDelaySeconds": 30,
         "periodSeconds": 10,
         # Kubernetes defaults the probe timeout to 1s. Some engines' /health

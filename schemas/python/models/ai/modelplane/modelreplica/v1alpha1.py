@@ -110,12 +110,12 @@ class Port(BaseModel):
 
 
 class Grpc(BaseModel):
-    port: int
+    port: conint(ge=1, le=65535)
     service: str | None = None
 
 
 class HttpGet(BaseModel):
-    path: str | None = None
+    path: constr(pattern=r'^/') | None = None
     port: int | str
 
 
@@ -150,7 +150,7 @@ class Container(BaseModel):
     ports: list[Port] | None = Field(None, max_length=8)
     readinessProbe: ReadinessProbe | None = None
     """
-    How Kubernetes checks that a container beside the engine is ready, such as a sidecar on port 8000. The engine container can't set one: Modelplane probes the engine on its http port.
+    How Kubernetes checks that the container is ready. Without one, Modelplane probes the engine container of a Standalone or Leader member with GET /health on its http port. A probe set here replaces that default whole, and Kubernetes defaults apply to any field it leaves out. A Worker has no http port, so its engine's probe may name only a port the engine container declares.
     """
     resources: Resources | None = None
     """
@@ -235,6 +235,10 @@ class EndpointPicker(BaseModel):
 class Serving(BaseModel):
     endpointPicker: EndpointPicker | None = None
     mode: Literal['Unified', 'PrefillDecode'] | None = 'Unified'
+    port: conint(ge=1, le=65535) | None = None
+    """
+    The port every serving pod receives requests on, where the InferencePool sends them. The engine serves its API there unless a container in front of it, such as a sidecar, declares this port. Defaults to 8000.
+    """
     router: Literal['EndpointPicker'] | None = None
 
 
