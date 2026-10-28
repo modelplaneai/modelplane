@@ -89,6 +89,10 @@ spec:
       pathPrefix: _output/functions/compose-telemetry-destination
   - source: Tarball
     tarball:
+      name: compose-upcloud-cluster
+      pathPrefix: _output/functions/compose-upcloud-cluster
+  - source: Tarball
+    tarball:
       name: compose-usages
       pathPrefix: _output/functions/compose-usages
   - source: Tarball
