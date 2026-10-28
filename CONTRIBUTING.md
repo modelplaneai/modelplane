@@ -276,6 +276,19 @@ nix run .#build
 The build deletes and recreates the whole `schemas/python/` tree, so models for
 XRDs or dependencies you've removed don't linger.
 
+A composed resource that references another composed resource inside a list
+item - a node group's network interfaces, say - must carry the referenced
+resource's id, read from the observed resource's `status.atProvider`, not a
+`matchControllerRef` selector. The managed resource CRDs declare no
+`x-kubernetes-list-type` on their lists, which makes the lists atomic under
+server-side apply, so a selector in a list item has the composition and
+crossplane-runtime's reference resolver replace each other's items on every
+apply and the object never settles
+([#517](https://github.com/modelplaneai/modelplane/issues/517)). Selectors
+outside lists are fine. The `list-selectors` flake check enforces this;
+`hack/check_list_selectors.py` describes the escape for a list that merges per
+item.
+
 ### Tests
 
 Every function has tests under `functions/<name>/tests/`, run with

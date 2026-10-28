@@ -183,6 +183,48 @@ def _filesystem(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Re
     )
 
 
+def _subnet_observed(*, cred_kind: str, cred_name: str, subnet_id: str) -> fnv1.Resource:
+    """The observed subnet, provisioned with subnet_id but not yet Ready."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "vpc.nebius.m.upbound.io/v1beta1",
+                "kind": "Subnet",
+                "spec": {
+                    "providerConfigRef": {"kind": cred_kind, "name": cred_name},
+                    "forProvider": {
+                        "name": "test-cluster",
+                        "networkIdSelector": {"matchControllerRef": True},
+                        "ipv4PrivatePools": {"useNetworkPools": True},
+                    },
+                },
+                "status": {"atProvider": {"id": subnet_id}},
+            }
+        ),
+    )
+
+
+def _filesystem_observed(*, cred_kind: str, cred_name: str, filesystem_id: str) -> fnv1.Resource:
+    """The observed cache filesystem, provisioned with filesystem_id but not yet Ready."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "compute.nebius.m.upbound.io/v1beta1",
+                "kind": "Filesystem",
+                "spec": {
+                    "providerConfigRef": {"kind": cred_kind, "name": cred_name},
+                    "forProvider": {
+                        "name": "test-cluster-cache",
+                        "type": "NETWORK_SSD",
+                        "sizeGibibytes": 1024,
+                    },
+                },
+                "status": {"atProvider": {"id": filesystem_id}},
+            }
+        ),
+    )
+
+
 def _cloud_init_secret() -> fnv1.Resource:
     """The Ready Secret holding the cloud-init user data that mounts the cache filesystem on every node."""
     return fnv1.Resource(
@@ -228,13 +270,13 @@ def _nodegroup_system(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> f
                             "resources": {"platform": "cpu-d3", "preset": "4vcpu-16gb"},
                             "bootDisk": {"sizeGibibytes": 100, "type": "NETWORK_SSD"},
                             "networkInterfaces": [
-                                {"subnetIdSelector": {"matchControllerRef": True}},
+                                {"subnetId": "vpcsubnet-e00test"},
                             ],
                             "filesystems": [
                                 {
                                     "attachMode": "READ_WRITE",
                                     "mountTag": "modelplane-cache",
-                                    "existingFilesystem": {"idSelector": {"matchControllerRef": True}},
+                                    "existingFilesystem": {"id": "computefilesystem-e00test"},
                                 },
                             ],
                             "cloudInitUserDataSecretRef": {"name": "test-cluster-cloud-init-fd2f2", "key": "userData"},
@@ -262,13 +304,13 @@ def _nodegroup_gpu(
         "resources": {"platform": "gpu-h100-sxm", "preset": "8gpu-128vcpu-1600gb"},
         "bootDisk": {"sizeGibibytes": 200, "type": "NETWORK_SSD"},
         "networkInterfaces": [
-            {"subnetIdSelector": {"matchControllerRef": True}},
+            {"subnetId": "vpcsubnet-e00test"},
         ],
         "filesystems": [
             {
                 "attachMode": "READ_WRITE",
                 "mountTag": "modelplane-cache",
-                "existingFilesystem": {"idSelector": {"matchControllerRef": True}},
+                "existingFilesystem": {"id": "computefilesystem-e00test"},
             },
         ],
         "cloudInitUserDataSecretRef": {"name": "test-cluster-cloud-init-fd2f2", "key": "userData"},
@@ -404,13 +446,13 @@ def _to_dict(msg: message.Message) -> dict:
 # is the ClusterProviderConfig named default unless the XR says otherwise. The
 # function reads the credentials Secret off it.
 COMPOSE_CASES = [
-    # The pool sets maxNodeCount but not minNodeCount, and its nodeCount is 1,
-    # so this case can't tell an autoscaling floor taken from nodeCount from one
-    # fixed at 1. The CSI driver release and StorageClass aren't composed yet:
-    # the cluster isn't observed, so the ProviderConfigs can't reach it.
+    # The CSI driver release and StorageClass aren't composed yet: the cluster
+    # isn't observed, so the ProviderConfigs can't reach it. The node groups
+    # aren't either: their templates carry the subnet and filesystem ids, which
+    # only an observed Subnet and Filesystem provide.
     Case(
         name="FirstPass",
-        reason="With nothing observed, a NebiusCluster composes its Nebius infrastructure and ProviderConfigs, autoscaling the GPU pool from one node to maxNodeCount.",
+        reason="With nothing observed, a NebiusCluster composes its Nebius infrastructure and ProviderConfigs, and waits for the subnet and filesystem ids before its node groups.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_xr(
@@ -453,21 +495,16 @@ COMPOSE_CASES = [
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
                     "cloud-init": _cloud_init_secret(),
-                    "nodegroup-system": _nodegroup_system(
-                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
-                    ),
-                    "nodegroup-gpu-h100": _nodegroup_gpu(
-                        cred_kind="ClusterProviderConfig",
-                        cred_name="default",
-                        autoscaling={"minNodeCount": 1, "maxNodeCount": 4},
-                        fixed_node_count=None,
-                        fabric=None,
-                        ready=fnv1.READY_UNSPECIFIED,
-                    ),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
                     "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
                 },
             ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="Waiting for the subnet and cache filesystem ids before composing node groups",
+                ),
+            ],
             context=structpb.Struct(),
             requirements=fnv1.Requirements(
                 resources={
@@ -480,6 +517,10 @@ COMPOSE_CASES = [
             ),
         ),
     ),
+    # The pool sets maxNodeCount but not minNodeCount, and its nodeCount is 1,
+    # so this case can't tell an autoscaling floor taken from nodeCount from one
+    # fixed at 1. The node groups' templates carry the ids the observed Subnet
+    # and Filesystem report.
     Case(
         name="FirstPassCPUPool",
         reason="A CPU-role node group composes with the modelplane.ai/pool and modelplane.ai/cpu labels and the CPU taint, and no GPU settings.",
@@ -567,6 +608,16 @@ COMPOSE_CASES = [
                         ),
                     ],
                 ),
+                resources={
+                    "subnet": _subnet_observed(
+                        cred_kind="ClusterProviderConfig", cred_name="default", subnet_id="vpcsubnet-e00test"
+                    ),
+                    "filesystem": _filesystem_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        filesystem_id="computefilesystem-e00test",
+                    ),
+                },
             ),
         ),
         want=fnv1.RunFunctionResponse(
@@ -642,6 +693,14 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
+                    "subnet": _subnet_observed(
+                        cred_kind="ClusterProviderConfig", cred_name="default", subnet_id="vpcsubnet-e00test"
+                    ),
+                    "filesystem": _filesystem_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        filesystem_id="computefilesystem-e00test",
+                    ),
                     "provider-config-kubernetes": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -748,6 +807,16 @@ COMPOSE_CASES = [
                         ),
                     ],
                 ),
+                resources={
+                    "subnet": _subnet_observed(
+                        cred_kind="ClusterProviderConfig", cred_name="default", subnet_id="vpcsubnet-e00test"
+                    ),
+                    "filesystem": _filesystem_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        filesystem_id="computefilesystem-e00test",
+                    ),
+                },
             ),
             required_resources={
                 "nebius-provider-config": fnv1.Resources(
@@ -875,6 +944,7 @@ COMPOSE_CASES = [
                                     },
                                 },
                                 "status": {
+                                    "atProvider": {"id": "vpcsubnet-e00test"},
                                     "conditions": [
                                         {
                                             "type": "Ready",
@@ -931,6 +1001,7 @@ COMPOSE_CASES = [
                                     },
                                 },
                                 "status": {
+                                    "atProvider": {"id": "computefilesystem-e00test"},
                                     "conditions": [
                                         {
                                             "type": "Ready",
@@ -1003,13 +1074,13 @@ COMPOSE_CASES = [
                                             "resources": {"platform": "cpu-d3", "preset": "4vcpu-16gb"},
                                             "bootDisk": {"sizeGibibytes": 100, "type": "NETWORK_SSD"},
                                             "networkInterfaces": [
-                                                {"subnetIdSelector": {"matchControllerRef": True}},
+                                                {"subnetId": "vpcsubnet-e00test"},
                                             ],
                                             "filesystems": [
                                                 {
                                                     "attachMode": "READ_WRITE",
                                                     "mountTag": "modelplane-cache",
-                                                    "existingFilesystem": {"idSelector": {"matchControllerRef": True}},
+                                                    "existingFilesystem": {"id": "computefilesystem-e00test"},
                                                 },
                                             ],
                                             "cloudInitUserDataSecretRef": {
@@ -1048,13 +1119,13 @@ COMPOSE_CASES = [
                                             "resources": {"platform": "gpu-h100-sxm", "preset": "8gpu-128vcpu-1600gb"},
                                             "bootDisk": {"sizeGibibytes": 200, "type": "NETWORK_SSD"},
                                             "networkInterfaces": [
-                                                {"subnetIdSelector": {"matchControllerRef": True}},
+                                                {"subnetId": "vpcsubnet-e00test"},
                                             ],
                                             "filesystems": [
                                                 {
                                                     "attachMode": "READ_WRITE",
                                                     "mountTag": "modelplane-cache",
-                                                    "existingFilesystem": {"idSelector": {"matchControllerRef": True}},
+                                                    "existingFilesystem": {"id": "computefilesystem-e00test"},
                                                 },
                                             ],
                                             "cloudInitUserDataSecretRef": {
@@ -1223,6 +1294,16 @@ COMPOSE_CASES = [
                         ),
                     ],
                 ),
+                resources={
+                    "subnet": _subnet_observed(
+                        cred_kind="ProviderConfig", cred_name="my-nebius-account", subnet_id="vpcsubnet-e00test"
+                    ),
+                    "filesystem": _filesystem_observed(
+                        cred_kind="ProviderConfig",
+                        cred_name="my-nebius-account",
+                        filesystem_id="computefilesystem-e00test",
+                    ),
+                },
             ),
             required_resources={
                 "nebius-provider-config": fnv1.Resources(
@@ -1275,6 +1356,214 @@ COMPOSE_CASES = [
                         kind="ProviderConfig",
                         match_name="my-nebius-account",
                         namespace="modelplane-system",
+                    ),
+                },
+            ),
+        ),
+    ),
+    # The observed node groups carry the selectors a composition before #517
+    # wrote, so they have no ids to fall back to, and no Subnet or Filesystem
+    # is observed. The groups are Ready, and marking readiness on a gated-out
+    # entry would re-add it to desired state empty - the case fails if either
+    # node group appears in the response.
+    Case(
+        name="StaleNodeGroupsWait",
+        reason="With node groups observed carrying selectors instead of ids and no Subnet or Filesystem id available, a NebiusCluster waits rather than re-adding the node groups empty.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-h100",
+                            role="GPU",
+                            platform="gpu-h100-sxm",
+                            preset="8gpu-128vcpu-1600gb",
+                            diskSizeGb=200,
+                            nodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                    ],
+                ),
+                resources={
+                    "nodegroup-system": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "mk8s.nebius.m.upbound.io/v1beta1",
+                                "kind": "NodeGroup",
+                                "spec": {
+                                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                                    "forProvider": {
+                                        "name": "test-cluster-system",
+                                        "parentIdSelector": {"matchControllerRef": True},
+                                        "version": "1.34",
+                                        "autoscaling": {"minNodeCount": 1, "maxNodeCount": 2},
+                                        "template": {
+                                            "resources": {"platform": "cpu-d3", "preset": "4vcpu-16gb"},
+                                            "bootDisk": {"sizeGibibytes": 100, "type": "NETWORK_SSD"},
+                                            "networkInterfaces": [
+                                                {"subnetIdSelector": {"matchControllerRef": True}},
+                                            ],
+                                            "filesystems": [
+                                                {
+                                                    "attachMode": "READ_WRITE",
+                                                    "mountTag": "modelplane-cache",
+                                                    "existingFilesystem": {"idSelector": {"matchControllerRef": True}},
+                                                },
+                                            ],
+                                            "cloudInitUserDataSecretRef": {
+                                                "name": "test-cluster-cloud-init-fd2f2",
+                                                "key": "userData",
+                                            },
+                                            "metadata": {"labels": {"modelplane.ai/pool": "system"}},
+                                        },
+                                    },
+                                },
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
+            required_resources={
+                "nebius-provider-config": fnv1.Resources(
+                    items=[_nebius_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(credentials_secret=True),
+                resources={
+                    "network": _network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "filesystem": _filesystem(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cloud-init": _cloud_init_secret(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="Waiting for the subnet and cache filesystem ids before composing node groups",
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "nebius-provider-config": fnv1.ResourceSelector(
+                        api_version="nebius.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
+                    ),
+                },
+            ),
+        ),
+    ),
+    # Neither the Subnet nor the Filesystem reports an id - both were deleted,
+    # say - so the function falls back to the ids the observed node groups were
+    # last written with rather than dropping the groups from desired state.
+    Case(
+        name="ObservedNodeGroupFallback",
+        reason="With no Subnet or Filesystem id in status but node groups observed, a NebiusCluster keeps composing the node groups with the ids they already carry.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-h100",
+                            role="GPU",
+                            platform="gpu-h100-sxm",
+                            preset="8gpu-128vcpu-1600gb",
+                            diskSizeGb=200,
+                            nodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                    ],
+                ),
+                resources={
+                    "nodegroup-system": _nodegroup_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodegroup-gpu-h100": _nodegroup_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        autoscaling={"minNodeCount": 1, "maxNodeCount": 4},
+                        fixed_node_count=None,
+                        fabric=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                },
+            ),
+            required_resources={
+                "nebius-provider-config": fnv1.Resources(
+                    items=[_nebius_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(credentials_secret=True),
+                resources={
+                    "network": _network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "filesystem": _filesystem(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cloud-init": _cloud_init_secret(),
+                    "nodegroup-system": _nodegroup_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodegroup-gpu-h100": _nodegroup_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        autoscaling={"minNodeCount": 1, "maxNodeCount": 4},
+                        fixed_node_count=None,
+                        fabric=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "nebius-provider-config": fnv1.ResourceSelector(
+                        api_version="nebius.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
                     ),
                 },
             ),

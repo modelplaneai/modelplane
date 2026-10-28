@@ -556,7 +556,25 @@ class Composer:
             resource.update(self.rsp.desired.resources[f"gpu-cluster-{fabric}"], gpu_cluster)
 
     def compose_node_groups(self) -> None:
-        self._compose_system_group()
+        """Compose the system node group and one node group per pool.
+
+        The subnet and cache filesystem ids are read from the observed Subnet
+        and Filesystem and rendered into the template's networkInterfaces and
+        filesystems directly. Those lists are atomic under server-side apply,
+        so a selector inside them would hand the items to the reference
+        resolver, and the resolver and the composition would replace each
+        other's lists on every apply, replacing the nodes along the way (#517).
+        Until both ids are known no node group is composed - a new node group
+        waits far longer on the mk8s cluster's parentId anyway."""
+        subnet_id = self._subnet_id()
+        filesystem_id = self._filesystem_id()
+        if not subnet_id or not filesystem_id:
+            response.normal(
+                self.rsp,
+                "Waiting for the subnet and cache filesystem ids before composing node groups",
+            )
+            return
+        self._compose_system_group(subnet_id=subnet_id, filesystem_id=filesystem_id)
         for pool in self.xr.spec.nodePools:
             labels = {_LABEL_POOL: pool.name}
             if pool.role == "GPU" and pool.gpu:
@@ -574,13 +592,9 @@ class Composer:
                     type=_BOOT_DISK_TYPE,
                 ),
                 networkInterfaces=[
-                    nodegroupv1beta1.NetworkInterface(
-                        subnetIdSelector=nodegroupv1beta1.SubnetIdSelector(
-                            matchControllerRef=True,
-                        ),
-                    ),
+                    nodegroupv1beta1.NetworkInterface(subnetId=subnet_id),
                 ],
-                filesystems=self._cache_filesystems(),
+                filesystems=self._cache_filesystems(filesystem_id=filesystem_id),
                 cloudInitUserDataSecretRef=self._cloud_init_ref(),
                 metadata=nodegroupv1beta1.Metadata(labels=labels),
             )
@@ -646,7 +660,7 @@ class Composer:
                 ng,
             )
 
-    def _compose_system_group(self) -> None:
+    def _compose_system_group(self, *, subnet_id: str, filesystem_id: str) -> None:
         """Compose the system node group for control-plane components."""
         resource.update(
             self.rsp.desired.resources[f"nodegroup-{_SYSTEM_POOL_NAME}"],
@@ -676,13 +690,9 @@ class Composer:
                                 type=_BOOT_DISK_TYPE,
                             ),
                             networkInterfaces=[
-                                nodegroupv1beta1.NetworkInterface(
-                                    subnetIdSelector=nodegroupv1beta1.SubnetIdSelector(
-                                        matchControllerRef=True,
-                                    ),
-                                ),
+                                nodegroupv1beta1.NetworkInterface(subnetId=subnet_id),
                             ],
-                            filesystems=self._cache_filesystems(),
+                            filesystems=self._cache_filesystems(filesystem_id=filesystem_id),
                             cloudInitUserDataSecretRef=self._cloud_init_ref(),
                             metadata=nodegroupv1beta1.Metadata(
                                 labels={
@@ -695,17 +705,57 @@ class Composer:
             ),
         )
 
-    def _cache_filesystems(self) -> list[nodegroupv1beta1.Filesystem]:
-        """The cache filesystem attachment every node group carries. The
-        selector resolves to the one composed Filesystem."""
+    def _cache_filesystems(self, *, filesystem_id: str) -> list[nodegroupv1beta1.Filesystem]:
+        """The cache filesystem attachment every node group carries, by the
+        composed Filesystem's id - the list is atomic under server-side apply,
+        so a selector here would hand the item to the reference resolver
+        (#517, see compose_node_groups)."""
         return [
             nodegroupv1beta1.Filesystem(
                 attachMode="READ_WRITE",
                 mountTag=_FS_MOUNT_TAG,
-                existingFilesystem=nodegroupv1beta1.ExistingFilesystem(
-                    idSelector=nodegroupv1beta1.IdSelector(matchControllerRef=True),
-                ),
+                existingFilesystem=nodegroupv1beta1.ExistingFilesystem(id=filesystem_id),
             ),
+        ]
+
+    def _subnet_id(self) -> str | None:
+        """The composed Subnet's id, read from its status, or None before the
+        Subnet is provisioned. Falls back to the id the observed node groups
+        were last written with, so a Subnet whose status is unreadable - it
+        was deleted, say - never drops existing node groups from desired
+        state."""
+        observed = self.req.observed.resources.get("subnet")
+        if observed:
+            subnet = subnetv1beta1.Subnet.model_validate(resource.struct_to_dict(observed.resource))
+            if subnet.status and subnet.status.atProvider and subnet.status.atProvider.id:
+                return subnet.status.atProvider.id
+        for ng in self._observed_node_groups():
+            interfaces = ng.spec.forProvider.template.networkInterfaces if ng.spec.forProvider.template else None
+            if interfaces and interfaces[0].subnetId:
+                return interfaces[0].subnetId
+        return None
+
+    def _filesystem_id(self) -> str | None:
+        """The composed cache Filesystem's id, read from its status, or None
+        before the Filesystem is provisioned. Falls back like _subnet_id."""
+        observed = self.req.observed.resources.get("filesystem")
+        if observed:
+            fs = fsv1beta1.Filesystem.model_validate(resource.struct_to_dict(observed.resource))
+            if fs.status and fs.status.atProvider and fs.status.atProvider.id:
+                return fs.status.atProvider.id
+        for ng in self._observed_node_groups():
+            filesystems = ng.spec.forProvider.template.filesystems if ng.spec.forProvider.template else None
+            existing = filesystems[0].existingFilesystem if filesystems else None
+            if existing and existing.id:
+                return existing.id
+        return None
+
+    def _observed_node_groups(self) -> list[nodegroupv1beta1.NodeGroup]:
+        """The composed node groups as they were last written."""
+        return [
+            nodegroupv1beta1.NodeGroup.model_validate(resource.struct_to_dict(observed.resource))
+            for name, observed in self.req.observed.resources.items()
+            if name.startswith("nodegroup-")
         ]
 
     def _cloud_init_ref(self) -> nodegroupv1beta1.CloudInitUserDataSecretRef:
@@ -812,13 +862,15 @@ class Composer:
         managed_resources += [f"gpu-cluster-{fabric}" for fabric in self._fabrics()]
         managed_resources.append(f"nodegroup-{_SYSTEM_POOL_NAME}")
         managed_resources += [f"nodegroup-{pool.name}" for pool in self.xr.spec.nodePools]
-        # The CSI driver Helm release is only composed once the cluster is
-        # observed, so only mark it ready when it's actually in desired state -
-        # touching it here otherwise would re-add a resource we gated out.
-        if "release-csi-mounted-fs-path" in self.rsp.desired.resources:
-            managed_resources.append("release-csi-mounted-fs-path")
+        managed_resources.append("release-csi-mounted-fs-path")
 
+        # Only mark resources that are actually in desired state: the CSI
+        # driver release is gated on the cluster being observed and the node
+        # groups on the subnet and filesystem ids, and touching a gated-out
+        # entry here would re-add it, empty.
         for r in managed_resources:
+            if r not in self.rsp.desired.resources:
+                continue
             if resource.get_condition(self.req.observed.resources.get(r), "Ready").status == "True":
                 self.rsp.desired.resources[r].ready = fnv1.READY_TRUE
 

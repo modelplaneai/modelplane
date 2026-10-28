@@ -112,6 +112,24 @@ in
         touch $out/.function-test-style-checked
       '';
 
+  # Check that no composition function renders a matchControllerRef selector
+  # inside a list. The managed resource CRDs' lists are atomic under
+  # server-side apply, so a selector in a list item makes the composition and
+  # the reference resolver replace each other's items and the object never
+  # settles (#517). The checker uses only the standard library, so it runs on
+  # the plain interpreter.
+  list-selectors =
+    pkgs.runCommand "modelplane-list-selectors"
+      {
+        nativeBuildInputs = [ pkgs.python3 ];
+      }
+      ''
+        cd ${self}
+        python3 hack/check_list_selectors.py
+        mkdir -p $out
+        touch $out/.list-selectors-checked
+      '';
+
   # Type-check our Python with ty. Every function's package is named
   # `function`, so in one ty run one function's `from function import fn` could
   # resolve to another function's package. ty instead runs once per function,
