@@ -2726,6 +2726,335 @@ COMPOSE_CASES = [
             ],
         ),
     ),
+    # The XR is a dict rather than built from the generated model, which
+    # can't represent the member without template.spec that this case tests.
+    ComposeCase(
+        name="TemplateSpecMissing",
+        reason="A stored deployment whose member has no template.spec stops with a fatal result naming it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "apiVersion": "modelplane.ai/v1alpha1",
+                            "kind": "ModelDeployment",
+                            "metadata": {"name": "my-model", "namespace": "ml-team"},
+                            "spec": {
+                                "replicas": 1,
+                                "template": {
+                                    "spec": {
+                                        "engines": [
+                                            {
+                                                "name": "main",
+                                                "members": [
+                                                    {
+                                                        "role": "Standalone",
+                                                        "nodeSelector": {
+                                                            "devices": [
+                                                                {
+                                                                    "name": "gpu",
+                                                                    "selectors": [
+                                                                        {"cel": 'device.driver == "gpu.nvidia.com"'}
+                                                                    ],
+                                                                },
+                                                            ],
+                                                        },
+                                                        "template": {},
+                                                    },
+                                                ],
+                                            },
+                                        ],
+                                    },
+                                },
+                            },
+                        }
+                    )
+                ),
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_FATAL,
+                    message=(
+                        "The ModelDeployment doesn't match its schema: "
+                        "spec.template.spec.engines[0].members[0].template.spec: Field required"
+                    ),
+                ),
+            ],
+            context=structpb.Struct(),
+        ),
+    ),
+    ComposeCase(
+        name="ForeignReplicaMalformed",
+        reason="A replica in another namespace that doesn't parse is skipped with a warning that doesn't name it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_deployment(
+                    replicas=1,
+                    template_labels=None,
+                    cluster_selector=None,
+                    model_cache=None,
+                    serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
+                    engines=[{"name": "main"}],
+                    args=["--model=Qwen/Qwen3-0.6B"],
+                ),
+            ),
+            required_resources={
+                "clusters": fnv1.Resources(
+                    items=[
+                        _cluster(
+                            name="cluster-a",
+                            ready=True,
+                            gateway_hostname="cluster.clusters.example.com",
+                            nodes=2,
+                            cache_storage=False,
+                            placement_labels=None,
+                        )
+                    ]
+                ),
+                "all-replicas": fnv1.Resources(
+                    items=[
+                        # A dict rather than the generated model, which can't
+                        # represent the member without template.spec.
+                        fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                {
+                                    "apiVersion": "modelplane.ai/v1alpha1",
+                                    "kind": "ModelReplica",
+                                    "metadata": {
+                                        "name": "other-model-0a1b2",
+                                        "namespace": "other-team",
+                                        "labels": {"modelplane.ai/deployment": "other-model"},
+                                    },
+                                    "spec": {
+                                        "clusterName": "cluster-a",
+                                        "engines": [
+                                            {
+                                                "name": "main",
+                                                "members": [
+                                                    {
+                                                        "role": "Standalone",
+                                                        "nodePoolName": "gpu-pool",
+                                                        "deviceRequests": [
+                                                            {"name": "gpu", "deviceClassName": "gpu.nvidia.com"}
+                                                        ],
+                                                        "template": {},
+                                                    },
+                                                ],
+                                            },
+                                        ],
+                                    },
+                                }
+                            )
+                        ),
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_deployment(total_replicas=1, ready_replicas=0, ready=fnv1.READY_FALSE),
+                resources={
+                    "replica-cluster-a-0": _composed_replica(
+                        name="my-model-5ab63",
+                        cluster="cluster-a",
+                        labels={
+                            "modelplane.ai/deployment": "my-model",
+                            "modelplane.ai/cluster": "cluster-a",
+                            "modelplane.ai/replica-index": "0",
+                        },
+                        model_cache=None,
+                        serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
+                        engines=[{"name": "main"}],
+                        args=["--model=Qwen/Qwen3-0.6B"],
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_WARNING,
+                    message=(
+                        "Ignoring a ModelReplica in another namespace that doesn't match its schema. "
+                        "Its own Synced condition reports the problem."
+                    ),
+                ),
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="Scheduled 1 replicas across 1 clusters: cluster-a",
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "all-replicas": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelReplica"),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ReplicasScheduled",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Scheduling",
+                    message="Created 0 of 1 replicas",
+                ),
+                fnv1.Condition(
+                    type="ReplicasServing",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="ModelStarting",
+                    message="0 of 1 replicas serving",
+                ),
+                fnv1.Condition(
+                    type="ReplicasReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="ModelStarting",
+                    message="0 of 1 replicas ready",
+                ),
+            ],
+        ),
+    ),
+    ComposeCase(
+        name="LocalReplicaMalformed",
+        reason="A replica in the deployment's namespace that doesn't parse is skipped with a warning naming it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_deployment(
+                    replicas=1,
+                    template_labels=None,
+                    cluster_selector=None,
+                    model_cache=None,
+                    serving_mode=None,
+                    endpoint_picker=None,
+                    sidecar=None,
+                    engines=[{"name": "main"}],
+                    args=["--model=Qwen/Qwen3-0.6B"],
+                ),
+            ),
+            required_resources={
+                "clusters": fnv1.Resources(
+                    items=[
+                        _cluster(
+                            name="cluster-a",
+                            ready=True,
+                            gateway_hostname="cluster.clusters.example.com",
+                            nodes=2,
+                            cache_storage=False,
+                            placement_labels=None,
+                        )
+                    ]
+                ),
+                "all-replicas": fnv1.Resources(
+                    items=[
+                        # A dict rather than the generated model, which can't
+                        # represent the member without template.spec.
+                        fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                {
+                                    "apiVersion": "modelplane.ai/v1alpha1",
+                                    "kind": "ModelReplica",
+                                    "metadata": {
+                                        "name": "other-model-0a1b2",
+                                        "namespace": "ml-team",
+                                        "labels": {"modelplane.ai/deployment": "other-model"},
+                                    },
+                                    "spec": {
+                                        "clusterName": "cluster-a",
+                                        "engines": [
+                                            {
+                                                "name": "main",
+                                                "members": [
+                                                    {
+                                                        "role": "Standalone",
+                                                        "nodePoolName": "gpu-pool",
+                                                        "deviceRequests": [
+                                                            {"name": "gpu", "deviceClassName": "gpu.nvidia.com"}
+                                                        ],
+                                                        "template": {},
+                                                    },
+                                                ],
+                                            },
+                                        ],
+                                    },
+                                }
+                            )
+                        ),
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_deployment(total_replicas=1, ready_replicas=0, ready=fnv1.READY_FALSE),
+                resources={
+                    "replica-cluster-a-0": _composed_replica(
+                        name="my-model-5ab63",
+                        cluster="cluster-a",
+                        labels={
+                            "modelplane.ai/deployment": "my-model",
+                            "modelplane.ai/cluster": "cluster-a",
+                            "modelplane.ai/replica-index": "0",
+                        },
+                        model_cache=None,
+                        serving_mode=None,
+                        endpoint_picker=None,
+                        sidecar=None,
+                        engines=[{"name": "main"}],
+                        args=["--model=Qwen/Qwen3-0.6B"],
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_WARNING,
+                    message=(
+                        "Ignoring ModelReplica other-model-0a1b2: it doesn't match its schema: "
+                        "spec.engines[0].members[0].template.spec: Field required"
+                    ),
+                ),
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="Scheduled 1 replicas across 1 clusters: cluster-a",
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "all-replicas": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelReplica"),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ReplicasScheduled",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Scheduling",
+                    message="Created 0 of 1 replicas",
+                ),
+                fnv1.Condition(
+                    type="ReplicasServing",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="ModelStarting",
+                    message="0 of 1 replicas serving",
+                ),
+                fnv1.Condition(
+                    type="ReplicasReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="ModelStarting",
+                    message="0 of 1 replicas ready",
+                ),
+            ],
+        ),
+    ),
 ]
 
 

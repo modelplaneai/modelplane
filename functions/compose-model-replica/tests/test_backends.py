@@ -9380,7 +9380,15 @@ def _main_engine() -> v1alpha1.Engine:
     return v1alpha1.Engine(
         name="main",
         copies=2,
-        members=[v1alpha1.Member(role="Standalone", nodePoolName="frontier", template=v1alpha1.Template())],
+        members=[
+            v1alpha1.Member(
+                role="Standalone",
+                nodePoolName="frontier",
+                template=v1alpha1.Template(
+                    spec=v1alpha1.Spec(containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")])
+                ),
+            )
+        ],
     )
 
 

@@ -97,9 +97,6 @@ class NativeBackend:
         # Pin to the member's scheduled pool and claim GPUs via DRA.
         base.place_pod(pod_spec, replica, engine, member)
         tmpl = member.template
-        # The XRD types template.spec as optional, but a member with no spec
-        # defines no pod to serve, so reaching here without one is malformed.
-        assert tmpl.spec is not None
         if tmpl.spec.imagePullSecrets:
             pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in tmpl.spec.imagePullSecrets]
 

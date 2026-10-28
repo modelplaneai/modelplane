@@ -28,6 +28,7 @@ through verbatim to the composed workload - Modelplane injects no engine flags.
 """
 
 import grpc
+import pydantic
 from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
@@ -78,9 +79,25 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
         log.info("Running function")
 
         rsp = response.to(req)
-        c = Composer(req, rsp)
+        try:
+            c = Composer(req, rsp)
+        except pydantic.ValidationError as err:
+            # The API server validates a replica against the XRD, but one stored
+            # before the XRD gained a rule can still break it.
+            response.fatal(rsp, f"The ModelReplica doesn't match its schema: {schema_problems(err)}")
+            return rsp
         c.compose()
         return rsp
+
+
+def schema_problems(err: pydantic.ValidationError) -> str:
+    """err's problems as field paths and messages, such as
+    spec.engines[0].members[0].template.spec: Field required."""
+    problems = []
+    for e in err.errors(include_url=False):
+        path = "".join(f"[{p}]" if isinstance(p, int) else f".{p}" for p in e["loc"]).lstrip(".")
+        problems.append(f"{path}: {e['msg']}")
+    return "; ".join(problems)
 
 
 class Composer:

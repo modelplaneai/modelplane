@@ -119,9 +119,6 @@ class LLMDBackend:
             # claims devices, claims GPUs via the member's DRA template (one
             # fresh claim per pod).
             base.place_pod(spec, replica, engine, member)
-            # The XRD types template.spec as optional, but a member with no spec
-            # defines no pod to serve, so reaching here without one is malformed.
-            assert member.template.spec is not None
             secrets = member.template.spec.imagePullSecrets
             if secrets:
                 spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in secrets]

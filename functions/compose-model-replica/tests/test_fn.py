@@ -900,6 +900,120 @@ COMPOSE_CASES = [
             ],
         ),
     ),
+    # The XR is a dict rather than built from the generated model, which
+    # can't represent the member without template.spec that these cases test.
+    Case(
+        name="StandaloneTemplateSpecMissing",
+        reason="A stored replica whose Standalone member has no template.spec stops with a fatal result naming it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "apiVersion": "modelplane.ai/v1alpha1",
+                            "kind": "ModelReplica",
+                            "metadata": {"name": "test-replica", "namespace": "ml-team"},
+                            "spec": {
+                                "clusterName": "cluster-a",
+                                "engines": [
+                                    {
+                                        "name": "main",
+                                        "members": [
+                                            {
+                                                "role": "Standalone",
+                                                "nodePoolName": "frontier",
+                                                "deviceRequests": [
+                                                    {"name": "gpu", "deviceClassName": "gpu.nvidia.com"}
+                                                ],
+                                                "template": {},
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        }
+                    )
+                ),
+            ),
+            required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_FATAL,
+                    message=(
+                        "The ModelReplica doesn't match its schema: "
+                        "spec.engines[0].members[0].template.spec: Field required"
+                    ),
+                ),
+            ],
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="WorkerTemplateSpecMissing",
+        reason="A stored gang replica whose Worker member has no template.spec stops with a fatal result naming it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "apiVersion": "modelplane.ai/v1alpha1",
+                            "kind": "ModelReplica",
+                            "metadata": {"name": "test-replica", "namespace": "ml-team"},
+                            "spec": {
+                                "clusterName": "cluster-a",
+                                "engines": [
+                                    {
+                                        "name": "main",
+                                        "members": [
+                                            {
+                                                "role": "Leader",
+                                                "nodePoolName": "frontier",
+                                                "deviceRequests": [
+                                                    {"name": "gpu", "deviceClassName": "gpu.nvidia.com"}
+                                                ],
+                                                "template": {
+                                                    "spec": {
+                                                        "containers": [
+                                                            {"name": "engine", "image": "vllm/vllm-openai:latest"},
+                                                        ],
+                                                    },
+                                                },
+                                            },
+                                            {
+                                                "role": "Worker",
+                                                "nodePoolName": "frontier",
+                                                "worker": {"nodes": 1},
+                                                "template": {"metadata": {"labels": {"team": "ml"}}},
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        }
+                    )
+                ),
+            ),
+            required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_FATAL,
+                    message=(
+                        "The ModelReplica doesn't match its schema: "
+                        "spec.engines[0].members[1].template.spec: Field required"
+                    ),
+                ),
+            ],
+            context=structpb.Struct(),
+        ),
+    ),
     # Modelplane can't tell which container is the disaggregation sidecar, so
     # it composes the pair as written and warns. The warning comes before the
     # first reconcile's Composing event.

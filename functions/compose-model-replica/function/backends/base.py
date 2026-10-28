@@ -602,10 +602,6 @@ def engine_container(member: v1alpha1.Member) -> v1alpha1.Container:
     """Return a member's container named 'engine'. The XRD's CEL validation
     guarantees exactly one exists per member, so this always succeeds.
     """
-    # An engine member carries its container in template.spec. The XRD types
-    # spec as optional but a member with no spec defines no pod to serve, so
-    # reaching here without one is a malformed replica.
-    assert member.template.spec is not None
     return next(c for c in member.template.spec.containers if c.name == "engine")
 
 
@@ -616,7 +612,6 @@ def sidecar_containers(member: v1alpha1.Member) -> list[dict]:
     so these pass through untouched. Each member has its own template, so the
     user chooses which pods of a gang run them.
     """
-    assert member.template.spec is not None
     return [c.model_dump(exclude_none=True) for c in member.template.spec.containers if c.name != "engine"]
 
 

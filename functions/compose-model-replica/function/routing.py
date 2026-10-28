@@ -249,7 +249,7 @@ def decode_without_sidecar(replica: v1alpha1.ModelReplica) -> bool:
     if decode is None:
         return False
     member = base.engine_member(decode, base.ROLE_LEADER) or base.engine_member(decode, base.ROLE_STANDALONE)
-    if member is None or member.template.spec is None:
+    if member is None:
         return False
     return all(c.name == "engine" for c in member.template.spec.containers)
 
