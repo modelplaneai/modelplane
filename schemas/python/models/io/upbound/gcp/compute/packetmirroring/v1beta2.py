@@ -107,6 +107,14 @@ class Subnetwork(BaseModel):
     """
     The URL of the subnetwork where this rule should be active.
     """
+    urlRef: UrlRef | None = None
+    """
+    Reference to a Subnetwork in compute to populate url.
+    """
+    urlSelector: UrlSelector | None = None
+    """
+    Selector for a Subnetwork in compute to populate url.
+    """
 
 
 class MirroredResources(BaseModel):
@@ -153,6 +161,12 @@ class ForProvider(BaseModel):
     description: str | None = None
     """
     A human-readable description of the rule.
+    """
+    enable: str | None = None
+    """
+    Indicates whether or not this packet mirroring takes effect. If set to FALSE, this packet mirroring
+    policy will not be enforced on the network. The default is TRUE.
+    Possible values are: TRUE, FALSE.
     """
     filter: Filter | None = None
     """
@@ -201,6 +215,12 @@ class InitProvider(BaseModel):
     description: str | None = None
     """
     A human-readable description of the rule.
+    """
+    enable: str | None = None
+    """
+    Indicates whether or not this packet mirroring takes effect. If set to FALSE, this packet mirroring
+    policy will not be enforced on the network. The default is TRUE.
+    Possible values are: TRUE, FALSE.
     """
     filter: Filter | None = None
     """
@@ -326,6 +346,13 @@ class InstanceModel(BaseModel):
     """
 
 
+class SubnetworkModel(BaseModel):
+    url: str | None = None
+    """
+    The URL of the subnetwork where this rule should be active.
+    """
+
+
 class NetworkModel(BaseModel):
     url: str | None = None
     """
@@ -342,9 +369,20 @@ class AtProvider(BaseModel):
     set to true.
     Structure is documented below.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     A human-readable description of the rule.
+    """
+    enable: str | None = None
+    """
+    Indicates whether or not this packet mirroring takes effect. If set to FALSE, this packet mirroring
+    policy will not be enforced on the network. The default is TRUE.
+    Possible values are: TRUE, FALSE.
     """
     filter: Filter | None = None
     """
@@ -422,6 +460,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

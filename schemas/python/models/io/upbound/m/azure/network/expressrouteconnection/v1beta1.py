@@ -133,9 +133,6 @@ class ForProvider(BaseModel):
     The authorization key to establish the Express Route Connection.
     """
     enableInternetSecurity: bool | None = None
-    """
-    Is Internet security enabled for this Express Route Connection?
-    """
     expressRouteCircuitPeeringId: str | None = None
     """
     The ID of the Express Route Circuit Peering that this Express Route Connection connects with. Changing this forces a new resource to be created.
@@ -166,6 +163,10 @@ class ForProvider(BaseModel):
     """
     Selector for a ExpressRouteGateway in network to populate expressRouteGatewayId.
     """
+    internetSecurityEnabled: bool | None = None
+    """
+    Is Internet security enabled for this Express Route Connection? Defaults to false.
+    """
     privateLinkFastPathEnabled: bool | None = None
     routing: Routing | None = None
     """
@@ -183,9 +184,6 @@ class InitProvider(BaseModel):
     The authorization key to establish the Express Route Connection.
     """
     enableInternetSecurity: bool | None = None
-    """
-    Is Internet security enabled for this Express Route Connection?
-    """
     expressRouteCircuitPeeringId: str | None = None
     """
     The ID of the Express Route Circuit Peering that this Express Route Connection connects with. Changing this forces a new resource to be created.
@@ -203,6 +201,10 @@ class InitProvider(BaseModel):
     expressRouteGatewayBypassEnabled: bool | None = None
     """
     Specified whether Fast Path is enabled for Virtual Wan Firewall Hub. Defaults to false.
+    """
+    internetSecurityEnabled: bool | None = None
+    """
+    Is Internet security enabled for this Express Route Connection? Defaults to false.
     """
     privateLinkFastPathEnabled: bool | None = None
     routing: Routing | None = None
@@ -283,9 +285,6 @@ class AtProvider(BaseModel):
     The authorization key to establish the Express Route Connection.
     """
     enableInternetSecurity: bool | None = None
-    """
-    Is Internet security enabled for this Express Route Connection?
-    """
     expressRouteCircuitPeeringId: str | None = None
     """
     The ID of the Express Route Circuit Peering that this Express Route Connection connects with. Changing this forces a new resource to be created.
@@ -301,6 +300,10 @@ class AtProvider(BaseModel):
     id: str | None = None
     """
     The ID of the Express Route Connection.
+    """
+    internetSecurityEnabled: bool | None = None
+    """
+    Is Internet security enabled for this Express Route Connection? Defaults to false.
     """
     privateLinkFastPathEnabled: bool | None = None
     routing: Routing | None = None
@@ -350,6 +353,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

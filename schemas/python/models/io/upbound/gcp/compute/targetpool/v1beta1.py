@@ -237,6 +237,11 @@ class AtProvider(BaseModel):
     URL to the backup target pool. Must also set
     failover_ratio.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to "DELETE".
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     Textual description field.
@@ -319,6 +324,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

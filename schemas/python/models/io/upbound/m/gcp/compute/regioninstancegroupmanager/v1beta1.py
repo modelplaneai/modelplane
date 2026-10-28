@@ -115,6 +115,13 @@ class InstanceFlexibilityPolicy(BaseModel):
     """
 
 
+class OnRepair(BaseModel):
+    allowChangingZone: str | None = None
+    """
+    , Specifies whether the MIG can change a VM's zone during a repair. If "YES", MIG can select a different zone for the VM during a repair. Else if "NO", MIG cannot change a VM's zone during a repair. The default value of allow_changing_zone is "NO".
+    """
+
+
 class InstanceLifecyclePolicy(BaseModel):
     defaultActionOnFailure: str | None = None
     """
@@ -123,6 +130,14 @@ class InstanceLifecyclePolicy(BaseModel):
     forceUpdateOnRepair: str | None = None
     """
     , Specifies whether to apply the group's latest configuration when repairing a VM. Valid options are: YES, NO. If YES and you updated the group's instance template or per-instance configurations after the VM was created, then these changes are applied when VM is repaired. If NO (default), then updates are applied in accordance with the group's update policy type.
+    """
+    onFailedHealthCheck: str | None = None
+    """
+    , Specifies the action that a MIG performs on an unhealthy VM. A VM is marked as unhealthy when the application running on that VM fails a health check. Valid options are: DEFAULT_ACTION, DO_NOTHING, REPAIR. If DEFAULT_ACTION (default), then MIG uses the same action configured for the  default_action_on_failure field. If DO_NOTHING, then MIG does not repair unhealthy VM. If REPAIR, then MIG automatically repairs an unhealthy VM by recreating it. For more information, see about repairing VMs in a MIG.
+    """
+    onRepair: OnRepair | None = None
+    """
+    , Configuration for VM repairs in the MIG. Structure is documented below.
     """
 
 
@@ -134,6 +149,13 @@ class NamedPortItem(BaseModel):
     port: float | None = None
     """
     The port number.
+    """
+
+
+class ResourcePolicies(BaseModel):
+    workloadPolicy: str | None = None
+    """
+    The URL of the workload policy that is specified for this managed instance group. It can be a full or partial URL.
     """
 
 
@@ -213,6 +235,13 @@ class TargetPoolsSelector(BaseModel):
     policy: Policy | None = None
     """
     Policies for selection.
+    """
+
+
+class TargetSizePolicyItem(BaseModel):
+    mode: str | None = None
+    """
+    The mode of target size policy based on which the MIG creates its VMs individually or all at once. Values: "BULK", "INDIVIDUAL".
     """
 
 
@@ -396,6 +425,10 @@ class ForProvider(BaseModel):
     """
     The region where the managed instance group resides. If not provided, the provider region is used.
     """
+    resourcePolicies: ResourcePolicies | None = None
+    """
+    Resource policies for this managed instance group. Structure is documented below.
+    """
     standbyPolicy: StandbyPolicy | None = None
     """
     The standby policy for stopped and suspended instances. Structure is documented below. For more information, see the official documentation.
@@ -432,6 +465,10 @@ class ForProvider(BaseModel):
     instance group. This value will fight with autoscaler settings when set, and generally shouldn't be set
     when using one. If a value is required, such as to specify a creation-time target size for the MIG,
     lifecycle. Defaults to 0.
+    """
+    targetSizePolicy: list[TargetSizePolicyItem] | None = None
+    """
+    The policy that specifies how the MIG creates its VMs to achieve the target size. Structure is documented below.
     """
     targetStoppedSize: float | None = None
     """
@@ -535,6 +572,10 @@ class InitProvider(BaseModel):
     """
     The region where the managed instance group resides. If not provided, the provider region is used.
     """
+    resourcePolicies: ResourcePolicies | None = None
+    """
+    Resource policies for this managed instance group. Structure is documented below.
+    """
     standbyPolicy: StandbyPolicy | None = None
     """
     The standby policy for stopped and suspended instances. Structure is documented below. For more information, see the official documentation.
@@ -571,6 +612,10 @@ class InitProvider(BaseModel):
     instance group. This value will fight with autoscaler settings when set, and generally shouldn't be set
     when using one. If a value is required, such as to specify a creation-time target size for the MIG,
     lifecycle. Defaults to 0.
+    """
+    targetSizePolicy: list[TargetSizePolicyItem] | None = None
+    """
+    The policy that specifies how the MIG creates its VMs to achieve the target size. Structure is documented below.
     """
     targetStoppedSize: float | None = None
     """
@@ -770,6 +815,11 @@ class AtProvider(BaseModel):
     """
     Creation timestamp in RFC3339 text format.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to "DELETE".
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional textual description of the instance
@@ -835,6 +885,10 @@ class AtProvider(BaseModel):
     """
     The region where the managed instance group resides. If not provided, the provider region is used.
     """
+    resourcePolicies: ResourcePolicies | None = None
+    """
+    Resource policies for this managed instance group. Structure is documented below.
+    """
     selfLink: str | None = None
     """
     The URL of the created resource.
@@ -868,6 +922,10 @@ class AtProvider(BaseModel):
     instance group. This value will fight with autoscaler settings when set, and generally shouldn't be set
     when using one. If a value is required, such as to specify a creation-time target size for the MIG,
     lifecycle. Defaults to 0.
+    """
+    targetSizePolicy: list[TargetSizePolicyItem] | None = None
+    """
+    The policy that specifies how the MIG creates its VMs to achieve the target size. Structure is documented below.
     """
     targetStoppedSize: float | None = None
     """
@@ -938,6 +996,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

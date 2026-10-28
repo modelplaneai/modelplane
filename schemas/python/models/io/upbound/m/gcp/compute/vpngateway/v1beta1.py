@@ -62,6 +62,15 @@ class NetworkSelector(BaseModel):
     """
 
 
+class Params(BaseModel):
+    resourceManagerTags: dict[str, str] | None = None
+    """
+    Resource manager tags to be bound to the Vpn Gateway. Tag keys and values have the
+    same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
+    and values are in the format tagValues/456.
+    """
+
+
 class ForProvider(BaseModel):
     description: str | None = None
     """
@@ -78,6 +87,11 @@ class ForProvider(BaseModel):
     networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -106,6 +120,11 @@ class InitProvider(BaseModel):
     networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -181,6 +200,11 @@ class AtProvider(BaseModel):
     """
     Creation timestamp in RFC3339 text format.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this resource.
@@ -196,6 +220,11 @@ class AtProvider(BaseModel):
     network: str | None = None
     """
     The network this VPN gateway is accepting traffic for.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -249,6 +278,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

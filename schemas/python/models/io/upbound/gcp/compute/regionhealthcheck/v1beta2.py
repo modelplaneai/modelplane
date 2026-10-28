@@ -34,6 +34,24 @@ class GrpcHealthCheck(BaseModel):
     """
 
 
+class GrpcTlsHealthCheck(BaseModel):
+    grpcServiceName: str | None = None
+    """
+    The gRPC service name for the health check.
+    The value of grpcServiceName has the following meanings by convention:
+    """
+    port: float | None = None
+    """
+    The port number for the health check request.
+    Must be specified if port_specification is USE_FIXED_PORT. Valid values are 1 through 65535.
+    """
+    portSpecification: str | None = None
+    """
+    Specifies how port is selected for health checking, can be one of the
+    following values:
+    """
+
+
 class Http2HealthCheck(BaseModel):
     host: str | None = None
     """
@@ -260,6 +278,11 @@ class ForProvider(BaseModel):
     A nested object resource.
     Structure is documented below.
     """
+    grpcTlsHealthCheck: GrpcTlsHealthCheck | None = None
+    """
+    A nested object resource.
+    Structure is documented below.
+    """
     healthyThreshold: float | None = None
     """
     A so-far unhealthy instance will be marked healthy after this many
@@ -330,6 +353,11 @@ class InitProvider(BaseModel):
     you create the resource.
     """
     grpcHealthCheck: GrpcHealthCheck | None = None
+    """
+    A nested object resource.
+    Structure is documented below.
+    """
+    grpcTlsHealthCheck: GrpcTlsHealthCheck | None = None
     """
     A nested object resource.
     Structure is documented below.
@@ -494,12 +522,22 @@ class AtProvider(BaseModel):
     """
     Creation timestamp in RFC3339 text format.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
     grpcHealthCheck: GrpcHealthCheck | None = None
+    """
+    A nested object resource.
+    Structure is documented below.
+    """
+    grpcTlsHealthCheck: GrpcTlsHealthCheck | None = None
     """
     A nested object resource.
     Structure is documented below.
@@ -615,6 +653,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

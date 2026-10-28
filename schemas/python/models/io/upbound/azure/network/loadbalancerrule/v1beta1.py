@@ -87,7 +87,7 @@ class ForProvider(BaseModel):
     """
     loadDistribution: str | None = None
     """
-    Specifies the load balancing distribution type to be used by the Load Balancer. Possible values are: Default – The load balancer is configured to use a 5 tuple hash to map traffic to available servers. SourceIP – The load balancer is configured to use a 2 tuple hash to map traffic to available servers. SourceIPProtocol – The load balancer is configured to use a 3 tuple hash to map traffic to available servers. Also known as Session Persistence, where in the Azure portal the options are called None, Client IP and Client IP and Protocol respectively. Defaults to Default.
+    Specifies the load balancing distribution type to be used by the Load Balancer. Possible values are Default, SourceIP and SourceIPProtocol. Defaults to Default.
     """
     loadbalancerId: str | None = None
     """
@@ -148,7 +148,7 @@ class InitProvider(BaseModel):
     """
     loadDistribution: str | None = None
     """
-    Specifies the load balancing distribution type to be used by the Load Balancer. Possible values are: Default – The load balancer is configured to use a 5 tuple hash to map traffic to available servers. SourceIP – The load balancer is configured to use a 2 tuple hash to map traffic to available servers. SourceIPProtocol – The load balancer is configured to use a 3 tuple hash to map traffic to available servers. Also known as Session Persistence, where in the Azure portal the options are called None, Client IP and Client IP and Protocol respectively. Defaults to Default.
+    Specifies the load balancing distribution type to be used by the Load Balancer. Possible values are Default, SourceIP and SourceIPProtocol. Defaults to Default.
     """
     probeId: str | None = None
     """
@@ -285,7 +285,7 @@ class AtProvider(BaseModel):
     """
     loadDistribution: str | None = None
     """
-    Specifies the load balancing distribution type to be used by the Load Balancer. Possible values are: Default – The load balancer is configured to use a 5 tuple hash to map traffic to available servers. SourceIP – The load balancer is configured to use a 2 tuple hash to map traffic to available servers. SourceIPProtocol – The load balancer is configured to use a 3 tuple hash to map traffic to available servers. Also known as Session Persistence, where in the Azure portal the options are called None, Client IP and Client IP and Protocol respectively. Defaults to Default.
+    Specifies the load balancing distribution type to be used by the Load Balancer. Possible values are Default, SourceIP and SourceIPProtocol. Defaults to Default.
     """
     loadbalancerId: str | None = None
     """
@@ -342,6 +342,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

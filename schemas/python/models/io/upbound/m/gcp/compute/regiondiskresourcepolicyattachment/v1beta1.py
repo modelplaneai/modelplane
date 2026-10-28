@@ -234,6 +234,11 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     disk: str | None = None
     """
     The name of the regional disk in which the resource policies are attached to.
@@ -295,6 +300,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

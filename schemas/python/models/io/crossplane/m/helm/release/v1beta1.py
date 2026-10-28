@@ -57,6 +57,29 @@ class ConnectionDetail(BaseModel):
     """
 
 
+class ConfigMapKeyRef(BaseModel):
+    key: str | None = None
+    name: str
+    optional: bool | None = None
+
+
+class SecretKeyRef(BaseModel):
+    key: str | None = None
+    name: str
+    optional: bool | None = None
+
+
+class CaBundle(BaseModel):
+    configMapKeyRef: ConfigMapKeyRef | None = None
+    """
+    DataKeySelector defines required spec to access a key of a configmap or secret
+    """
+    secretKeyRef: SecretKeyRef | None = None
+    """
+    DataKeySelector defines required spec to access a key of a configmap or secret
+    """
+
+
 class PullSecretRef(BaseModel):
     name: str
     """
@@ -68,12 +91,14 @@ class Chart(BaseModel):
     digest: constr(pattern=r'^sha256:[a-f0-9]{64}$') | None = None
     """
     Digest is the OCI image digest in the format "sha256:abc123..."
-    Only supported for OCI registries. When specified, the chart will be pulled by digest.
+    Only supported for OCI registries: an oci:// URL, or an oci:// Repository when URL is
+    not set. When specified, the chart will be pulled by digest.
     Can be used alone or in combination with Version. Optional.
     """
     name: str | None = None
     """
-    Name of Helm chart, required if ChartSpec.URL not set
+    Name of Helm chart, required if ChartSpec.URL not set.
+    Ignored when URL is set.
     """
     pullSecretRef: PullSecretRef | None = None
     """
@@ -83,7 +108,9 @@ class Chart(BaseModel):
     """
     repository: str | None = None
     """
-    Repository: Helm repository URL, required if ChartSpec.URL not set
+    Repository: Helm repository URL, required if ChartSpec.URL not set.
+    Ignored when URL is set: the URL is then the sole pull source and also
+    drives registry credential resolution.
     """
     url: str | None = None
     """
@@ -94,20 +121,19 @@ class Chart(BaseModel):
     Version of Helm chart. Optional when Digest is specified.
     If not set and Digest is not specified, gets late initialized with the latest available version.
     If not set and Digest is specified, version is NOT late initialized to avoid spec drift.
+    When URL is set, Version is not late initialized. For an OCI URL without a tag or
+    digest, Version selects the chart and changing it triggers an upgrade. Otherwise the
+    URL (and its tag) or Digest selects the chart and changing Version does not trigger an
+    upgrade: change those instead. A Version conflicting with the URL tag is rejected, so
+    when switching a Release to a tagged URL, set Version to the tag or remove it: one left
+    from repository mode, including a late-initialized one, would conflict. Avoid floating
+    tags (e.g. :latest, or no tag and no Version): a new chart pushed under the same tag is
+    not detected.
+    Version is compared with the deployed chart's version as semver when both parse, so
+    v1.2.3 matches a chart whose Chart.yaml says 1.2.3; a range or any other value must
+    match verbatim.
     The actual deployed version is always available in status.atProvider.version for observability.
     """
-
-
-class ConfigMapKeyRef(BaseModel):
-    key: str | None = None
-    name: str
-    optional: bool | None = None
-
-
-class SecretKeyRef(BaseModel):
-    key: str | None = None
-    name: str
-    optional: bool | None = None
 
 
 class PatchesFromItem(BaseModel):
@@ -153,6 +179,13 @@ class ValuesFromItem(BaseModel):
 
 
 class ForProvider(BaseModel):
+    caBundle: CaBundle | None = None
+    """
+    CABundle references a PEM encoded CA bundle used to verify the chart
+    repository or registry's TLS certificate, for repositories signed by a
+    private or otherwise non-system-trusted CA. Read from a Secret or
+    ConfigMap key, defaulting to the key "ca.crt" if Key is not set.
+    """
     chart: Chart
     """
     A ChartSpec defines the chart spec for a Release
@@ -196,11 +229,28 @@ class ForProvider(BaseModel):
     """
     takeOwnership: bool | None = None
     """
-    TakeOwnership ignores Helm ownership validation and adopts pre-existing releases.
-    This is a ONE-TIME operation: after the first successful deployment, the flag is recorded
-    in status.atProvider.ownershipTaken and subsequent reconciles use normal Helm validation.
-    This prevents silent adoption of unrelated resources during chart upgrades.
-    Use this field to migrate manually-deployed Helm releases into Crossplane management.
+    TakeOwnership performs a one-time adoption: the first deploy after this
+    field is set ignores Helm's ownership validation, taking over whatever
+    the chart renders, and afterwards adoption is never exercised again for
+    this release. Subsequent deploys still re-stamp ownership metadata
+    (app.kubernetes.io/managed-by, meta.helm.sh/release-name,
+    meta.helm.sh/release-namespace) as Helm always does, and while this
+    field is set every reconcile also compares those values live on every
+    resource the chart renders, reporting the release out of date when any
+    differ so a deploy puts them back; resources that already match are
+    left untouched. Use this field to migrate manually-deployed Helm
+    releases into Crossplane management, and to keep them there when
+    another actor re-stamps their ownership metadata. If another controller
+    contends for the same resources via server-side apply, set
+    ssaForceConflicts: without it the repair upgrade fails on the conflict,
+    the release goes to failed state on what was previously an idle poll,
+    and it stays failed until ssaForceConflicts is set (or this field is
+    removed). Releases still on client-side apply are exempt from drift
+    detection: their upgrades cannot rewrite ownership values the chart
+    renders unchanged, so detection for them would retry forever; they
+    migrate to server-side apply when ssaForceConflicts is set. Treat
+    enabling this field on an existing release as a behavior change: drift
+    detection starts on the provider upgrade that ships it.
     """
     values: dict[str, Any] | None = None
     valuesFrom: list[ValuesFromItem] | None = None
@@ -279,9 +329,10 @@ class AtProvider(BaseModel):
     """
     ownershipTaken: bool | None = None
     """
-    OwnershipTaken indicates that spec.forProvider.takeOwnership was used for initial adoption.
-    Once set to true, subsequent reconciles use normal Helm validation instead of takeOwnership,
-    preventing silent adoption of unrelated resources during upgrades.
+    OwnershipTaken indicates that spec.forProvider.takeOwnership was exercised
+    on this release's initial adoption. It is informational and sticky: it
+    records that adoption happened, and once set it keeps later deploys from
+    exercising adoption again (takeOwnership only adopts the first time).
     """
     releaseDescription: str | None = None
     revision: int | None = None

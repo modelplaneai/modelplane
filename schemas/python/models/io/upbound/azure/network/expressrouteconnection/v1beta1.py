@@ -150,6 +150,10 @@ class ForProvider(BaseModel):
     """
     Selector for a ExpressRouteGateway in network to populate expressRouteGatewayId.
     """
+    internetSecurityEnabled: bool | None = None
+    """
+    Is Internet security enabled for this Express Route Connection? Defaults to false.
+    """
     privateLinkFastPathEnabled: bool | None = None
     """
     Bypass the Express Route gateway when accessing private-links. When enabled express_route_gateway_bypass_enabled must be set to true. Defaults to false.
@@ -190,6 +194,10 @@ class InitProvider(BaseModel):
     expressRouteGatewayBypassEnabled: bool | None = None
     """
     Specified whether Fast Path is enabled for Virtual Wan Firewall Hub. Defaults to false.
+    """
+    internetSecurityEnabled: bool | None = None
+    """
+    Is Internet security enabled for this Express Route Connection? Defaults to false.
     """
     privateLinkFastPathEnabled: bool | None = None
     """
@@ -310,6 +318,10 @@ class AtProvider(BaseModel):
     """
     The ID of the Express Route Connection.
     """
+    internetSecurityEnabled: bool | None = None
+    """
+    Is Internet security enabled for this Express Route Connection? Defaults to false.
+    """
     privateLinkFastPathEnabled: bool | None = None
     """
     Bypass the Express Route gateway when accessing private-links. When enabled express_route_gateway_bypass_enabled must be set to true. Defaults to false.
@@ -361,6 +373,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

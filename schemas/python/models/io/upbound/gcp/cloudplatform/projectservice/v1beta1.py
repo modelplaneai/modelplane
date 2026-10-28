@@ -64,9 +64,8 @@ class ForProvider(BaseModel):
     """
     disableOnDestroy: bool | None = None
     """
-    Defaults to true. Most configurations should
-    set this to false; it should generally only be true or unset in configurations
-    that manage the google_project resource itself.
+    It should generally only
+    be true in configurations that manage the google_project resource itself.
     """
     project: str | None = None
     """
@@ -97,9 +96,8 @@ class InitProvider(BaseModel):
     """
     disableOnDestroy: bool | None = None
     """
-    Defaults to true. Most configurations should
-    set this to false; it should generally only be true or unset in configurations
-    that manage the google_project resource itself.
+    It should generally only
+    be true in configurations that manage the google_project resource itself.
     """
     project: str | None = None
     """
@@ -201,6 +199,11 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
+    deletionPolicy: str | None = None
+    """
+    Defaults to "DELETE".
+    When set to "DELETE", deleting the resource is allowed.
+    """
     disableDependentServices: bool | None = None
     """
     If true, services that are enabled
@@ -210,9 +213,8 @@ class AtProvider(BaseModel):
     """
     disableOnDestroy: bool | None = None
     """
-    Defaults to true. Most configurations should
-    set this to false; it should generally only be true or unset in configurations
-    that manage the google_project resource itself.
+    It should generally only
+    be true in configurations that manage the google_project resource itself.
     """
     id: str | None = None
     """
@@ -266,6 +268,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

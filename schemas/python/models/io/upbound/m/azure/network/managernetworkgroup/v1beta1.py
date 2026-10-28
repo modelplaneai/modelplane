@@ -67,6 +67,10 @@ class ForProvider(BaseModel):
     """
     A description of the Network Manager Network Group.
     """
+    memberType: str | None = None
+    """
+    The member type for the network group. Possible values are Subnet and VirtualNetwork. Defaults to VirtualNetwork.
+    """
     networkManagerId: str | None = None
     """
     Specifies the ID of the Network Manager. Changing this forces a new Network Manager Network Group to be created.
@@ -85,6 +89,10 @@ class InitProvider(BaseModel):
     description: str | None = None
     """
     A description of the Network Manager Network Group.
+    """
+    memberType: str | None = None
+    """
+    The member type for the network group. Possible values are Subnet and VirtualNetwork. Defaults to VirtualNetwork.
     """
 
 
@@ -159,6 +167,10 @@ class AtProvider(BaseModel):
     """
     The ID of the Network Manager Network Group.
     """
+    memberType: str | None = None
+    """
+    The member type for the network group. Possible values are Subnet and VirtualNetwork. Defaults to VirtualNetwork.
+    """
     networkManagerId: str | None = None
     """
     Specifies the ID of the Network Manager. Changing this forces a new Network Manager Network Group to be created.
@@ -202,6 +214,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

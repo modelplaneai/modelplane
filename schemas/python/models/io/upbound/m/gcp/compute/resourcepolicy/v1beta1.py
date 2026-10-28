@@ -209,7 +209,7 @@ class WorkloadPolicy(BaseModel):
     maxTopologyDistance: str | None = None
     """
     The maximum topology distance. This field can be set only when the workload policy type is HIGH_THROUGHPUT
-    and cannot be set if accelerator topology is set.
+    and cannot be set if accelerator topology or accelerator topology mode is set.
     Possible values are: BLOCK, CLUSTER, SUBBLOCK.
     """
     type: str | None = None
@@ -360,6 +360,11 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this resource. Provide this property when you create the resource.
@@ -445,6 +450,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

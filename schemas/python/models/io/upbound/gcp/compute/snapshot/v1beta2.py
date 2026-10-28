@@ -10,6 +10,15 @@ from pydantic import AwareDatetime, BaseModel, Field
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
+class Params(BaseModel):
+    resourceManagerTags: dict[str, str] | None = None
+    """
+    Resource manager tags to be bound to the snapshot. Tag keys and values have the
+    same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
+    and values are in the format tagValues/456.
+    """
+
+
 class RawKeySecretRef(BaseModel):
     key: str
     """
@@ -152,6 +161,11 @@ class ForProvider(BaseModel):
     Note: This field is non-authoritative, and will only manage the labels present in your configuration.
     Please refer to the field effective_labels for all of the labels present on the resource.
     """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
+    """
     project: str | None = None
     """
     The ID of the project in which the resource belongs.
@@ -171,6 +185,11 @@ class ForProvider(BaseModel):
     key and you do not need to provide a key to use the snapshot later.
     Structure is documented below.
     """
+    snapshotType: str | None = None
+    """
+    Indicates the type of the snapshot.
+    Possible values are: ARCHIVE, STANDARD.
+    """
     sourceDisk: str | None = None
     """
     A reference to the disk used to create this snapshot.
@@ -189,6 +208,10 @@ class ForProvider(BaseModel):
     sourceDiskSelector: SourceDiskSelector | None = None
     """
     Selector for a Disk in compute to populate sourceDisk.
+    """
+    sourceInstantSnapshot: str | None = None
+    """
+    A reference to the instant snapshot used to create this snapshot.
     """
     storageLocations: list[str] | None = None
     """
@@ -220,6 +243,11 @@ class InitProvider(BaseModel):
     Note: This field is non-authoritative, and will only manage the labels present in your configuration.
     Please refer to the field effective_labels for all of the labels present on the resource.
     """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
+    """
     project: str | None = None
     """
     The ID of the project in which the resource belongs.
@@ -239,6 +267,11 @@ class InitProvider(BaseModel):
     key and you do not need to provide a key to use the snapshot later.
     Structure is documented below.
     """
+    snapshotType: str | None = None
+    """
+    Indicates the type of the snapshot.
+    Possible values are: ARCHIVE, STANDARD.
+    """
     sourceDisk: str | None = None
     """
     A reference to the disk used to create this snapshot.
@@ -257,6 +290,10 @@ class InitProvider(BaseModel):
     sourceDiskSelector: SourceDiskSelector | None = None
     """
     Selector for a Disk in compute to populate sourceDisk.
+    """
+    sourceInstantSnapshot: str | None = None
+    """
+    A reference to the instant snapshot used to create this snapshot.
     """
     storageLocations: list[str] | None = None
     """
@@ -392,6 +429,11 @@ class AtProvider(BaseModel):
     """
     Creation timestamp in RFC3339 text format.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this resource.
@@ -423,6 +465,11 @@ class AtProvider(BaseModel):
     Windows image).  snapshotEncryptionKey nested object Encrypts the
     snapshot using a customer-supplied encryption key.
     """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
+    """
     project: str | None = None
     """
     The ID of the project in which the resource belongs.
@@ -450,6 +497,11 @@ class AtProvider(BaseModel):
     """
     The unique identifier for the resource.
     """
+    snapshotType: str | None = None
+    """
+    Indicates the type of the snapshot.
+    Possible values are: ARCHIVE, STANDARD.
+    """
     sourceDisk: str | None = None
     """
     A reference to the disk used to create this snapshot.
@@ -460,6 +512,10 @@ class AtProvider(BaseModel):
     if the source snapshot is protected by a customer-supplied encryption
     key.
     Structure is documented below.
+    """
+    sourceInstantSnapshot: str | None = None
+    """
+    A reference to the instant snapshot used to create this snapshot.
     """
     storageBytes: float | None = None
     """
@@ -519,6 +575,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

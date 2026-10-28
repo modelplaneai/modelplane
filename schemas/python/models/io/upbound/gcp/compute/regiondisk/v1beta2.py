@@ -123,7 +123,7 @@ class GuestOsFeature(BaseModel):
     type: str | None = None
     """
     The type of supported feature. Read Enabling guest operating system features to see a list of available options.
-    Possible values are: MULTI_IP_SUBNET, SECURE_BOOT, SEV_CAPABLE, UEFI_COMPATIBLE, VIRTIO_SCSI_MULTIQUEUE, WINDOWS, GVNIC, SEV_LIVE_MIGRATABLE, SEV_SNP_CAPABLE, SUSPEND_RESUME_COMPATIBLE, TDX_CAPABLE.
+    Possible values are: MULTI_IP_SUBNET, SECURE_BOOT, SEV_CAPABLE, UEFI_COMPATIBLE, VIRTIO_SCSI_MULTIQUEUE, WINDOWS, GVNIC, SEV_LIVE_MIGRATABLE, SEV_SNP_CAPABLE, SUSPEND_RESUME_COMPATIBLE, TDX_CAPABLE, SEV_LIVE_MIGRATABLE_V2, SNP_SVSM_CAPABLE.
     """
 
 
@@ -154,11 +154,37 @@ class SnapshotSelector(BaseModel):
     """
 
 
-class SourceSnapshotEncryptionKey(BaseModel):
-    rawKey: str | None = None
+class SourceImageEncryptionKey(BaseModel):
+    kmsKeyName: str | None = None
+    """
+    The name of the encryption key that is stored in Google Cloud KMS.
+    """
+    kmsKeyServiceAccount: str | None = None
+    """
+    The service account used for the encryption request for the given KMS key.
+    If absent, the Compute Engine Service Agent service account is used.
+    """
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
+    Note: This property is sensitive and will not be displayed in the plan.
+    """
+    rsaEncryptedKeySecretRef: RsaEncryptedKeySecretRef | None = None
+    """
+    Specifies an RFC 4648 base64 encoded, RSA-wrapped 2048-bit
+    customer-supplied encryption key to either encrypt or decrypt
+    this resource. You can provide either the rawKey or the rsaEncryptedKey.
+    Note: This property is sensitive and will not be displayed in the plan.
+    """
+
+
+class SourceSnapshotEncryptionKey(BaseModel):
+    rawKeySecretRef: RawKeySecretRef | None = None
+    """
+    Specifies a 256-bit customer-supplied encryption key, encoded in
+    RFC 4648 base64 to either encrypt or decrypt this resource.
+    Note: This property is sensitive and will not be displayed in the plan.
     """
 
 
@@ -206,6 +232,18 @@ class ForProvider(BaseModel):
     A list of features to enable on the guest operating system.
     Applicable only for bootable disks.
     Structure is documented below.
+    """
+    image: str | None = None
+    """
+    The image from which to initialize this disk. This can be
+    one of: the image's self_link, projects/{project}/global/images/{image},
+    projects/{project}/global/images/family/{family}, global/images/{image},
+    global/images/family/{family}, family/{family}, {project}/{family},
+    {project}/{image}, {family}, or {image}. If referred by family, the
+    images names must include the family name. If they don't, use the
+    google_compute_image data source.
+    For instance, the image centos-6-v20180104 includes its family name centos-6.
+    These images can be referred by family name here.
     """
     labels: dict[str, str] | None = None
     """
@@ -276,6 +314,12 @@ class ForProvider(BaseModel):
     The source disk used to create this disk. You can provide this as a partial or full URL to the resource.
     For example, the following are valid values:
     """
+    sourceImageEncryptionKey: SourceImageEncryptionKey | None = None
+    """
+    The customer-supplied encryption key of the source image. Required if
+    the source image is protected by a customer-supplied encryption key.
+    Structure is documented below.
+    """
     sourceSnapshotEncryptionKey: SourceSnapshotEncryptionKey | None = None
     """
     The customer-supplied encryption key of the source snapshot. Required
@@ -334,6 +378,18 @@ class InitProvider(BaseModel):
     A list of features to enable on the guest operating system.
     Applicable only for bootable disks.
     Structure is documented below.
+    """
+    image: str | None = None
+    """
+    The image from which to initialize this disk. This can be
+    one of: the image's self_link, projects/{project}/global/images/{image},
+    projects/{project}/global/images/family/{family}, global/images/{image},
+    global/images/family/{family}, family/{family}, {project}/{family},
+    {project}/{image}, {family}, or {image}. If referred by family, the
+    images names must include the family name. If they don't, use the
+    google_compute_image data source.
+    For instance, the image centos-6-v20180104 includes its family name centos-6.
+    These images can be referred by family name here.
     """
     labels: dict[str, str] | None = None
     """
@@ -399,6 +455,12 @@ class InitProvider(BaseModel):
     """
     The source disk used to create this disk. You can provide this as a partial or full URL to the resource.
     For example, the following are valid values:
+    """
+    sourceImageEncryptionKey: SourceImageEncryptionKey | None = None
+    """
+    The customer-supplied encryption key of the source image. Required if
+    the source image is protected by a customer-supplied encryption key.
+    Structure is documented below.
     """
     sourceSnapshotEncryptionKey: SourceSnapshotEncryptionKey | None = None
     """
@@ -514,12 +576,25 @@ class DiskEncryptionKeyModel(BaseModel):
     """
 
 
+class SourceImageEncryptionKeyModel(BaseModel):
+    kmsKeyName: str | None = None
+    """
+    The name of the encryption key that is stored in Google Cloud KMS.
+    """
+    kmsKeyServiceAccount: str | None = None
+    """
+    The service account used for the encryption request for the given KMS key.
+    If absent, the Compute Engine Service Agent service account is used.
+    """
+    sha256: str | None = None
+    """
+    (Output)
+    The RFC 4648 base64 encoded SHA-256 hash of the customer-supplied
+    encryption key that protects this resource.
+    """
+
+
 class SourceSnapshotEncryptionKeyModel(BaseModel):
-    rawKey: str | None = None
-    """
-    Specifies a 256-bit customer-supplied encryption key, encoded in
-    RFC 4648 base64 to either encrypt or decrypt this resource.
-    """
     sha256: str | None = None
     """
     (Output)
@@ -552,6 +627,11 @@ class AtProvider(BaseModel):
     creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -588,6 +668,18 @@ class AtProvider(BaseModel):
     id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/disks/{{name}}
+    """
+    image: str | None = None
+    """
+    The image from which to initialize this disk. This can be
+    one of: the image's self_link, projects/{project}/global/images/{image},
+    projects/{project}/global/images/family/{family}, global/images/{image},
+    global/images/family/{family}, family/{family}, {project}/{family},
+    {project}/{image}, {family}, or {image}. If referred by family, the
+    images names must include the family name. If they don't, use the
+    google_compute_image data source.
+    For instance, the image centos-6-v20180104 includes its family name centos-6.
+    These images can be referred by family name here.
     """
     labelFingerprint: str | None = None
     """
@@ -673,6 +765,20 @@ class AtProvider(BaseModel):
     be used to determine whether the image was taken from the current
     or a previous instance of a given disk name.
     """
+    sourceImageEncryptionKey: SourceImageEncryptionKeyModel | None = None
+    """
+    The customer-supplied encryption key of the source image. Required if
+    the source image is protected by a customer-supplied encryption key.
+    Structure is documented below.
+    """
+    sourceImageId: str | None = None
+    """
+    The ID value of the image used to create this disk. This value
+    identifies the exact image that was used to create this persistent
+    disk. For example, if you created the persistent disk from an image
+    that was later deleted and recreated under the same name, the source
+    image ID would identify the exact version of the image that was used.
+    """
     sourceSnapshotEncryptionKey: SourceSnapshotEncryptionKeyModel | None = None
     """
     The customer-supplied encryption key of the source snapshot. Required
@@ -743,6 +849,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

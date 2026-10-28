@@ -351,7 +351,7 @@ class LastOccurrence(BaseModel):
     (String) :
     :
 
-    # Severity level for the event
+    Severity level for the event
 
     #### Supported values
 
@@ -379,7 +379,7 @@ class LastOccurrence(BaseModel):
     (String) :
     :
 
-    # Time at which the event has occurred
+    Time at which the event has occurred
 
     A string representing a timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format: `YYYY-MM-DDTHH:MM:SSZ` or `YYYY-MM-DDTHH:MM:SS.SSS±HH:MM`
     """
@@ -391,7 +391,7 @@ class Event(BaseModel):
     (String) :
     :
 
-    # Time of the first occurrence of a recurrent event
+    Time of the first occurrence of a recurrent event
 
     A string representing a timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format: `YYYY-MM-DDTHH:MM:SSZ` or `YYYY-MM-DDTHH:MM:SS.SSS±HH:MM`
     """

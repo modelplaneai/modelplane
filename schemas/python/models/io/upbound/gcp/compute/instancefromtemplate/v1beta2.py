@@ -133,6 +133,7 @@ class InitializeParams(BaseModel):
     labels: dict[str, str] | None = None
     provisionedIops: float | None = None
     provisionedThroughput: float | None = None
+    replicaZones: list[str] | None = None
     resourceManagerTags: dict[str, str] | None = None
     resourcePolicies: list[str] | None = None
     size: float | None = None
@@ -295,6 +296,7 @@ class SubnetworkSelector(BaseModel):
 class NetworkInterfaceItem(BaseModel):
     accessConfig: list[AccessConfigItem] | None = None
     aliasIpRange: list[AliasIpRangeItem] | None = None
+    igmpQuery: str | None = None
     internalIpv6PrefixLength: float | None = None
     ipv6AccessConfig: list[Ipv6AccessConfigItem] | None = None
     ipv6Address: str | None = None
@@ -322,6 +324,7 @@ class NetworkInterfaceItem(BaseModel):
     """
     Selector for a Subnetwork in compute to populate subnetwork.
     """
+    vlan: float | None = None
 
 
 class NetworkPerformanceConfig(BaseModel):
@@ -365,6 +368,7 @@ class OnInstanceStopAction(BaseModel):
 class Scheduling(BaseModel):
     automaticRestart: bool | None = None
     availabilityDomain: float | None = None
+    hostErrorTimeoutSeconds: float | None = None
     instanceTerminationAction: str | None = None
     localSsdRecoveryTimeout: LocalSsdRecoveryTimeout | None = None
     maxRunDuration: MaxRunDuration | None = None
@@ -425,6 +429,11 @@ class SourceInstanceTemplateSelector(BaseModel):
     """
 
 
+class WorkloadIdentityConfig(BaseModel):
+    identity: str | None = None
+    identityCertificateEnabled: bool | None = None
+
+
 class ForProvider(BaseModel):
     advancedMachineFeatures: AdvancedMachineFeatures | None = None
     allowStoppingForUpdate: bool | None = None
@@ -482,6 +491,7 @@ class ForProvider(BaseModel):
     Selector for a InstanceTemplate in compute to populate sourceInstanceTemplate.
     """
     tags: list[str] | None = None
+    workloadIdentityConfig: WorkloadIdentityConfig | None = None
     zone: str | None = None
     """
     The zone that the machine should be created in. If not
@@ -546,6 +556,7 @@ class InitProvider(BaseModel):
     Selector for a InstanceTemplate in compute to populate sourceInstanceTemplate.
     """
     tags: list[str] | None = None
+    workloadIdentityConfig: WorkloadIdentityConfig | None = None
     zone: str | None = None
     """
     The zone that the machine should be created in. If not
@@ -689,6 +700,7 @@ class InstanceEncryptionKeyModel(BaseModel):
 class NetworkInterfaceItemModel(BaseModel):
     accessConfig: list[AccessConfigItem] | None = None
     aliasIpRange: list[AliasIpRangeItem] | None = None
+    igmpQuery: str | None = None
     internalIpv6PrefixLength: float | None = None
     ipv6AccessConfig: list[Ipv6AccessConfigItem] | None = None
     ipv6AccessType: str | None = None
@@ -702,10 +714,16 @@ class NetworkInterfaceItemModel(BaseModel):
     networkAttachment: str | None = None
     networkIp: str | None = None
     nicType: str | None = None
+    parentNicName: str | None = None
+    """
+    A unique name for the resource, required by GCE.
+    Changing this forces a new resource to be created.
+    """
     queueCount: float | None = None
     stackType: str | None = None
     subnetwork: str | None = None
     subnetworkProject: str | None = None
+    vlan: float | None = None
 
 
 class AtProvider(BaseModel):
@@ -721,6 +739,7 @@ class AtProvider(BaseModel):
     cpuPlatform: str | None = None
     creationTimestamp: str | None = None
     currentStatus: str | None = None
+    deletionPolicy: str | None = None
     deletionProtection: bool | None = None
     description: str | None = None
     desiredStatus: str | None = None
@@ -768,6 +787,7 @@ class AtProvider(BaseModel):
     tags: list[str] | None = None
     tagsFingerprint: str | None = None
     terraformLabels: dict[str, str] | None = None
+    workloadIdentityConfig: WorkloadIdentityConfig | None = None
     zone: str | None = None
     """
     The zone that the machine should be created in. If not
@@ -812,6 +832,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

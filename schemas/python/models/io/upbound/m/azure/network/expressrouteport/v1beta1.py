@@ -32,7 +32,7 @@ class Link1(BaseModel):
     """
     macsecCipher: str | None = None
     """
-    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128 and GcmAes256. Defaults to GcmAes128.
+    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128, GcmAes256, GcmAesXpn128 and GcmAesXpn256. Defaults to GcmAes128.
     """
     macsecCknKeyvaultSecretId: str | None = None
     """
@@ -55,7 +55,7 @@ class Link2(BaseModel):
     """
     macsecCipher: str | None = None
     """
-    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128 and GcmAes256. Defaults to GcmAes128.
+    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128, GcmAes256, GcmAesXpn128 and GcmAesXpn256. Defaults to GcmAes128.
     """
     macsecCknKeyvaultSecretId: str | None = None
     """
@@ -313,7 +313,7 @@ class Link1Model(BaseModel):
     """
     macsecCipher: str | None = None
     """
-    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128 and GcmAes256. Defaults to GcmAes128.
+    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128, GcmAes256, GcmAesXpn128 and GcmAesXpn256. Defaults to GcmAes128.
     """
     macsecCknKeyvaultSecretId: str | None = None
     """
@@ -360,7 +360,7 @@ class Link2Model(BaseModel):
     """
     macsecCipher: str | None = None
     """
-    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128 and GcmAes256. Defaults to GcmAes128.
+    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128, GcmAes256, GcmAesXpn128 and GcmAesXpn256. Defaults to GcmAes128.
     """
     macsecCknKeyvaultSecretId: str | None = None
     """
@@ -480,6 +480,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

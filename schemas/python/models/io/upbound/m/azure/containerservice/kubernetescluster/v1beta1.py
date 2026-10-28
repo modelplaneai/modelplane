@@ -256,10 +256,11 @@ class KubeletConfig(BaseModel):
     """
     Specifies the allow list of unsafe sysctls command or patterns (ending in *).
     """
+    containerLogMaxFiles: float | None = None
+    """
+    Specifies the maximum number of container log files that can be present for a container. Must be at least 2.
+    """
     containerLogMaxLine: float | None = None
-    """
-    Specifies the maximum number of container log files that can be present for a container. must be at least 2.
-    """
     containerLogMaxSizeMb: float | None = None
     """
     Specifies the maximum size (e.g. 10MB) of container log file before it is rotated.
@@ -647,7 +648,7 @@ class DefaultNodePool(BaseModel):
     """
     osSku: str | None = None
     """
-    Specifies the OS SKU used by the agent pool. Possible values are AzureLinux, AzureLinux3, Ubuntu, Ubuntu2204, Windows2019 and Windows2022. If not specified, the default is Ubuntu if OSType=Linux or Windows2019 if OSType=Windows. And the default Windows OSSKU will be changed to Windows2022 after Windows2019 is deprecated. Changing this from AzureLinux or Ubuntu to AzureLinux or Ubuntu will not replace the resource, otherwise temporary_name_for_rotation must be specified when attempting a change.
+    Specifies the OS SKU used by the agent pool. Possible values are AzureLinux, AzureLinux3, Ubuntu, Ubuntu2204, Ubuntu2404, Windows2019 and Windows2022. If not specified, the default is Ubuntu when os_type=Linux or Windows2019 if os_type=Windows (Windows2022 Kubernetes ≥1.33). Changing between AzureLinux and Ubuntu does not replace the resource; otherwise temporary_name_for_rotation must be specified when attempting a change.
     """
     podSubnetId: str | None = None
     """
@@ -711,7 +712,7 @@ class DefaultNodePool(BaseModel):
     """
     workloadRuntime: str | None = None
     """
-    Specifies the workload runtime used by the node pool. Possible value is OCIContainer.
+    Specifies the workload runtime used by the node pool. Possible values are KataVmIsolation and OCIContainer.
     """
     zones: list[str] | None = None
     """
@@ -878,7 +879,7 @@ class LinuxProfile(BaseModel):
     """
     sshKey: SshKey | None = None
     """
-    An ssh_key block as defined below. Only one is currently allowed. Changing this will update the key on all node pools. More information can be found in the documentation.
+    An ssh_key block as defined below.
     """
 
 
@@ -889,7 +890,7 @@ class AllowedItem(BaseModel):
     """
     hours: list[float] | None = None
     """
-    An array of hour slots in a day. For example, specifying 1 will allow maintenance from 1:00am to 2:00am. Specifying 1, 2 will allow maintenance from 1:00am to 3:00m. Possible values are between 0 and 23.
+    An array of hour slots in a day. For example, specifying 1 will allow maintenance from 1:00am to 2:00am. Specifying 1, 2 will allow maintenance from 1:00am to 3:00am. Possible values are between 0 and 23.
     """
 
 
@@ -1027,7 +1028,7 @@ class AdvancedNetworking(BaseModel):
     """
     securityEnabled: bool | None = None
     """
-    Is security enabled? Defaults to false.
+    Is security enabled? Defaults to false. This can only be enabled (set to true) when network_plugin is set to azure and network_data_plane is set to cilium.
     """
 
 
@@ -1076,7 +1077,7 @@ class NatGatewayProfile(BaseModel):
 class NetworkProfile(BaseModel):
     advancedNetworking: AdvancedNetworking | None = None
     """
-    An advanced_networking block as defined below. This can only be specified when network_plugin is set to azure and network_data_plane is set to cilium.
+    An advanced_networking block as defined below.
     """
     dnsServiceIp: str | None = None
     """
@@ -1108,7 +1109,7 @@ class NetworkProfile(BaseModel):
     """
     networkPlugin: str | None = None
     """
-    Network plugin to use for networking. Currently supported values are azure, kubenet and none. Changing this forces a new resource to be created.
+    Network plugin to use for networking. Currently supported values are azure, kubenet and none
     """
     networkPluginMode: str | None = None
     """
@@ -1124,11 +1125,11 @@ class NetworkProfile(BaseModel):
     """
     podCidr: str | None = None
     """
-    The CIDR to use for pod IP addresses. This field can only be set when network_plugin is set to kubenet or network_plugin_mode is set to overlay. Changing this forces a new resource to be created.
+    The CIDR to use for pod IP addresses. This field can only be set when network_plugin is set to kubenet or network_plugin_mode is set to overlay.
     """
     podCidrs: list[str] | None = None
     """
-    A list of CIDRs to use for pod IP addresses. For single-stack networking a single IPv4 CIDR is expected. For dual-stack networking an IPv4 and IPv6 CIDR are expected. Changing this forces a new resource to be created.
+    A list of CIDRs to use for pod IP addresses. For single-stack networking a single IPv4 CIDR is expected. For dual-stack networking an IPv4 and IPv6 CIDR are expected.
     """
     serviceCidr: str | None = None
     """
@@ -1137,6 +1138,17 @@ class NetworkProfile(BaseModel):
     serviceCidrs: list[str] | None = None
     """
     A list of CIDRs to use for Kubernetes services. For single-stack networking a single IPv4 CIDR is expected. For dual-stack networking an IPv4 and IPv6 CIDR are expected. Changing this forces a new resource to be created.
+    """
+
+
+class NodeProvisioningProfile(BaseModel):
+    defaultNodePools: str | None = None
+    """
+    Specifies whether default node pools should be provisioned automatically. Possible values are Auto and None. Defaults to Auto. At least one of mode or default_node_pools must be specified.
+    """
+    mode: str | None = None
+    """
+    Specifies the provisioning mode for node pools created in this cluster. Possible values are Auto and Manual. Defaults to Manual. At least one of mode or default_node_pools must be specified.
     """
 
 
@@ -1263,7 +1275,7 @@ class ServiceMeshProfile(BaseModel):
     """
     revisions: list[str] | None = None
     """
-    Specify 1 or 2 Istio control plane revisions for managing minor upgrades using the canary upgrade process. For example, create the resource with revisions set to ["asm-1-25"], or leave it empty (the revisions will only be known after apply). To start the canary upgrade, change revisions to ["asm-1-25", "asm-1-26"]. To roll back the canary upgrade, revert to ["asm-1-25"]. To confirm the upgrade, change to ["asm-1-26"].
+    Specify 1 or 2 Istio control plane revisions for managing minor upgrades using the canary upgrade process. For example, create the resource with revisions set to ["asm-1-27"], or leave it empty (the revisions will only be known after apply). To start the canary upgrade, change revisions to ["asm-1-27", "asm-1-28"]. To roll back the canary upgrade, revert to ["asm-1-27"]. To confirm the upgrade, change to ["asm-1-28"].
     """
 
 
@@ -1523,13 +1535,17 @@ class ForProvider(BaseModel):
     """
     The upgrade channel for this Kubernetes Cluster Nodes' OS Image. Possible values are Unmanaged, SecurityPatch, NodeImage and None. Defaults to NodeImage.
     """
+    nodeProvisioningProfile: NodeProvisioningProfile | None = None
+    """
+    A node_provisioning_profile block as defined below.
+    """
     nodeResourceGroup: str | None = None
     """
     The auto-generated Resource Group which contains the resources for this Managed Kubernetes Cluster.
     """
     oidcIssuerEnabled: bool | None = None
     """
-    Enable or Disable the OIDC issuer URL
+    Whether to enable the OIDC issuer feature.
     """
     omsAgent: OmsAgent | None = None
     """
@@ -1802,13 +1818,17 @@ class InitProvider(BaseModel):
     """
     The upgrade channel for this Kubernetes Cluster Nodes' OS Image. Possible values are Unmanaged, SecurityPatch, NodeImage and None. Defaults to NodeImage.
     """
+    nodeProvisioningProfile: NodeProvisioningProfile | None = None
+    """
+    A node_provisioning_profile block as defined below.
+    """
     nodeResourceGroup: str | None = None
     """
     The auto-generated Resource Group which contains the resources for this Managed Kubernetes Cluster.
     """
     oidcIssuerEnabled: bool | None = None
     """
-    Enable or Disable the OIDC issuer URL
+    Whether to enable the OIDC issuer feature.
     """
     omsAgent: OmsAgent | None = None
     """
@@ -2090,7 +2110,7 @@ class DefaultNodePoolModel(BaseModel):
     """
     osSku: str | None = None
     """
-    Specifies the OS SKU used by the agent pool. Possible values are AzureLinux, AzureLinux3, Ubuntu, Ubuntu2204, Windows2019 and Windows2022. If not specified, the default is Ubuntu if OSType=Linux or Windows2019 if OSType=Windows. And the default Windows OSSKU will be changed to Windows2022 after Windows2019 is deprecated. Changing this from AzureLinux or Ubuntu to AzureLinux or Ubuntu will not replace the resource, otherwise temporary_name_for_rotation must be specified when attempting a change.
+    Specifies the OS SKU used by the agent pool. Possible values are AzureLinux, AzureLinux3, Ubuntu, Ubuntu2204, Ubuntu2404, Windows2019 and Windows2022. If not specified, the default is Ubuntu when os_type=Linux or Windows2019 if os_type=Windows (Windows2022 Kubernetes ≥1.33). Changing between AzureLinux and Ubuntu does not replace the resource; otherwise temporary_name_for_rotation must be specified when attempting a change.
     """
     podSubnetId: str | None = None
     """
@@ -2138,7 +2158,7 @@ class DefaultNodePoolModel(BaseModel):
     """
     workloadRuntime: str | None = None
     """
-    Specifies the workload runtime used by the node pool. Possible value is OCIContainer.
+    Specifies the workload runtime used by the node pool. Possible values are KataVmIsolation and OCIContainer.
     """
     zones: list[str] | None = None
     """
@@ -2549,6 +2569,10 @@ class AtProvider(BaseModel):
     """
     The upgrade channel for this Kubernetes Cluster Nodes' OS Image. Possible values are Unmanaged, SecurityPatch, NodeImage and None. Defaults to NodeImage.
     """
+    nodeProvisioningProfile: NodeProvisioningProfile | None = None
+    """
+    A node_provisioning_profile block as defined below.
+    """
     nodeResourceGroup: str | None = None
     """
     The auto-generated Resource Group which contains the resources for this Managed Kubernetes Cluster.
@@ -2559,7 +2583,7 @@ class AtProvider(BaseModel):
     """
     oidcIssuerEnabled: bool | None = None
     """
-    Enable or Disable the OIDC issuer URL
+    Whether to enable the OIDC issuer feature.
     """
     oidcIssuerUrl: str | None = None
     """
@@ -2688,6 +2712,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

@@ -69,6 +69,20 @@ class Credentials(BaseModel):
     """
 
 
+class PostgreSQLFlexibleServer(BaseModel):
+    restartServerOnConfigurationValueChange: bool | None = None
+    """
+    Should the PostgreSQL Flexible Server restart after static server parameter change or removal?
+    """
+
+
+class Features(BaseModel):
+    postgreSQLFlexibleServer: PostgreSQLFlexibleServer | None = None
+    """
+    PostgreSQLFlexibleServer configures behaviors specific to Azure PostgreSQL Flexible Servers
+    """
+
+
 class ExponentialFailureRateLimiter(BaseModel):
     baseDelay: str | None = None
     """
@@ -105,6 +119,11 @@ class Spec(BaseModel):
     """
     The Cloud Environment which should be used. Possible values are "public",
     "usgovernment", "german", and "china". Defaults to "public".
+    """
+    features: Features | None = None
+    """
+    Features configures optional behaviors of the underlying Terraform
+    AzureRM provider, mirroring its `features` block.
     """
     msiEndpoint: str | None = None
     """

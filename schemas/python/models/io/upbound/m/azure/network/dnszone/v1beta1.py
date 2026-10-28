@@ -112,7 +112,7 @@ class ForProvider(BaseModel):
     """
     soaRecord: SoaRecord | None = None
     """
-    An soa_record block as defined below.
+    A soa_record block as defined below.
     """
     tags: dict[str, str] | None = None
     """
@@ -123,7 +123,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     soaRecord: SoaRecord | None = None
     """
-    An soa_record block as defined below.
+    A soa_record block as defined below.
     """
     tags: dict[str, str] | None = None
     """
@@ -203,9 +203,12 @@ class SoaRecordModel(BaseModel):
     The expire time for the SOA record. Defaults to 2419200.
     """
     fqdn: str | None = None
+    """
+    The fully qualified domain name.
+    """
     hostName: str | None = None
     """
-    The domain name of the authoritative name server for the SOA record. If not set, computed value from Azure will be used.
+    The domain name of the authoritative name server for the SOA record.
     """
     minimumTtl: float | None = None
     """
@@ -240,7 +243,7 @@ class AtProvider(BaseModel):
     """
     maxNumberOfRecordSets: float | None = None
     """
-    Maximum number of Records in the zone. Defaults to 1000.
+    Maximum number of Records in the zone.
     """
     nameServers: list[str] | None = None
     """
@@ -256,7 +259,7 @@ class AtProvider(BaseModel):
     """
     soaRecord: SoaRecordModel | None = None
     """
-    An soa_record block as defined below.
+    A soa_record block as defined below.
     """
     tags: dict[str, str] | None = None
     """
@@ -301,6 +304,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

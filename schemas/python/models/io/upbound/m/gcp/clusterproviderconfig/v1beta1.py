@@ -127,6 +127,11 @@ class ReconciliationPolicy(BaseModel):
 
 
 class Spec(BaseModel):
+    billingProject: str | None = None
+    """
+    BillingProject is the project name (not numerical ID) to attribute API
+    requests to. Only used when userProjectOverride is true.
+    """
     credentials: Credentials
     """
     Credentials required to authenticate to this provider.
@@ -140,6 +145,21 @@ class Spec(BaseModel):
     ReconciliationPolicy configures how a managed resource is reconciled.
     It currently allows overriding the controller's failure rate limiter
     parameters on a per-resource basis via ExponentialFailureRateLimiter.
+    """
+    universeDomain: str | None = None
+    """
+    UniverseDomain is the Google Cloud universe to authenticate and issue API
+    requests against. Leave this unset to use the default "googleapis.com" universe.
+    The Terraform provider rejects a universe mismatch between its configuration and
+    the credentials. So when credentials carry a non-default universe, UniverseDomain
+    is required and must match the credentials value.
+    """
+    userProjectOverride: bool | None = None
+    """
+    UserProjectOverride enables attributing API requests to the project in
+    billingProject (or, when that is unset, the resource's project) by
+    sending the X-Goog-User-Project header, instead of attributing them to
+    the credential's home project.
     """
 
 

@@ -77,7 +77,7 @@ class ForProvider(BaseModel):
     """
     skuName: str | None = None
     """
-    The SKU which should be used. At this time the only supported value is Standard. Defaults to Standard.
+    The SKU which should be used. Possible values are Standard and StandardV2. Defaults to Standard. Changing this forces a new resource to be created.
     """
     tags: dict[str, str] | None = None
     """
@@ -85,7 +85,7 @@ class ForProvider(BaseModel):
     """
     zones: list[str] | None = None
     """
-    A list of Availability Zones in which this NAT Gateway should be located. Changing this forces a new NAT Gateway to be created.
+    A list of Availability Zones in which this NAT Gateway should be located. Changing this forces a new resource to be created.
     """
 
 
@@ -100,7 +100,7 @@ class InitProvider(BaseModel):
     """
     skuName: str | None = None
     """
-    The SKU which should be used. At this time the only supported value is Standard. Defaults to Standard.
+    The SKU which should be used. Possible values are Standard and StandardV2. Defaults to Standard. Changing this forces a new resource to be created.
     """
     tags: dict[str, str] | None = None
     """
@@ -108,7 +108,7 @@ class InitProvider(BaseModel):
     """
     zones: list[str] | None = None
     """
-    A list of Availability Zones in which this NAT Gateway should be located. Changing this forces a new NAT Gateway to be created.
+    A list of Availability Zones in which this NAT Gateway should be located. Changing this forces a new resource to be created.
     """
 
 
@@ -215,7 +215,7 @@ class AtProvider(BaseModel):
     """
     skuName: str | None = None
     """
-    The SKU which should be used. At this time the only supported value is Standard. Defaults to Standard.
+    The SKU which should be used. Possible values are Standard and StandardV2. Defaults to Standard. Changing this forces a new resource to be created.
     """
     tags: dict[str, str] | None = None
     """
@@ -223,7 +223,7 @@ class AtProvider(BaseModel):
     """
     zones: list[str] | None = None
     """
-    A list of Availability Zones in which this NAT Gateway should be located. Changing this forces a new NAT Gateway to be created.
+    A list of Availability Zones in which this NAT Gateway should be located. Changing this forces a new resource to be created.
     """
 
 
@@ -264,6 +264,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

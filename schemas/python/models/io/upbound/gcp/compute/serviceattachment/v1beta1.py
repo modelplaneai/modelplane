@@ -60,6 +60,11 @@ class ConsumerAcceptList(BaseModel):
     The number of consumer forwarding rules the consumer project can
     create.
     """
+    endpointUrl: str | None = None
+    """
+    The endpoint that is allowed to connect to this service attachment.
+    Only one of project_id_or_num, network_url and endpoint_url may be set.
+    """
     networkUrl: str | None = None
     """
     The network that is allowed to connect to this service attachment.
@@ -210,6 +215,12 @@ class ForProvider(BaseModel):
     When true, the provider will set propagated_connection_limit to zero.
     Defaults to false.
     """
+    showNatIps: bool | None = None
+    """
+    NOTE: This field is temporarily non-functional due to an underlying API issue.
+    Any value provided here will be ignored until the API issue is resolved, expected around 2026-03.
+    [If true, show NAT IPs of all connected endpoints.]
+    """
     targetService: str | None = None
     """
     The URL of a service serving the endpoint identified by this service attachment.
@@ -295,6 +306,12 @@ class InitProvider(BaseModel):
     When false, setting propagated_connection_limit to zero causes the provider to use to the API's default value.
     When true, the provider will set propagated_connection_limit to zero.
     Defaults to false.
+    """
+    showNatIps: bool | None = None
+    """
+    NOTE: This field is temporarily non-functional due to an underlying API issue.
+    Any value provided here will be ignored until the API issue is resolved, expected around 2026-03.
+    [If true, show NAT IPs of all connected endpoints.]
     """
     targetService: str | None = None
     """
@@ -401,6 +418,13 @@ class ConnectedEndpoint(BaseModel):
     (Output)
     The URL of the consumer forwarding rule.
     """
+    natIps: list[str] | None = None
+    """
+    (Output)
+    NOTE: This field is temporarily non-functional due to an underlying API issue.
+    Any value provided here will be ignored until the API issue is resolved, expected around 2026-03.
+    'The nat IPs of the connected endpoint.'
+    """
     propagatedConnectionCount: float | None = None
     """
     (Output)
@@ -425,6 +449,11 @@ class ConsumerAcceptListModel(BaseModel):
     The number of consumer forwarding rules the consumer project can
     create.
     """
+    endpointUrl: str | None = None
+    """
+    The endpoint that is allowed to connect to this service attachment.
+    Only one of project_id_or_num, network_url and endpoint_url may be set.
+    """
     networkUrl: str | None = None
     """
     The network that is allowed to connect to this service attachment.
@@ -434,6 +463,19 @@ class ConsumerAcceptListModel(BaseModel):
     """
     A project that is allowed to connect to this service attachment.
     Only one of project_id_or_num and network_url may be set.
+    """
+
+
+class PscServiceAttachmentIdItem(BaseModel):
+    high: str | None = None
+    """
+    (Output)
+    The high 64 bits of the PSC service attachment ID.
+    """
+    low: str | None = None
+    """
+    (Output)
+    The low 64 bits of the PSC service attachment ID.
     """
 
 
@@ -459,6 +501,11 @@ class AtProvider(BaseModel):
     """
     An array of projects that are not allowed to connect to this service
     attachment.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -503,6 +550,11 @@ class AtProvider(BaseModel):
     If the connection preference of the service attachment is ACCEPT_AUTOMATIC, the limit applies to each project that contains a connected endpoint.
     If unspecified, the default propagated connection limit is 250. To explicitly send a zero value, set send_propagated_connection_limit_if_zero = true.
     """
+    pscServiceAttachmentId: list[PscServiceAttachmentIdItem] | None = None
+    """
+    An 128-bit global unique ID of the PSC service attachment.
+    Structure is documented below.
+    """
     reconcileConnections: bool | None = None
     """
     This flag determines whether a consumer accept/reject list change can reconcile the statuses of existing ACCEPTED or REJECTED PSC endpoints.
@@ -523,6 +575,12 @@ class AtProvider(BaseModel):
     When false, setting propagated_connection_limit to zero causes the provider to use to the API's default value.
     When true, the provider will set propagated_connection_limit to zero.
     Defaults to false.
+    """
+    showNatIps: bool | None = None
+    """
+    NOTE: This field is temporarily non-functional due to an underlying API issue.
+    Any value provided here will be ignored until the API issue is resolved, expected around 2026-03.
+    [If true, show NAT IPs of all connected endpoints.]
     """
     targetService: str | None = None
     """
@@ -567,6 +625,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

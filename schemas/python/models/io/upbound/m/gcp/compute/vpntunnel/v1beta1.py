@@ -10,6 +10,62 @@ from pydantic import AwareDatetime, BaseModel, Field
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
+class Phase1(BaseModel):
+    dh: list[str] | None = None
+    """
+    Diffie-Hellman groups.
+    """
+    encryption: list[str] | None = None
+    """
+    Encryption algorithms.
+    """
+    integrity: list[str] | None = None
+    """
+    Integrity algorithms.
+    """
+    prf: list[str] | None = None
+    """
+    Pseudo-random functions.
+    """
+
+
+class Phase2(BaseModel):
+    encryption: list[str] | None = None
+    """
+    Encryption algorithms.
+    """
+    integrity: list[str] | None = None
+    """
+    Integrity algorithms.
+    """
+    pfs: list[str] | None = None
+    """
+    Perfect forward secrecy groups.
+    """
+
+
+class CipherSuite(BaseModel):
+    phase1: Phase1 | None = None
+    """
+    Cipher configuration for phase 1 of the IKE protocol.
+    Structure is documented below.
+    """
+    phase2: Phase2 | None = None
+    """
+    Cipher configuration for phase 2 of the IKE protocol.
+    Structure is documented below.
+    """
+
+
+class Params(BaseModel):
+    resourceManagerTags: dict[str, str] | None = None
+    """
+    Resource manager tags to be bound to the Vpn Tunnel. Tag keys and values have the
+    same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
+    and values are in the format tagValues/456.
+    """
+
+
 class Policy(BaseModel):
     resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
@@ -176,6 +232,11 @@ class VpnGatewaySelector(BaseModel):
 
 
 class ForProvider(BaseModel):
+    cipherSuite: CipherSuite | None = None
+    """
+    User specified list of ciphers to use for the phase 1 and phase 2 of the IKE protocol.
+    Structure is documented below.
+    """
     description: str | None = None
     """
     An optional description of this resource.
@@ -198,6 +259,11 @@ class ForProvider(BaseModel):
     peer VPN gateway. The value should be a CIDR formatted string,
     for example 192.168.0.0/16. The ranges should be disjoint.
     Only IPv4 is supported.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     peerExternalGateway: str | None = None
     """
@@ -294,6 +360,11 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
+    cipherSuite: CipherSuite | None = None
+    """
+    User specified list of ciphers to use for the phase 1 and phase 2 of the IKE protocol.
+    Structure is documented below.
+    """
     description: str | None = None
     """
     An optional description of this resource.
@@ -316,6 +387,11 @@ class InitProvider(BaseModel):
     peer VPN gateway. The value should be a CIDR formatted string,
     for example 192.168.0.0/16. The ranges should be disjoint.
     Only IPv4 is supported.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     peerExternalGateway: str | None = None
     """
@@ -368,7 +444,7 @@ class InitProvider(BaseModel):
     """
     Selector for a Router in compute to populate router.
     """
-    sharedSecretSecretRef: SharedSecretSecretRef
+    sharedSecretSecretRef: SharedSecretSecretRef | None = None
     """
     Shared secret used to set the secure session between the Cloud VPN
     gateway and the peer VPN gateway.
@@ -470,9 +546,19 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
+    cipherSuite: CipherSuite | None = None
+    """
+    User specified list of ciphers to use for the phase 1 and phase 2 of the IKE protocol.
+    Structure is documented below.
+    """
     creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -510,6 +596,11 @@ class AtProvider(BaseModel):
     peer VPN gateway. The value should be a CIDR formatted string,
     for example 192.168.0.0/16. The ranges should be disjoint.
     Only IPv4 is supported.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     peerExternalGateway: str | None = None
     """
@@ -557,6 +648,10 @@ class AtProvider(BaseModel):
     sharedSecretHash: str | None = None
     """
     Hash of the shared secret.
+    """
+    sharedSecretWoVersion: str | None = None
+    """
+    Triggers update of shared_secret_wo write-only. Increment this value when an update to shared_secret_wo is needed. For more info see updating write-only arguments
     """
     targetVpnGateway: str | None = None
     """
@@ -621,6 +716,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

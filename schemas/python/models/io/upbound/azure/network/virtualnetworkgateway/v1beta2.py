@@ -275,6 +275,21 @@ class RadiusServerItem(BaseModel):
     """
 
 
+class RadiusServerSecretSecretRef(BaseModel):
+    key: str
+    """
+    The key to select.
+    """
+    name: str
+    """
+    Name of the secret.
+    """
+    namespace: str
+    """
+    Namespace of the secret.
+    """
+
+
 class RevokedCertificateItem(BaseModel):
     name: str | None = None
     """
@@ -342,7 +357,7 @@ class VpnClientConfiguration(BaseModel):
     """
     The address of the Radius server.
     """
-    radiusServerSecret: str | None = None
+    radiusServerSecretSecretRef: RadiusServerSecretSecretRef | None = None
     """
     The secret used by the Radius server.
     """
@@ -379,6 +394,10 @@ class ForProvider(BaseModel):
     """
     If true, an active-active Virtual Network Gateway will be created. An active-active gateway requires a HighPerformance or an UltraPerformance SKU. If false, an active-standby gateway will be created. Defaults to false.
     """
+    bgpEnabled: bool | None = None
+    """
+    If true, BGP (Border Gateway Protocol) will be enabled for this Virtual Network Gateway. Defaults to false.
+    """
     bgpRouteTranslationForNatEnabled: bool | None = None
     """
     Is BGP Route Translation for NAT enabled? Defaults to false.
@@ -404,9 +423,6 @@ class ForProvider(BaseModel):
     Specifies the Edge Zone within the Azure Region where this Virtual Network Gateway should exist. Changing this forces a new Virtual Network Gateway to be created.
     """
     enableBgp: bool | None = None
-    """
-    If true, BGP (Border Gateway Protocol) will be enabled for this Virtual Network Gateway. Defaults to false.
-    """
     generation: str | None = None
     """
     The Generation of the Virtual Network gateway. Possible values include Generation1, Generation2 or None. Changing this forces a new resource to be created.
@@ -422,6 +438,14 @@ class ForProvider(BaseModel):
     location: str | None = None
     """
     The location/region where the Virtual Network Gateway is located. Changing this forces a new resource to be created.
+    """
+    maximumScaleUnit: float | None = None
+    """
+    The maximum scale unit for the Virtual Network Gateway, possible values are 1 through 40.
+    """
+    minimumScaleUnit: float | None = None
+    """
+    The minimum scale unit for the Virtual Network Gateway, possible values are 1 through 40.
     """
     policyGroup: list[PolicyGroupItem] | None = None
     """
@@ -449,7 +473,7 @@ class ForProvider(BaseModel):
     """
     sku: str | None = None
     """
-    Configuration of the size and capacity of the virtual network gateway. Valid options are Basic, Standard, HighPerformance, UltraPerformance, ErGw1AZ, ErGw2AZ, ErGw3AZ, VpnGw1, VpnGw2, VpnGw3, VpnGw4,VpnGw5, VpnGw1AZ, VpnGw2AZ, VpnGw3AZ,VpnGw4AZ and VpnGw5AZ and depend on the type, vpn_type and generation arguments. A PolicyBased gateway only supports the Basic SKU. Further, the UltraPerformance SKU is only supported by an ExpressRoute gateway.
+    Configuration of the size and capacity of the virtual network gateway. Valid options are Basic, Standard, HighPerformance, UltraPerformance, ErGwScale, ErGw1AZ, ErGw2AZ, ErGw3AZ, VpnGw1, VpnGw2, VpnGw3, VpnGw4,VpnGw5, VpnGw1AZ, VpnGw2AZ, VpnGw3AZ,VpnGw4AZ and VpnGw5AZ and depend on the type, vpn_type and generation arguments. A PolicyBased gateway only supports the Basic SKU. Further, the UltraPerformance and ErGwScale SKU is only supported by an ExpressRoute gateway.
     """
     tags: dict[str, str] | None = None
     """
@@ -493,6 +517,10 @@ class InitProvider(BaseModel):
     """
     If true, an active-active Virtual Network Gateway will be created. An active-active gateway requires a HighPerformance or an UltraPerformance SKU. If false, an active-standby gateway will be created. Defaults to false.
     """
+    bgpEnabled: bool | None = None
+    """
+    If true, BGP (Border Gateway Protocol) will be enabled for this Virtual Network Gateway. Defaults to false.
+    """
     bgpRouteTranslationForNatEnabled: bool | None = None
     """
     Is BGP Route Translation for NAT enabled? Defaults to false.
@@ -518,9 +546,6 @@ class InitProvider(BaseModel):
     Specifies the Edge Zone within the Azure Region where this Virtual Network Gateway should exist. Changing this forces a new Virtual Network Gateway to be created.
     """
     enableBgp: bool | None = None
-    """
-    If true, BGP (Border Gateway Protocol) will be enabled for this Virtual Network Gateway. Defaults to false.
-    """
     generation: str | None = None
     """
     The Generation of the Virtual Network gateway. Possible values include Generation1, Generation2 or None. Changing this forces a new resource to be created.
@@ -537,6 +562,14 @@ class InitProvider(BaseModel):
     """
     The location/region where the Virtual Network Gateway is located. Changing this forces a new resource to be created.
     """
+    maximumScaleUnit: float | None = None
+    """
+    The maximum scale unit for the Virtual Network Gateway, possible values are 1 through 40.
+    """
+    minimumScaleUnit: float | None = None
+    """
+    The minimum scale unit for the Virtual Network Gateway, possible values are 1 through 40.
+    """
     policyGroup: list[PolicyGroupItem] | None = None
     """
     One or more policy_group blocks as defined below.
@@ -551,7 +584,7 @@ class InitProvider(BaseModel):
     """
     sku: str | None = None
     """
-    Configuration of the size and capacity of the virtual network gateway. Valid options are Basic, Standard, HighPerformance, UltraPerformance, ErGw1AZ, ErGw2AZ, ErGw3AZ, VpnGw1, VpnGw2, VpnGw3, VpnGw4,VpnGw5, VpnGw1AZ, VpnGw2AZ, VpnGw3AZ,VpnGw4AZ and VpnGw5AZ and depend on the type, vpn_type and generation arguments. A PolicyBased gateway only supports the Basic SKU. Further, the UltraPerformance SKU is only supported by an ExpressRoute gateway.
+    Configuration of the size and capacity of the virtual network gateway. Valid options are Basic, Standard, HighPerformance, UltraPerformance, ErGwScale, ErGw1AZ, ErGw2AZ, ErGw3AZ, VpnGw1, VpnGw2, VpnGw3, VpnGw4,VpnGw5, VpnGw1AZ, VpnGw2AZ, VpnGw3AZ,VpnGw4AZ and VpnGw5AZ and depend on the type, vpn_type and generation arguments. A PolicyBased gateway only supports the Basic SKU. Further, the UltraPerformance and ErGwScale SKU is only supported by an ExpressRoute gateway.
     """
     tags: dict[str, str] | None = None
     """
@@ -704,10 +737,72 @@ class RadiusServerItemModel1(BaseModel):
     """
 
 
+class VpnClientConfigurationModel(BaseModel):
+    aadAudience: str | None = None
+    """
+    The client id of the Azure VPN application.
+    See Create an Active Directory (AD) tenant for P2S OpenVPN protocol connections for values
+    """
+    aadIssuer: str | None = None
+    """
+    The STS url for your tenant
+    """
+    aadTenant: str | None = None
+    """
+    AzureAD Tenant URL
+    """
+    addressSpace: list[str] | None = None
+    """
+    The address space out of which IP addresses for vpn clients will be taken. You can provide more than one address space, e.g. in CIDR notation.
+    """
+    ipsecPolicy: IpsecPolicy | None = None
+    """
+    An ipsec_policy block as defined below.
+    """
+    radiusServer: list[RadiusServerItemModel1] | None = None
+    """
+    One or more radius_server blocks as defined below.
+    """
+    radiusServerAddress: str | None = None
+    """
+    The address of the Radius server.
+    """
+    revokedCertificate: list[RevokedCertificateItem] | None = None
+    """
+    One or more revoked_certificate blocks which are defined below.
+    """
+    rootCertificate: list[RootCertificateItem] | None = None
+    """
+    One or more root_certificate blocks which are defined below. These root certificates are used to sign the client certificate used by the VPN clients to connect to the gateway.
+    """
+    virtualNetworkGatewayClientConnection: (
+        list[VirtualNetworkGatewayClientConnectionItem] | None
+    ) = None
+    """
+    One or more virtual_network_gateway_client_connection blocks as defined below.
+    """
+    vpnAuthTypes: list[str] | None = None
+    """
+    List of the vpn authentication types for the virtual network gateway.
+    The supported values are AAD, Radius and Certificate.
+    """
+    vpnClientProtocols: list[str] | None = None
+    """
+    List of the protocols supported by the vpn client.
+    The supported values are SSTP, IkeV2 and OpenVPN.
+    Values SSTP and IkeV2 are incompatible with the use of
+    aad_tenant, aad_audience and aad_issuer.
+    """
+
+
 class AtProvider(BaseModel):
     activeActive: bool | None = None
     """
     If true, an active-active Virtual Network Gateway will be created. An active-active gateway requires a HighPerformance or an UltraPerformance SKU. If false, an active-standby gateway will be created. Defaults to false.
+    """
+    bgpEnabled: bool | None = None
+    """
+    If true, BGP (Border Gateway Protocol) will be enabled for this Virtual Network Gateway. Defaults to false.
     """
     bgpRouteTranslationForNatEnabled: bool | None = None
     """
@@ -734,9 +829,6 @@ class AtProvider(BaseModel):
     Specifies the Edge Zone within the Azure Region where this Virtual Network Gateway should exist. Changing this forces a new Virtual Network Gateway to be created.
     """
     enableBgp: bool | None = None
-    """
-    If true, BGP (Border Gateway Protocol) will be enabled for this Virtual Network Gateway. Defaults to false.
-    """
     generation: str | None = None
     """
     The Generation of the Virtual Network gateway. Possible values include Generation1, Generation2 or None. Changing this forces a new resource to be created.
@@ -757,6 +849,14 @@ class AtProvider(BaseModel):
     """
     The location/region where the Virtual Network Gateway is located. Changing this forces a new resource to be created.
     """
+    maximumScaleUnit: float | None = None
+    """
+    The maximum scale unit for the Virtual Network Gateway, possible values are 1 through 40.
+    """
+    minimumScaleUnit: float | None = None
+    """
+    The minimum scale unit for the Virtual Network Gateway, possible values are 1 through 40.
+    """
     policyGroup: list[PolicyGroupItem] | None = None
     """
     One or more policy_group blocks as defined below.
@@ -775,7 +875,7 @@ class AtProvider(BaseModel):
     """
     sku: str | None = None
     """
-    Configuration of the size and capacity of the virtual network gateway. Valid options are Basic, Standard, HighPerformance, UltraPerformance, ErGw1AZ, ErGw2AZ, ErGw3AZ, VpnGw1, VpnGw2, VpnGw3, VpnGw4,VpnGw5, VpnGw1AZ, VpnGw2AZ, VpnGw3AZ,VpnGw4AZ and VpnGw5AZ and depend on the type, vpn_type and generation arguments. A PolicyBased gateway only supports the Basic SKU. Further, the UltraPerformance SKU is only supported by an ExpressRoute gateway.
+    Configuration of the size and capacity of the virtual network gateway. Valid options are Basic, Standard, HighPerformance, UltraPerformance, ErGwScale, ErGw1AZ, ErGw2AZ, ErGw3AZ, VpnGw1, VpnGw2, VpnGw3, VpnGw4,VpnGw5, VpnGw1AZ, VpnGw2AZ, VpnGw3AZ,VpnGw4AZ and VpnGw5AZ and depend on the type, vpn_type and generation arguments. A PolicyBased gateway only supports the Basic SKU. Further, the UltraPerformance and ErGwScale SKU is only supported by an ExpressRoute gateway.
     """
     tags: dict[str, str] | None = None
     """
@@ -789,7 +889,7 @@ class AtProvider(BaseModel):
     """
     Is remote vnet traffic that is used to configure this gateway to accept traffic from remote Virtual WAN networks enabled? Defaults to false.
     """
-    vpnClientConfiguration: VpnClientConfiguration | None = None
+    vpnClientConfiguration: VpnClientConfigurationModel | None = None
     """
     A vpn_client_configuration block which is documented below. In this block the Virtual Network Gateway can be configured to accept IPSec point-to-site connections.
     """
@@ -836,6 +936,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

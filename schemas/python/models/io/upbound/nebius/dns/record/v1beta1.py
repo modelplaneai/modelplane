@@ -59,7 +59,7 @@ class ForProvider(BaseModel):
     """
     :
 
-    # Record data in text format
+    Record data in text format
 
     This should be the RDATA part of this Resource Record's
     [presentation (zonefile) format](https://datatracker.ietf.org/doc/html/rfc9499#name-resource-records).
@@ -109,7 +109,7 @@ class ForProvider(BaseModel):
     """
     :
 
-    # Record type
+    Record type
 
     #### Supported values
 
@@ -139,7 +139,7 @@ class InitProvider(BaseModel):
     """
     :
 
-    # Record data in text format
+    Record data in text format
 
     This should be the RDATA part of this Resource Record's
     [presentation (zonefile) format](https://datatracker.ietf.org/doc/html/rfc9499#name-resource-records).
@@ -189,7 +189,7 @@ class InitProvider(BaseModel):
     """
     :
 
-    # Record type
+    Record type
 
     #### Supported values
 
@@ -322,7 +322,7 @@ class AtProvider(BaseModel):
     """
     :
 
-    # Record data in text format
+    Record data in text format
 
     This should be the RDATA part of this Resource Record's
     [presentation (zonefile) format](https://datatracker.ietf.org/doc/html/rfc9499#name-resource-records).
@@ -379,7 +379,7 @@ class AtProvider(BaseModel):
     """
     :
 
-    # Record type
+    Record type
 
     #### Supported values
 

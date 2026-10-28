@@ -110,6 +110,10 @@ class AdvancedOptionsConfig(BaseModel):
     """
     Log level to use. Defaults to NORMAL.
     """
+    requestBodyInspectionSize: str | None = None
+    """
+    The maximum request size chosen by the customer with Waf enabled. Values supported are "8KB", "16KB, "32KB", "48KB" and "64KB". Values are case insensitive.
+    """
     userIpRequestHeaders: list[str] | None = None
     """
     An optional list of case-insensitive request header names to use for resolving the callers client IP address.
@@ -434,6 +438,12 @@ class ForProvider(BaseModel):
     """
     An optional description of this security policy. Max size is 2048.
     """
+    labels: dict[str, str] | None = None
+    """
+    Labels to apply to this address. A list of key->value pairs.
+    Note: This field is non-authoritative, and will only manage the labels present in your configuration.
+    Please refer to the field effective_labels for all of the labels present on the resource.
+    """
     project: str | None = None
     """
     The project in which the resource belongs. If it
@@ -468,6 +478,12 @@ class InitProvider(BaseModel):
     description: str | None = None
     """
     An optional description of this security policy. Max size is 2048.
+    """
+    labels: dict[str, str] | None = None
+    """
+    Labels to apply to this address. A list of key->value pairs.
+    Note: This field is non-authoritative, and will only manage the labels present in your configuration.
+    Please refer to the field effective_labels for all of the labels present on the resource.
     """
     project: str | None = None
     """
@@ -562,10 +578,16 @@ class AtProvider(BaseModel):
     Advanced Configuration Options.
     Structure is documented below.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to "DELETE".
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this security policy. Max size is 2048.
     """
+    effectiveLabels: dict[str, str] | None = None
     fingerprint: str | None = None
     """
     Fingerprint of this resource.
@@ -573,6 +595,16 @@ class AtProvider(BaseModel):
     id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/global/securityPolicies/{{name}}
+    """
+    labelFingerprint: str | None = None
+    """
+    The unique fingerprint of the labels.
+    """
+    labels: dict[str, str] | None = None
+    """
+    Labels to apply to this address. A list of key->value pairs.
+    Note: This field is non-authoritative, and will only manage the labels present in your configuration.
+    Please refer to the field effective_labels for all of the labels present on the resource.
     """
     project: str | None = None
     """
@@ -592,6 +624,10 @@ class AtProvider(BaseModel):
     selfLink: str | None = None
     """
     The URI of the created resource.
+    """
+    terraformLabels: dict[str, str] | None = None
+    """
+    The combination of labels configured directly on the resource and default labels configured on the provider.
     """
     type: str | None = None
     """
@@ -636,6 +672,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

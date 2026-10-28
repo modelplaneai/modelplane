@@ -10,6 +10,35 @@ from pydantic import AwareDatetime, BaseModel, Field
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
+class JsonCustomConfig(BaseModel):
+    contentTypes: list[str] | None = None
+    """
+    A list of custom Content-Type header values to apply the JSON parsing.
+    """
+
+
+class AdvancedOptionsConfig(BaseModel):
+    jsonCustomConfig: JsonCustomConfig | None = None
+    """
+    Custom configuration to apply the JSON parsing. Only applicable when JSON parsing is set to STANDARD.
+    Structure is documented below.
+    """
+    jsonParsing: str | None = None
+    """
+    JSON body parsing. Supported values include: "DISABLED", "STANDARD", "STANDARD_WITH_GRAPHQL".
+    Possible values are: DISABLED, STANDARD, STANDARD_WITH_GRAPHQL.
+    """
+    logLevel: str | None = None
+    """
+    Logging level. Supported values include: "NORMAL", "VERBOSE".
+    Possible values are: NORMAL, VERBOSE.
+    """
+    userIpRequestHeaders: list[str] | None = None
+    """
+    An optional list of case-insensitive request header names to use for resolving the callers client IP address.
+    """
+
+
 class DdosProtectionConfig(BaseModel):
     ddosProtection: str | None = None
     """
@@ -375,6 +404,11 @@ class UserDefinedFieldModel(BaseModel):
 
 
 class ForProvider(BaseModel):
+    advancedOptionsConfig: AdvancedOptionsConfig | None = None
+    """
+    Advanced Options Config of this security policy.
+    Structure is documented below.
+    """
     ddosProtectionConfig: DdosProtectionConfig | None = None
     """
     Configuration for Google Cloud Armor DDOS Proctection Config.
@@ -449,6 +483,11 @@ class UserDefinedFieldModel2(BaseModel):
 
 
 class InitProvider(BaseModel):
+    advancedOptionsConfig: AdvancedOptionsConfig | None = None
+    """
+    Advanced Options Config of this security policy.
+    Structure is documented below.
+    """
     ddosProtectionConfig: DdosProtectionConfig | None = None
     """
     Configuration for Google Cloud Armor DDOS Proctection Config.
@@ -580,10 +619,20 @@ class UserDefinedFieldModel4(BaseModel):
 
 
 class AtProvider(BaseModel):
+    advancedOptionsConfig: AdvancedOptionsConfig | None = None
+    """
+    Advanced Options Config of this security policy.
+    Structure is documented below.
+    """
     ddosProtectionConfig: DdosProtectionConfig | None = None
     """
     Configuration for Google Cloud Armor DDOS Proctection Config.
     Structure is documented below.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -675,6 +724,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

@@ -54,6 +54,82 @@ class IpsecInternalAddressesSelector(BaseModel):
     """
 
 
+class InnerVlanToApplianceMapping(BaseModel):
+    innerApplianceIpAddress: str | None = None
+    """
+    The inner appliance IP address.
+    """
+    innerVlanTags: list[str] | None = None
+    """
+    List of inner VLAN tags.
+    """
+
+
+class ApplianceMapping(BaseModel):
+    applianceIpAddress: str | None = None
+    """
+    The appliance IP address.
+    """
+    innerVlanToApplianceMappings: list[InnerVlanToApplianceMapping] | None = None
+    """
+    Structure is documented below.
+    """
+    name: str | None = None
+    """
+    Name of the resource. Provided by the client when the resource is created. The
+    name must be 1-63 characters long, and comply with RFC1035. Specifically, the
+    name must be 1-63 characters long and match the regular expression
+    [a-z]([-a-z0-9]*[a-z0-9])? which means the first character must be a
+    lowercase letter, and all following characters must be a dash, lowercase
+    letter, or digit, except the last character, which cannot be a dash.
+    """
+    vlanId: str | None = None
+    """
+    The VLAN tag.
+    """
+
+
+class GeneveHeader(BaseModel):
+    vni: float | None = None
+    """
+    VNI is a 24-bit unique virtual network identifier.
+    """
+
+
+class L2Forwarding(BaseModel):
+    applianceMappings: list[ApplianceMapping] | None = None
+    """
+    A map of VLAN tags to appliances and optional inner mapping rules.
+    Structure is documented below.
+    """
+    defaultApplianceIpAddress: str | None = None
+    """
+    The default appliance IP address.
+    """
+    geneveHeader: GeneveHeader | None = None
+    """
+    GeneveHeader related configurations.
+    Structure is documented below.
+    """
+    network: str | None = None
+    """
+    URL of the network to which this attachment belongs.
+    """
+    tunnelEndpointIpAddress: str | None = None
+    """
+    The tunnel endpoint IP address.
+    """
+
+
+class Params(BaseModel):
+    resourceManagerTags: dict[str, str] | None = None
+    """
+    Resource manager tags to be bound to the interconnect attachment. Tag keys and values have the
+    same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
+    and values are in the format tagValues/456.
+    """
+
+
 class RouterRef(BaseModel):
     name: str
     """
@@ -94,7 +170,27 @@ class ForProvider(BaseModel):
     For attachments of type PARTNER, the Google Partner that is operating the interconnect must set the bandwidth.
     Output only for PARTNER type, mutable for PARTNER_PROVIDER and DEDICATED,
     Defaults to BPS_10G
-    Possible values are: BPS_50M, BPS_100M, BPS_200M, BPS_300M, BPS_400M, BPS_500M, BPS_1G, BPS_2G, BPS_5G, BPS_10G, BPS_20G, BPS_50G, BPS_100G.
+    Possible values are: BPS_50M, BPS_100M, BPS_200M, BPS_300M, BPS_400M, BPS_500M, BPS_1G, BPS_2G, BPS_5G, BPS_10G, BPS_20G, BPS_50G, BPS_100G, BPS_400G.
+    """
+    candidateCloudRouterIpAddress: str | None = None
+    """
+    Single IPv4 address + prefix length to be configured on the cloud router interface for this
+    interconnect attachment. Example: 203.0.113.1/29
+    """
+    candidateCloudRouterIpv6Address: str | None = None
+    """
+    Single IPv6 address + prefix length to be configured on the cloud router interface for this
+    interconnect attachment. Example: 2001:db8::1/125
+    """
+    candidateCustomerRouterIpAddress: str | None = None
+    """
+    Single IPv4 address + prefix length to be configured on the customer router interface for this
+    interconnect attachment. Example: 203.0.113.2/29
+    """
+    candidateCustomerRouterIpv6Address: str | None = None
+    """
+    Single IPv6 address + prefix length to be configured on the customer router interface for this
+    interconnect attachment. Example: 2001:db8::2/125
     """
     candidateSubnets: list[str] | None = None
     """
@@ -157,6 +253,11 @@ class ForProvider(BaseModel):
     """
     Selector for a list of Address in compute to populate ipsecInternalAddresses.
     """
+    l2Forwarding: L2Forwarding | None = None
+    """
+    L2 Interconnect Attachment related configuration.
+    Structure is documented below.
+    """
     labels: dict[str, str] | None = None
     """
     Labels for this resource. These can only be added or modified by the setLabels
@@ -166,6 +267,11 @@ class ForProvider(BaseModel):
     """
     Maximum Transmission Unit (MTU), in bytes, of packets passing through this interconnect attachment.
     Valid values are 1440, 1460, 1500, and 8896. If not specified, the value will default to 1440.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -212,7 +318,7 @@ class ForProvider(BaseModel):
     """
     The type of InterconnectAttachment you wish to create. Defaults to
     DEDICATED.
-    Possible values are: DEDICATED, PARTNER, PARTNER_PROVIDER.
+    Possible values are: DEDICATED, PARTNER, PARTNER_PROVIDER, L2_DEDICATED.
     """
     vlanTag8021Q: float | None = None
     """
@@ -234,7 +340,27 @@ class InitProvider(BaseModel):
     For attachments of type PARTNER, the Google Partner that is operating the interconnect must set the bandwidth.
     Output only for PARTNER type, mutable for PARTNER_PROVIDER and DEDICATED,
     Defaults to BPS_10G
-    Possible values are: BPS_50M, BPS_100M, BPS_200M, BPS_300M, BPS_400M, BPS_500M, BPS_1G, BPS_2G, BPS_5G, BPS_10G, BPS_20G, BPS_50G, BPS_100G.
+    Possible values are: BPS_50M, BPS_100M, BPS_200M, BPS_300M, BPS_400M, BPS_500M, BPS_1G, BPS_2G, BPS_5G, BPS_10G, BPS_20G, BPS_50G, BPS_100G, BPS_400G.
+    """
+    candidateCloudRouterIpAddress: str | None = None
+    """
+    Single IPv4 address + prefix length to be configured on the cloud router interface for this
+    interconnect attachment. Example: 203.0.113.1/29
+    """
+    candidateCloudRouterIpv6Address: str | None = None
+    """
+    Single IPv6 address + prefix length to be configured on the cloud router interface for this
+    interconnect attachment. Example: 2001:db8::1/125
+    """
+    candidateCustomerRouterIpAddress: str | None = None
+    """
+    Single IPv4 address + prefix length to be configured on the customer router interface for this
+    interconnect attachment. Example: 203.0.113.2/29
+    """
+    candidateCustomerRouterIpv6Address: str | None = None
+    """
+    Single IPv6 address + prefix length to be configured on the customer router interface for this
+    interconnect attachment. Example: 2001:db8::2/125
     """
     candidateSubnets: list[str] | None = None
     """
@@ -297,6 +423,11 @@ class InitProvider(BaseModel):
     """
     Selector for a list of Address in compute to populate ipsecInternalAddresses.
     """
+    l2Forwarding: L2Forwarding | None = None
+    """
+    L2 Interconnect Attachment related configuration.
+    Structure is documented below.
+    """
     labels: dict[str, str] | None = None
     """
     Labels for this resource. These can only be added or modified by the setLabels
@@ -306,6 +437,11 @@ class InitProvider(BaseModel):
     """
     Maximum Transmission Unit (MTU), in bytes, of packets passing through this interconnect attachment.
     Valid values are 1440, 1460, 1500, and 8896. If not specified, the value will default to 1440.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -348,7 +484,7 @@ class InitProvider(BaseModel):
     """
     The type of InterconnectAttachment you wish to create. Defaults to
     DEDICATED.
-    Possible values are: DEDICATED, PARTNER, PARTNER_PROVIDER.
+    Possible values are: DEDICATED, PARTNER, PARTNER_PROVIDER, L2_DEDICATED.
     """
     vlanTag8021Q: float | None = None
     """
@@ -463,7 +599,27 @@ class AtProvider(BaseModel):
     For attachments of type PARTNER, the Google Partner that is operating the interconnect must set the bandwidth.
     Output only for PARTNER type, mutable for PARTNER_PROVIDER and DEDICATED,
     Defaults to BPS_10G
-    Possible values are: BPS_50M, BPS_100M, BPS_200M, BPS_300M, BPS_400M, BPS_500M, BPS_1G, BPS_2G, BPS_5G, BPS_10G, BPS_20G, BPS_50G, BPS_100G.
+    Possible values are: BPS_50M, BPS_100M, BPS_200M, BPS_300M, BPS_400M, BPS_500M, BPS_1G, BPS_2G, BPS_5G, BPS_10G, BPS_20G, BPS_50G, BPS_100G, BPS_400G.
+    """
+    candidateCloudRouterIpAddress: str | None = None
+    """
+    Single IPv4 address + prefix length to be configured on the cloud router interface for this
+    interconnect attachment. Example: 203.0.113.1/29
+    """
+    candidateCloudRouterIpv6Address: str | None = None
+    """
+    Single IPv6 address + prefix length to be configured on the cloud router interface for this
+    interconnect attachment. Example: 2001:db8::1/125
+    """
+    candidateCustomerRouterIpAddress: str | None = None
+    """
+    Single IPv4 address + prefix length to be configured on the customer router interface for this
+    interconnect attachment. Example: 203.0.113.2/29
+    """
+    candidateCustomerRouterIpv6Address: str | None = None
+    """
+    Single IPv6 address + prefix length to be configured on the customer router interface for this
+    interconnect attachment. Example: 2001:db8::2/125
     """
     candidateSubnets: list[str] | None = None
     """
@@ -498,6 +654,11 @@ class AtProvider(BaseModel):
     """
     IPv6 address + prefix length to be configured on the customer
     router subinterface for this interconnect attachment.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -555,6 +716,11 @@ class AtProvider(BaseModel):
     interconnect attachment, the HA VPN gateway's IP address will be
     allocated from regional external IP address pool.
     """
+    l2Forwarding: L2Forwarding | None = None
+    """
+    L2 Interconnect Attachment related configuration.
+    Structure is documented below.
+    """
     labelFingerprint: str | None = None
     """
     A fingerprint for the labels being applied to this Interconnect, which is essentially a hash
@@ -578,6 +744,11 @@ class AtProvider(BaseModel):
     [Output only for type PARTNER. Not present for DEDICATED]. The opaque
     identifier of an PARTNER attachment used to initiate provisioning with
     a selected partner. Of the form "XXXXX/region/domain"
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     partnerAsn: str | None = None
     """
@@ -641,7 +812,7 @@ class AtProvider(BaseModel):
     """
     The type of InterconnectAttachment you wish to create. Defaults to
     DEDICATED.
-    Possible values are: DEDICATED, PARTNER, PARTNER_PROVIDER.
+    Possible values are: DEDICATED, PARTNER, PARTNER_PROVIDER, L2_DEDICATED.
     """
     vlanTag8021Q: float | None = None
     """
@@ -687,6 +858,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

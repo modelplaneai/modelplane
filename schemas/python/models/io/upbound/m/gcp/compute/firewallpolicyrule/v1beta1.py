@@ -109,6 +109,41 @@ class Layer4Config(BaseModel):
     """
 
 
+class SrcNetworksRef(BaseModel):
+    name: str
+    """
+    Name of the referenced object.
+    """
+    namespace: str | None = None
+    """
+    Namespace of the referenced object
+    """
+    policy: Policy | None = None
+    """
+    Policies for referencing.
+    """
+
+
+class SrcNetworksSelector(BaseModel):
+    matchControllerRef: bool | None = None
+    """
+    MatchControllerRef ensures an object with the same controller reference
+    as the selecting object is selected.
+    """
+    matchLabels: dict[str, str] | None = None
+    """
+    MatchLabels ensures an object with matching labels is selected.
+    """
+    namespace: str | None = None
+    """
+    Namespace for the selector
+    """
+    policy: Policy | None = None
+    """
+    Policies for selection.
+    """
+
+
 class NameRef(BaseModel):
     name: str
     """
@@ -180,6 +215,11 @@ class Match(BaseModel):
     """
     CIDR IP address range. Maximum number of destination CIDR IP ranges allowed is 5000.
     """
+    destNetworkContext: str | None = None
+    """
+    Network context of the traffic destination.
+    Possible values are: UNSPECIFIED, INTERNET, INTRA_VPC, NON_INTERNET, VPC_NETWORKS.
+    """
     destRegionCodes: list[str] | None = None
     """
     Region codes whose IP addresses will be used to match for destination of traffic. Should be specified as 2 letter country code defined as per ISO 3166 alpha-2 country codes. ex."US" Maximum number of dest region codes allowed is 5000.
@@ -204,6 +244,23 @@ class Match(BaseModel):
     srcIpRanges: list[str] | None = None
     """
     CIDR IP address range. Maximum number of source CIDR IP ranges allowed is 5000.
+    """
+    srcNetworkContext: str | None = None
+    """
+    Network context of the traffic source.
+    Possible values are: UNSPECIFIED, INTERNET, INTRA_VPC, NON_INTERNET, VPC_NETWORKS.
+    """
+    srcNetworks: list[str] | None = None
+    """
+    Networks of the traffic source. It can be either a full or partial url.
+    """
+    srcNetworksRefs: list[SrcNetworksRef] | None = None
+    """
+    References to Network in compute to populate srcNetworks.
+    """
+    srcNetworksSelector: SrcNetworksSelector | None = None
+    """
+    Selector for a list of Network in compute to populate srcNetworks.
     """
     srcRegionCodes: list[str] | None = None
     """
@@ -482,6 +539,11 @@ class MatchModel(BaseModel):
     """
     CIDR IP address range. Maximum number of destination CIDR IP ranges allowed is 5000.
     """
+    destNetworkContext: str | None = None
+    """
+    Network context of the traffic destination.
+    Possible values are: UNSPECIFIED, INTERNET, INTRA_VPC, NON_INTERNET, VPC_NETWORKS.
+    """
     destRegionCodes: list[str] | None = None
     """
     Region codes whose IP addresses will be used to match for destination of traffic. Should be specified as 2 letter country code defined as per ISO 3166 alpha-2 country codes. ex."US" Maximum number of dest region codes allowed is 5000.
@@ -506,6 +568,15 @@ class MatchModel(BaseModel):
     srcIpRanges: list[str] | None = None
     """
     CIDR IP address range. Maximum number of source CIDR IP ranges allowed is 5000.
+    """
+    srcNetworkContext: str | None = None
+    """
+    Network context of the traffic source.
+    Possible values are: UNSPECIFIED, INTERNET, INTRA_VPC, NON_INTERNET, VPC_NETWORKS.
+    """
+    srcNetworks: list[str] | None = None
+    """
+    Networks of the traffic source. It can be either a full or partial url.
     """
     srcRegionCodes: list[str] | None = None
     """
@@ -542,6 +613,11 @@ class AtProvider(BaseModel):
     creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -659,6 +735,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

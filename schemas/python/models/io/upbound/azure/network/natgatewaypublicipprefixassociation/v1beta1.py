@@ -96,7 +96,7 @@ class ForProvider(BaseModel):
     """
     publicIpPrefixId: str | None = None
     """
-    The ID of the Public IP Prefix which this NAT Gateway which should be connected to. Changing this forces a new resource to be created.
+    The ID of the Public IP Prefix which this NAT Gateway should be connected to. Changing this forces a new resource to be created.
     """
     publicIpPrefixIdRef: PublicIpPrefixIdRef | None = None
     """
@@ -123,7 +123,7 @@ class InitProvider(BaseModel):
     """
     publicIpPrefixId: str | None = None
     """
-    The ID of the Public IP Prefix which this NAT Gateway which should be connected to. Changing this forces a new resource to be created.
+    The ID of the Public IP Prefix which this NAT Gateway should be connected to. Changing this forces a new resource to be created.
     """
     publicIpPrefixIdRef: PublicIpPrefixIdRef | None = None
     """
@@ -223,7 +223,7 @@ class AtProvider(BaseModel):
     """
     publicIpPrefixId: str | None = None
     """
-    The ID of the Public IP Prefix which this NAT Gateway which should be connected to. Changing this forces a new resource to be created.
+    The ID of the Public IP Prefix which this NAT Gateway should be connected to. Changing this forces a new resource to be created.
     """
 
 
@@ -264,6 +264,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

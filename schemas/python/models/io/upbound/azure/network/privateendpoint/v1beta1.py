@@ -111,7 +111,7 @@ class PrivateServiceConnectionItem(BaseModel):
     """
     requestMessage: str | None = None
     """
-    A message passed to the owner of the remote resource when the private endpoint attempts to establish the connection to the remote resource. The request message can be a maximum of 140 characters in length. Only valid if is_manual_connection is set to true.
+    A message passed to the owner of the remote resource when the private endpoint attempts to establish the connection to the remote resource. The provider allows a maximum request message length of 140 characters, however the request message maximum length is dependent on the service the private endpoint is connected to. Only valid if is_manual_connection is set to true.
     """
     subresourceNames: list[str] | None = None
     """
@@ -178,6 +178,10 @@ class ForProvider(BaseModel):
     """
     The custom name of the network interface attached to the private endpoint. Changing this forces a new resource to be created.
     """
+    edgeZone: str | None = None
+    """
+    Specifies the Edge Zone within the Azure Region where this Private Endpoint should exist. Changing this forces a new resource to be created.
+    """
     ipConfiguration: list[IpConfigurationItem] | None = None
     """
     One or more ip_configuration blocks as defined below. This allows a static IP address to be set for this Private Endpoint, otherwise an address is dynamically allocated from the Subnet.
@@ -228,6 +232,10 @@ class InitProvider(BaseModel):
     customNetworkInterfaceName: str | None = None
     """
     The custom name of the network interface attached to the private endpoint. Changing this forces a new resource to be created.
+    """
+    edgeZone: str | None = None
+    """
+    Specifies the Edge Zone within the Azure Region where this Private Endpoint should exist. Changing this forces a new resource to be created.
     """
     ipConfiguration: list[IpConfigurationItem] | None = None
     """
@@ -399,7 +407,7 @@ class PrivateDnsZoneConfig(BaseModel):
     """
     privateDnsZoneId: str | None = None
     """
-    A list of IP Addresses
+    The ID of the Private DNS Zone that the config belongs to.
     """
     recordSets: list[RecordSet] | None = None
     """
@@ -441,11 +449,11 @@ class PrivateServiceConnectionItemModel(BaseModel):
     """
     privateIpAddress: str | None = None
     """
-    (Computed) The private IP address associated with the private endpoint, note that you will have a private IP address assigned to the private endpoint even if the connection request was Rejected.
+    The private IP address associated with the private endpoint, note that you will have a private IP address assigned to the private endpoint even if the connection request was Rejected.
     """
     requestMessage: str | None = None
     """
-    A message passed to the owner of the remote resource when the private endpoint attempts to establish the connection to the remote resource. The request message can be a maximum of 140 characters in length. Only valid if is_manual_connection is set to true.
+    A message passed to the owner of the remote resource when the private endpoint attempts to establish the connection to the remote resource. The provider allows a maximum request message length of 140 characters, however the request message maximum length is dependent on the service the private endpoint is connected to. Only valid if is_manual_connection is set to true.
     """
     subresourceNames: list[str] | None = None
     """
@@ -461,6 +469,10 @@ class AtProvider(BaseModel):
     customNetworkInterfaceName: str | None = None
     """
     The custom name of the network interface attached to the private endpoint. Changing this forces a new resource to be created.
+    """
+    edgeZone: str | None = None
+    """
+    Specifies the Edge Zone within the Azure Region where this Private Endpoint should exist. Changing this forces a new resource to be created.
     """
     id: str | None = None
     """
@@ -541,6 +553,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

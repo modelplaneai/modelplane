@@ -397,6 +397,10 @@ class AtProvider(BaseModel):
     """
     Specifies the supported Azure location where the resource exists. Changing this forces a new resource to be created. Review Azure Bastion Host FAQ for supported locations.
     """
+    privateOnlyEnabled: bool | None = None
+    """
+    Whether Private-Only deployment is enabled for the Bastion Host.
+    """
     resourceGroupName: str | None = None
     """
     The name of the resource group in which to create the Bastion Host. Changing this forces a new resource to be created.
@@ -472,6 +476,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

@@ -15,6 +15,13 @@ class ForProvider(BaseModel):
     """
     An optional description of this resource. Provide this property when you create the resource.
     """
+    policyType: str | None = None
+    """
+    Policy type is used to determine which resources (networks) the policy can be associated with.
+    A policy can be associated with a network only if the network has the matching policyType in its network profile.
+    Different policy types may support some of the Firewall Rules features.
+    Possible values are: VPC_POLICY.
+    """
     project: str | None = None
     """
     The ID of the project in which the resource belongs.
@@ -26,6 +33,13 @@ class InitProvider(BaseModel):
     description: str | None = None
     """
     An optional description of this resource. Provide this property when you create the resource.
+    """
+    policyType: str | None = None
+    """
+    Policy type is used to determine which resources (networks) the policy can be associated with.
+    A policy can be associated with a network only if the network has the matching policyType in its network profile.
+    Different policy types may support some of the Firewall Rules features.
+    Possible values are: VPC_POLICY.
     """
     project: str | None = None
     """
@@ -136,6 +150,11 @@ class AtProvider(BaseModel):
     """
     Creation timestamp in RFC3339 text format.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this resource. Provide this property when you create the resource.
@@ -151,6 +170,13 @@ class AtProvider(BaseModel):
     networkFirewallPolicyId: str | None = None
     """
     The unique identifier for the resource. This identifier is defined by the server.
+    """
+    policyType: str | None = None
+    """
+    Policy type is used to determine which resources (networks) the policy can be associated with.
+    A policy can be associated with a network only if the network has the matching policyType in its network profile.
+    Different policy types may support some of the Firewall Rules features.
+    Possible values are: VPC_POLICY.
     """
     project: str | None = None
     """
@@ -208,6 +234,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

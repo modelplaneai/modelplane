@@ -208,6 +208,14 @@ class AutoscalingPolicy(BaseModel):
     Scaling schedules defined for an autoscaler. Multiple schedules can be set on an autoscaler and they can overlap.
     Structure is documented below.
     """
+    stabilizationPeriod: float | None = None
+    """
+    The number of seconds that the autoscaler waits for load stabilization
+    before making scale-in decisions.
+    This might appear as a delay in scaling in but it is an important mechanism
+    for your application to not have fluctuating size due to short term load
+    fluctuations.
+    """
 
 
 class Policy(BaseModel):
@@ -408,6 +416,11 @@ class AtProvider(BaseModel):
     """
     Creation timestamp in RFC3339 text format.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this resource.
@@ -472,6 +485,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

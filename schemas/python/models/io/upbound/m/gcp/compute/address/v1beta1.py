@@ -115,6 +115,14 @@ class ForProvider(BaseModel):
     """
     An optional description of this resource.
     """
+    ipCollection: str | None = None
+    """
+    Reference to the source of external IPv4/IPv6 addresses, like a PublicDelegatedPrefix(PDP) for BYOIP.
+    If an IPv4 PDP is used, the PDP must support enhanced IPv4 allocations.
+    If an IPv6 PDP is used, the PDP must be in EXTERNAL_IPV6_FORWARDING_RULE_CREATION mode.
+    Use one of the following formats to specify a PDP when reserving an external IPv4 address using BYOIP.
+    Full resource URL, as in:
+    """
     ipVersion: str | None = None
     """
     The IP Version that will be used by this address. The default value is IPV4.
@@ -204,6 +212,14 @@ class InitProvider(BaseModel):
     description: str | None = None
     """
     An optional description of this resource.
+    """
+    ipCollection: str | None = None
+    """
+    Reference to the source of external IPv4/IPv6 addresses, like a PublicDelegatedPrefix(PDP) for BYOIP.
+    If an IPv4 PDP is used, the PDP must support enhanced IPv4 allocations.
+    If an IPv6 PDP is used, the PDP must be in EXTERNAL_IPV6_FORWARDING_RULE_CREATION mode.
+    Use one of the following formats to specify a PDP when reserving an external IPv4 address using BYOIP.
+    Full resource URL, as in:
     """
     ipVersion: str | None = None
     """
@@ -341,6 +357,10 @@ class AtProvider(BaseModel):
     The IP address must be inside the specified subnetwork,
     if any. Set by the API if undefined.
     """
+    addressId: str | None = None
+    """
+    The unique numeric identifier for the resource. This identifier is defined by the server.
+    """
     addressType: str | None = None
     """
     The type of address to reserve.
@@ -351,6 +371,11 @@ class AtProvider(BaseModel):
     creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -363,6 +388,14 @@ class AtProvider(BaseModel):
     id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/addresses/{{name}}
+    """
+    ipCollection: str | None = None
+    """
+    Reference to the source of external IPv4/IPv6 addresses, like a PublicDelegatedPrefix(PDP) for BYOIP.
+    If an IPv4 PDP is used, the PDP must support enhanced IPv4 allocations.
+    If an IPv6 PDP is used, the PDP must be in EXTERNAL_IPV6_FORWARDING_RULE_CREATION mode.
+    Use one of the following formats to specify a PDP when reserving an external IPv4 address using BYOIP.
+    Full resource URL, as in:
     """
     ipVersion: str | None = None
     """
@@ -475,6 +508,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

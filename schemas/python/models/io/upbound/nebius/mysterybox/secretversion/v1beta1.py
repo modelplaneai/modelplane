@@ -290,7 +290,7 @@ class Status(BaseModel):
     (String) :
     :
 
-    # Time when user called soft delete method
+    Time when user called soft delete method
 
     A string representing a timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format: `YYYY-MM-DDTHH:MM:SSZ` or `YYYY-MM-DDTHH:MM:SS.SSS±HH:MM`
     """
@@ -299,7 +299,7 @@ class Status(BaseModel):
     (String) :
     :
 
-    # Time when key should be totally deleted from DB
+    Time when key should be totally deleted from DB
 
     A string representing a timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format: `YYYY-MM-DDTHH:MM:SSZ` or `YYYY-MM-DDTHH:MM:SS.SSS±HH:MM`
     """

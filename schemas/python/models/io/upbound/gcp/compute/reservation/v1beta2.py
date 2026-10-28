@@ -21,6 +21,15 @@ class DeleteAfterDuration(BaseModel):
     """
 
 
+class Params(BaseModel):
+    resourceManagerTags: dict[str, str] | None = None
+    """
+    Resource manager tags to be bound to the reservation. Tag keys and values have the
+    same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
+    and values are in the format tagValues/456.
+    """
+
+
 class ReservationSharingPolicy(BaseModel):
     serviceShareType: str | None = None
     """
@@ -190,6 +199,11 @@ class ForProvider(BaseModel):
     """
     An optional description of this resource.
     """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
+    """
     project: str | None = None
     """
     The ID of the project in which the resource belongs.
@@ -236,6 +250,11 @@ class InitProvider(BaseModel):
     description: str | None = None
     """
     An optional description of this resource.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -345,7 +364,186 @@ class Spec(BaseModel):
     """
 
 
+class HealthInfoItem(BaseModel):
+    degradedBlockCount: float | None = None
+    """
+    (Output)
+    The number of reservation blocks that are degraded.
+    """
+    healthStatus: str | None = None
+    """
+    (Output)
+    The health status of the reservation.
+    """
+    healthyBlockCount: float | None = None
+    """
+    (Output)
+    The number of reservation blocks that are healthy.
+    """
+
+
+class UpcomingGroupMaintenanceItem(BaseModel):
+    canReschedule: bool | None = None
+    """
+    (Output)
+    Indicates if the maintenance can be customer triggered.
+    """
+    latestWindowStartTime: str | None = None
+    """
+    (Output)
+    The latest time for the planned maintenance window to start. This timestamp value is in RFC3339 text format.
+    """
+    maintenanceOnShutdown: bool | None = None
+    """
+    (Output)
+    Indicates whether the UpcomingMaintenance will be triggered on VM shutdown.
+    """
+    maintenanceReasons: list[str] | None = None
+    """
+    (Output)
+    The reasons for the maintenance. Only valid for vms.
+    """
+    maintenanceStatus: str | None = None
+    """
+    (Output)
+    Status of the maintenance.
+    """
+    type: str | None = None
+    """
+    (Output)
+    Defines the type of maintenance.
+    """
+    windowEndTime: str | None = None
+    """
+    (Output)
+    The time by which the maintenance disruption will be completed. This timestamp value is in RFC3339 text format.
+    """
+    windowStartTime: str | None = None
+    """
+    (Output)
+    The current start time of the maintenance window. This timestamp value is in RFC3339 text format.
+    """
+
+
+class ReservationMaintenanceItem(BaseModel):
+    instanceMaintenanceOngoingCount: float | None = None
+    """
+    (Output)
+    Describes number of instances that have ongoing maintenance.
+    """
+    instanceMaintenancePendingCount: float | None = None
+    """
+    (Output)
+    Describes number of instances that have pending maintenance.
+    """
+    maintenanceOngoingCount: float | None = None
+    """
+    (Output)
+    Progress for ongoing maintenance for this group of VMs/hosts. Describes number of hosts in the block that have ongoing maintenance.
+    """
+    maintenancePendingCount: float | None = None
+    """
+    (Output)
+    Progress for ongoing maintenance for this group of VMs/hosts. Describes number of hosts in the block that have pending maintenance.
+    """
+    schedulingType: str | None = None
+    """
+    (Output)
+    The type of maintenance for the reservation.
+    """
+    subblockInfraMaintenanceOngoingCount: float | None = None
+    """
+    (Output)
+    Describes number of subblock Infrastructure that has ongoing maintenance. Here, Subblock Infrastructure Maintenance pertains to upstream hardware contained in the Subblock that is necessary for a VM Family(e.g. NVLink Domains). Not all VM Families will support this field.
+    """
+    subblockInfraMaintenancePendingCount: float | None = None
+    """
+    (Output)
+    Describes number of subblock Infrastructure that has pending maintenance. Here, Subblock Infrastructure Maintenance pertains to upstream hardware contained in the Subblock that is necessary for a VM Family (e.g. NVLink Domains). Not all VM Families will support this field.
+    """
+    upcomingGroupMaintenance: list[UpcomingGroupMaintenanceItem] | None = None
+    """
+    (Output)
+    Maintenance information on this group of VMs.
+    Structure is documented below.
+    """
+
+
+class SpecificSkuAllocationItem(BaseModel):
+    sourceInstanceTemplateId: str | None = None
+    """
+    (Output)
+    ID of the instance template used to populate reservation properties.
+    """
+    utilizations: dict[str, str] | None = None
+    """
+    (Output)
+    Per service utilization breakdown. The Key is the Google Cloud managed service name.
+    """
+
+
+class ResourceStatu(BaseModel):
+    healthInfo: list[HealthInfoItem] | None = None
+    """
+    (Output)
+    Health information for the reservation.
+    Structure is documented below.
+    """
+    reservationBlockCount: float | None = None
+    """
+    (Output)
+    The number of reservation blocks associated with this reservation.
+    """
+    reservationMaintenance: list[ReservationMaintenanceItem] | None = None
+    """
+    (Output)
+    Maintenance information for this reservation
+    Structure is documented below.
+    """
+    specificSkuAllocation: list[SpecificSkuAllocationItem] | None = None
+    """
+    (Output)
+    Allocation Properties of this reservation.
+    Structure is documented below.
+    """
+
+
+class InstancePropertiesModel(BaseModel):
+    guestAccelerators: list[GuestAccelerator] | None = None
+    """
+    Guest accelerator type and count.
+    Structure is documented below.
+    """
+    localSsds: list[LocalSsd] | None = None
+    """
+    The amount of local ssd to reserve with each instance. This
+    reserves disks of type local-ssd.
+    Structure is documented below.
+    """
+    locationHint: str | None = None
+    """
+    (Output)
+    An opaque location hint used to place the allocation close to other resources. This field is for use by internal tools that use the public API.
+    """
+    machineType: str | None = None
+    """
+    The name of the machine type to reserve.
+    """
+    minCpuPlatform: str | None = None
+    """
+    The minimum CPU platform for the reservation. For example,
+    "Intel Skylake". See
+    the CPU platform availability reference](https://cloud.google.com/compute/docs/instances/specify-min-cpu-platform#availablezones)
+    for information on available CPU platforms.
+    """
+
+
 class SpecificReservationModel(BaseModel):
+    assuredCount: float | None = None
+    """
+    (Output)
+    Indicates how many instances are actually usable currently.
+    """
     count: float | None = None
     """
     The number of resources that are allocated.
@@ -355,7 +553,7 @@ class SpecificReservationModel(BaseModel):
     (Output)
     How many instances are in use.
     """
-    instanceProperties: InstanceProperties | None = None
+    instanceProperties: InstancePropertiesModel | None = None
     """
     The instance properties for the reservation.
     Structure is documented below.
@@ -368,6 +566,10 @@ class SpecificReservationModel(BaseModel):
 
 
 class AtProvider(BaseModel):
+    blockNames: list[str] | None = None
+    """
+    List of all reservation block names in the parent reservation.
+    """
     commitment: str | None = None
     """
     Full or partial URL to a parent commitment. This field displays for
@@ -387,6 +589,11 @@ class AtProvider(BaseModel):
     Absolute time in future when the reservation will be auto-deleted by Compute Engine. Timestamp is represented in RFC3339 text format.
     Cannot be used with delete_after_duration.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this resource.
@@ -395,15 +602,41 @@ class AtProvider(BaseModel):
     """
     an identifier for the resource with format projects/{{project}}/zones/{{zone}}/reservations/{{name}}
     """
+    kind: str | None = None
+    """
+    Type of the resource. Always compute#reservations for reservations.
+    """
+    linkedCommitments: list[str] | None = None
+    """
+    Full or partial URL to parent commitments. This field displays for reservations that are tied to multiple commitments.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
+    """
     project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
+    reservationBlockCount: float | None = None
+    """
+    The number of reservation blocks associated with this reservation.
+    """
     reservationSharingPolicy: ReservationSharingPolicy | None = None
     """
     Sharing policy for reservations with Google Cloud managed services.
     Structure is documented below.
+    """
+    resourceStatus: list[ResourceStatu] | None = None
+    """
+    Status information for Reservation resource.
+    Structure is documented below.
+    """
+    satisfiesPzs: bool | None = None
+    """
+    Reserved for future use.
     """
     selfLink: str | None = None
     """
@@ -472,6 +705,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

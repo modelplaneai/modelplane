@@ -27,6 +27,41 @@ class Policy(BaseModel):
     """
 
 
+class InstanceRef(BaseModel):
+    name: str
+    """
+    Name of the referenced object.
+    """
+    namespace: str | None = None
+    """
+    Namespace of the referenced object
+    """
+    policy: Policy | None = None
+    """
+    Policies for referencing.
+    """
+
+
+class InstanceSelector(BaseModel):
+    matchControllerRef: bool | None = None
+    """
+    MatchControllerRef ensures an object with the same controller reference
+    as the selecting object is selected.
+    """
+    matchLabels: dict[str, str] | None = None
+    """
+    MatchLabels ensures an object with matching labels is selected.
+    """
+    namespace: str | None = None
+    """
+    Namespace for the selector
+    """
+    policy: Policy | None = None
+    """
+    Policies for selection.
+    """
+
+
 class RegionNetworkEndpointGroupRef(BaseModel):
     name: str
     """
@@ -63,10 +98,27 @@ class RegionNetworkEndpointGroupSelector(BaseModel):
 
 
 class ForProvider(BaseModel):
+    clientDestinationPort: float | None = None
+    """
+    Client destination port for the GCE_VM_IP_PORTMAP NEG.
+    """
     fqdn: str | None = None
     """
     Fully qualified domain name of network endpoint.
     This can only be specified when network_endpoint_type of the NEG is INTERNET_FQDN_PORT.
+    """
+    instance: str | None = None
+    """
+    The name for a specific VM instance that the IP address belongs to.
+    This is required for network endpoints of type GCE_VM_IP_PORTMAP.
+    """
+    instanceRef: InstanceRef | None = None
+    """
+    Reference to a Instance in compute to populate instance.
+    """
+    instanceSelector: InstanceSelector | None = None
+    """
+    Selector for a Instance in compute to populate instance.
     """
     ipAddress: str | None = None
     """
@@ -101,10 +153,27 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
+    clientDestinationPort: float | None = None
+    """
+    Client destination port for the GCE_VM_IP_PORTMAP NEG.
+    """
     fqdn: str | None = None
     """
     Fully qualified domain name of network endpoint.
     This can only be specified when network_endpoint_type of the NEG is INTERNET_FQDN_PORT.
+    """
+    instance: str | None = None
+    """
+    The name for a specific VM instance that the IP address belongs to.
+    This is required for network endpoints of type GCE_VM_IP_PORTMAP.
+    """
+    instanceRef: InstanceRef | None = None
+    """
+    Reference to a Instance in compute to populate instance.
+    """
+    instanceSelector: InstanceSelector | None = None
+    """
+    Selector for a Instance in compute to populate instance.
     """
     ipAddress: str | None = None
     """
@@ -201,6 +270,15 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
+    clientDestinationPort: float | None = None
+    """
+    Client destination port for the GCE_VM_IP_PORTMAP NEG.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     fqdn: str | None = None
     """
     Fully qualified domain name of network endpoint.
@@ -209,6 +287,11 @@ class AtProvider(BaseModel):
     id: str | None = None
     """
     an identifier for the resource with format {{project}}/{{region}}/{{region_network_endpoint_group}}/{{ip_address}}/{{fqdn}}/{{port}}
+    """
+    instance: str | None = None
+    """
+    The name for a specific VM instance that the IP address belongs to.
+    This is required for network endpoints of type GCE_VM_IP_PORTMAP.
     """
     ipAddress: str | None = None
     """
@@ -275,6 +358,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

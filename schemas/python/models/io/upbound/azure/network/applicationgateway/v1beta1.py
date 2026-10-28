@@ -47,6 +47,41 @@ class AutoscaleConfigurationItem(BaseModel):
     """
 
 
+class BackendItem(BaseModel):
+    clientIpPreservationEnabled: bool | None = None
+    """
+    Whether client IP preservation is enabled for this Backend Settings Collection. Defaults to false.
+    """
+    hostName: str | None = None
+    """
+    Host header to be sent to the backend servers. Can only be set when protocol is Tls.
+    """
+    name: str | None = None
+    """
+    The name of the Backend Settings Collection.
+    """
+    port: float | None = None
+    """
+    The port which should be used for this Backend Settings Collection.
+    """
+    probeName: str | None = None
+    """
+    The name of an associated Probe.
+    """
+    protocol: str | None = None
+    """
+    The Protocol which should be used. Possible values are Tcp and Tls.
+    """
+    timeoutInSeconds: float | None = None
+    """
+    The connection timeout in seconds. Possible values range between 1 and 86400. Defaults to 30.
+    """
+    trustedRootCertificateNames: list[str] | None = None
+    """
+    A list of trusted_root_certificate names.
+    """
+
+
 class BackendAddressPoolItem(BaseModel):
     fqdns: list[str] | None = None
     """
@@ -88,6 +123,10 @@ class BackendHttpSetting(BaseModel):
     authenticationCertificate: list[AuthenticationCertificateItemModel] | None = None
     """
     One or more authentication_certificate_backend blocks as defined below.
+    """
+    certificateChainValidationEnabled: bool | None = None
+    """
+    Whether to validate the certificate chain and expiry on the backend HTTPS servers. Defaults to true.
     """
     connectionDraining: list[ConnectionDrainingItem] | None = None
     """
@@ -132,6 +171,14 @@ class BackendHttpSetting(BaseModel):
     requestTimeout: float | None = None
     """
     The request timeout in seconds, which must be between 1 and 86400 seconds. Defaults to 30.
+    """
+    sniName: str | None = None
+    """
+    The Server Name Indication (SNI) hostname to send to the backend servers.
+    """
+    sniValidationEnabled: bool | None = None
+    """
+    Whether to enable Server Name Indication (SNI) validation on the backend HTTPS servers. Defaults to true.
     """
     trustedRootCertificateNames: list[str] | None = None
     """
@@ -382,6 +429,37 @@ class IdentityItem(BaseModel):
     """
 
 
+class ListenerItem(BaseModel):
+    frontendIpConfigurationName: str | None = None
+    """
+    The Name of the Frontend IP Configuration used for this Listener.
+    """
+    frontendPortName: str | None = None
+    """
+    The Name of the Frontend Port use for this Listener.
+    """
+    hostNames: list[str] | None = None
+    """
+    A list of Hostname(s) should be used for this Listener. It allows special wildcard characters.
+    """
+    name: str | None = None
+    """
+    The Name of the Listener.
+    """
+    protocol: str | None = None
+    """
+    The Protocol to use for this Listener. Possible values are Tcp, and Tls.
+    """
+    sslCertificateName: str | None = None
+    """
+    The name of the associated SSL Certificate which should be used for this Listener.
+    """
+    sslProfileName: str | None = None
+    """
+    The name of the associated SSL Profile which should be used for this Listener.
+    """
+
+
 class IpConfigurationItem(BaseModel):
     name: str | None = None
     """
@@ -438,11 +516,11 @@ class MatchItem(BaseModel):
 class ProbeItem(BaseModel):
     host: str | None = None
     """
-    The Hostname used for this Probe. If the Application Gateway is configured for a single site, by default the Host name should be specified as 127.0.0.1, unless otherwise configured in custom probe. Cannot be set if pick_host_name_from_backend_http_settings is set to true.
+    The hostname used for this Probe. If the Application Gateway is configured for a single site, by default the hostname should be specified as 127.0.0.1, unless otherwise configured in custom Probe.
     """
     interval: float | None = None
     """
-    The Interval between two consecutive probes in seconds. Possible values range from 1 second to a maximum of 86,400 seconds.
+    The interval between two consecutive probes in seconds. Possible values range from 1 to 86400.
     """
     match: list[MatchItem] | None = None
     """
@@ -454,11 +532,11 @@ class ProbeItem(BaseModel):
     """
     name: str | None = None
     """
-    The Name of the Probe.
+    The name of the Probe.
     """
     path: str | None = None
     """
-    The Path used for this Probe.
+    The relative URL path of the Probe. Valid value starts with /.
     """
     pickHostNameFromBackendHttpSettings: bool | None = None
     """
@@ -466,19 +544,23 @@ class ProbeItem(BaseModel):
     """
     port: float | None = None
     """
-    Custom port which will be used for probing the backend servers. The valid value ranges from 1 to 65535. In case not set, port from HTTP settings will be used. This property is valid for Basic, Standard_v2 and WAF_v2 only.
+    Custom port which will be used for probing the backend servers. Possible values range from 1 to 65535.
     """
     protocol: str | None = None
     """
-    The Protocol used for this Probe. Possible values are Http and Https.
+    The protocol used for this Probe. Possible values are Http, Https, Tcp, and Tls.
+    """
+    proxyProtocolHeaderEnabled: bool | None = None
+    """
+    Whether the proxy protocol header is enabled for this Probe. Defaults to false.
     """
     timeout: float | None = None
     """
-    The Timeout used for this Probe, which indicates when a probe becomes unhealthy. Possible values range from 1 second to a maximum of 86,400 seconds.
+    The timeout in seconds used for this Probe, which indicates when a Probe becomes unhealthy. Possible values range from 1 to 86400.
     """
     unhealthyThreshold: float | None = None
     """
-    The Unhealthy Threshold for this Probe, which indicates the amount of retries which should be attempted before a node is deemed unhealthy. Possible values are from 1 to 20.
+    The unhealthy threshold for this Probe, which indicates the amount of retries which should be attempted before a node is deemed unhealthy. Possible values range from 1 to 20.
     """
 
 
@@ -673,6 +755,29 @@ class RewriteRuleSetItem(BaseModel):
     """
 
 
+class RoutingRuleItem(BaseModel):
+    backendAddressPoolName: str | None = None
+    """
+    The Name of the Backend Address Pool which should be used for this Routing Rule.
+    """
+    backendName: str | None = None
+    """
+    The Name of the Backend Settings which should be used for this Routing Rule.
+    """
+    listenerName: str | None = None
+    """
+    The Name of the Listener which should be used for this Routing Rule.
+    """
+    name: str | None = None
+    """
+    The Name of this Routing Rule.
+    """
+    priority: float | None = None
+    """
+    The routing rule priority, indicating the order in which rules are evaluated. Possible values range between 1 and 20000, with 1 being the highest priority and 20000 being the lowest priority.
+    """
+
+
 class SkuItem(BaseModel):
     capacity: float | None = None
     """
@@ -684,7 +789,7 @@ class SkuItem(BaseModel):
     """
     tier: str | None = None
     """
-    The Tier of the SKU to use for this Application Gateway. Possible values are Basic, Standard_v2, and WAF_v2.
+    The Tier of the SKU to use for this Application Gateway. Possible values are Basic, Standard, Standard_v2, WAF, and WAF_v2.
     """
 
 
@@ -762,6 +867,10 @@ class SslProfileItem(BaseModel):
     """
     Should client certificate issuer DN be verified? Defaults to false.
     """
+    verifyClientCertificateIssuerDn: bool | None = None
+    """
+    Should client certificate issuer DN be verified? Defaults to false.
+    """
     verifyClientCertificateRevocation: str | None = None
     """
     Specify the method to check client certificate revocation status. Possible value is OCSP.
@@ -797,7 +906,7 @@ class TrustedRootCertificateItem(BaseModel):
 class PathRuleItem(BaseModel):
     backendAddressPoolName: str | None = None
     """
-    The Name of the Backend Address Pool which should be used for this Routing Rule. Cannot be set if redirect_configuration_name is set.
+    The Name of the Backend Address Pool which should be used for this Routing Rule.
     """
     backendHttpSettingsName: str | None = None
     """
@@ -855,7 +964,7 @@ class UrlPathMapItem(BaseModel):
 class DisabledRuleGroupItem(BaseModel):
     ruleGroupName: str | None = None
     """
-    The rule group where specific rules should be disabled. Possible values are BadBots, crs_20_protocol_violations, crs_21_protocol_anomalies, crs_23_request_limits, crs_30_http_policy, crs_35_bad_robots, crs_40_generic_attacks, crs_41_sql_injection_attacks, crs_41_xss_attacks, crs_42_tight_security, crs_45_trojans, crs_49_inbound_blocking, General, GoodBots, KnownBadBots, Known-CVEs, REQUEST-911-METHOD-ENFORCEMENT, REQUEST-913-SCANNER-DETECTION, REQUEST-920-PROTOCOL-ENFORCEMENT, REQUEST-921-PROTOCOL-ATTACK, REQUEST-930-APPLICATION-ATTACK-LFI, REQUEST-931-APPLICATION-ATTACK-RFI, REQUEST-932-APPLICATION-ATTACK-RCE, REQUEST-933-APPLICATION-ATTACK-PHP, REQUEST-941-APPLICATION-ATTACK-XSS, REQUEST-942-APPLICATION-ATTACK-SQLI, REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION, REQUEST-944-APPLICATION-ATTACK-JAVA, UnknownBots, METHOD-ENFORCEMENT, PROTOCOL-ENFORCEMENT, PROTOCOL-ATTACK, LFI, RFI, RCE, PHP, NODEJS, XSS, SQLI, FIX, JAVA, MS-ThreatIntel-WebShells, MS-ThreatIntel-AppSec, MS-ThreatIntel-SQLI and MS-ThreatIntel-CVEs.
+    The rule group where specific rules should be disabled. Possible values are BadBots, crs_20_protocol_violations, crs_21_protocol_anomalies, crs_23_request_limits, crs_30_http_policy, crs_35_bad_robots, crs_40_generic_attacks, crs_41_sql_injection_attacks, crs_41_xss_attacks, crs_42_tight_security, crs_45_trojans, crs_49_inbound_blocking, General, GoodBots, KnownBadBots, Known-CVEs, REQUEST-911-METHOD-ENFORCEMENT, REQUEST-913-SCANNER-DETECTION, REQUEST-920-PROTOCOL-ENFORCEMENT, REQUEST-921-PROTOCOL-ATTACK, REQUEST-930-APPLICATION-ATTACK-LFI, REQUEST-931-APPLICATION-ATTACK-RFI, REQUEST-932-APPLICATION-ATTACK-RCE, REQUEST-933-APPLICATION-ATTACK-PHP, REQUEST-941-APPLICATION-ATTACK-XSS, REQUEST-942-APPLICATION-ATTACK-SQLI, REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION, REQUEST-944-APPLICATION-ATTACK-JAVA, UnknownBots, METHOD-ENFORCEMENT, PROTOCOL-ENFORCEMENT, PROTOCOL-ATTACK, LFI, RFI, RCE, PHP, NODEJS, XSS, SQLI, FIX, JAVA, MS-ThreatIntel-WebShells, MS-ThreatIntel-AppSec, MS-ThreatIntel-SQLI, MS-ThreatIntel-CVEs and MS-ThreatIntel-XSS.
     """
     rules: list[float] | None = None
     """
@@ -913,7 +1022,7 @@ class WafConfigurationItem(BaseModel):
     """
     ruleSetVersion: str | None = None
     """
-    The Version of the Rule Set used for this Web Application Firewall. Possible values are 0.1, 1.0, 1.1, 2.1, 2.2.9, 3.0, 3.1 and 3.2.
+    The Version of the Rule Set used for this Web Application Firewall. Possible values are 0.1, 1.0, 1.1, 2.1, 2.2, 2.2.9, 3.0, 3.1 and 3.2.
     """
 
 
@@ -925,6 +1034,10 @@ class ForProvider(BaseModel):
     autoscaleConfiguration: list[AutoscaleConfigurationItem] | None = None
     """
     An autoscale_configuration block as defined below.
+    """
+    backend: list[BackendItem] | None = None
+    """
+    One or more backend blocks as defined below.
     """
     backendAddressPool: list[BackendAddressPoolItem] | None = None
     """
@@ -970,6 +1083,10 @@ class ForProvider(BaseModel):
     """
     A global block as defined below.
     """
+    http2Enabled: bool | None = None
+    """
+    Is HTTP2 enabled on the application gateway resource? Defaults to false.
+    """
     httpListener: list[HttpListenerItem] | None = None
     """
     One or more http_listener blocks as defined below.
@@ -977,6 +1094,10 @@ class ForProvider(BaseModel):
     identity: list[IdentityItem] | None = None
     """
     An identity block as defined below.
+    """
+    listener: list[ListenerItem] | None = None
+    """
+    One or more listener blocks as defined below.
     """
     location: str | None = None
     """
@@ -1013,6 +1134,10 @@ class ForProvider(BaseModel):
     rewriteRuleSet: list[RewriteRuleSetItem] | None = None
     """
     One or more rewrite_rule_set blocks as defined below. Only valid for v2 WAF and Standard SKUs.
+    """
+    routingRule: list[RoutingRuleItem] | None = None
+    """
+    One or more routing_rule blocks as defined below.
     """
     sku: list[SkuItem] | None = None
     """
@@ -1116,6 +1241,10 @@ class InitProvider(BaseModel):
     """
     An autoscale_configuration block as defined below.
     """
+    backend: list[BackendItem] | None = None
+    """
+    One or more backend blocks as defined below.
+    """
     backendAddressPool: list[BackendAddressPoolItem] | None = None
     """
     One or more backend_address_pool blocks as defined below.
@@ -1160,6 +1289,10 @@ class InitProvider(BaseModel):
     """
     A global block as defined below.
     """
+    http2Enabled: bool | None = None
+    """
+    Is HTTP2 enabled on the application gateway resource? Defaults to false.
+    """
     httpListener: list[HttpListenerItem] | None = None
     """
     One or more http_listener blocks as defined below.
@@ -1167,6 +1300,10 @@ class InitProvider(BaseModel):
     identity: list[IdentityItem] | None = None
     """
     An identity block as defined below.
+    """
+    listener: list[ListenerItem] | None = None
+    """
+    One or more listener blocks as defined below.
     """
     location: str | None = None
     """
@@ -1191,6 +1328,10 @@ class InitProvider(BaseModel):
     rewriteRuleSet: list[RewriteRuleSetItem] | None = None
     """
     One or more rewrite_rule_set blocks as defined below. Only valid for v2 WAF and Standard SKUs.
+    """
+    routingRule: list[RoutingRuleItem] | None = None
+    """
+    One or more routing_rule blocks as defined below.
     """
     sku: list[SkuItem] | None = None
     """
@@ -1325,6 +1466,49 @@ class AuthenticationCertificateItemModel3(BaseModel):
     """
 
 
+class BackendItemModel(BaseModel):
+    clientIpPreservationEnabled: bool | None = None
+    """
+    Whether client IP preservation is enabled for this Backend Settings Collection. Defaults to false.
+    """
+    hostName: str | None = None
+    """
+    Host header to be sent to the backend servers. Can only be set when protocol is Tls.
+    """
+    id: str | None = None
+    """
+    The ID of the Backend Settings Configuration.
+    """
+    name: str | None = None
+    """
+    The name of the Backend Settings Collection.
+    """
+    port: float | None = None
+    """
+    The port which should be used for this Backend Settings Collection.
+    """
+    probeId: str | None = None
+    """
+    The ID of the associated Probe.
+    """
+    probeName: str | None = None
+    """
+    The name of an associated Probe.
+    """
+    protocol: str | None = None
+    """
+    The Protocol which should be used. Possible values are Tcp and Tls.
+    """
+    timeoutInSeconds: float | None = None
+    """
+    The connection timeout in seconds. Possible values range between 1 and 86400. Defaults to 30.
+    """
+    trustedRootCertificateNames: list[str] | None = None
+    """
+    A list of trusted_root_certificate names.
+    """
+
+
 class BackendAddressPoolItemModel(BaseModel):
     fqdns: list[str] | None = None
     """
@@ -1363,6 +1547,10 @@ class BackendHttpSettingModel(BaseModel):
     authenticationCertificate: list[AuthenticationCertificateItemModel4] | None = None
     """
     One or more authentication_certificate_backend blocks as defined below.
+    """
+    certificateChainValidationEnabled: bool | None = None
+    """
+    Whether to validate the certificate chain and expiry on the backend HTTPS servers. Defaults to true.
     """
     connectionDraining: list[ConnectionDrainingItem] | None = None
     """
@@ -1415,6 +1603,14 @@ class BackendHttpSettingModel(BaseModel):
     requestTimeout: float | None = None
     """
     The request timeout in seconds, which must be between 1 and 86400 seconds. Defaults to 30.
+    """
+    sniName: str | None = None
+    """
+    The Server Name Indication (SNI) hostname to send to the backend servers.
+    """
+    sniValidationEnabled: bool | None = None
+    """
+    Whether to enable Server Name Indication (SNI) validation on the backend HTTPS servers. Defaults to true.
     """
     trustedRootCertificateNames: list[str] | None = None
     """
@@ -1611,6 +1807,57 @@ class IdentityItemModel(BaseModel):
     """
 
 
+class ListenerItemModel(BaseModel):
+    frontendIpConfigurationId: str | None = None
+    """
+    The ID of the associated Frontend Configuration.
+    """
+    frontendIpConfigurationName: str | None = None
+    """
+    The Name of the Frontend IP Configuration used for this Listener.
+    """
+    frontendPortId: str | None = None
+    """
+    The ID of the associated Frontend Port.
+    """
+    frontendPortName: str | None = None
+    """
+    The Name of the Frontend Port use for this Listener.
+    """
+    hostNames: list[str] | None = None
+    """
+    A list of Hostname(s) should be used for this Listener. It allows special wildcard characters.
+    """
+    id: str | None = None
+    """
+    The ID of the Listener.
+    """
+    name: str | None = None
+    """
+    The Name of the Listener.
+    """
+    protocol: str | None = None
+    """
+    The Protocol to use for this Listener. Possible values are Tcp, and Tls.
+    """
+    sslCertificateId: str | None = None
+    """
+    The ID of the associated SSL Certificate.
+    """
+    sslCertificateName: str | None = None
+    """
+    The name of the associated SSL Certificate which should be used for this Listener.
+    """
+    sslProfileId: str | None = None
+    """
+    The ID of the associated SSL Profile.
+    """
+    sslProfileName: str | None = None
+    """
+    The name of the associated SSL Profile which should be used for this Listener.
+    """
+
+
 class PrivateEndpointConnectionItem(BaseModel):
     id: str | None = None
     """
@@ -1663,7 +1910,7 @@ class PrivateLinkConfigurationItemModel(BaseModel):
 class ProbeItemModel(BaseModel):
     host: str | None = None
     """
-    The Hostname used for this Probe. If the Application Gateway is configured for a single site, by default the Host name should be specified as 127.0.0.1, unless otherwise configured in custom probe. Cannot be set if pick_host_name_from_backend_http_settings is set to true.
+    The hostname used for this Probe. If the Application Gateway is configured for a single site, by default the hostname should be specified as 127.0.0.1, unless otherwise configured in custom Probe.
     """
     id: str | None = None
     """
@@ -1671,7 +1918,7 @@ class ProbeItemModel(BaseModel):
     """
     interval: float | None = None
     """
-    The Interval between two consecutive probes in seconds. Possible values range from 1 second to a maximum of 86,400 seconds.
+    The interval between two consecutive probes in seconds. Possible values range from 1 to 86400.
     """
     match: list[MatchItem] | None = None
     """
@@ -1683,11 +1930,11 @@ class ProbeItemModel(BaseModel):
     """
     name: str | None = None
     """
-    The Name of the Probe.
+    The name of the Probe.
     """
     path: str | None = None
     """
-    The Path used for this Probe.
+    The relative URL path of the Probe. Valid value starts with /.
     """
     pickHostNameFromBackendHttpSettings: bool | None = None
     """
@@ -1695,19 +1942,23 @@ class ProbeItemModel(BaseModel):
     """
     port: float | None = None
     """
-    Custom port which will be used for probing the backend servers. The valid value ranges from 1 to 65535. In case not set, port from HTTP settings will be used. This property is valid for Basic, Standard_v2 and WAF_v2 only.
+    Custom port which will be used for probing the backend servers. Possible values range from 1 to 65535.
     """
     protocol: str | None = None
     """
-    The Protocol used for this Probe. Possible values are Http and Https.
+    The protocol used for this Probe. Possible values are Http, Https, Tcp, and Tls.
+    """
+    proxyProtocolHeaderEnabled: bool | None = None
+    """
+    Whether the proxy protocol header is enabled for this Probe. Defaults to false.
     """
     timeout: float | None = None
     """
-    The Timeout used for this Probe, which indicates when a probe becomes unhealthy. Possible values range from 1 second to a maximum of 86,400 seconds.
+    The timeout in seconds used for this Probe, which indicates when a Probe becomes unhealthy. Possible values range from 1 to 86400.
     """
     unhealthyThreshold: float | None = None
     """
-    The Unhealthy Threshold for this Probe, which indicates the amount of retries which should be attempted before a node is deemed unhealthy. Possible values are from 1 to 20.
+    The unhealthy threshold for this Probe, which indicates the amount of retries which should be attempted before a node is deemed unhealthy. Possible values range from 1 to 20.
     """
 
 
@@ -1828,6 +2079,45 @@ class RewriteRuleSetItemModel(BaseModel):
     """
 
 
+class RoutingRuleItemModel(BaseModel):
+    backendAddressPoolId: str | None = None
+    """
+    The ID of the associated Backend Address Pool.
+    """
+    backendAddressPoolName: str | None = None
+    """
+    The Name of the Backend Address Pool which should be used for this Routing Rule.
+    """
+    backendId: str | None = None
+    """
+    The ID of the associated Backend Settings.
+    """
+    backendName: str | None = None
+    """
+    The Name of the Backend Settings which should be used for this Routing Rule.
+    """
+    id: str | None = None
+    """
+    The ID of the Routing Rule.
+    """
+    listenerId: str | None = None
+    """
+    The ID of the associated Listener.
+    """
+    listenerName: str | None = None
+    """
+    The Name of the Listener which should be used for this Routing Rule.
+    """
+    name: str | None = None
+    """
+    The Name of this Routing Rule.
+    """
+    priority: float | None = None
+    """
+    The routing rule priority, indicating the order in which rules are evaluated. Possible values range between 1 and 20000, with 1 being the highest priority and 20000 being the lowest priority.
+    """
+
+
 class SslCertificateItemModel(BaseModel):
     id: str | None = None
     """
@@ -1865,6 +2155,10 @@ class SslProfileItemModel(BaseModel):
     The name of the Trusted Client Certificate that will be used to authenticate requests from clients.
     """
     verifyClientCertIssuerDn: bool | None = None
+    """
+    Should client certificate issuer DN be verified? Defaults to false.
+    """
+    verifyClientCertificateIssuerDn: bool | None = None
     """
     Should client certificate issuer DN be verified? Defaults to false.
     """
@@ -1907,7 +2201,7 @@ class PathRuleItemModel(BaseModel):
     """
     backendAddressPoolName: str | None = None
     """
-    The Name of the Backend Address Pool which should be used for this Routing Rule. Cannot be set if redirect_configuration_name is set.
+    The Name of the Backend Address Pool which should be used for this Routing Rule.
     """
     backendHttpSettingsId: str | None = None
     """
@@ -2007,6 +2301,10 @@ class AtProvider(BaseModel):
     """
     An autoscale_configuration block as defined below.
     """
+    backend: list[BackendItemModel] | None = None
+    """
+    One or more backend blocks as defined below.
+    """
     backendAddressPool: list[BackendAddressPoolItemModel] | None = None
     """
     One or more backend_address_pool blocks as defined below.
@@ -2051,6 +2349,10 @@ class AtProvider(BaseModel):
     """
     A global block as defined below.
     """
+    http2Enabled: bool | None = None
+    """
+    Is HTTP2 enabled on the application gateway resource? Defaults to false.
+    """
     httpListener: list[HttpListenerItemModel] | None = None
     """
     One or more http_listener blocks as defined below.
@@ -2062,6 +2364,10 @@ class AtProvider(BaseModel):
     identity: list[IdentityItemModel] | None = None
     """
     An identity block as defined below.
+    """
+    listener: list[ListenerItemModel] | None = None
+    """
+    One or more listener blocks as defined below.
     """
     location: str | None = None
     """
@@ -2094,6 +2400,10 @@ class AtProvider(BaseModel):
     rewriteRuleSet: list[RewriteRuleSetItemModel] | None = None
     """
     One or more rewrite_rule_set blocks as defined below. Only valid for v2 WAF and Standard SKUs.
+    """
+    routingRule: list[RoutingRuleItemModel] | None = None
+    """
+    One or more routing_rule blocks as defined below.
     """
     sku: list[SkuItem] | None = None
     """
@@ -2174,6 +2484,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

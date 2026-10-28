@@ -65,15 +65,15 @@ class SubnetIdSelector(BaseModel):
 class IpConfigurations(BaseModel):
     privateIpAddress: str | None = None
     """
-    Private IP address of the IP configuration.
+    Private IP address of the IP configuration. Changing this forces a new resource to be created.
     """
     privateIpAllocationMethod: str | None = None
     """
-    Private IP address allocation method. Allowed value is Dynamic and Static. Defaults to Dynamic.
+    Private IP address allocation method. Possible values are Dynamic and Static. Defaults to Dynamic. Changing this forces a new resource to be created.
     """
     subnetId: str | None = None
     """
-    The subnet ID of the IP configuration.
+    The subnet ID of the IP configuration. Changing this forces a new resource to be created.
     """
     subnetIdRef: SubnetIdRef | None = None
     """
@@ -123,15 +123,15 @@ class PrivateDnsResolverIdSelector(BaseModel):
 class ForProvider(BaseModel):
     ipConfigurations: IpConfigurations | None = None
     """
-    One ip_configurations block as defined below. Changing this forces a new Private DNS Resolver Inbound Endpoint to be created.
+    One ip_configurations block as defined below. Changing this forces a new resource to be created.
     """
     location: str | None = None
     """
-    Specifies the Azure Region where the Private DNS Resolver Inbound Endpoint should exist. Changing this forces a new Private DNS Resolver Inbound Endpoint to be created.
+    Specifies the Azure Region where the Private DNS Resolver Inbound Endpoint should exist. Changing this forces a new resource to be created.
     """
     privateDnsResolverId: str | None = None
     """
-    Specifies the ID of the Private DNS Resolver Inbound Endpoint. Changing this forces a new Private DNS Resolver Inbound Endpoint to be created.
+    Specifies the ID of the Private DNS Resolver Inbound Endpoint. Changing this forces a new resource to be created.
     """
     privateDnsResolverIdRef: PrivateDnsResolverIdRef | None = None
     """
@@ -150,11 +150,11 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     ipConfigurations: IpConfigurations | None = None
     """
-    One ip_configurations block as defined below. Changing this forces a new Private DNS Resolver Inbound Endpoint to be created.
+    One ip_configurations block as defined below. Changing this forces a new resource to be created.
     """
     location: str | None = None
     """
-    Specifies the Azure Region where the Private DNS Resolver Inbound Endpoint should exist. Changing this forces a new Private DNS Resolver Inbound Endpoint to be created.
+    Specifies the Azure Region where the Private DNS Resolver Inbound Endpoint should exist. Changing this forces a new resource to be created.
     """
     tags: dict[str, str] | None = None
     """
@@ -227,15 +227,15 @@ class Spec(BaseModel):
 class IpConfigurationsModel(BaseModel):
     privateIpAddress: str | None = None
     """
-    Private IP address of the IP configuration.
+    Private IP address of the IP configuration. Changing this forces a new resource to be created.
     """
     privateIpAllocationMethod: str | None = None
     """
-    Private IP address allocation method. Allowed value is Dynamic and Static. Defaults to Dynamic.
+    Private IP address allocation method. Possible values are Dynamic and Static. Defaults to Dynamic. Changing this forces a new resource to be created.
     """
     subnetId: str | None = None
     """
-    The subnet ID of the IP configuration.
+    The subnet ID of the IP configuration. Changing this forces a new resource to be created.
     """
 
 
@@ -246,15 +246,15 @@ class AtProvider(BaseModel):
     """
     ipConfigurations: IpConfigurationsModel | None = None
     """
-    One ip_configurations block as defined below. Changing this forces a new Private DNS Resolver Inbound Endpoint to be created.
+    One ip_configurations block as defined below. Changing this forces a new resource to be created.
     """
     location: str | None = None
     """
-    Specifies the Azure Region where the Private DNS Resolver Inbound Endpoint should exist. Changing this forces a new Private DNS Resolver Inbound Endpoint to be created.
+    Specifies the Azure Region where the Private DNS Resolver Inbound Endpoint should exist. Changing this forces a new resource to be created.
     """
     privateDnsResolverId: str | None = None
     """
-    Specifies the ID of the Private DNS Resolver Inbound Endpoint. Changing this forces a new Private DNS Resolver Inbound Endpoint to be created.
+    Specifies the ID of the Private DNS Resolver Inbound Endpoint. Changing this forces a new resource to be created.
     """
     tags: dict[str, str] | None = None
     """
@@ -299,6 +299,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

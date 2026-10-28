@@ -14,7 +14,7 @@ class GuestOsFeature(BaseModel):
     type: str | None = None
     """
     The type of supported feature. Read Enabling guest operating system features to see a list of available options.
-    Possible values are: MULTI_IP_SUBNET, SECURE_BOOT, SEV_CAPABLE, UEFI_COMPATIBLE, VIRTIO_SCSI_MULTIQUEUE, WINDOWS, GVNIC, IDPF, SEV_LIVE_MIGRATABLE, SEV_SNP_CAPABLE, SUSPEND_RESUME_COMPATIBLE, TDX_CAPABLE, SEV_LIVE_MIGRATABLE_V2.
+    Possible values are: MULTI_IP_SUBNET, SECURE_BOOT, SEV_CAPABLE, UEFI_COMPATIBLE, VIRTIO_SCSI_MULTIQUEUE, WINDOWS, GVNIC, IDPF, SEV_LIVE_MIGRATABLE, SEV_SNP_CAPABLE, SUSPEND_RESUME_COMPATIBLE, TDX_CAPABLE, SEV_LIVE_MIGRATABLE_V2, SNP_SVSM_CAPABLE.
     """
 
 
@@ -71,6 +71,19 @@ class ImageEncryptionKey(BaseModel):
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
     Note: This property is sensitive and will not be displayed in the plan.
+    """
+
+
+class Params(BaseModel):
+    resourceManagerTags: dict[str, str] | None = None
+    """
+    Resource manager tags to be bound to the image. Tag keys and values have the
+    same definition as resource manager tags. Keys and values can be either in numeric format,
+    such as tagKeys/{tag_key_id} and tagValues/{tag_value_id} or in namespaced format such as
+    {org_id|projectId}/{tag_key_short_name} and {tag_value_short_name}. The field is ignored when empty.
+    The field is immutable and causes resource replacement when mutated. This field is only
+    set at create time and modifying this field after creation will trigger recreation.
+    To apply tags to an existing resource, see the google_tags_tag_binding resource.
     """
 
 
@@ -344,6 +357,11 @@ class ForProvider(BaseModel):
     """
     Any applicable license URI.
     """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload.
+    Structure is documented below.
+    """
     project: str | None = None
     """
     The ID of the project in which the resource belongs.
@@ -450,6 +468,11 @@ class InitProvider(BaseModel):
     licenses: list[str] | None = None
     """
     Any applicable license URI.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload.
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -671,6 +694,11 @@ class AtProvider(BaseModel):
     """
     Creation timestamp in RFC3339 text format.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this resource. Provide this property when
@@ -721,6 +749,11 @@ class AtProvider(BaseModel):
     licenses: list[str] | None = None
     """
     Any applicable license URI.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload.
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -825,6 +858,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

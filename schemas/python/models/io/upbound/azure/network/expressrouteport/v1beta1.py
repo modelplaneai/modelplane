@@ -32,7 +32,7 @@ class Link1Item(BaseModel):
     """
     macsecCipher: str | None = None
     """
-    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128 and GcmAes256. Defaults to GcmAes128.
+    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128, GcmAes256, GcmAesXpn128 and GcmAesXpn256. Defaults to GcmAes128.
     """
     macsecCknKeyvaultSecretId: str | None = None
     """
@@ -55,7 +55,7 @@ class Link2Item(BaseModel):
     """
     macsecCipher: str | None = None
     """
-    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128 and GcmAes256. Defaults to GcmAes128.
+    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128, GcmAes256, GcmAesXpn128 and GcmAesXpn256. Defaults to GcmAes128.
     """
     macsecCknKeyvaultSecretId: str | None = None
     """
@@ -118,7 +118,7 @@ class ForProvider(BaseModel):
     """
     billingType: str | None = None
     """
-    The billing type of the Express Route Port. Possible values are MeteredData and UnlimitedData.
+    The billing type of the Express Route Port. Possible values are MeteredData and UnlimitedData. Defaults to MeteredData.
     """
     encapsulation: str | None = None
     """
@@ -169,7 +169,7 @@ class InitProvider(BaseModel):
     """
     billingType: str | None = None
     """
-    The billing type of the Express Route Port. Possible values are MeteredData and UnlimitedData.
+    The billing type of the Express Route Port. Possible values are MeteredData and UnlimitedData. Defaults to MeteredData.
     """
     encapsulation: str | None = None
     """
@@ -323,7 +323,7 @@ class Link1ItemModel(BaseModel):
     """
     macsecCipher: str | None = None
     """
-    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128 and GcmAes256. Defaults to GcmAes128.
+    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128, GcmAes256, GcmAesXpn128 and GcmAesXpn256. Defaults to GcmAes128.
     """
     macsecCknKeyvaultSecretId: str | None = None
     """
@@ -370,7 +370,7 @@ class Link2ItemModel(BaseModel):
     """
     macsecCipher: str | None = None
     """
-    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128 and GcmAes256. Defaults to GcmAes128.
+    The MACSec cipher used for this Express Route Port Link. Possible values are GcmAes128, GcmAes256, GcmAesXpn128 and GcmAesXpn256. Defaults to GcmAes128.
     """
     macsecCknKeyvaultSecretId: str | None = None
     """
@@ -401,7 +401,7 @@ class AtProvider(BaseModel):
     """
     billingType: str | None = None
     """
-    The billing type of the Express Route Port. Possible values are MeteredData and UnlimitedData.
+    The billing type of the Express Route Port. Possible values are MeteredData and UnlimitedData. Defaults to MeteredData.
     """
     encapsulation: str | None = None
     """
@@ -490,6 +490,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

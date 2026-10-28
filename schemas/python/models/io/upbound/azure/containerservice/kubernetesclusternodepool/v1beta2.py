@@ -15,10 +15,11 @@ class KubeletConfig(BaseModel):
     """
     Specifies the allow list of unsafe sysctls command or patterns (ending in *).
     """
+    containerLogMaxFiles: float | None = None
+    """
+    Specifies the maximum number of container log files that can be present for a container. Must be at least 2.
+    """
     containerLogMaxLine: float | None = None
-    """
-    Specifies the maximum number of container log files that can be present for a container. must be at least 2.
-    """
     containerLogMaxSizeMb: float | None = None
     """
     Specifies the maximum size (e.g. 10MB) of container log file before it is rotated.
@@ -461,7 +462,7 @@ class ForProvider(BaseModel):
     """
     osSku: str | None = None
     """
-    Specifies the OS SKU used by the agent pool. Possible values are AzureLinux, AzureLinux3, Ubuntu, Ubuntu2204, Windows2019 and Windows2022. If not specified, the default is Ubuntu if OSType=Linux or Windows2019 if OSType=Windows. And the default Windows OSSKU will be changed to Windows2022 after Windows2019 is deprecated. Changing this from AzureLinux or Ubuntu to AzureLinux or Ubuntu will not replace the resource, otherwise it forces a new resource to be created.
+    Specifies the OS SKU used by the agent pool. Possible values are AzureLinux, AzureLinux3, Ubuntu, Ubuntu2204, Ubuntu2404, Windows2019 and Windows2022. If not specified, the default is Ubuntu when os_type=Linux or Windows2019 if os_type=Windows (Windows2022 Kubernetes ≥1.33). Changing between AzureLinux and Ubuntu does not replace the resource; any other change forces a new resource to be created.
     """
     osType: str | None = None
     """
@@ -537,7 +538,7 @@ class ForProvider(BaseModel):
     """
     workloadRuntime: str | None = None
     """
-    Used to specify the workload runtime. Allowed values are OCIContainer and WasmWasi.
+    Used to specify the workload runtime. Allowed values are KataVmIsolation, OCIContainer and WasmWasi.
     """
     zones: list[str] | None = None
     """
@@ -644,7 +645,7 @@ class InitProvider(BaseModel):
     """
     osSku: str | None = None
     """
-    Specifies the OS SKU used by the agent pool. Possible values are AzureLinux, AzureLinux3, Ubuntu, Ubuntu2204, Windows2019 and Windows2022. If not specified, the default is Ubuntu if OSType=Linux or Windows2019 if OSType=Windows. And the default Windows OSSKU will be changed to Windows2022 after Windows2019 is deprecated. Changing this from AzureLinux or Ubuntu to AzureLinux or Ubuntu will not replace the resource, otherwise it forces a new resource to be created.
+    Specifies the OS SKU used by the agent pool. Possible values are AzureLinux, AzureLinux3, Ubuntu, Ubuntu2204, Ubuntu2404, Windows2019 and Windows2022. If not specified, the default is Ubuntu when os_type=Linux or Windows2019 if os_type=Windows (Windows2022 Kubernetes ≥1.33). Changing between AzureLinux and Ubuntu does not replace the resource; any other change forces a new resource to be created.
     """
     osType: str | None = None
     """
@@ -720,7 +721,7 @@ class InitProvider(BaseModel):
     """
     workloadRuntime: str | None = None
     """
-    Used to specify the workload runtime. Allowed values are OCIContainer and WasmWasi.
+    Used to specify the workload runtime. Allowed values are KataVmIsolation, OCIContainer and WasmWasi.
     """
     zones: list[str] | None = None
     """
@@ -881,6 +882,10 @@ class AtProvider(BaseModel):
     """
     The initial number of nodes which should exist within this Node Pool. Valid values are between 0 and 1000 (inclusive) for user pools and between 1 and 1000 (inclusive) for system pools and must be a value in the range min_count - max_count.
     """
+    nodeImageVersion: str | None = None
+    """
+    The current node image version running on this Node Pool.
+    """
     nodeLabels: dict[str, str] | None = None
     """
     A map of Kubernetes labels which should be applied to nodes in this Node Pool.
@@ -915,7 +920,7 @@ class AtProvider(BaseModel):
     """
     osSku: str | None = None
     """
-    Specifies the OS SKU used by the agent pool. Possible values are AzureLinux, AzureLinux3, Ubuntu, Ubuntu2204, Windows2019 and Windows2022. If not specified, the default is Ubuntu if OSType=Linux or Windows2019 if OSType=Windows. And the default Windows OSSKU will be changed to Windows2022 after Windows2019 is deprecated. Changing this from AzureLinux or Ubuntu to AzureLinux or Ubuntu will not replace the resource, otherwise it forces a new resource to be created.
+    Specifies the OS SKU used by the agent pool. Possible values are AzureLinux, AzureLinux3, Ubuntu, Ubuntu2204, Ubuntu2404, Windows2019 and Windows2022. If not specified, the default is Ubuntu when os_type=Linux or Windows2019 if os_type=Windows (Windows2022 Kubernetes ≥1.33). Changing between AzureLinux and Ubuntu does not replace the resource; any other change forces a new resource to be created.
     """
     osType: str | None = None
     """
@@ -975,7 +980,7 @@ class AtProvider(BaseModel):
     """
     workloadRuntime: str | None = None
     """
-    Used to specify the workload runtime. Allowed values are OCIContainer and WasmWasi.
+    Used to specify the workload runtime. Allowed values are KataVmIsolation, OCIContainer and WasmWasi.
     """
     zones: list[str] | None = None
     """
@@ -1020,6 +1025,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

@@ -89,7 +89,7 @@ class BackendItem(BaseModel):
     See the Backend Services Overview
     for an explanation of load balancing modes.
     Default value is UTILIZATION.
-    Possible values are: UTILIZATION, RATE, CONNECTION, CUSTOM_METRICS.
+    Possible values are: UTILIZATION, RATE, CONNECTION, CUSTOM_METRICS, IN_FLIGHT.
     """
     capacityScaler: float | None = None
     """
@@ -198,7 +198,7 @@ class BackendItem(BaseModel):
 class BypassCacheOnRequestHeader(BaseModel):
     headerName: str | None = None
     """
-    The header field name to match on when bypassing cache. Values are case-insensitive.
+    The header name to match on for logging.
     """
 
 
@@ -465,6 +465,14 @@ class HealthChecksSelector(BaseModel):
     """
 
 
+class Oauth2ClientIdSecretRef(BaseModel):
+    key: str
+    name: str
+    """
+    Name of the secret.
+    """
+
+
 class Oauth2ClientSecretSecretRef(BaseModel):
     key: str
     name: str
@@ -478,14 +486,23 @@ class Iap(BaseModel):
     """
     Whether the serving infrastructure will authenticate and authorize all incoming requests.
     """
-    oauth2ClientId: str | None = None
+    oauth2ClientIdSecretRef: Oauth2ClientIdSecretRef | None = None
     """
     OAuth2 Client ID for IAP
+    Note: This property is sensitive and will not be displayed in the plan.
+    """
+    oauth2ClientIdWoVersion: str | None = None
+    """
+    Triggers update of oauth2_client_id_wo write-only. Increment this value when an update to oauth2_client_id_wo is needed. For more info see updating write-only arguments
     """
     oauth2ClientSecretSecretRef: Oauth2ClientSecretSecretRef | None = None
     """
     OAuth2 Client Secret for IAP
     Note: This property is sensitive and will not be displayed in the plan.
+    """
+    oauth2ClientSecretWoVersion: str | None = None
+    """
+    Triggers update of oauth2_client_secret_wo write-only. Increment this value when an update to oauth2_client_secret_wo is needed. For more info see updating write-only arguments
     """
 
 
@@ -522,6 +539,20 @@ class LocalityLbPolicy(BaseModel):
     """
 
 
+class RequestHeader(BaseModel):
+    headerName: str | None = None
+    """
+    The header name to match on for logging.
+    """
+
+
+class ResponseHeader(BaseModel):
+    headerName: str | None = None
+    """
+    The header name to match on for logging.
+    """
+
+
 class LogConfig(BaseModel):
     enable: bool | None = None
     """
@@ -539,6 +570,16 @@ class LogConfig(BaseModel):
     Specifies the optional logging mode for the load balancer traffic.
     Supported values: INCLUDE_ALL_OPTIONAL, EXCLUDE_ALL_OPTIONAL, CUSTOM.
     Possible values are: INCLUDE_ALL_OPTIONAL, EXCLUDE_ALL_OPTIONAL, CUSTOM.
+    """
+    requestHeaders: list[RequestHeader] | None = None
+    """
+    This field can only be specified if logging is enabled for this backend service and if the BackendService protocol is one of HTTP, HTTPS, HTTP2 and GRPC. Contains a list of request headers to be logged.
+    Structure is documented below.
+    """
+    responseHeaders: list[ResponseHeader] | None = None
+    """
+    This field can only be specified if logging is enabled for this backend service and if the BackendService protocol is one of HTTP, HTTPS, HTTP2 and GRPC. Contains a list of response headers to be logged.
+    Structure is documented below.
     """
     sampleRate: float | None = None
     """
@@ -664,6 +705,15 @@ class OutlierDetection(BaseModel):
     success rate: mean - (stdev * success_rate_stdev_factor). This factor is divided
     by a thousand to get a double. That is, if the desired factor is 1.9, the
     runtime value should be 1900. Defaults to 1900.
+    """
+
+
+class Params(BaseModel):
+    resourceManagerTags: dict[str, str] | None = None
+    """
+    Resource manager tags to be bound to the backend service. Tag keys and values have the
+    same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
+    and values are in the format tagValues/456.
     """
 
 
@@ -941,6 +991,11 @@ class ForProvider(BaseModel):
     Settings controlling eviction of unhealthy hosts from the load balancing pool.
     Applicable backend service types can be a global backend service with the
     loadBalancingScheme set to INTERNAL_SELF_MANAGED or EXTERNAL_MANAGED.
+    Structure is documented below.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
     portName: str | None = None
@@ -1239,6 +1294,11 @@ class InitProvider(BaseModel):
     loadBalancingScheme set to INTERNAL_SELF_MANAGED or EXTERNAL_MANAGED.
     Structure is documented below.
     """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
+    """
     portName: str | None = None
     """
     Name of backend port. The same name should appear in the instance
@@ -1390,7 +1450,7 @@ class BackendItemModel(BaseModel):
     See the Backend Services Overview
     for an explanation of load balancing modes.
     Default value is UTILIZATION.
-    Possible values are: UTILIZATION, RATE, CONNECTION, CUSTOM_METRICS.
+    Possible values are: UTILIZATION, RATE, CONNECTION, CUSTOM_METRICS, IN_FLIGHT.
     """
     capacityScaler: float | None = None
     """
@@ -1513,9 +1573,13 @@ class IapModel(BaseModel):
     """
     Whether the serving infrastructure will authenticate and authorize all incoming requests.
     """
-    oauth2ClientId: str | None = None
+    oauth2ClientIdWoVersion: str | None = None
     """
-    OAuth2 Client ID for IAP
+    Triggers update of oauth2_client_id_wo write-only. Increment this value when an update to oauth2_client_id_wo is needed. For more info see updating write-only arguments
+    """
+    oauth2ClientSecretWoVersion: str | None = None
+    """
+    Triggers update of oauth2_client_secret_wo write-only. Increment this value when an update to oauth2_client_secret_wo is needed. For more info see updating write-only arguments
     """
 
 
@@ -1600,6 +1664,11 @@ class AtProvider(BaseModel):
     """
     Headers that the HTTP/S load balancer should add to proxied
     responses.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -1717,6 +1786,11 @@ class AtProvider(BaseModel):
     loadBalancingScheme set to INTERNAL_SELF_MANAGED or EXTERNAL_MANAGED.
     Structure is documented below.
     """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
+    """
     portName: str | None = None
     """
     Name of backend port. The same name should appear in the instance
@@ -1820,6 +1894,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

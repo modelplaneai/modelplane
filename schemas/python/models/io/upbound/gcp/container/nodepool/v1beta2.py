@@ -84,6 +84,20 @@ class ClusterSelector(BaseModel):
     """
 
 
+class ExclusionUntilEndOfSupportItem(BaseModel):
+    enabled: bool | None = None
+    """
+    When true, the node pool will not be automatically upgraded by GKE until the node pool version's end of support date.
+    """
+
+
+class MaintenancePolicyItem(BaseModel):
+    exclusionUntilEndOfSupport: list[ExclusionUntilEndOfSupportItem] | None = None
+    """
+    When enabled, the node pool will not be automatically upgraded by GKE until the node pool version's end of support date. Structure is documented below.
+    """
+
+
 class Management(BaseModel):
     autoRepair: bool | None = None
     """
@@ -140,6 +154,10 @@ class PodCidrOverprovisionConfig(BaseModel):
 
 
 class NetworkConfig(BaseModel):
+    acceleratorNetworkProfile: str | None = None
+    """
+    Specifies the accelerator network profile for nodes in this node pool. Setting to "auto" enables GKE to automatically configure high-performance networking settings for nodes with accelerators (like GPUs). GKE manages the underlying resources (like VPCs and subnets) for this configuration.
+    """
     additionalNodeNetworkConfigs: list[AdditionalNodeNetworkConfig] | None = None
     """
     We specify the additional node networks for this node pool using this list. Each node network corresponds to an additional interface.
@@ -174,12 +192,23 @@ class NetworkConfig(BaseModel):
     """
     The ID of the secondary range for pod IPs. If create_pod_range is true, this ID is used for the new range. If create_pod_range is false, uses an existing secondary range with this ID.
     """
+    subnetwork: str | None = None
+    """
+    The subnetwork path for the node pool. Format: projects/{project}/regions/{region}/subnetworks/{subnetwork}. If the cluster is associated with multiple subnetworks, the subnetwork for the node pool is picked based on the IP utilization during node pool creation and is immutable
+    """
 
 
 class AdvancedMachineFeatures(BaseModel):
     enableNestedVirtualization: bool | None = None
     performanceMonitoringUnit: str | None = None
     threadsPerCore: float | None = None
+
+
+class BootDisk(BaseModel):
+    diskType: str | None = None
+    provisionedIops: float | None = None
+    provisionedThroughput: float | None = None
+    sizeGb: float | None = None
 
 
 class ConfidentialNodes(BaseModel):
@@ -209,8 +238,60 @@ class PrivateRegistryAccessConfig(BaseModel):
     """
 
 
+class CaItem(BaseModel):
+    gcpSecretManagerSecretUri: str | None = None
+
+
+class Cert(BaseModel):
+    gcpSecretManagerSecretUri: str | None = None
+
+
+class Key(BaseModel):
+    gcpSecretManagerSecretUri: str | None = None
+
+
+class ClientItem(BaseModel):
+    cert: Cert | None = None
+    key: Key | None = None
+    """
+    name" as the key and specify the name of your reservation as its value.
+    """
+
+
+class HeaderItem(BaseModel):
+    key: str | None = None
+    """
+    name" as the key and specify the name of your reservation as its value.
+    """
+    value: list[str] | None = None
+
+
+class Host(BaseModel):
+    ca: list[CaItem] | None = None
+    capabilities: list[str] | None = None
+    client: list[ClientItem] | None = None
+    dialTimeout: str | None = None
+    header: list[HeaderItem] | None = None
+    host: str | None = None
+    overridePath: bool | None = None
+
+
+class RegistryHost(BaseModel):
+    hosts: list[Host] | None = None
+    server: str | None = None
+
+
+class WritableCgroups(BaseModel):
+    enabled: bool | None = None
+    """
+    Makes nodes obtainable through the ProvisioningRequest API exclusively.
+    """
+
+
 class ContainerdConfig(BaseModel):
     privateRegistryAccessConfig: PrivateRegistryAccessConfig | None = None
+    registryHosts: list[RegistryHost] | None = None
+    writableCgroups: WritableCgroups | None = None
 
 
 class EphemeralStorageLocalSsdConfig(BaseModel):
@@ -270,6 +351,37 @@ class HostMaintenancePolicy(BaseModel):
     maintenanceInterval: str | None = None
 
 
+class CrashLoopBackOff(BaseModel):
+    maxContainerRestartPeriod: str | None = None
+
+
+class EvictionMinimumReclaim(BaseModel):
+    imagefsAvailable: str | None = None
+    imagefsInodesFree: str | None = None
+    memoryAvailable: str | None = None
+    nodefsAvailable: str | None = None
+    nodefsInodesFree: str | None = None
+    pidAvailable: str | None = None
+
+
+class EvictionSoft(BaseModel):
+    imagefsAvailable: str | None = None
+    imagefsInodesFree: str | None = None
+    memoryAvailable: str | None = None
+    nodefsAvailable: str | None = None
+    nodefsInodesFree: str | None = None
+    pidAvailable: str | None = None
+
+
+class EvictionSoftGracePeriod(BaseModel):
+    imagefsAvailable: str | None = None
+    imagefsInodesFree: str | None = None
+    memoryAvailable: str | None = None
+    nodefsAvailable: str | None = None
+    nodefsInodesFree: str | None = None
+    pidAvailable: str | None = None
+
+
 class MemoryManager(BaseModel):
     policy: str | None = None
 
@@ -286,14 +398,43 @@ class KubeletConfig(BaseModel):
     cpuCfsQuota: bool | None = None
     cpuCfsQuotaPeriod: str | None = None
     cpuManagerPolicy: str | None = None
+    crashLoopBackOff: CrashLoopBackOff | None = None
+    evictionMaxPodGracePeriodSeconds: float | None = None
+    evictionMinimumReclaim: EvictionMinimumReclaim | None = None
+    evictionSoft: EvictionSoft | None = None
+    evictionSoftGracePeriod: EvictionSoftGracePeriod | None = None
     imageGcHighThresholdPercent: float | None = None
     imageGcLowThresholdPercent: float | None = None
     imageMaximumGcAge: str | None = None
     imageMinimumGcAge: str | None = None
     insecureKubeletReadonlyPortEnabled: str | None = None
+    maxParallelImagePulls: float | None = None
     memoryManager: MemoryManager | None = None
     podPidsLimit: float | None = None
+    shutdownGracePeriodCriticalPodsSeconds: float | None = None
+    """
+    The grace period (in seconds) to use during a graceful node shutdown for critical pods. This value must be less than or equal to shutdown_grace_period_seconds. This field can only be configured if the node pool uses Spot VMs or Preemptible VMs.
+    """
+    shutdownGracePeriodSeconds: float | None = None
+    """
+    The grace period (in seconds) to use during a graceful node shutdown. This is the time allocated for all pods (critical and non-critical) to terminate. The value must be between 10 and 10000. This field can only be configured if the node pool uses Spot VMs or Preemptible VMs.
+    """
+    singleProcessOomKill: bool | None = None
     topologyManager: TopologyManager | None = None
+
+
+class AccurateTimeConfig(BaseModel):
+    enablePtpKvmTimeSync: bool | None = None
+
+
+class InitScript(BaseModel):
+    gcpSecretManagerSecretUri: str | None = None
+    gcsGeneration: float | None = None
+    gcsUri: str | None = None
+
+
+class CustomNodeInit(BaseModel):
+    initScript: InitScript | None = None
 
 
 class HugepagesConfig(BaseModel):
@@ -301,14 +442,65 @@ class HugepagesConfig(BaseModel):
     hugepageSize2M: float | None = None
 
 
+class NodeKernelModuleLoading(BaseModel):
+    policy: str | None = None
+
+
+class BootDiskProfile(BaseModel):
+    swapSizeGib: float | None = None
+    swapSizePercent: float | None = None
+
+
+class DedicatedLocalSsdProfile(BaseModel):
+    diskCount: float | None = None
+
+
+class EncryptionConfig(BaseModel):
+    disabled: bool | None = None
+    """
+    Whether pod cidr overprovision is disabled.
+    """
+
+
+class EphemeralLocalSsdProfile(BaseModel):
+    swapSizeGib: float | None = None
+    swapSizePercent: float | None = None
+
+
+class SwapConfig(BaseModel):
+    bootDiskProfile: BootDiskProfile | None = None
+    dedicatedLocalSsdProfile: DedicatedLocalSsdProfile | None = None
+    enabled: bool | None = None
+    """
+    Makes nodes obtainable through the ProvisioningRequest API exclusively.
+    """
+    encryptionConfig: EncryptionConfig | None = None
+    ephemeralLocalSsdProfile: EphemeralLocalSsdProfile | None = None
+
+
 class LinuxNodeConfig(BaseModel):
+    accurateTimeConfig: AccurateTimeConfig | None = None
     cgroupMode: str | None = None
+    customNodeInit: CustomNodeInit | None = None
     hugepagesConfig: HugepagesConfig | None = None
+    nodeKernelModuleLoading: NodeKernelModuleLoading | None = None
+    swapConfig: SwapConfig | None = None
     sysctls: dict[str, str] | None = None
+    transparentHugepageDefrag: str | None = None
+    transparentHugepageEnabled: str | None = None
 
 
 class LocalNvmeSsdBlockConfig(BaseModel):
     localSsdCount: float | None = None
+
+
+class NodeImageConfigItem(BaseModel):
+    image: str | None = None
+    imageProject: str | None = None
+    """
+    The ID of the project in which to create the node pool. If blank,
+    the provider-configured project will be used.
+    """
 
 
 class ReservationAffinity(BaseModel):
@@ -324,6 +516,15 @@ class ReservationAffinity(BaseModel):
     values: list[str] | None = None
     """
     name"
+    """
+
+
+class SandboxConfig(BaseModel):
+    type: str | None = None
+    """
+    The type of the policy. Supports a single value: COMPACT.
+    Specifying COMPACT placement policy type places node pool's nodes in a closer
+    physical proximity in order to reduce network latency between nodes.
     """
 
 
@@ -377,6 +578,7 @@ class NodeAffinityItem(BaseModel):
 
 
 class SoleTenantConfig(BaseModel):
+    minNodeCpus: float | None = None
     nodeAffinity: list[NodeAffinityItem] | None = None
 
 
@@ -387,6 +589,13 @@ class TaintItem(BaseModel):
     name" as the key and specify the name of your reservation as its value.
     """
     value: str | None = None
+
+
+class TaintConfig(BaseModel):
+    architectureTaintBehavior: str | None = None
+    """
+    Specifies the behavior for applying architecture taints to node pool nodes. Valid values are ARCHITECTURE_TAINT_BEHAVIOR_UNSPECIFIED, NONE, or ARM.
+    """
 
 
 class WindowsNodeConfig(BaseModel):
@@ -404,6 +613,7 @@ class WorkloadMetadataConfig(BaseModel):
 
 class NodeConfig(BaseModel):
     advancedMachineFeatures: AdvancedMachineFeatures | None = None
+    bootDisk: BootDisk | None = None
     bootDiskKmsKey: str | None = None
     confidentialNodes: ConfidentialNodes | None = None
     containerdConfig: ContainerdConfig | None = None
@@ -414,35 +624,39 @@ class NodeConfig(BaseModel):
     fastSocket: FastSocket | None = None
     flexStart: bool | None = None
     gcfsConfig: GcfsConfig | None = None
+    gpudirectStrategy: str | None = None
     guestAccelerator: list[GuestAcceleratorItem] | None = None
     gvnic: Gvnic | None = None
     hostMaintenancePolicy: HostMaintenancePolicy | None = None
+    """
+    The maintenance policy of the pool. Structure is documented below.
+    """
     imageType: str | None = None
     kubeletConfig: KubeletConfig | None = None
+    """
+    Node kubelet configs. Structure is documented below.
+    """
     labels: dict[str, str] | None = None
     linuxNodeConfig: LinuxNodeConfig | None = None
     """
-    Parameters used in creating the node pool. See
-    google_container_cluster for schema.
+    Parameters used in creating the node pool. Structure is documented below. See google_container_cluster for exact schema.
     """
     localNvmeSsdBlockConfig: LocalNvmeSsdBlockConfig | None = None
     localSsdCount: float | None = None
     localSsdEncryptionMode: str | None = None
-    """
-    Possible Local SSD encryption modes:
-    Accepted values are:
-    """
     loggingVariant: str | None = None
     machineType: str | None = None
     maxRunDuration: str | None = None
     metadata: dict[str, str] | None = None
     minCpuPlatform: str | None = None
     nodeGroup: str | None = None
+    nodeImageConfig: list[NodeImageConfigItem] | None = None
     oauthScopes: list[str] | None = None
     preemptible: bool | None = None
     reservationAffinity: ReservationAffinity | None = None
     resourceLabels: dict[str, str] | None = None
     resourceManagerTags: dict[str, str] | None = None
+    sandboxConfig: SandboxConfig | None = None
     secondaryBootDisks: list[SecondaryBootDisk] | None = None
     serviceAccount: str | None = None
     serviceAccountRef: ServiceAccountRef | None = None
@@ -459,12 +673,30 @@ class NodeConfig(BaseModel):
     storagePools: list[str] | None = None
     tags: list[str] | None = None
     taint: list[TaintItem] | None = None
+    taintConfig: TaintConfig | None = None
+    """
+    Taint configuration for the node pool. Structure is documented below.
+    """
     windowsNodeConfig: WindowsNodeConfig | None = None
     """
-    Parameters used in creating the node pool. See
-    google_container_cluster for schema.
+    Parameters used in creating the node pool. Structure is documented below. See google_container_cluster for exact schema.
     """
     workloadMetadataConfig: WorkloadMetadataConfig | None = None
+
+
+class NodeDrainConfigItem(BaseModel):
+    graceTerminationDuration: str | None = None
+    """
+    The duration of the grace termination period for node drain.
+    """
+    pdbTimeoutDuration: str | None = None
+    """
+    The duration of the PDB timeout period for node drain.
+    """
+    respectPdbDuringNodePoolDeletion: bool | None = None
+    """
+    Whether to respect PodDisruptionBudget policy during node pool deletion.
+    """
 
 
 class PlacementPolicy(BaseModel):
@@ -562,6 +794,10 @@ class ForProvider(BaseModel):
     """
     Selector for a Cluster in container to populate cluster.
     """
+    ignoreNodeCountChanges: bool | None = None
+    """
+    Whether to ignore external changes (drift) to the node count (e.g. from GKE autoscaling). Setting this to true skips querying Compute Engine Instance Group Managers (IGMs) to determine the current node count on read, which can save API quota and speed up plans on large clusters.
+    """
     initialNodeCount: float | None = None
     """
     The initial number of nodes for the pool. In
@@ -573,6 +809,10 @@ class ForProvider(BaseModel):
     location: str | None = None
     """
     The location (region or zone) of the cluster.
+    """
+    maintenancePolicy: list[MaintenancePolicyItem] | None = None
+    """
+    The maintenance policy of the pool. Structure is documented below.
     """
     management: Management | None = None
     """
@@ -595,13 +835,16 @@ class ForProvider(BaseModel):
     """
     nodeConfig: NodeConfig | None = None
     """
-    Parameters used in creating the node pool. See
-    google_container_cluster for schema.
+    Parameters used in creating the node pool. Structure is documented below. See google_container_cluster for exact schema.
     """
     nodeCount: float | None = None
     """
     The number of nodes per instance group. This field can be used to
     update the number of nodes per instance group but should not be used alongside autoscaling.
+    """
+    nodeDrainConfig: list[NodeDrainConfigItem] | None = None
+    """
+    The node drain configuration of the pool. Structure is documented below.
     """
     nodeLocations: list[str] | None = None
     """
@@ -644,6 +887,10 @@ class InitProvider(BaseModel):
     Configuration required by cluster autoscaler to adjust
     the size of the node pool to the current cluster usage. Structure is documented below.
     """
+    ignoreNodeCountChanges: bool | None = None
+    """
+    Whether to ignore external changes (drift) to the node count (e.g. from GKE autoscaling). Setting this to true skips querying Compute Engine Instance Group Managers (IGMs) to determine the current node count on read, which can save API quota and speed up plans on large clusters.
+    """
     initialNodeCount: float | None = None
     """
     The initial number of nodes for the pool. In
@@ -651,6 +898,10 @@ class InitProvider(BaseModel):
     this will force recreation of the resource.  If you don't
     need this value, don't set it.  If you do need it, you can use a lifecycle block to
     ignore subsequent changes to this field.
+    """
+    maintenancePolicy: list[MaintenancePolicyItem] | None = None
+    """
+    The maintenance policy of the pool. Structure is documented below.
     """
     management: Management | None = None
     """
@@ -673,13 +924,16 @@ class InitProvider(BaseModel):
     """
     nodeConfig: NodeConfig | None = None
     """
-    Parameters used in creating the node pool. See
-    google_container_cluster for schema.
+    Parameters used in creating the node pool. Structure is documented below. See google_container_cluster for exact schema.
     """
     nodeCount: float | None = None
     """
     The number of nodes per instance group. This field can be used to
     update the number of nodes per instance group but should not be used alongside autoscaling.
+    """
+    nodeDrainConfig: list[NodeDrainConfigItem] | None = None
+    """
+    The node drain configuration of the pool. Structure is documented below.
     """
     nodeLocations: list[str] | None = None
     """
@@ -796,44 +1050,18 @@ class Spec(BaseModel):
     """
 
 
-class NetworkConfigModel(BaseModel):
-    additionalNodeNetworkConfigs: list[AdditionalNodeNetworkConfig] | None = None
+class ExclusionUntilEndOfSupportItemModel(BaseModel):
+    enabled: bool | None = None
     """
-    We specify the additional node networks for this node pool using this list. Each node network corresponds to an additional interface.
-    Structure is documented below
+    When true, the node pool will not be automatically upgraded by GKE until the node pool version's end of support date.
     """
-    additionalPodNetworkConfigs: list[AdditionalPodNetworkConfig] | None = None
+    endTime: str | None = None
     """
-    We specify the additional pod networks for this node pool using this list. Each pod network corresponds to an additional alias IP range for the node.
-    Structure is documented below
+    The time when the maintenance policy is no longer effective, i.e., the node pool version's end of support date.
     """
-    createPodRange: bool | None = None
+    startTime: str | None = None
     """
-    Whether to create a new range for pod IPs in this node pool. Defaults are provided for pod_range and pod_ipv4_cidr_block if they are not specified.
-    """
-    enablePrivateNodes: bool | None = None
-    """
-    Whether nodes have internal IP addresses only.
-    """
-    networkPerformanceConfig: NetworkPerformanceConfig | None = None
-    """
-    Network bandwidth tier configuration. Structure is documented below.
-    """
-    podCidrOverprovisionConfig: PodCidrOverprovisionConfig | None = None
-    """
-    Configuration for node-pool level pod cidr overprovision. If not set, the cluster level setting will be inherited. Structure is documented below.
-    """
-    podIpv4CidrBlock: str | None = None
-    """
-    The IP address range for pod IPs in this node pool. Only applicable if createPodRange is true. Set to blank to have a range chosen with the default size. Set to /netmask (e.g. /14) to have a range chosen with a specific netmask. Set to a CIDR notation (e.g. 10.96.0.0/14) to pick a specific range to use.
-    """
-    podRange: str | None = None
-    """
-    The ID of the secondary range for pod IPs. If create_pod_range is true, this ID is used for the new range. If create_pod_range is false, uses an existing secondary range with this ID.
-    """
-    subnetwork: str | None = None
-    """
-    The subnetwork path for the node pool. Format: projects/{project}/regions/{region}/subnetworks/{subnetwork}. If the cluster is associated with multiple subnetworks, the subnetwork for the node pool is picked based on the IP utilization during node pool creation and is immutable
+    The time when the maintenance policy is first created.
     """
 
 
@@ -848,6 +1076,7 @@ class EffectiveTaint(BaseModel):
 
 class NodeConfigModel(BaseModel):
     advancedMachineFeatures: AdvancedMachineFeatures | None = None
+    bootDisk: BootDisk | None = None
     bootDiskKmsKey: str | None = None
     confidentialNodes: ConfidentialNodes | None = None
     containerdConfig: ContainerdConfig | None = None
@@ -859,35 +1088,39 @@ class NodeConfigModel(BaseModel):
     fastSocket: FastSocket | None = None
     flexStart: bool | None = None
     gcfsConfig: GcfsConfig | None = None
+    gpudirectStrategy: str | None = None
     guestAccelerator: list[GuestAcceleratorItem] | None = None
     gvnic: Gvnic | None = None
     hostMaintenancePolicy: HostMaintenancePolicy | None = None
+    """
+    The maintenance policy of the pool. Structure is documented below.
+    """
     imageType: str | None = None
     kubeletConfig: KubeletConfig | None = None
+    """
+    Node kubelet configs. Structure is documented below.
+    """
     labels: dict[str, str] | None = None
     linuxNodeConfig: LinuxNodeConfig | None = None
     """
-    Parameters used in creating the node pool. See
-    google_container_cluster for schema.
+    Parameters used in creating the node pool. Structure is documented below. See google_container_cluster for exact schema.
     """
     localNvmeSsdBlockConfig: LocalNvmeSsdBlockConfig | None = None
     localSsdCount: float | None = None
     localSsdEncryptionMode: str | None = None
-    """
-    Possible Local SSD encryption modes:
-    Accepted values are:
-    """
     loggingVariant: str | None = None
     machineType: str | None = None
     maxRunDuration: str | None = None
     metadata: dict[str, str] | None = None
     minCpuPlatform: str | None = None
     nodeGroup: str | None = None
+    nodeImageConfig: list[NodeImageConfigItem] | None = None
     oauthScopes: list[str] | None = None
     preemptible: bool | None = None
     reservationAffinity: ReservationAffinity | None = None
     resourceLabels: dict[str, str] | None = None
     resourceManagerTags: dict[str, str] | None = None
+    sandboxConfig: SandboxConfig | None = None
     secondaryBootDisks: list[SecondaryBootDisk] | None = None
     serviceAccount: str | None = None
     shieldedInstanceConfig: ShieldedInstanceConfig | None = None
@@ -896,10 +1129,13 @@ class NodeConfigModel(BaseModel):
     storagePools: list[str] | None = None
     tags: list[str] | None = None
     taint: list[TaintItem] | None = None
+    taintConfig: TaintConfig | None = None
+    """
+    Taint configuration for the node pool. Structure is documented below.
+    """
     windowsNodeConfig: WindowsNodeConfig | None = None
     """
-    Parameters used in creating the node pool. See
-    google_container_cluster for schema.
+    Parameters used in creating the node pool. Structure is documented below. See google_container_cluster for exact schema.
     """
     workloadMetadataConfig: WorkloadMetadataConfig | None = None
 
@@ -914,9 +1150,18 @@ class AtProvider(BaseModel):
     """
     The cluster to create the node pool for. Cluster must be present in location provided for clusters. May be specified in the format projects/{{project}}/locations/{{location}}/clusters/{{cluster}} or as just the name of the cluster.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to "DELETE".
+    When set to "DELETE", deleting the resource is allowed.
+    """
     id: str | None = None
     """
     an identifier for the resource with format {{project}}/{{location}}/{{cluster}}/{{name}}
+    """
+    ignoreNodeCountChanges: bool | None = None
+    """
+    Whether to ignore external changes (drift) to the node count (e.g. from GKE autoscaling). Setting this to true skips querying Compute Engine Instance Group Managers (IGMs) to determine the current node count on read, which can save API quota and speed up plans on large clusters.
     """
     initialNodeCount: float | None = None
     """
@@ -933,6 +1178,10 @@ class AtProvider(BaseModel):
     location: str | None = None
     """
     The location (region or zone) of the cluster.
+    """
+    maintenancePolicy: list[MaintenancePolicyItem] | None = None
+    """
+    The maintenance policy of the pool. Structure is documented below.
     """
     managedInstanceGroupUrls: list[str] | None = None
     """
@@ -951,7 +1200,7 @@ class AtProvider(BaseModel):
     See the official documentation
     for more information.
     """
-    networkConfig: NetworkConfigModel | None = None
+    networkConfig: NetworkConfig | None = None
     """
     The network configuration of the pool. Such as
     configuration for Adding Pod IP address ranges) to the node pool. Or enabling private nodes. Structure is
@@ -959,13 +1208,16 @@ class AtProvider(BaseModel):
     """
     nodeConfig: NodeConfigModel | None = None
     """
-    Parameters used in creating the node pool. See
-    google_container_cluster for schema.
+    Parameters used in creating the node pool. Structure is documented below. See google_container_cluster for exact schema.
     """
     nodeCount: float | None = None
     """
     The number of nodes per instance group. This field can be used to
     update the number of nodes per instance group but should not be used alongside autoscaling.
+    """
+    nodeDrainConfig: list[NodeDrainConfigItem] | None = None
+    """
+    The node drain configuration of the pool. Structure is documented below.
     """
     nodeLocations: list[str] | None = None
     """
@@ -1040,6 +1292,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

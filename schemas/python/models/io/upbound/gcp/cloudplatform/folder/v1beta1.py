@@ -193,10 +193,19 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
+    configuredCapabilities: list[str] | None = None
+    """
+    Optional capabilities configured for this folder.
+    """
     createTime: str | None = None
     """
     Timestamp when the Folder was created. Assigned by the server.
     A timestamp in RFC3339 UTC "Zulu" format, accurate to nanoseconds. Example: "2014-10-02T15:01:23.045123456Z".
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to "DELETE".
+    When set to "DELETE", deleting the resource is allowed.
     """
     deletionProtection: bool | None = None
     """
@@ -215,6 +224,10 @@ class AtProvider(BaseModel):
     lifecycleState: str | None = None
     """
     The lifecycle state of the folder such as ACTIVE or DELETE_REQUESTED.
+    """
+    managementProject: str | None = None
+    """
+    Management Project associated with this folder (if capability is enabled).
     """
     name: str | None = None
     """
@@ -268,6 +281,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

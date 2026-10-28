@@ -40,11 +40,11 @@ class AdvancedMachineFeatures(BaseModel):
 class ConfidentialInstanceConfig(BaseModel):
     confidentialInstanceType: str | None = None
     """
-    Defines the confidential computing technology the instance uses. SEV is an AMD feature. TDX is an Intel feature. One of the following values is required: SEV, SEV_SNP, TDX. on_host_maintenance can be set to MIGRATE if confidential_instance_type is set to SEV and min_cpu_platform is set to "AMD Milan". Otherwise, on_host_maintenance has to be set to TERMINATE or this will fail to create the VM. If SEV_SNP, currently min_cpu_platform has to be set to "AMD Milan" or this will fail to create the VM.
+    Defines the confidential computing technology the instance uses. SEV is an AMD feature. TDX is an Intel feature. One of the following values is required: SEV, SEV_SNP, TDX. on_host_maintenance can be set to MIGRATE if confidential_instance_type is set to SEV and min_cpu_platform is set to "AMD Milan" or "AMD Genoa". Otherwise, on_host_maintenance has to be set to TERMINATE or this will fail to create the VM. If SEV_SNP, currently min_cpu_platform has to be set to "AMD Milan" or this will fail to create the VM.
     """
     enableConfidentialCompute: bool | None = None
     """
-    Defines whether the instance should have confidential compute enabled with AMD SEV. If enabled, on_host_maintenance can be set to MIGRATE if min_cpu_platform is set to "AMD Milan". Otherwise, on_host_maintenance has to be set to TERMINATE or this will fail to create the VM.
+    Defines whether the instance should have confidential compute enabled with AMD SEV. If enabled, on_host_maintenance can be set to MIGRATE if min_cpu_platform is set to "AMD Milan" or "AMD Genoa". Otherwise, on_host_maintenance has to be set to TERMINATE or this will fail to create the VM.
     """
 
 
@@ -286,12 +286,12 @@ class DiskItem(BaseModel):
     """
     provisionedIops: float | None = None
     """
-    Indicates how many IOPS to provision for the disk. This
-    sets the number of I/O operations per second that the disk can handle.
-    Values must be between 10,000 and 120,000. For more details, see the
-    Extreme persistent disk documentation.
+    Indicates how many IOPS to provision for the disk. This sets the number of I/O operations per second that the disk can handle. For more details, see the Extreme persistent disk documentation or the Hyperdisk documentation depending on the selected disk_type.
     """
     provisionedThroughput: float | None = None
+    """
+    Indicates how much throughput to provision for the disk, in MB/s. This sets the amount of data that can be read or written from the disk per second. Values must greater than or equal to 1. For more details, see the Hyperdisk documentation.
+    """
     resourceManagerTags: dict[str, str] | None = None
     """
     A set of key/value resource manager tag pairs to bind to this disk. Keys must be in the format tagKeys/{tag_key_id}, and values are in the format tagValues/456.
@@ -348,6 +348,11 @@ class DiskItem(BaseModel):
     The customer-supplied encryption
     key of the source snapshot. Structure
     documented below.
+    """
+    storagePool: str | None = None
+    """
+    The URL of the storage pool in which the new disk is created.
+    For example:
     """
     type: str | None = None
     """
@@ -472,6 +477,10 @@ class NetworkInterfaceItem(BaseModel):
     array of alias IP ranges for this network interface. Can only be specified for network
     interfaces on subnet-mode networks. Structure documented below.
     """
+    igmpQuery: str | None = None
+    """
+    Indicates whether igmp query is enabled on the network interface or not. If enabled, also indicates the version of IGMP supported.
+    """
     internalIpv6PrefixLength: float | None = None
     ipv6AccessConfig: list[Ipv6AccessConfigItem] | None = None
     """
@@ -485,6 +494,10 @@ class NetworkInterfaceItem(BaseModel):
     The name or self_link of the network to attach this interface to.
     Use network attribute for Legacy or Auto subnetted networks and
     subnetwork for custom subnetted networks.
+    """
+    networkAttachment: str | None = None
+    """
+    The URL of the network attachment that this interface should connect to in the following format: projects/{projectNumber}/regions/{region_name}/networkAttachments/{network_attachment_name}.
     """
     networkIp: str | None = None
     """
@@ -501,7 +514,7 @@ class NetworkInterfaceItem(BaseModel):
     """
     nicType: str | None = None
     """
-    The type of vNIC to be used on this interface. Possible values: GVNIC, VIRTIO_NET, MRDMA, IRDMA.
+    The type of vNIC to be used on this interface. Possible values: GVNIC, VIRTIO_NET, MRDMA, IRDMA, IDPF.
     """
     queueCount: float | None = None
     """
@@ -529,6 +542,10 @@ class NetworkInterfaceItem(BaseModel):
     subnetworkSelector: SubnetworkSelector | None = None
     """
     Selector for a Subnetwork in compute to populate subnetwork.
+    """
+    vlan: float | None = None
+    """
+    VLAN tag of a dynamic network interface, must be an integer in the range from 2 to 255 inclusively.
     """
 
 
@@ -626,13 +643,17 @@ class Scheduling(BaseModel):
     """
     Specifies the availability domain to place the instance in. The value must be a number between 1 and the number of availability domains specified in the spread placement policy attached to the instance.
     """
+    hostErrorTimeoutSeconds: float | None = None
+    """
+    Specifies the time in seconds for host error detection, the value must be within the range of [90, 330] with the increment of 30, if unset, the default behavior of host error recovery will be used.
+    """
     instanceTerminationAction: str | None = None
     """
     Describe the type of termination action for SPOT VM. Can be STOP or DELETE.  Read more on here
     """
     localSsdRecoveryTimeout: list[LocalSsdRecoveryTimeoutItem] | None = None
     """
-    io/docs/providers/google/guides/provider_versions.html) Specifies the maximum amount of time a Local Ssd Vm should wait while recovery of the Local Ssd state is attempted. Its value should be in between 0 and 168 hours with hour granularity and the default value being 1 hour. Structure is documented below.
+    (../guides/provider_versions.html.markdown) Specifies the maximum amount of time a Local Ssd Vm should wait while recovery of the Local Ssd state is attempted. Its value should be in between 0 and 168 hours with hour granularity and the default value being 1 hour. Structure is documented below.
     """
     maxRunDuration: MaxRunDuration | None = None
     """
@@ -664,10 +685,13 @@ class Scheduling(BaseModel):
     """
     provisioningModel: str | None = None
     """
-    Describe the type of preemptible VM. This field accepts the value STANDARD or SPOT. If the value is STANDARD, there will be no discount. If this   is set to SPOT,
+    Describe the type of provisioning model for the instance. This field accepts the value STANDARD, SPOT, FLEX_START, or RESERVATION_BOUND. If the value is STANDARD, there will be no discount. If this is set to SPOT,
     preemptible should be true and automatic_restart should be
     false. For more info about
-    SPOT, read here
+    SPOT, read here.
+    If this is set to FLEX_START, automatic_restart should be false and instance_termination_action should be set to DELETE. A max_run_duration must also be specified. For more info about
+    FLEX_START, read here.
+    If this is set to RESERVATION_BOUND, the instance is bound to a specific reservation and will only consume capacity from that reservation. A reservation_affinity block with type set to SPECIFIC_RESERVATION should also be configured.
     """
     terminationTime: str | None = None
     """
@@ -736,6 +760,17 @@ class ShieldedInstanceConfig(BaseModel):
     enableVtpm: bool | None = None
     """
     - Use a virtualized trusted platform module, which is a specialized computer chip you can use to encrypt objects like keys and certificates. Defaults to true.
+    """
+
+
+class WorkloadIdentityConfig(BaseModel):
+    identity: str | None = None
+    """
+    Identity SPIFFE id.
+    """
+    identityCertificateEnabled: bool | None = None
+    """
+    Specifies whether identity certificates are enabled.
     """
 
 
@@ -869,6 +904,11 @@ class ForProvider(BaseModel):
     """
     Tags to attach to the instance.
     """
+    workloadIdentityConfig: WorkloadIdentityConfig | None = None
+    """
+    Workload Identity Config. More details about
+    this configuration option are detailed below.
+    """
 
 
 class InitProvider(BaseModel):
@@ -1000,6 +1040,11 @@ class InitProvider(BaseModel):
     tags: list[str] | None = None
     """
     Tags to attach to the instance.
+    """
+    workloadIdentityConfig: WorkloadIdentityConfig | None = None
+    """
+    Workload Identity Config. More details about
+    this configuration option are detailed below.
     """
 
 
@@ -1177,12 +1222,12 @@ class DiskItemModel(BaseModel):
     """
     provisionedIops: float | None = None
     """
-    Indicates how many IOPS to provision for the disk. This
-    sets the number of I/O operations per second that the disk can handle.
-    Values must be between 10,000 and 120,000. For more details, see the
-    Extreme persistent disk documentation.
+    Indicates how many IOPS to provision for the disk. This sets the number of I/O operations per second that the disk can handle. For more details, see the Extreme persistent disk documentation or the Hyperdisk documentation depending on the selected disk_type.
     """
     provisionedThroughput: float | None = None
+    """
+    Indicates how much throughput to provision for the disk, in MB/s. This sets the amount of data that can be read or written from the disk per second. Values must greater than or equal to 1. For more details, see the Hyperdisk documentation.
+    """
     resourceManagerTags: dict[str, str] | None = None
     """
     A set of key/value resource manager tag pairs to bind to this disk. Keys must be in the format tagKeys/{tag_key_id}, and values are in the format tagValues/456.
@@ -1223,6 +1268,11 @@ class DiskItemModel(BaseModel):
     The customer-supplied encryption
     key of the source snapshot. Structure
     documented below.
+    """
+    storagePool: str | None = None
+    """
+    The URL of the storage pool in which the new disk is created.
+    For example:
     """
     type: str | None = None
     """
@@ -1279,6 +1329,10 @@ class NetworkInterfaceItemModel(BaseModel):
     array of alias IP ranges for this network interface. Can only be specified for network
     interfaces on subnet-mode networks. Structure documented below.
     """
+    igmpQuery: str | None = None
+    """
+    Indicates whether igmp query is enabled on the network interface or not. If enabled, also indicates the version of IGMP supported.
+    """
     internalIpv6PrefixLength: float | None = None
     ipv6AccessConfig: list[Ipv6AccessConfigItemModel] | None = None
     """
@@ -1298,6 +1352,10 @@ class NetworkInterfaceItemModel(BaseModel):
     Use network attribute for Legacy or Auto subnetted networks and
     subnetwork for custom subnetted networks.
     """
+    networkAttachment: str | None = None
+    """
+    The URL of the network attachment that this interface should connect to in the following format: projects/{projectNumber}/regions/{region_name}/networkAttachments/{network_attachment_name}.
+    """
     networkIp: str | None = None
     """
     The private IP address to assign to the instance. If
@@ -1305,7 +1363,11 @@ class NetworkInterfaceItemModel(BaseModel):
     """
     nicType: str | None = None
     """
-    The type of vNIC to be used on this interface. Possible values: GVNIC, VIRTIO_NET, MRDMA, IRDMA.
+    The type of vNIC to be used on this interface. Possible values: GVNIC, VIRTIO_NET, MRDMA, IRDMA, IDPF.
+    """
+    parentNicName: str | None = None
+    """
+    Name of the parent network interface of a dynamic network interface.
     """
     queueCount: float | None = None
     """
@@ -1325,6 +1387,10 @@ class NetworkInterfaceItemModel(BaseModel):
     """
     The ID of the project in which the subnetwork belongs.
     If it is not provided, the provider project is used.
+    """
+    vlan: float | None = None
+    """
+    VLAN tag of a dynamic network interface, must be an integer in the range from 2 to 255 inclusively.
     """
 
 
@@ -1506,6 +1572,11 @@ class AtProvider(BaseModel):
     """
     The combination of labels configured directly on the resource and default labels configured on the provider.
     """
+    workloadIdentityConfig: WorkloadIdentityConfig | None = None
+    """
+    Workload Identity Config. More details about
+    this configuration option are detailed below.
+    """
 
 
 class Condition(BaseModel):
@@ -1545,6 +1616,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

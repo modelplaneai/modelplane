@@ -62,7 +62,7 @@ class InitProvider(BaseModel):
     """
     An optional description of this resource.
     """
-    privateKeySecretRef: PrivateKeySecretRef
+    privateKeySecretRef: PrivateKeySecretRef | None = None
     """
     The write-only private key in PEM format.
     Note: This property is sensitive and will not be displayed in the plan.
@@ -145,6 +145,11 @@ class AtProvider(BaseModel):
     """
     Creation timestamp in RFC3339 text format.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this resource.
@@ -156,6 +161,10 @@ class AtProvider(BaseModel):
     id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/global/sslCertificates/{{name}}
+    """
+    privateKeyWoVersion: str | None = None
+    """
+    Triggers update of private_key_wo write-only. Increment this value when an update to private_key_wo is needed. For more info see updating write-only arguments
     """
     project: str | None = None
     """
@@ -205,6 +214,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

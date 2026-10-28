@@ -127,6 +127,10 @@ class ForProvider(BaseModel):
     """
     Which IP version(s) of traffic and routes are allowed to be imported or exported between peer networks. The default value is IPV4_ONLY. Possible values: ["IPV4_ONLY", "IPV4_IPV6"].
     """
+    updateStrategy: str | None = None
+    """
+    The update strategy determines the semantics for updates and deletes to the peering connection configuration. The default value is INDEPENDENT. Possible values: ["INDEPENDENT", "CONSENSUS"]
+    """
 
 
 class InitProvider(BaseModel):
@@ -162,6 +166,10 @@ class InitProvider(BaseModel):
     stackType: str | None = None
     """
     Which IP version(s) of traffic and routes are allowed to be imported or exported between peer networks. The default value is IPV4_ONLY. Possible values: ["IPV4_ONLY", "IPV4_IPV6"].
+    """
+    updateStrategy: str | None = None
+    """
+    The update strategy determines the semantics for updates and deletes to the peering connection configuration. The default value is INDEPENDENT. Possible values: ["INDEPENDENT", "CONSENSUS"]
     """
 
 
@@ -246,6 +254,11 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
+    deletionPolicy: str | None = None
+    """
+    Defaults to "DELETE".
+    When set to "DELETE", deleting the resource is allowed.
+    """
     exportCustomRoutes: bool | None = None
     """
     Whether to export the custom routes to the peer network. Defaults to false.
@@ -288,6 +301,10 @@ class AtProvider(BaseModel):
     """
     Details about the current state of the peering.
     """
+    updateStrategy: str | None = None
+    """
+    The update strategy determines the semantics for updates and deletes to the peering connection configuration. The default value is INDEPENDENT. Possible values: ["INDEPENDENT", "CONSENSUS"]
+    """
 
 
 class Condition(BaseModel):
@@ -327,6 +344,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

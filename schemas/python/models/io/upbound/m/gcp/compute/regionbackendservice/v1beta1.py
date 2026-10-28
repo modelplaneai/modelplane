@@ -334,6 +334,48 @@ class CircuitBreakers(BaseModel):
     """
 
 
+class ConnectionTrackingPolicy(BaseModel):
+    connectionPersistenceOnUnhealthyBackends: str | None = None
+    """
+    Specifies connection persistence when backends are unhealthy.
+    If set to DEFAULT_FOR_PROTOCOL, the existing connections persist on
+    unhealthy backends only for connection-oriented protocols (TCP and SCTP)
+    and only if the Tracking Mode is PER_CONNECTION (default tracking mode)
+    or the Session Affinity is configured for 5-tuple. They do not persist
+    for UDP.
+    If set to NEVER_PERSIST, after a backend becomes unhealthy, the existing
+    connections on the unhealthy backend are never persisted on the unhealthy
+    backend. They are always diverted to newly selected healthy backends
+    (unless all backends are unhealthy).
+    If set to ALWAYS_PERSIST, existing connections always persist on
+    unhealthy backends regardless of protocol and session affinity. It is
+    generally not recommended to use this mode overriding the default.
+    Default value is DEFAULT_FOR_PROTOCOL.
+    Possible values are: DEFAULT_FOR_PROTOCOL, NEVER_PERSIST, ALWAYS_PERSIST.
+    """
+    enableStrongAffinity: bool | None = None
+    """
+    Enable Strong Session Affinity for Network Load Balancing. This option is not available publicly.
+    """
+    idleTimeoutSec: float | None = None
+    """
+    Specifies how long to keep a Connection Tracking entry while there is
+    no matching traffic (in seconds).
+    For L4 ILB the minimum(default) is 10 minutes and maximum is 16 hours.
+    For NLB the minimum(default) is 60 seconds and the maximum is 16 hours.
+    """
+    trackingMode: str | None = None
+    """
+    Specifies the key used for connection tracking. There are two options:
+    PER_CONNECTION: The Connection Tracking is performed as per the
+    Connection Key (default Hash Method) for the specific protocol.
+    PER_SESSION: The Connection Tracking is performed as per the
+    configured Session Affinity. It matches the configured Session Affinity.
+    Default value is PER_CONNECTION.
+    Possible values are: PER_CONNECTION, PER_SESSION.
+    """
+
+
 class Ttl(BaseModel):
     nanos: float | None = None
     """
@@ -442,6 +484,127 @@ class FailoverPolicy(BaseModel):
     """
 
 
+class BackendGroupRef(BaseModel):
+    name: str
+    """
+    Name of the referenced object.
+    """
+    namespace: str | None = None
+    """
+    Namespace of the referenced object
+    """
+    policy: Policy | None = None
+    """
+    Policies for referencing.
+    """
+
+
+class BackendGroupSelector(BaseModel):
+    matchControllerRef: bool | None = None
+    """
+    MatchControllerRef ensures an object with the same controller reference
+    as the selecting object is selected.
+    """
+    matchLabels: dict[str, str] | None = None
+    """
+    MatchLabels ensures an object with matching labels is selected.
+    """
+    namespace: str | None = None
+    """
+    Namespace for the selector
+    """
+    policy: Policy | None = None
+    """
+    Policies for selection.
+    """
+
+
+class InstanceRef(BaseModel):
+    name: str
+    """
+    Name of the referenced object.
+    """
+    namespace: str | None = None
+    """
+    Namespace of the referenced object
+    """
+    policy: Policy | None = None
+    """
+    Policies for referencing.
+    """
+
+
+class InstanceSelector(BaseModel):
+    matchControllerRef: bool | None = None
+    """
+    MatchControllerRef ensures an object with the same controller reference
+    as the selecting object is selected.
+    """
+    matchLabels: dict[str, str] | None = None
+    """
+    MatchLabels ensures an object with matching labels is selected.
+    """
+    namespace: str | None = None
+    """
+    Namespace for the selector
+    """
+    policy: Policy | None = None
+    """
+    Policies for selection.
+    """
+
+
+class NetworkEndpoint(BaseModel):
+    instance: str | None = None
+    """
+    The name of the VM instance of the leader network endpoint. The instance must
+    already be attached to the NEG specified in the haPolicy.leader.backendGroup.
+    """
+    instanceRef: InstanceRef | None = None
+    """
+    Reference to a Instance in compute to populate instance.
+    """
+    instanceSelector: InstanceSelector | None = None
+    """
+    Selector for a Instance in compute to populate instance.
+    """
+
+
+class Leader(BaseModel):
+    backendGroup: str | None = None
+    """
+    A fully-qualified URL of the zonal Network Endpoint Group (NEG) that the leader is
+    attached to.
+    """
+    backendGroupRef: BackendGroupRef | None = None
+    """
+    Reference to a NetworkEndpointGroup in compute to populate backendGroup.
+    """
+    backendGroupSelector: BackendGroupSelector | None = None
+    """
+    Selector for a NetworkEndpointGroup in compute to populate backendGroup.
+    """
+    networkEndpoint: NetworkEndpoint | None = None
+    """
+    The network endpoint within the leader.backendGroup that is designated as the leader.
+    Structure is documented below.
+    """
+
+
+class HaPolicy(BaseModel):
+    fastIpMove: str | None = None
+    """
+    Specifies whether fast IP move is enabled, and if so, the mechanism to achieve it.
+    Supported values are:
+    """
+    leader: Leader | None = None
+    """
+    Selects one of the network endpoints attached to the backend NEGs of this service as the
+    active endpoint (the leader) that receives all traffic.
+    Structure is documented below.
+    """
+
+
 class HealthChecksRef(BaseModel):
     name: str
     """
@@ -501,6 +664,20 @@ class Iap(BaseModel):
     """
 
 
+class RequestHeader(BaseModel):
+    headerName: str | None = None
+    """
+    The header name to match on for logging.
+    """
+
+
+class ResponseHeader(BaseModel):
+    headerName: str | None = None
+    """
+    The header name to match on for logging.
+    """
+
+
 class LogConfig(BaseModel):
     enable: bool | None = None
     """
@@ -516,12 +693,82 @@ class LogConfig(BaseModel):
     Supported values: INCLUDE_ALL_OPTIONAL, EXCLUDE_ALL_OPTIONAL, CUSTOM.
     Possible values are: INCLUDE_ALL_OPTIONAL, EXCLUDE_ALL_OPTIONAL, CUSTOM.
     """
+    requestHeaders: list[RequestHeader] | None = None
+    """
+    This field can only be specified if logging is enabled for this backend service and if the BackendService protocol is one of HTTP, HTTPS, HTTP2 and GRPC. Contains a list of request headers to be logged.
+    Structure is documented below.
+    """
+    responseHeaders: list[ResponseHeader] | None = None
+    """
+    This field can only be specified if logging is enabled for this backend service and if the BackendService protocol is one of HTTP, HTTPS, HTTP2 and GRPC. Contains a list of response headers to be logged.
+    Structure is documented below.
+    """
     sampleRate: float | None = None
     """
     This field can only be specified if logging is enabled for this backend service. The value of
     the field must be in [0, 1]. This configures the sampling rate of requests to the load balancer
     where 1.0 means all logged requests are reported and 0.0 means no logged requests are reported.
     The default value is 1.0.
+    """
+
+
+class ZonalAffinity(BaseModel):
+    spillover: str | None = None
+    """
+    This field indicates whether zonal affinity is enabled or not.
+    Default value is ZONAL_AFFINITY_DISABLED.
+    Possible values are: ZONAL_AFFINITY_DISABLED, ZONAL_AFFINITY_SPILL_CROSS_ZONE, ZONAL_AFFINITY_STAY_WITHIN_ZONE.
+    """
+    spilloverRatio: float | None = None
+    """
+    The value of the field must be in [0, 1]. When the ratio of the count of healthy backend endpoints in a zone
+    to the count of backend endpoints in that same zone is equal to or above this threshold, the load balancer
+    distributes new connections to all healthy endpoints in the local zone only. When the ratio of the count
+    of healthy backend endpoints in a zone to the count of backend endpoints in that same zone is below this
+    threshold, the load balancer distributes all new connections to all healthy endpoints across all zones.
+    """
+
+
+class NetworkPassThroughLbTrafficPolicy(BaseModel):
+    zonalAffinity: ZonalAffinity | None = None
+    """
+    When configured, new connections are load balanced across healthy backend endpoints in the local zone.
+    Structure is documented below.
+    """
+
+
+class NetworkRef(BaseModel):
+    name: str
+    """
+    Name of the referenced object.
+    """
+    namespace: str | None = None
+    """
+    Namespace of the referenced object
+    """
+    policy: Policy | None = None
+    """
+    Policies for referencing.
+    """
+
+
+class NetworkSelector(BaseModel):
+    matchControllerRef: bool | None = None
+    """
+    MatchControllerRef ensures an object with the same controller reference
+    as the selecting object is selected.
+    """
+    matchLabels: dict[str, str] | None = None
+    """
+    MatchLabels ensures an object with matching labels is selected.
+    """
+    namespace: str | None = None
+    """
+    Namespace for the selector
+    """
+    policy: Policy | None = None
+    """
+    Policies for selection.
     """
 
 
@@ -630,6 +877,50 @@ class OutlierDetection(BaseModel):
     """
 
 
+class Params(BaseModel):
+    resourceManagerTags: dict[str, str] | None = None
+    """
+    Resource manager tags to be bound to the region backend service. Tag keys and values have the
+    same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
+    and values are in the format tagValues/456.
+    """
+
+
+class SecurityPolicyRef(BaseModel):
+    name: str
+    """
+    Name of the referenced object.
+    """
+    namespace: str | None = None
+    """
+    Namespace of the referenced object
+    """
+    policy: Policy | None = None
+    """
+    Policies for referencing.
+    """
+
+
+class SecurityPolicySelector(BaseModel):
+    matchControllerRef: bool | None = None
+    """
+    MatchControllerRef ensures an object with the same controller reference
+    as the selecting object is selected.
+    """
+    matchLabels: dict[str, str] | None = None
+    """
+    MatchLabels ensures an object with matching labels is selected.
+    """
+    namespace: str | None = None
+    """
+    Namespace for the selector
+    """
+    policy: Policy | None = None
+    """
+    Policies for selection.
+    """
+
+
 class StrongSessionAffinityCookie(BaseModel):
     name: str | None = None
     """
@@ -642,6 +933,42 @@ class StrongSessionAffinityCookie(BaseModel):
     ttl: Ttl | None = None
     """
     Lifetime of the cookie.
+    Structure is documented below.
+    """
+
+
+class SubjectAltName(BaseModel):
+    dnsName: str | None = None
+    """
+    The SAN specified as a DNS Name.
+    """
+    uniformResourceIdentifier: str | None = None
+    """
+    The SAN specified as a URI.
+    """
+
+
+class TlsSettings(BaseModel):
+    authenticationConfig: str | None = None
+    """
+    Reference to the BackendAuthenticationConfig resource from the networksecurity.googleapis.com namespace.
+    Can be used in authenticating TLS connections to the backend, as specified by the authenticationMode field.
+    Can only be specified if authenticationMode is not NONE.
+    """
+    sni: str | None = None
+    """
+    Server Name Indication - see RFC3546 section 3.1. If set, the load balancer sends this string as the SNI hostname in the
+    TLS connection to the backend, and requires that this string match a Subject Alternative Name (SAN) in the backend's
+    server certificate. With a Regional Internet NEG backend, if the SNI is specified here, the load balancer uses it
+    regardless of whether the Regional Internet NEG is specified with FQDN or IP address and port.
+    """
+    subjectAltNames: list[SubjectAltName] | None = None
+    """
+    A list of Subject Alternative Names (SANs) that the Load Balancer verifies during a TLS handshake with the backend.
+    When the server presents its X.509 certificate to the Load Balancer, the Load Balancer inspects the certificate's SAN field,
+    and requires that at least one SAN match one of the subjectAltNames in the list. This field is limited to 5 entries.
+    When both sni and subjectAltNames are specified, the load balancer matches the backend certificate's SAN only to
+    subjectAltNames.
     Structure is documented below.
     """
 
@@ -677,6 +1004,13 @@ class ForProvider(BaseModel):
     Time for which instance will be drained (not accept new
     connections, but still work to finish started).
     """
+    connectionTrackingPolicy: ConnectionTrackingPolicy | None = None
+    """
+    Connection Tracking configuration for this BackendService.
+    This is available only for Layer 4 Internal Load Balancing and
+    Network Load Balancing.
+    Structure is documented below.
+    """
     consistentHash: ConsistentHash | None = None
     """
     Consistent Hash-based load balancing can be used to provide soft session
@@ -703,6 +1037,18 @@ class ForProvider(BaseModel):
     failoverPolicy: FailoverPolicy | None = None
     """
     Policy for failovers.
+    Structure is documented below.
+    """
+    haPolicy: HaPolicy | None = None
+    """
+    Configures self-managed High Availability (HA) for External and Internal Protocol Forwarding.
+    The backends of this regional backend service must only specify zonal network endpoint groups
+    (NEGs) of type GCE_VM_IP. Note that haPolicy is not for load balancing, and therefore cannot
+    be specified with sessionAffinity, connectionTrackingPolicy, and failoverPolicy. haPolicy
+    requires customers to be responsible for tracking backend endpoint health and electing a
+    leader among the healthy endpoints. Therefore, haPolicy cannot be specified with healthChecks.
+    haPolicy can only be specified for External Passthrough Network Load Balancers and Internal
+    Passthrough Network Load Balancers.
     Structure is documented below.
     """
     healthChecks: list[str] | None = None
@@ -750,13 +1096,33 @@ class ForProvider(BaseModel):
     network: str | None = None
     """
     The URL of the network to which this backend service belongs.
-    This field can only be specified when the load balancing scheme is set to INTERNAL.
+    This field must be set for Internal Passthrough Network Load Balancers when the haPolicy is enabled, and for External Passthrough Network Load Balancers when the haPolicy fastIpMove is enabled.
+    This field can only be specified when the load balancing scheme is set to INTERNAL, or when the load balancing scheme is set to EXTERNAL and haPolicy fastIpMove is enabled.
+    Changes to this field force recreation of the resource.
+    """
+    networkPassThroughLbTrafficPolicy: NetworkPassThroughLbTrafficPolicy | None = None
+    """
+    Configures traffic steering properties of internal passthrough Network Load Balancers.
+    Structure is documented below.
+    """
+    networkRef: NetworkRef | None = None
+    """
+    Reference to a Network in compute to populate network.
+    """
+    networkSelector: NetworkSelector | None = None
+    """
+    Selector for a Network in compute to populate network.
     """
     outlierDetection: OutlierDetection | None = None
     """
     Settings controlling eviction of unhealthy hosts from the load balancing pool.
     This field is applicable only when the load_balancing_scheme is set
     to INTERNAL_MANAGED and the protocol is set to HTTP, HTTPS, HTTP2 or H2C.
+    Structure is documented below.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
     portName: str | None = None
@@ -783,6 +1149,18 @@ class ForProvider(BaseModel):
     The Region in which the created backend service should reside.
     If it is not provided, the provider region is used.
     """
+    securityPolicy: str | None = None
+    """
+    The security policy associated with this backend service.
+    """
+    securityPolicyRef: SecurityPolicyRef | None = None
+    """
+    Reference to a RegionSecurityPolicy in compute to populate securityPolicy.
+    """
+    securityPolicySelector: SecurityPolicySelector | None = None
+    """
+    Selector for a RegionSecurityPolicy in compute to populate securityPolicy.
+    """
     sessionAffinity: str | None = None
     """
     Type of session affinity to use. The default is NONE. Session affinity is
@@ -800,6 +1178,11 @@ class ForProvider(BaseModel):
     For more information see, Backend service settings.
     The default is 30 seconds.
     The full range of timeout values allowed goes from 1 through 2,147,483,647 seconds.
+    """
+    tlsSettings: TlsSettings | None = None
+    """
+    Configuration for Backend Authenticated TLS and mTLS. May only be specified when the backend protocol is SSL, HTTPS or HTTP2.
+    Structure is documented below.
     """
 
 
@@ -871,6 +1254,13 @@ class InitProvider(BaseModel):
     Time for which instance will be drained (not accept new
     connections, but still work to finish started).
     """
+    connectionTrackingPolicy: ConnectionTrackingPolicy | None = None
+    """
+    Connection Tracking configuration for this BackendService.
+    This is available only for Layer 4 Internal Load Balancing and
+    Network Load Balancing.
+    Structure is documented below.
+    """
     consistentHash: ConsistentHash | None = None
     """
     Consistent Hash-based load balancing can be used to provide soft session
@@ -897,6 +1287,18 @@ class InitProvider(BaseModel):
     failoverPolicy: FailoverPolicy | None = None
     """
     Policy for failovers.
+    Structure is documented below.
+    """
+    haPolicy: HaPolicy | None = None
+    """
+    Configures self-managed High Availability (HA) for External and Internal Protocol Forwarding.
+    The backends of this regional backend service must only specify zonal network endpoint groups
+    (NEGs) of type GCE_VM_IP. Note that haPolicy is not for load balancing, and therefore cannot
+    be specified with sessionAffinity, connectionTrackingPolicy, and failoverPolicy. haPolicy
+    requires customers to be responsible for tracking backend endpoint health and electing a
+    leader among the healthy endpoints. Therefore, haPolicy cannot be specified with healthChecks.
+    haPolicy can only be specified for External Passthrough Network Load Balancers and Internal
+    Passthrough Network Load Balancers.
     Structure is documented below.
     """
     healthChecks: list[str] | None = None
@@ -944,13 +1346,33 @@ class InitProvider(BaseModel):
     network: str | None = None
     """
     The URL of the network to which this backend service belongs.
-    This field can only be specified when the load balancing scheme is set to INTERNAL.
+    This field must be set for Internal Passthrough Network Load Balancers when the haPolicy is enabled, and for External Passthrough Network Load Balancers when the haPolicy fastIpMove is enabled.
+    This field can only be specified when the load balancing scheme is set to INTERNAL, or when the load balancing scheme is set to EXTERNAL and haPolicy fastIpMove is enabled.
+    Changes to this field force recreation of the resource.
+    """
+    networkPassThroughLbTrafficPolicy: NetworkPassThroughLbTrafficPolicy | None = None
+    """
+    Configures traffic steering properties of internal passthrough Network Load Balancers.
+    Structure is documented below.
+    """
+    networkRef: NetworkRef | None = None
+    """
+    Reference to a Network in compute to populate network.
+    """
+    networkSelector: NetworkSelector | None = None
+    """
+    Selector for a Network in compute to populate network.
     """
     outlierDetection: OutlierDetection | None = None
     """
     Settings controlling eviction of unhealthy hosts from the load balancing pool.
     This field is applicable only when the load_balancing_scheme is set
     to INTERNAL_MANAGED and the protocol is set to HTTP, HTTPS, HTTP2 or H2C.
+    Structure is documented below.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
     portName: str | None = None
@@ -972,6 +1394,18 @@ class InitProvider(BaseModel):
     """
     is set to HTTP, HTTPS, HTTP2 or H2C
     """
+    securityPolicy: str | None = None
+    """
+    The security policy associated with this backend service.
+    """
+    securityPolicyRef: SecurityPolicyRef | None = None
+    """
+    Reference to a RegionSecurityPolicy in compute to populate securityPolicy.
+    """
+    securityPolicySelector: SecurityPolicySelector | None = None
+    """
+    Selector for a RegionSecurityPolicy in compute to populate securityPolicy.
+    """
     sessionAffinity: str | None = None
     """
     Type of session affinity to use. The default is NONE. Session affinity is
@@ -989,6 +1423,11 @@ class InitProvider(BaseModel):
     For more information see, Backend service settings.
     The default is 30 seconds.
     The full range of timeout values allowed goes from 1 through 2,147,483,647 seconds.
+    """
+    tlsSettings: TlsSettings | None = None
+    """
+    Configuration for Backend Authenticated TLS and mTLS. May only be specified when the backend protocol is SSL, HTTPS or HTTP2.
+    Structure is documented below.
     """
 
 
@@ -1207,6 +1646,27 @@ class CustomMetricModel4(BaseModel):
     """
 
 
+class NetworkEndpointModel(BaseModel):
+    instance: str | None = None
+    """
+    The name of the VM instance of the leader network endpoint. The instance must
+    already be attached to the NEG specified in the haPolicy.leader.backendGroup.
+    """
+
+
+class LeaderModel(BaseModel):
+    backendGroup: str | None = None
+    """
+    A fully-qualified URL of the zonal Network Endpoint Group (NEG) that the leader is
+    attached to.
+    """
+    networkEndpoint: NetworkEndpointModel | None = None
+    """
+    The network endpoint within the leader.backendGroup that is designated as the leader.
+    Structure is documented below.
+    """
+
+
 class IapModel(BaseModel):
     enabled: bool | None = None
     """
@@ -1249,6 +1709,13 @@ class AtProvider(BaseModel):
     Time for which instance will be drained (not accept new
     connections, but still work to finish started).
     """
+    connectionTrackingPolicy: ConnectionTrackingPolicy | None = None
+    """
+    Connection Tracking configuration for this BackendService.
+    This is available only for Layer 4 Internal Load Balancing and
+    Network Load Balancing.
+    Structure is documented below.
+    """
     consistentHash: ConsistentHash | None = None
     """
     Consistent Hash-based load balancing can be used to provide soft session
@@ -1267,6 +1734,11 @@ class AtProvider(BaseModel):
     """
     List of custom metrics that are used for the WEIGHTED_ROUND_ROBIN locality_lb_policy.
     Structure is documented below.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -1289,6 +1761,18 @@ class AtProvider(BaseModel):
     generatedId: float | None = None
     """
     The unique identifier for the resource. This identifier is defined by the server.
+    """
+    haPolicy: HaPolicy | None = None
+    """
+    Configures self-managed High Availability (HA) for External and Internal Protocol Forwarding.
+    The backends of this regional backend service must only specify zonal network endpoint groups
+    (NEGs) of type GCE_VM_IP. Note that haPolicy is not for load balancing, and therefore cannot
+    be specified with sessionAffinity, connectionTrackingPolicy, and failoverPolicy. haPolicy
+    requires customers to be responsible for tracking backend endpoint health and electing a
+    leader among the healthy endpoints. Therefore, haPolicy cannot be specified with healthChecks.
+    haPolicy can only be specified for External Passthrough Network Load Balancers and Internal
+    Passthrough Network Load Balancers.
+    Structure is documented below.
     """
     healthChecks: list[str] | None = None
     """
@@ -1331,13 +1815,25 @@ class AtProvider(BaseModel):
     network: str | None = None
     """
     The URL of the network to which this backend service belongs.
-    This field can only be specified when the load balancing scheme is set to INTERNAL.
+    This field must be set for Internal Passthrough Network Load Balancers when the haPolicy is enabled, and for External Passthrough Network Load Balancers when the haPolicy fastIpMove is enabled.
+    This field can only be specified when the load balancing scheme is set to INTERNAL, or when the load balancing scheme is set to EXTERNAL and haPolicy fastIpMove is enabled.
+    Changes to this field force recreation of the resource.
+    """
+    networkPassThroughLbTrafficPolicy: NetworkPassThroughLbTrafficPolicy | None = None
+    """
+    Configures traffic steering properties of internal passthrough Network Load Balancers.
+    Structure is documented below.
     """
     outlierDetection: OutlierDetection | None = None
     """
     Settings controlling eviction of unhealthy hosts from the load balancing pool.
     This field is applicable only when the load_balancing_scheme is set
     to INTERNAL_MANAGED and the protocol is set to HTTP, HTTPS, HTTP2 or H2C.
+    Structure is documented below.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
     portName: str | None = None
@@ -1364,6 +1860,10 @@ class AtProvider(BaseModel):
     The Region in which the created backend service should reside.
     If it is not provided, the provider region is used.
     """
+    securityPolicy: str | None = None
+    """
+    The security policy associated with this backend service.
+    """
     selfLink: str | None = None
     """
     The URI of the created resource.
@@ -1385,6 +1885,11 @@ class AtProvider(BaseModel):
     For more information see, Backend service settings.
     The default is 30 seconds.
     The full range of timeout values allowed goes from 1 through 2,147,483,647 seconds.
+    """
+    tlsSettings: TlsSettings | None = None
+    """
+    Configuration for Backend Authenticated TLS and mTLS. May only be specified when the backend protocol is SSL, HTTPS or HTTP2.
+    Structure is documented below.
     """
 
 
@@ -1425,6 +1930,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

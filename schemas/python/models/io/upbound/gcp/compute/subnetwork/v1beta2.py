@@ -129,22 +129,26 @@ class SecondaryIpRangeItem(BaseModel):
 
 
 class ForProvider(BaseModel):
+    allowSubnetCidrRoutesOverlap: bool | None = None
+    """
+    Typically packets destined to IPs within the subnetwork range that do not match
+    existing resources are dropped and prevented from leaving the VPC.
+    Setting this field to true will allow these packets to match dynamic routes injected
+    via BGP even if their destinations match existing subnet ranges.
+    """
     description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource. This field can be set only at resource
     creation time.
     """
-    enableFlowLogs: bool | None = None
-    """
-    Whether to enable flow logging for this subnetwork. If this field is not explicitly set,
-    it will not appear in get listings. If not set the default behavior is determined by the
-    org policy, if there is no org policy specified, then it will default to disabled.
-    This field isn't supported if the subnet purpose field is set to REGIONAL_MANAGED_PROXY.
-    """
     externalIpv6Prefix: str | None = None
     """
     The range of external IPv6 addresses that are owned by this subnetwork.
+    """
+    internalIpv6Prefix: str | None = None
+    """
+    The internal IPv6 address range that is assigned to this subnetwork.
     """
     ipCidrRange: str | None = None
     """
@@ -157,9 +161,9 @@ class ForProvider(BaseModel):
     ipCollection: str | None = None
     """
     Resource reference of a PublicDelegatedPrefix. The PDP must be a sub-PDP
-    in EXTERNAL_IPV6_SUBNETWORK_CREATION mode.
-    Use one of the following formats to specify a sub-PDP when creating an
-    IPv6 NetLB forwarding rule using BYOIP:
+    in EXTERNAL_IPV6_SUBNETWORK_CREATION or INTERNAL_IPV6_SUBNETWORK_CREATION
+    mode. Use one of the following formats to specify a sub-PDP when creating
+    a dual stack or IPv6-only subnetwork using BYOIP:
     Full resource URL, as in:
     """
     ipv6AccessType: str | None = None
@@ -229,6 +233,11 @@ class ForProvider(BaseModel):
     The ID of the reserved internal range. Must be prefixed with networkconnectivity.googleapis.com
     E.g. networkconnectivity.googleapis.com/projects/{project}/locations/global/internalRanges/{rangeId}
     """
+    resolveSubnetMask: str | None = None
+    """
+    'Configures subnet mask resolution for this subnetwork.'
+    Possible values are: ARP_ALL_RANGES, ARP_PRIMARY_RANGE, ARP_BROADCAST_PRIMARY_RANGE, ARP_BROADCAST_PRIMARY_RANGE_WITH_LEARNING.
+    """
     role: str | None = None
     """
     The role of subnetwork.
@@ -267,22 +276,26 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
+    allowSubnetCidrRoutesOverlap: bool | None = None
+    """
+    Typically packets destined to IPs within the subnetwork range that do not match
+    existing resources are dropped and prevented from leaving the VPC.
+    Setting this field to true will allow these packets to match dynamic routes injected
+    via BGP even if their destinations match existing subnet ranges.
+    """
     description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource. This field can be set only at resource
     creation time.
     """
-    enableFlowLogs: bool | None = None
-    """
-    Whether to enable flow logging for this subnetwork. If this field is not explicitly set,
-    it will not appear in get listings. If not set the default behavior is determined by the
-    org policy, if there is no org policy specified, then it will default to disabled.
-    This field isn't supported if the subnet purpose field is set to REGIONAL_MANAGED_PROXY.
-    """
     externalIpv6Prefix: str | None = None
     """
     The range of external IPv6 addresses that are owned by this subnetwork.
+    """
+    internalIpv6Prefix: str | None = None
+    """
+    The internal IPv6 address range that is assigned to this subnetwork.
     """
     ipCidrRange: str | None = None
     """
@@ -295,9 +308,9 @@ class InitProvider(BaseModel):
     ipCollection: str | None = None
     """
     Resource reference of a PublicDelegatedPrefix. The PDP must be a sub-PDP
-    in EXTERNAL_IPV6_SUBNETWORK_CREATION mode.
-    Use one of the following formats to specify a sub-PDP when creating an
-    IPv6 NetLB forwarding rule using BYOIP:
+    in EXTERNAL_IPV6_SUBNETWORK_CREATION or INTERNAL_IPV6_SUBNETWORK_CREATION
+    mode. Use one of the following formats to specify a sub-PDP when creating
+    a dual stack or IPv6-only subnetwork using BYOIP:
     Full resource URL, as in:
     """
     ipv6AccessType: str | None = None
@@ -362,6 +375,11 @@ class InitProvider(BaseModel):
     """
     The ID of the reserved internal range. Must be prefixed with networkconnectivity.googleapis.com
     E.g. networkconnectivity.googleapis.com/projects/{project}/locations/global/internalRanges/{rangeId}
+    """
+    resolveSubnetMask: str | None = None
+    """
+    'Configures subnet mask resolution for this subnetwork.'
+    Possible values are: ARP_ALL_RANGES, ARP_PRIMARY_RANGE, ARP_BROADCAST_PRIMARY_RANGE, ARP_BROADCAST_PRIMARY_RANGE_WITH_LEARNING.
     """
     role: str | None = None
     """
@@ -481,22 +499,27 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
+    allowSubnetCidrRoutesOverlap: bool | None = None
+    """
+    Typically packets destined to IPs within the subnetwork range that do not match
+    existing resources are dropped and prevented from leaving the VPC.
+    Setting this field to true will allow these packets to match dynamic routes injected
+    via BGP even if their destinations match existing subnet ranges.
+    """
     creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource. This field can be set only at resource
     creation time.
-    """
-    enableFlowLogs: bool | None = None
-    """
-    Whether to enable flow logging for this subnetwork. If this field is not explicitly set,
-    it will not appear in get listings. If not set the default behavior is determined by the
-    org policy, if there is no org policy specified, then it will default to disabled.
-    This field isn't supported if the subnet purpose field is set to REGIONAL_MANAGED_PROXY.
     """
     externalIpv6Prefix: str | None = None
     """
@@ -527,9 +550,9 @@ class AtProvider(BaseModel):
     ipCollection: str | None = None
     """
     Resource reference of a PublicDelegatedPrefix. The PDP must be a sub-PDP
-    in EXTERNAL_IPV6_SUBNETWORK_CREATION mode.
-    Use one of the following formats to specify a sub-PDP when creating an
-    IPv6 NetLB forwarding rule using BYOIP:
+    in EXTERNAL_IPV6_SUBNETWORK_CREATION or INTERNAL_IPV6_SUBNETWORK_CREATION
+    mode. Use one of the following formats to specify a sub-PDP when creating
+    a dual stack or IPv6-only subnetwork using BYOIP:
     Full resource URL, as in:
     """
     ipv6AccessType: str | None = None
@@ -598,6 +621,11 @@ class AtProvider(BaseModel):
     """
     The ID of the reserved internal range. Must be prefixed with networkconnectivity.googleapis.com
     E.g. networkconnectivity.googleapis.com/projects/{project}/locations/global/internalRanges/{rangeId}
+    """
+    resolveSubnetMask: str | None = None
+    """
+    'Configures subnet mask resolution for this subnetwork.'
+    Possible values are: ARP_ALL_RANGES, ARP_PRIMARY_RANGE, ARP_BROADCAST_PRIMARY_RANGE, ARP_BROADCAST_PRIMARY_RANGE_WITH_LEARNING.
     """
     role: str | None = None
     """
@@ -688,6 +716,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

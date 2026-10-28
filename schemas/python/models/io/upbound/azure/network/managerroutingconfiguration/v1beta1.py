@@ -71,12 +71,20 @@ class ForProvider(BaseModel):
     """
     Selector for a Manager in network to populate networkManagerId.
     """
+    routeTableUsageMode: str | None = None
+    """
+    The route table usage mode for the Network Manager Routing Configuration. Possible values are ManagedOnly and UseExisting. Defaults to ManagedOnly.
+    """
 
 
 class InitProvider(BaseModel):
     description: str | None = None
     """
     The description of the Network Manager Routing Configuration.
+    """
+    routeTableUsageMode: str | None = None
+    """
+    The route table usage mode for the Network Manager Routing Configuration. Possible values are ManagedOnly and UseExisting. Defaults to ManagedOnly.
     """
 
 
@@ -173,6 +181,10 @@ class AtProvider(BaseModel):
     """
     The ID of the Network Manager. Changing this forces a new Network Manager Routing Configuration to be created.
     """
+    routeTableUsageMode: str | None = None
+    """
+    The route table usage mode for the Network Manager Routing Configuration. Possible values are ManagedOnly and UseExisting. Defaults to ManagedOnly.
+    """
 
 
 class Condition(BaseModel):
@@ -212,6 +224,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

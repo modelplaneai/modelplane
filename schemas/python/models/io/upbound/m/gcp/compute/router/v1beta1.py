@@ -105,6 +105,41 @@ class Policy(BaseModel):
     """
 
 
+class NccGatewayRef(BaseModel):
+    name: str
+    """
+    Name of the referenced object.
+    """
+    namespace: str | None = None
+    """
+    Namespace of the referenced object
+    """
+    policy: Policy | None = None
+    """
+    Policies for referencing.
+    """
+
+
+class NccGatewaySelector(BaseModel):
+    matchControllerRef: bool | None = None
+    """
+    MatchControllerRef ensures an object with the same controller reference
+    as the selecting object is selected.
+    """
+    matchLabels: dict[str, str] | None = None
+    """
+    MatchLabels ensures an object with matching labels is selected.
+    """
+    namespace: str | None = None
+    """
+    Namespace for the selector
+    """
+    policy: Policy | None = None
+    """
+    Policies for selection.
+    """
+
+
 class NetworkRef(BaseModel):
     name: str
     """
@@ -140,6 +175,15 @@ class NetworkSelector(BaseModel):
     """
 
 
+class Params(BaseModel):
+    resourceManagerTags: dict[str, str] | None = None
+    """
+    Resource manager tags to be bound to the router. Tag keys and values have the
+    same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
+    and values are in the format tagValues/456.
+    """
+
+
 class ForProvider(BaseModel):
     bgp: Bgp | None = None
     """
@@ -160,6 +204,18 @@ class ForProvider(BaseModel):
     Keys used for MD5 authentication.
     Structure is documented below.
     """
+    nccGateway: str | None = None
+    """
+    A URI of an NCC Gateway spoke
+    """
+    nccGatewayRef: NccGatewayRef | None = None
+    """
+    Reference to a Spoke in networkconnectivity to populate nccGateway.
+    """
+    nccGatewaySelector: NccGatewaySelector | None = None
+    """
+    Selector for a Spoke in networkconnectivity to populate nccGateway.
+    """
     network: str | None = None
     """
     A reference to the network to which this router belongs.
@@ -171,6 +227,11 @@ class ForProvider(BaseModel):
     networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -203,6 +264,18 @@ class InitProvider(BaseModel):
     Keys used for MD5 authentication.
     Structure is documented below.
     """
+    nccGateway: str | None = None
+    """
+    A URI of an NCC Gateway spoke
+    """
+    nccGatewayRef: NccGatewayRef | None = None
+    """
+    Reference to a Spoke in networkconnectivity to populate nccGateway.
+    """
+    nccGatewaySelector: NccGatewaySelector | None = None
+    """
+    Selector for a Spoke in networkconnectivity to populate nccGateway.
+    """
     network: str | None = None
     """
     A reference to the network to which this router belongs.
@@ -214,6 +287,11 @@ class InitProvider(BaseModel):
     networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -294,6 +372,11 @@ class AtProvider(BaseModel):
     """
     Creation timestamp in RFC3339 text format.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this resource.
@@ -312,9 +395,18 @@ class AtProvider(BaseModel):
     Keys used for MD5 authentication.
     Structure is documented below.
     """
+    nccGateway: str | None = None
+    """
+    A URI of an NCC Gateway spoke
+    """
     network: str | None = None
     """
     A reference to the network to which this router belongs.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -368,6 +460,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

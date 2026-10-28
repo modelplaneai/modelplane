@@ -179,6 +179,15 @@ class EdgeSecurityPolicySelector(BaseModel):
     """
 
 
+class Params(BaseModel):
+    resourceManagerTags: dict[str, str] | None = None
+    """
+    Resource manager tags to be bound to the backend bucket. Tag keys and values have the
+    same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
+    and values are in the format tagValues/456.
+    """
+
+
 class ForProvider(BaseModel):
     bucketName: str | None = None
     """
@@ -226,12 +235,19 @@ class ForProvider(BaseModel):
     enableCdn: bool | None = None
     """
     If true, enable Cloud CDN for this BackendBucket.
+    Note: This cannot be set to true when loadBalancingScheme is set to INTERNAL_MANAGED.
     """
     loadBalancingScheme: str | None = None
     """
     The value can only be INTERNAL_MANAGED for cross-region internal layer 7 load balancer.
     If loadBalancingScheme is not specified, the backend bucket can be used by classic global external load balancers, or global application external load balancers, or both.
+    Important: CDN cannot be enabled (enableCdn cannot be set to true) when loadBalancingScheme is set to INTERNAL_MANAGED.
     Possible values are: INTERNAL_MANAGED.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -287,12 +303,19 @@ class InitProvider(BaseModel):
     enableCdn: bool | None = None
     """
     If true, enable Cloud CDN for this BackendBucket.
+    Note: This cannot be set to true when loadBalancingScheme is set to INTERNAL_MANAGED.
     """
     loadBalancingScheme: str | None = None
     """
     The value can only be INTERNAL_MANAGED for cross-region internal layer 7 load balancer.
     If loadBalancingScheme is not specified, the backend bucket can be used by classic global external load balancers, or global application external load balancers, or both.
+    Important: CDN cannot be enabled (enableCdn cannot be set to true) when loadBalancingScheme is set to INTERNAL_MANAGED.
     Possible values are: INTERNAL_MANAGED.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -404,6 +427,11 @@ class AtProvider(BaseModel):
     """
     Headers that the HTTP/S load balancer should add to proxied responses.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional textual description of the resource; provided by the
@@ -416,6 +444,7 @@ class AtProvider(BaseModel):
     enableCdn: bool | None = None
     """
     If true, enable Cloud CDN for this BackendBucket.
+    Note: This cannot be set to true when loadBalancingScheme is set to INTERNAL_MANAGED.
     """
     id: str | None = None
     """
@@ -425,7 +454,13 @@ class AtProvider(BaseModel):
     """
     The value can only be INTERNAL_MANAGED for cross-region internal layer 7 load balancer.
     If loadBalancingScheme is not specified, the backend bucket can be used by classic global external load balancers, or global application external load balancers, or both.
+    Important: CDN cannot be enabled (enableCdn cannot be set to true) when loadBalancingScheme is set to INTERNAL_MANAGED.
     Possible values are: INTERNAL_MANAGED.
+    """
+    params: Params | None = None
+    """
+    Additional params passed with the request, but not persisted as part of resource payload
+    Structure is documented below.
     """
     project: str | None = None
     """
@@ -475,6 +510,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

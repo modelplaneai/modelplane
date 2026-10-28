@@ -57,11 +57,11 @@ class SubnetIdSelector(BaseModel):
 class NatIpConfigurationItem(BaseModel):
     name: str | None = None
     """
-    Specifies the name which should be used for the NAT IP Configuration. Changing this forces a new resource to be created.
+    Specifies the name which should be used for the NAT IP Configuration.
     """
     primary: bool | None = None
     """
-    Is this is the Primary IP Configuration? Changing this forces a new resource to be created.
+    Is this is the Primary IP Configuration?
     """
     privateIpAddress: str | None = None
     """
@@ -122,9 +122,6 @@ class ForProvider(BaseModel):
     The destination IP address of the Private Link Service.
     """
     enableProxyProtocol: bool | None = None
-    """
-    Should the Private Link Service support the Proxy Protocol?
-    """
     fqdns: list[str] | None = None
     """
     List of FQDNs allowed for the Private Link Service.
@@ -140,6 +137,10 @@ class ForProvider(BaseModel):
     natIpConfiguration: list[NatIpConfigurationItem] | None = None
     """
     One or more (up to 8) nat_ip_configuration block as defined below.
+    """
+    proxyProtocolEnabled: bool | None = None
+    """
+    Should the Private Link Service support the Proxy Protocol? Defaults to false.
     """
     resourceGroupName: str | None = None
     """
@@ -173,9 +174,6 @@ class InitProvider(BaseModel):
     The destination IP address of the Private Link Service.
     """
     enableProxyProtocol: bool | None = None
-    """
-    Should the Private Link Service support the Proxy Protocol?
-    """
     fqdns: list[str] | None = None
     """
     List of FQDNs allowed for the Private Link Service.
@@ -191,6 +189,10 @@ class InitProvider(BaseModel):
     natIpConfiguration: list[NatIpConfigurationItem] | None = None
     """
     One or more (up to 8) nat_ip_configuration block as defined below.
+    """
+    proxyProtocolEnabled: bool | None = None
+    """
+    Should the Private Link Service support the Proxy Protocol? Defaults to false.
     """
     tags: dict[str, str] | None = None
     """
@@ -285,11 +287,11 @@ class Spec(BaseModel):
 class NatIpConfigurationItemModel(BaseModel):
     name: str | None = None
     """
-    Specifies the name which should be used for the NAT IP Configuration. Changing this forces a new resource to be created.
+    Specifies the name which should be used for the NAT IP Configuration.
     """
     primary: bool | None = None
     """
-    Is this is the Primary IP Configuration? Changing this forces a new resource to be created.
+    Is this is the Primary IP Configuration?
     """
     privateIpAddress: str | None = None
     """
@@ -319,9 +321,6 @@ class AtProvider(BaseModel):
     The destination IP address of the Private Link Service.
     """
     enableProxyProtocol: bool | None = None
-    """
-    Should the Private Link Service support the Proxy Protocol?
-    """
     fqdns: list[str] | None = None
     """
     List of FQDNs allowed for the Private Link Service.
@@ -338,6 +337,10 @@ class AtProvider(BaseModel):
     natIpConfiguration: list[NatIpConfigurationItemModel] | None = None
     """
     One or more (up to 8) nat_ip_configuration block as defined below.
+    """
+    proxyProtocolEnabled: bool | None = None
+    """
+    Should the Private Link Service support the Proxy Protocol? Defaults to false.
     """
     resourceGroupName: str | None = None
     """
@@ -390,6 +393,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

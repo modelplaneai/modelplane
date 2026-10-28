@@ -96,7 +96,7 @@ class ForProvider(BaseModel):
     """
     targetVirtualNetworkId: str | None = None
     """
-    Specifies the Resource ID of the Virtual Network using as the Static Member. Changing this forces a new Network Manager Static Member to be created.
+    Specifies the Resource ID of the Virtual Network or Subnet used as the Static Member. Changing this forces a new Network Manager Static Member to be created.
     """
     targetVirtualNetworkIdRef: TargetVirtualNetworkIdRef | None = None
     """
@@ -111,7 +111,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     targetVirtualNetworkId: str | None = None
     """
-    Specifies the Resource ID of the Virtual Network using as the Static Member. Changing this forces a new Network Manager Static Member to be created.
+    Specifies the Resource ID of the Virtual Network or Subnet used as the Static Member. Changing this forces a new Network Manager Static Member to be created.
     """
     targetVirtualNetworkIdRef: TargetVirtualNetworkIdRef | None = None
     """
@@ -218,7 +218,7 @@ class AtProvider(BaseModel):
     """
     targetVirtualNetworkId: str | None = None
     """
-    Specifies the Resource ID of the Virtual Network using as the Static Member. Changing this forces a new Network Manager Static Member to be created.
+    Specifies the Resource ID of the Virtual Network or Subnet used as the Static Member. Changing this forces a new Network Manager Static Member to be created.
     """
 
 
@@ -259,6 +259,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

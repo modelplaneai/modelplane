@@ -247,6 +247,10 @@ class ForProvider(BaseModel):
     """
     The authorization key associated with the Express Route Circuit. This field is required only if the type is an ExpressRoute connection.
     """
+    bgpEnabled: bool | None = None
+    """
+    If true, BGP (Border Gateway Protocol) is enabled for this connection. Defaults to false.
+    """
     connectionMode: str | None = None
     """
     Connection mode to use. Possible values are Default, InitiatorOnly and ResponderOnly. Defaults to Default. Changing this value will force a resource to be created.
@@ -271,9 +275,6 @@ class ForProvider(BaseModel):
     A list of the egress NAT Rule Ids.
     """
     enableBgp: bool | None = None
-    """
-    If true, BGP (Border Gateway Protocol) is enabled for this connection. Defaults to false.
-    """
     expressRouteCircuitId: str | None = None
     """
     The ID of the Express Route Circuit when creating an ExpressRoute connection (i.e. when type is ExpressRoute). The Express Route Circuit can be in the same or in a different subscription. Changing this forces a new resource to be created.
@@ -387,6 +388,10 @@ class InitProvider(BaseModel):
     """
     The authorization key associated with the Express Route Circuit. This field is required only if the type is an ExpressRoute connection.
     """
+    bgpEnabled: bool | None = None
+    """
+    If true, BGP (Border Gateway Protocol) is enabled for this connection. Defaults to false.
+    """
     connectionMode: str | None = None
     """
     Connection mode to use. Possible values are Default, InitiatorOnly and ResponderOnly. Defaults to Default. Changing this value will force a resource to be created.
@@ -411,9 +416,6 @@ class InitProvider(BaseModel):
     A list of the egress NAT Rule Ids.
     """
     enableBgp: bool | None = None
-    """
-    If true, BGP (Border Gateway Protocol) is enabled for this connection. Defaults to false.
-    """
     expressRouteCircuitId: str | None = None
     """
     The ID of the Express Route Circuit when creating an ExpressRoute connection (i.e. when type is ExpressRoute). The Express Route Circuit can be in the same or in a different subscription. Changing this forces a new resource to be created.
@@ -573,6 +575,10 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
+    bgpEnabled: bool | None = None
+    """
+    If true, BGP (Border Gateway Protocol) is enabled for this connection. Defaults to false.
+    """
     connectionMode: str | None = None
     """
     Connection mode to use. Possible values are Default, InitiatorOnly and ResponderOnly. Defaults to Default. Changing this value will force a resource to be created.
@@ -597,9 +603,6 @@ class AtProvider(BaseModel):
     A list of the egress NAT Rule Ids.
     """
     enableBgp: bool | None = None
-    """
-    If true, BGP (Border Gateway Protocol) is enabled for this connection. Defaults to false.
-    """
     expressRouteCircuitId: str | None = None
     """
     The ID of the Express Route Circuit when creating an ExpressRoute connection (i.e. when type is ExpressRoute). The Express Route Circuit can be in the same or in a different subscription. Changing this forces a new resource to be created.
@@ -711,6 +714,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

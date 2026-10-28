@@ -27,6 +27,41 @@ class Policy(BaseModel):
     """
 
 
+class ServerTlsPolicyRef(BaseModel):
+    name: str
+    """
+    Name of the referenced object.
+    """
+    namespace: str | None = None
+    """
+    Namespace of the referenced object
+    """
+    policy: Policy | None = None
+    """
+    Policies for referencing.
+    """
+
+
+class ServerTlsPolicySelector(BaseModel):
+    matchControllerRef: bool | None = None
+    """
+    MatchControllerRef ensures an object with the same controller reference
+    as the selecting object is selected.
+    """
+    matchLabels: dict[str, str] | None = None
+    """
+    MatchLabels ensures an object with matching labels is selected.
+    """
+    namespace: str | None = None
+    """
+    Namespace for the selector
+    """
+    policy: Policy | None = None
+    """
+    Policies for selection.
+    """
+
+
 class SslCertificatesRef(BaseModel):
     name: str
     """
@@ -164,6 +199,14 @@ class ForProvider(BaseModel):
     receive a resourceInUseByAnotherResource error. Use lifecycle.create_before_destroy
     within the ServerTlsPolicy resource to avoid this.
     """
+    serverTlsPolicyRef: ServerTlsPolicyRef | None = None
+    """
+    Reference to a ServerTLSPolicy in networksecurity to populate serverTlsPolicy.
+    """
+    serverTlsPolicySelector: ServerTlsPolicySelector | None = None
+    """
+    Selector for a ServerTLSPolicy in networksecurity to populate serverTlsPolicy.
+    """
     sslCertificates: list[str] | None = None
     """
     URLs to SslCertificate resources that are used to authenticate connections between users and the load balancer.
@@ -273,6 +316,14 @@ class InitProvider(BaseModel):
     deleting or recreating a referenced ServerTlsPolicy resource, you will
     receive a resourceInUseByAnotherResource error. Use lifecycle.create_before_destroy
     within the ServerTlsPolicy resource to avoid this.
+    """
+    serverTlsPolicyRef: ServerTlsPolicyRef | None = None
+    """
+    Reference to a ServerTLSPolicy in networksecurity to populate serverTlsPolicy.
+    """
+    serverTlsPolicySelector: ServerTlsPolicySelector | None = None
+    """
+    Selector for a ServerTLSPolicy in networksecurity to populate serverTlsPolicy.
     """
     sslCertificates: list[str] | None = None
     """
@@ -398,6 +449,11 @@ class AtProvider(BaseModel):
     creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -534,6 +590,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

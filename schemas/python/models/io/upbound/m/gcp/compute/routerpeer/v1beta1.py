@@ -772,6 +772,11 @@ class AtProvider(BaseModel):
     You can choose a value from 0 to 65335. If you don't provide a value,
     Google Cloud assigns a priority of 100 to the ranges.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to "DELETE".
+    When set to "DELETE", deleting the resource is allowed.
+    """
     enable: bool | None = None
     """
     The status of the BGP peer connection. If set to false, any active session
@@ -923,6 +928,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

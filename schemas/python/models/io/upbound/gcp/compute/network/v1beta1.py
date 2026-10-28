@@ -43,6 +43,11 @@ class ForProvider(BaseModel):
     Choice of the behavior of inter-regional cost and MED in the BPS algorithm.
     Possible values are: DEFAULT, ADD_COST_TO_MED.
     """
+    deleteBgpAlwaysCompareMed: bool | None = None
+    """
+    If set to true, the bgp_always_compare_med field will be cleared.
+    If set to false (the default), bgp_always_compare_med will be set to the value specified in the configuration.
+    """
     deleteDefaultRoutesOnCreate: bool | None = None
     """
     If set to true, default routes (0.0.0.0/0) will be deleted
@@ -130,6 +135,11 @@ class InitProvider(BaseModel):
     """
     Choice of the behavior of inter-regional cost and MED in the BPS algorithm.
     Possible values are: DEFAULT, ADD_COST_TO_MED.
+    """
+    deleteBgpAlwaysCompareMed: bool | None = None
+    """
+    If set to true, the bgp_always_compare_med field will be cleared.
+    If set to false (the default), bgp_always_compare_med will be set to the value specified in the configuration.
     """
     deleteDefaultRoutesOnCreate: bool | None = None
     """
@@ -316,10 +326,20 @@ class AtProvider(BaseModel):
     Choice of the behavior of inter-regional cost and MED in the BPS algorithm.
     Possible values are: DEFAULT, ADD_COST_TO_MED.
     """
+    deleteBgpAlwaysCompareMed: bool | None = None
+    """
+    If set to true, the bgp_always_compare_med field will be cleared.
+    If set to false (the default), bgp_always_compare_med will be set to the value specified in the configuration.
+    """
     deleteDefaultRoutesOnCreate: bool | None = None
     """
     If set to true, default routes (0.0.0.0/0) will be deleted
     immediately after network creation. Defaults to false.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -439,6 +459,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

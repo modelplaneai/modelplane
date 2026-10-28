@@ -103,6 +103,11 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
+    deletionPolicy: str | None = None
+    """
+    Defaults to "DELETE".
+    When set to "DELETE", deleting the resource is allowed.
+    """
     dnsSuffix: str | None = None
     """
     The DNS domain suffix of the peered DNS domain. Make sure to suffix with a . (dot).
@@ -166,6 +171,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

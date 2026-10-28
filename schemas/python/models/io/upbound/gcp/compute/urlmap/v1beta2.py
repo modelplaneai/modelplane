@@ -98,6 +98,255 @@ class DefaultCustomErrorResponsePolicy(BaseModel):
     """
 
 
+class CacheKeyPolicy(BaseModel):
+    excludedQueryParameters: list[str] | None = None
+    """
+    Names of query string parameters to exclude in cache keys. All other
+    parameters will be included. Either specify excludedQueryParameters
+    or includedQueryParameters, not both. '&' and '=' will be percent
+    encoded and not treated as delimiters. Note: This field applies to
+    routes that use backend services. Attempting to set it on a route that
+    points exclusively to Backend Buckets will result in a configuration
+    error. For routes that point to a Backend Bucket, use
+    includedQueryParameters to define which parameters should be part of
+    the cache key.
+    """
+    includeHost: bool | None = None
+    """
+    If true, requests to different hosts will be cached separately. Note:
+    This setting is only applicable to routes that use a Backend Service.
+    It does not affect requests served by a Backend Bucket, as the host is
+    never included in a Backend Bucket's cache key. Attempting to set it on
+    a route that points exclusively to Backend Buckets will result in a
+    configuration error.
+    """
+    includeProtocol: bool | None = None
+    """
+    If true, http and https requests will be cached separately. Note: This
+    setting is only applicable to routes that use a Backend Service. It
+    does not affect requests served by a Backend Bucket, as the protocol is
+    never included in a Backend Bucket's cache key. Attempting to set on a
+    route that points exclusively to Backend Buckets will result in a
+    configuration error.
+    """
+    includeQueryString: bool | None = None
+    """
+    If true, include query string parameters in the cache key according to
+    includedQueryParameters and excludedQueryParameters. If neither is
+    set, the entire query string will be included. If false, the query
+    string will be excluded from the cache key entirely. Note: This field
+    applies to routes that use backend services. Attempting to set it on a
+    route that points exclusively to Backend Buckets will result in a
+    configuration error. For routes that point to a Backend Bucket, use
+    includedQueryParameters to define which parameters should be part of
+    the cache key.
+    """
+    includedCookieNames: list[str] | None = None
+    """
+    Allows HTTP cookies (by name) to be used in the cache key. The
+    name=value pair will be used in the cache key Cloud CDN generates.
+    Note: This setting is only applicable to routes that use a Backend
+    Service. It does not affect requests served by a Backend Bucket.
+    Attempting to set it on a route that points exclusively to Backend
+    Buckets will result in a configuration error. Up to 5 cookie names can
+    be specified.
+    """
+    includedHeaderNames: list[str] | None = None
+    """
+    Allows HTTP request headers (by name) to be used in the cache key.
+    """
+    includedQueryParameters: list[str] | None = None
+    """
+    Names of query string parameters to include in cache keys. All other
+    parameters will be excluded. Either specify includedQueryParameters
+    or excludedQueryParameters, not both. '&' and '=' will be percent
+    encoded and not treated as delimiters.
+    """
+
+
+class ClientTtl(BaseModel):
+    nanos: float | None = None
+    """
+    Span of time that's a fraction of a second at nanosecond resolution.
+    """
+    seconds: str | None = None
+    """
+    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000 inclusive.
+    """
+
+
+class DefaultTtl(BaseModel):
+    nanos: float | None = None
+    """
+    Span of time that's a fraction of a second at nanosecond resolution.
+    """
+    seconds: str | None = None
+    """
+    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000 inclusive.
+    """
+
+
+class MaxTtl(BaseModel):
+    nanos: float | None = None
+    """
+    Span of time that's a fraction of a second at nanosecond resolution.
+    """
+    seconds: str | None = None
+    """
+    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000 inclusive.
+    """
+
+
+class Ttl(BaseModel):
+    nanos: float | None = None
+    """
+    Span of time that's a fraction of a second at nanosecond resolution.
+    """
+    seconds: str | None = None
+    """
+    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000 inclusive.
+    """
+
+
+class NegativeCachingPolicyItem(BaseModel):
+    code: float | None = None
+    """
+    The HTTP status code to define a TTL against. Only HTTP status codes
+    300, 301, 302, 307, 308, 404, 405, 410, 421, 451 and 501 can be
+    specified as values, and you cannot specify a status code more than
+    once.
+    """
+    ttl: Ttl | None = None
+    """
+    The TTL (in seconds) for which to cache responses with the
+    corresponding status code. The maximum allowed value is 1800s (30
+    minutes). Infrequently accessed objects may be evicted from the cache
+    before the defined TTL.
+    Structure is documented below.
+    """
+
+
+class ServeWhileStale(BaseModel):
+    nanos: float | None = None
+    """
+    Span of time that's a fraction of a second at nanosecond resolution.
+    """
+    seconds: str | None = None
+    """
+    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000 inclusive.
+    """
+
+
+class CachePolicy(BaseModel):
+    cacheBypassRequestHeaderNames: list[str] | None = None
+    """
+    Bypass the cache when the specified request headers are matched by name,
+    e.g. Pragma or Authorization headers. Values are case-insensitive. Up to 5
+    header names can be specified. The cache is bypassed for all cacheMode
+    values.
+    """
+    cacheKeyPolicy: CacheKeyPolicy | None = None
+    """
+    The cache key configuration. If not specified, the default behavior depends
+    on the backend type: for Backend Services, the complete request URI is
+    used; for Backend Buckets, the request URI is used without the protocol or
+    host, and only query parameters known to Cloud Storage are included.
+    Structure is documented below.
+    """
+    cacheMode: str | None = None
+    """
+    Specifies the cache setting for all responses from this route. If not
+    specified, Cloud CDN uses CACHE_ALL_STATIC mode.
+    Possible values are: USE_ORIGIN_HEADERS, FORCE_CACHE_ALL, CACHE_ALL_STATIC.
+    """
+    clientTtl: ClientTtl | None = None
+    """
+    Specifies a separate client (e.g. browser client) maximum TTL for cached
+    content. This is used to clamp the max-age (or Expires) value sent to the
+    client. With FORCE_CACHE_ALL, the lesser of clientTtl and defaultTtl
+    is used for the response max-age directive, along with a "public"
+    directive. For cacheable content in CACHE_ALL_STATIC mode, clientTtl
+    clamps the max-age from the origin (if specified), or else sets the
+    response max-age directive to the lesser of the clientTtl and defaultTtl,
+    and also ensures a "public" cache-control directive is present. The maximum
+    allowed value is 31,622,400s (1 year). If not specified, Cloud CDN uses
+    3600s (1 hour) for CACHE_ALL_STATIC mode. Cannot exceed maxTtl.
+    Cannot be specified when cacheMode is USE_ORIGIN_HEADERS.
+    Structure is documented below.
+    """
+    defaultTtl: DefaultTtl | None = None
+    """
+    Specifies the default TTL for cached content for responses that do not have
+    an existing valid TTL (max-age or s-maxage). Setting a TTL of "0" means
+    "always revalidate". The value of defaultTtl cannot be set to a value
+    greater than that of maxTtl. When the cacheMode is set to
+    FORCE_CACHE_ALL, the defaultTtl will overwrite the TTL set in all
+    responses. The maximum allowed value is 31,622,400s (1 year). Infrequently
+    accessed objects may be evicted from the cache before the defined TTL. If
+    not specified, Cloud CDN uses 3600s (1 hour) for CACHE_ALL_STATIC and
+    FORCE_CACHE_ALL modes. Cannot be specified when cacheMode is
+    USE_ORIGIN_HEADERS.
+    Structure is documented below.
+    """
+    maxTtl: MaxTtl | None = None
+    """
+    Specifies the maximum allowed TTL for cached content. Cache directives that
+    attempt to set a max-age or s-maxage higher than this, or an Expires header
+    more than maxTtl seconds in the future will be capped at the value of
+    maxTtl, as if it were the value of an s-maxage Cache-Control directive.
+    Headers sent to the client will not be modified. Setting a TTL of "0" means
+    "always revalidate". The maximum allowed value is 31,622,400s (1 year).
+    Infrequently accessed objects may be evicted from the cache before the
+    defined TTL. If not specified, Cloud CDN uses 86400s (1 day) for
+    CACHE_ALL_STATIC mode. Can be specified only for CACHE_ALL_STATIC cache
+    mode.
+    Structure is documented below.
+    """
+    negativeCaching: bool | None = None
+    """
+    Negative caching allows per-status code TTLs to be set, in order to apply
+    fine-grained caching for common errors or redirects. This can reduce the
+    load on your origin and improve end-user experience by reducing response
+    latency. When the cacheMode is set to CACHE_ALL_STATIC or
+    USE_ORIGIN_HEADERS, negative caching applies to responses with the
+    specified response code that lack any Cache-Control, Expires, or
+    Pragma: no-cache directives. When the cacheMode is set to
+    FORCE_CACHE_ALL, negative caching applies to all responses with the
+    specified response code, and overrides any caching headers. By default,
+    Cloud CDN applies the following TTLs to these HTTP status codes:
+    """
+    negativeCachingPolicy: list[NegativeCachingPolicyItem] | None = None
+    """
+    Sets a cache TTL for the specified HTTP status code. negativeCaching
+    must be enabled to configure negativeCachingPolicy. Omitting the policy
+    and leaving negativeCaching enabled will use Cloud CDN's default cache
+    TTLs. Note that when specifying an explicit negativeCachingPolicy, you
+    should take care to specify a cache TTL for all response codes that you
+    wish to cache. Cloud CDN will not apply any default negative caching when
+    a policy exists.
+    Structure is documented below.
+    """
+    requestCoalescing: bool | None = None
+    """
+    If true then Cloud CDN will combine multiple concurrent cache fill
+    requests into a small number of requests to the origin. If not specified,
+    Cloud CDN applies request coalescing by default.
+    """
+    serveWhileStale: ServeWhileStale | None = None
+    """
+    Serve existing content from the cache (if available) when revalidating
+    content with the origin, or when an error is encountered when refreshing
+    the cache. This setting defines the default "max-stale" duration for any
+    cached responses that do not specify a max-stale directive. Stale
+    responses that exceed the TTL configured here will not be served. The
+    default limit (max-stale) is 86400s (1 day), which will allow stale
+    content to be served up to this limit beyond the max-age (or s-maxage) of
+    a cached response. The maximum allowed value is 604800 (1 week). Set this
+    to zero (0) to disable serve-while-stale.
+    Structure is documented below.
+    """
+
+
 class CorsPolicy(BaseModel):
     allowCredentials: bool | None = None
     """
@@ -156,14 +405,11 @@ class Abort(BaseModel):
 class FixedDelay(BaseModel):
     nanos: float | None = None
     """
-    Span of time that's a fraction of a second at nanosecond resolution. Durations
-    less than one second are represented with a 0 seconds field and a positive
-    nanos field. Must be from 0 to 999,999,999 inclusive.
+    Span of time that's a fraction of a second at nanosecond resolution.
     """
     seconds: str | None = None
     """
-    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000
-    inclusive.
+    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000 inclusive.
     """
 
 
@@ -199,14 +445,11 @@ class FaultInjectionPolicy(BaseModel):
 class MaxStreamDuration(BaseModel):
     nanos: float | None = None
     """
-    Span of time that's a fraction of a second at nanosecond resolution. Durations
-    less than one second are represented with a 0 seconds field and a positive
-    nanos field. Must be from 0 to 999,999,999 inclusive.
+    Span of time that's a fraction of a second at nanosecond resolution.
     """
     seconds: str | None = None
     """
-    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000
-    inclusive.
+    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000 inclusive.
     """
 
 
@@ -257,14 +500,11 @@ class RequestMirrorPolicy(BaseModel):
 class PerTryTimeout(BaseModel):
     nanos: float | None = None
     """
-    Span of time that's a fraction of a second at nanosecond resolution. Durations
-    less than one second are represented with a 0 seconds field and a positive
-    nanos field. Must be from 0 to 999,999,999 inclusive.
+    Span of time that's a fraction of a second at nanosecond resolution.
     """
     seconds: str | None = None
     """
-    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000
-    inclusive.
+    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000 inclusive.
     """
 
 
@@ -287,14 +527,11 @@ class RetryPolicy(BaseModel):
 class Timeout(BaseModel):
     nanos: float | None = None
     """
-    Span of time that's a fraction of a second at nanosecond resolution. Durations
-    less than one second are represented with a 0 seconds field and a positive
-    nanos field. Must be from 0 to 999,999,999 inclusive.
+    Span of time that's a fraction of a second at nanosecond resolution.
     """
     seconds: str | None = None
     """
-    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000
-    inclusive.
+    Span of time at a resolution of a second. Must be from 0 to 315,576,000,000 inclusive.
     """
 
 
@@ -397,6 +634,14 @@ class WeightedBackendService(BaseModel):
 
 
 class DefaultRouteAction(BaseModel):
+    cachePolicy: CachePolicy | None = None
+    """
+    Specifies the cache policy configuration for matched traffic. Available
+    only for Global EXTERNAL_MANAGED load balancer schemes. At least one
+    property must be specified. This policy cannot be specified if any target
+    backend has Identity-Aware Proxy enabled.
+    Structure is documented below.
+    """
     corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see
@@ -547,6 +792,14 @@ class HostRuleItem(BaseModel):
 
 
 class DefaultRouteActionModel(BaseModel):
+    cachePolicy: CachePolicy | None = None
+    """
+    Specifies the cache policy configuration for matched traffic. Available
+    only for Global EXTERNAL_MANAGED load balancer schemes. At least one
+    property must be specified. This policy cannot be specified if any target
+    backend has Identity-Aware Proxy enabled.
+    Structure is documented below.
+    """
     corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see W3C
@@ -721,6 +974,14 @@ class WeightedBackendServiceModel(BaseModel):
 
 
 class RouteAction(BaseModel):
+    cachePolicy: CachePolicy | None = None
+    """
+    Specifies the cache policy configuration for matched traffic. Available
+    only for Global EXTERNAL_MANAGED load balancer schemes. At least one
+    property must be specified. This policy cannot be specified if any target
+    backend has Identity-Aware Proxy enabled.
+    Structure is documented below.
+    """
     corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see W3C
@@ -1485,6 +1746,14 @@ class UrlRewriteModel1(BaseModel):
 
 
 class DefaultRouteActionModel1(BaseModel):
+    cachePolicy: CachePolicy | None = None
+    """
+    Specifies the cache policy configuration for matched traffic. Available
+    only for Global EXTERNAL_MANAGED load balancer schemes. At least one
+    property must be specified. This policy cannot be specified if any target
+    backend has Identity-Aware Proxy enabled.
+    Structure is documented below.
+    """
     corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see
@@ -1589,6 +1858,14 @@ class DefaultUrlRedirectModel1(BaseModel):
 
 
 class DefaultRouteActionModel2(BaseModel):
+    cachePolicy: CachePolicy | None = None
+    """
+    Specifies the cache policy configuration for matched traffic. Available
+    only for Global EXTERNAL_MANAGED load balancer schemes. At least one
+    property must be specified. This policy cannot be specified if any target
+    backend has Identity-Aware Proxy enabled.
+    Structure is documented below.
+    """
     corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see W3C
@@ -2038,6 +2315,14 @@ class UrlRewriteModel3(BaseModel):
 
 
 class DefaultRouteActionModel3(BaseModel):
+    cachePolicy: CachePolicy | None = None
+    """
+    Specifies the cache policy configuration for matched traffic. Available
+    only for Global EXTERNAL_MANAGED load balancer schemes. At least one
+    property must be specified. This policy cannot be specified if any target
+    backend has Identity-Aware Proxy enabled.
+    Structure is documented below.
+    """
     corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see
@@ -2142,6 +2427,14 @@ class DefaultUrlRedirectModel3(BaseModel):
 
 
 class DefaultRouteActionModel4(BaseModel):
+    cachePolicy: CachePolicy | None = None
+    """
+    Specifies the cache policy configuration for matched traffic. Available
+    only for Global EXTERNAL_MANAGED load balancer schemes. At least one
+    property must be specified. This policy cannot be specified if any target
+    backend has Identity-Aware Proxy enabled.
+    Structure is documented below.
+    """
     corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see W3C
@@ -2524,6 +2817,11 @@ class AtProvider(BaseModel):
     defaultRouteAction must not be set.
     Structure is documented below.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this resource. Provide this property when you create
@@ -2614,6 +2912,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

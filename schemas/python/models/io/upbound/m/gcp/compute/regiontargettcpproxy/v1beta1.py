@@ -65,7 +65,8 @@ class BackendServiceSelector(BaseModel):
 class ForProvider(BaseModel):
     backendService: str | None = None
     """
-    A reference to the BackendService resource.
+    A reference to the BackendService resource. This field is optional when
+    the loadBalancingScheme (available in beta) is specified.
     """
     backendServiceRef: BackendServiceRef | None = None
     """
@@ -106,7 +107,8 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     backendService: str | None = None
     """
-    A reference to the BackendService resource.
+    A reference to the BackendService resource. This field is optional when
+    the loadBalancingScheme (available in beta) is specified.
     """
     backendServiceRef: BackendServiceRef | None = None
     """
@@ -204,11 +206,17 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     backendService: str | None = None
     """
-    A reference to the BackendService resource.
+    A reference to the BackendService resource. This field is optional when
+    the loadBalancingScheme (available in beta) is specified.
     """
     creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -287,6 +295,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

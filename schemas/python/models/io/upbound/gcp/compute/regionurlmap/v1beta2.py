@@ -240,9 +240,8 @@ class RequestHeadersToAddItem(BaseModel):
     """
     replace: bool | None = None
     """
-    If false, headerValue is appended to any values that already exist for the
-    header. If true, headerValue is set for the header, discarding any values that
-    were set for that header.
+    If false, headerValue is appended to any values that already exist for the header. If true, headerValue is set for the header, discarding any values that were set for that header.
+    The default value is false.
     """
 
 
@@ -257,33 +256,29 @@ class ResponseHeadersToAddItem(BaseModel):
     """
     replace: bool | None = None
     """
-    If false, headerValue is appended to any values that already exist for the
-    header. If true, headerValue is set for the header, discarding any values that
-    were set for that header.
+    If false, headerValue is appended to any values that already exist for the header. If true, headerValue is set for the header, discarding any values that were set for that header.
+    The default value is false.
     """
 
 
 class HeaderAction(BaseModel):
     requestHeadersToAdd: list[RequestHeadersToAddItem] | None = None
     """
-    Headers to add to a matching request prior to forwarding the request to the
-    backendService.
+    Headers to add to a matching request before forwarding the request to the backendService.
     Structure is documented below.
     """
     requestHeadersToRemove: list[str] | None = None
     """
-    A list of header names for headers that need to be removed from the request
-    prior to forwarding the request to the backendService.
+    A list of header names for headers that need to be removed from the request before forwarding the request to the backendService.
     """
     responseHeadersToAdd: list[ResponseHeadersToAddItem] | None = None
     """
-    Headers to add the response prior to sending the response back to the client.
+    Headers to add the response before sending the response back to the client.
     Structure is documented below.
     """
     responseHeadersToRemove: list[str] | None = None
     """
-    A list of header names for headers that need to be removed from the response
-    prior to sending the response back to the client.
+    A list of header names for headers that need to be removed from the response before sending the response back to the client.
     """
 
 
@@ -1144,6 +1139,14 @@ class PathMatcherItem(BaseModel):
     """
     An optional description of this resource.
     """
+    headerAction: HeaderAction | None = None
+    """
+    Specifies changes to request and response headers that need to take effect for the selected backendService.
+    headerAction specified here take effect before headerAction in the enclosing HttpRouteRule, PathMatcher and UrlMap.
+    headerAction is not supported for load balancers that have their loadBalancingScheme set to EXTERNAL.
+    Not supported when the URL map is bound to a target gRPC proxy that has validateForProxyless field set to true.
+    Structure is documented below.
+    """
     name: str | None = None
     """
     The name to which this PathMatcher is referred by the HostRule.
@@ -1235,6 +1238,14 @@ class ForProvider(BaseModel):
     """
     An optional description of this resource. Provide this property when
     you create the resource.
+    """
+    headerAction: HeaderAction | None = None
+    """
+    Specifies changes to request and response headers that need to take effect for the selected backendService.
+    headerAction specified here take effect before headerAction in the enclosing HttpRouteRule, PathMatcher and UrlMap.
+    headerAction is not supported for load balancers that have their loadBalancingScheme set to EXTERNAL.
+    Not supported when the URL map is bound to a target gRPC proxy that has validateForProxyless field set to true.
+    Structure is documented below.
     """
     hostRule: list[HostRuleItem] | None = None
     """
@@ -1681,6 +1692,14 @@ class InitProvider(BaseModel):
     """
     An optional description of this resource. Provide this property when
     you create the resource.
+    """
+    headerAction: HeaderAction | None = None
+    """
+    Specifies changes to request and response headers that need to take effect for the selected backendService.
+    headerAction specified here take effect before headerAction in the enclosing HttpRouteRule, PathMatcher and UrlMap.
+    headerAction is not supported for load balancers that have their loadBalancingScheme set to EXTERNAL.
+    Not supported when the URL map is bound to a target gRPC proxy that has validateForProxyless field set to true.
+    Structure is documented below.
     """
     hostRule: list[HostRuleItem] | None = None
     """
@@ -2190,6 +2209,14 @@ class PathMatcherItemModel(BaseModel):
     """
     An optional description of this resource.
     """
+    headerAction: HeaderAction | None = None
+    """
+    Specifies changes to request and response headers that need to take effect for the selected backendService.
+    headerAction specified here take effect before headerAction in the enclosing HttpRouteRule, PathMatcher and UrlMap.
+    headerAction is not supported for load balancers that have their loadBalancingScheme set to EXTERNAL.
+    Not supported when the URL map is bound to a target gRPC proxy that has validateForProxyless field set to true.
+    Structure is documented below.
+    """
     name: str | None = None
     """
     The name to which this PathMatcher is referred by the HostRule.
@@ -2265,6 +2292,11 @@ class AtProvider(BaseModel):
     defaultRouteAction must not be set.
     Structure is documented below.
     """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
+    """
     description: str | None = None
     """
     An optional description of this resource. Provide this property when
@@ -2274,6 +2306,14 @@ class AtProvider(BaseModel):
     """
     Fingerprint of this resource. This field is used internally during
     updates of this resource.
+    """
+    headerAction: HeaderAction | None = None
+    """
+    Specifies changes to request and response headers that need to take effect for the selected backendService.
+    headerAction specified here take effect before headerAction in the enclosing HttpRouteRule, PathMatcher and UrlMap.
+    headerAction is not supported for load balancers that have their loadBalancingScheme set to EXTERNAL.
+    Not supported when the URL map is bound to a target gRPC proxy that has validateForProxyless field set to true.
+    Structure is documented below.
     """
     hostRule: list[HostRuleItem] | None = None
     """
@@ -2352,6 +2392,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

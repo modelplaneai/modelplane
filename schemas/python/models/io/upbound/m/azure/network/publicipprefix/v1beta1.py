@@ -93,11 +93,11 @@ class ForProvider(BaseModel):
     """
     sku: str | None = None
     """
-    The SKU of the Public IP Prefix. Accepted values are Standard. Defaults to Standard. Changing this forces a new resource to be created.
+    The SKU of the Public IP Prefix. Possible values are Standard and StandardV2. Defaults to Standard. Changing this forces a new resource to be created.
     """
     skuTier: str | None = None
     """
-    The SKU Tier that should be used for the Public IP. Possible values are Regional and Global. Defaults to Regional. Changing this forces a new resource to be created.
+    The SKU Tier that should be used for the Public IP Prefix. Possible values are Regional and Global. Defaults to Regional. Changing this forces a new resource to be created.
     """
     tags: dict[str, str] | None = None
     """
@@ -128,11 +128,11 @@ class InitProvider(BaseModel):
     """
     sku: str | None = None
     """
-    The SKU of the Public IP Prefix. Accepted values are Standard. Defaults to Standard. Changing this forces a new resource to be created.
+    The SKU of the Public IP Prefix. Possible values are Standard and StandardV2. Defaults to Standard. Changing this forces a new resource to be created.
     """
     skuTier: str | None = None
     """
-    The SKU Tier that should be used for the Public IP. Possible values are Regional and Global. Defaults to Regional. Changing this forces a new resource to be created.
+    The SKU Tier that should be used for the Public IP Prefix. Possible values are Regional and Global. Defaults to Regional. Changing this forces a new resource to be created.
     """
     tags: dict[str, str] | None = None
     """
@@ -237,11 +237,11 @@ class AtProvider(BaseModel):
     """
     sku: str | None = None
     """
-    The SKU of the Public IP Prefix. Accepted values are Standard. Defaults to Standard. Changing this forces a new resource to be created.
+    The SKU of the Public IP Prefix. Possible values are Standard and StandardV2. Defaults to Standard. Changing this forces a new resource to be created.
     """
     skuTier: str | None = None
     """
-    The SKU Tier that should be used for the Public IP. Possible values are Regional and Global. Defaults to Regional. Changing this forces a new resource to be created.
+    The SKU Tier that should be used for the Public IP Prefix. Possible values are Regional and Global. Defaults to Regional. Changing this forces a new resource to be created.
     """
     tags: dict[str, str] | None = None
     """
@@ -290,6 +290,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

@@ -158,10 +158,11 @@ class SourceImageEncryptionKey(BaseModel):
     The service account used for the encryption request for the given KMS key.
     If absent, the Compute Engine Service Agent service account is used.
     """
-    rawKey: str | None = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
+    Note: This property is sensitive and will not be displayed in the plan.
     """
 
 
@@ -179,10 +180,11 @@ class SourceSnapshotEncryptionKey(BaseModel):
     The service account used for the encryption request for the given KMS key.
     If absent, the Compute Engine Service Agent service account is used.
     """
-    rawKey: str | None = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
+    Note: This property is sensitive and will not be displayed in the plan.
     """
 
 
@@ -645,11 +647,6 @@ class SourceImageEncryptionKeyModel(BaseModel):
     The service account used for the encryption request for the given KMS key.
     If absent, the Compute Engine Service Agent service account is used.
     """
-    rawKey: str | None = None
-    """
-    Specifies a 256-bit customer-supplied encryption key, encoded in
-    RFC 4648 base64 to either encrypt or decrypt this resource.
-    """
     sha256: str | None = None
     """
     (Output)
@@ -671,11 +668,6 @@ class SourceSnapshotEncryptionKeyModel(BaseModel):
     """
     The service account used for the encryption request for the given KMS key.
     If absent, the Compute Engine Service Agent service account is used.
-    """
-    rawKey: str | None = None
-    """
-    Specifies a 256-bit customer-supplied encryption key, encoded in
-    RFC 4648 base64 to either encrypt or decrypt this resource.
     """
     sha256: str | None = None
     """
@@ -713,6 +705,11 @@ class AtProvider(BaseModel):
     creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
+    """
+    deletionPolicy: str | None = None
+    """
+    Defaults to DELETE.
+    When set to "DELETE", deleting the resource is allowed.
     """
     description: str | None = None
     """
@@ -966,6 +963,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """
