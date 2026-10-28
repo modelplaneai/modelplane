@@ -223,13 +223,17 @@
 
               alias k=kubectl
 
-              echo "Modelplane development shell"
-              echo ""
-              echo "  nix flake check               nix run .#fix"
-              echo "  nix run .#build               nix run .#push"
-              echo "  nix run .#run                 nix run .#stop"
-              echo "  nix run .#stacks"
-              echo ""
+              # Only greet an interactive shell. nix develop -c runs this hook
+              # too, and the banner would land in the command's output.
+              if [[ $- == *i* ]]; then
+                echo "Modelplane development shell"
+                echo ""
+                echo "  nix flake check               nix run .#fix"
+                echo "  nix run .#build               nix run .#push"
+                echo "  nix run .#run                 nix run .#stop"
+                echo "  nix run .#stacks"
+                echo ""
+              fi
             '';
           };
         }
