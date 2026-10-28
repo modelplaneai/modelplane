@@ -151,10 +151,12 @@ spec:
                   message: spec.provisioning.vultr is required when spec.provisioning.provider is Vultr.
                 - rule: "self.provider != 'Civo' || has(self.civo)"
                   message: spec.provisioning.civo is required when spec.provisioning.provider is Civo.
+                - rule: "self.provider != 'UpCloud' || has(self.upcloud)"
+                  message: spec.provisioning.upcloud is required when spec.provisioning.provider is UpCloud.
                 properties:
                   provider:
                     type: string
-                    enum: [GKE, EKS, AKS, Nebius, Vultr, Civo]
+                    enum: [GKE, EKS, AKS, Nebius, Vultr, Civo, UpCloud]
                   gke:
                     type: object
                     required: [machineType]
@@ -416,6 +418,39 @@ spec:
                             description: >-
                               GPU accelerator type (e.g. nvidia-l40s,
                               nvidia-a100). Informational - reported on
+                              the consuming InferenceCluster's status.
+                            minLength: 1
+                            maxLength: 63
+                          count:
+                            type: integer
+                            minimum: 1
+                            maximum: 16
+                  upcloud:
+                    type: object
+                    required: [plan, accelerator]
+                    properties:
+                      plan:
+                        type: string
+                        description: >-
+                          UpCloud GPU server plan (e.g.
+                          GPU-8xCPU-64GB-1xL40S). The plan determines the
+                          GPU model and count; the accelerator block below
+                          is informational.
+                        minLength: 1
+                        maxLength: 63
+                      accelerator:
+                        type: object
+                        description: >-
+                          GPU accelerator to attach when provisioning the node
+                          pool. Provisioning input only: the scheduler matches
+                          against spec.devices, not this block.
+                        required: [type, count]
+                        properties:
+                          type:
+                            type: string
+                            description: >-
+                              GPU accelerator type (e.g. nvidia-l40s,
+                              nvidia-h100). Informational - reported on
                               the consuming InferenceCluster's status.
                             minLength: 1
                             maxLength: 63

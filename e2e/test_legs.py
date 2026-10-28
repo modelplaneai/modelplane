@@ -41,6 +41,7 @@ COMPOSITIONS = {
     "aks": "compose-aks-cluster",
     "civo": "compose-civo-cluster",
     "nebius": "compose-nebius-cluster",
+    "upcloud": "compose-upcloud-cluster",
     "vultr": "compose-vultr-cluster",
 }
 

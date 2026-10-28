@@ -49,6 +49,7 @@ from models.ai.modelplane.infrastructure.ekscluster import v1alpha1 as eksv1alph
 from models.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from models.ai.modelplane.infrastructure.nebiuscluster import v1alpha1 as nebiusv1alpha1
 from models.ai.modelplane.infrastructure.servingstack import v1alpha1 as ssv1alpha1
+from models.ai.modelplane.infrastructure.upcloudcluster import v1alpha1 as upcloudv1alpha1
 from models.ai.modelplane.infrastructure.vultrcluster import v1alpha1 as vultrv1alpha1
 from models.ai.modelplane.modelcache import v1alpha1 as mcv1alpha1
 from models.io.crossplane.apiextensions.managedresourceactivationpolicy import (
@@ -65,13 +66,14 @@ from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 # Cluster source discriminator values from the XRD enum. The Literal
 # mirrors ServingStack spec.cloud, so passing a wrong or unsupported
 # cloud fails type checking; Final makes each constant a literal type.
-Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "Civo", "Existing"]
+Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "Civo", "UpCloud", "Existing"]
 CLUSTER_SOURCE_GKE: Final = "GKE"
 CLUSTER_SOURCE_EKS: Final = "EKS"
 CLUSTER_SOURCE_AKS: Final = "AKS"
 CLUSTER_SOURCE_NEBIUS: Final = "Nebius"
 CLUSTER_SOURCE_VULTR: Final = "Vultr"
 CLUSTER_SOURCE_CIVO: Final = "Civo"
+CLUSTER_SOURCE_UPCLOUD: Final = "UpCloud"
 CLUSTER_SOURCE_EXISTING: Final = "Existing"
 
 # Condition types and reasons for the InferenceCluster XR.
@@ -243,6 +245,11 @@ _ACTIVATE_CIVO = (
     "networks.vpc.civo.m.upbound.io",
     "firewalls.vpc.civo.m.upbound.io",
 )
+_ACTIVATE_UPCLOUD = (
+    "kubernetesclusters.uks.m.upcloud.com",
+    "kubernetesnodegroups.uks.m.upcloud.com",
+    "networks.network.m.upcloud.com",
+)
 
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
@@ -363,6 +370,8 @@ class Composer:
             self.compose_vultr(cluster.vultr)
         elif source == CLUSTER_SOURCE_CIVO:
             self.compose_civo(cluster.civo)
+        elif source == CLUSTER_SOURCE_UPCLOUD:
+            self.compose_upcloud(cluster.upcloud)
         elif source == CLUSTER_SOURCE_EXISTING:
             self.compose_existing(cluster.existing)
         else:
@@ -1093,6 +1102,49 @@ class Composer:
 
         self.write_status(self.schedulable_pools())
         self.derive_conditions(cluster_ready=civo_ready)
+
+    def compose_upcloud(self, upcloud: v1alpha1.Upcloud | None) -> None:
+        """Compose an InferenceCluster backed by a Modelplane-provisioned
+        UKS cluster. Composes the UpCloudCluster XR, waits for it to be
+        ready, then wires its kubeconfig into the backend.
+
+        The UKS kubeconfig embeds static client certificates, so the
+        kubeconfig alone is enough to reach the cluster and no identity is
+        layered on the ClusterProviderConfig.
+        """
+        if not upcloud:
+            response.warning(self.rsp, "UpCloud configuration is required when source is UpCloud")
+            return
+
+        self.compose_activation(_ACTIVATE_UPCLOUD)
+        if self._activation_ready(_ACTIVATE_UPCLOUD) or "upcloud-cluster" in self.req.observed.resources:
+            self.rsp.desired.resources["activation"].ready = fnv1.READY_TRUE
+            self.compose_upcloud_cluster(upcloud)
+
+        upcloud_ready = (
+            resource.get_condition(self.req.observed.resources.get("upcloud-cluster"), "Ready").status == "True"
+        )
+        kubeconfig = self.observed_upcloud_secret(_SECRET_TYPE_KUBECONFIG)
+        backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
+
+        if upcloud_ready and kubeconfig:
+            self.compose_cluster_provider_config(kubeconfig.name, kubeconfig.key)
+
+        backend_secrets = self.resolve_upcloud_backend_secrets(
+            upcloud_ready=upcloud_ready, backend_exists=backend_exists
+        )
+        if backend_secrets or backend_exists:
+            if backend_secrets:
+                self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_UPCLOUD)
+            self.compose_upcloud_usage()
+
+        if upcloud_ready:
+            self.rsp.desired.resources["upcloud-cluster"].ready = fnv1.READY_TRUE
+            if not backend_exists:
+                response.normal(self.rsp, "UpCloud cluster ready, composing backend")
+
+        self.write_status(self.gpu_pools())
+        self.derive_conditions(cluster_ready=upcloud_ready)
 
     def compose_existing(self, existing: v1alpha1.Existing | None) -> None:
         """Compose an InferenceCluster backed by a user-supplied cluster.
@@ -1963,6 +2015,145 @@ class Composer:
             return None
         return next((s for s in civo_secrets if s.type == secret_type), None)
 
+    def compose_upcloud_cluster(self, upcloud: v1alpha1.Upcloud) -> None:
+        """Compose an UpCloudCluster XR.
+
+        Combines the cluster-level config (zone, autoscaler credentials)
+        with GPU node pools derived from the user's node pools + referenced
+        classes. The system pool is injected by compose-upcloud-cluster.
+        """
+        upcloud_node_pools: list[upcloudv1alpha1.NodePool] = []
+
+        for pool in self.xr.spec.nodePools or []:
+            cls = self.classes.get(pool.className)
+            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.upcloud:
+                msg = f"InferenceClass {pool.className} has no UpCloud provisioning block"
+                response.set_conditions(
+                    self.rsp,
+                    resource.Condition(
+                        typ=CONDITION_TYPE_CLUSTER_READY,
+                        status="False",
+                        reason=CONDITION_REASON_INVALID_NODE_POOL,
+                        message=msg,
+                    ),
+                )
+                response.warning(self.rsp, msg)
+                return
+            prov = cls.spec.provisioning.upcloud
+            node_pool = upcloudv1alpha1.NodePool(
+                name=pool.name,
+                role="GPU",
+                plan=prov.plan,
+                nodeCount=pool.nodeCount,
+                gpu=upcloudv1alpha1.Gpu(
+                    acceleratorType=prov.accelerator.type,
+                ),
+            )
+            # Only set the autoscaling bounds when the pool opts in, so
+            # fixed-size pools stay fixed (resource.update serializes with
+            # exclude_unset, keeping unset bounds out of the UpCloudCluster
+            # spec rather than emitting maxNodeCount: null). Fabric is not
+            # mapped: UKS has no EFA or InfiniBand analog.
+            if pool.maxNodeCount is not None:
+                node_pool.maxNodeCount = pool.maxNodeCount
+            if pool.minNodeCount is not None:
+                node_pool.minNodeCount = pool.minNodeCount
+            upcloud_node_pools.append(node_pool)
+
+        upcloud_spec = upcloudv1alpha1.Spec(
+            zone=upcloud.zone,
+            kubernetesVersion=upcloud.kubernetesVersion,
+            nodePools=upcloud_node_pools,
+        )
+        if upcloud.credentials:
+            upcloud_spec.credentials = upcloudv1alpha1.Credentials(
+                type=upcloud.credentials.type,
+                name=upcloud.credentials.name,
+            )
+        # The autoscaler's token Secret is in modelplane-system, the
+        # namespace the UpCloudCluster is composed into, so the ref passes
+        # through unchanged.
+        if upcloud.autoscaler:
+            upcloud_spec.autoscaler = upcloudv1alpha1.Autoscaler(
+                secretRef=upcloudv1alpha1.SecretRef(
+                    name=upcloud.autoscaler.secretRef.name,
+                    key=upcloud.autoscaler.secretRef.key,
+                ),
+            )
+        resource.update(
+            self.rsp.desired.resources["upcloud-cluster"],
+            upcloudv1alpha1.UpCloudCluster(
+                metadata=metav1.ObjectMeta(
+                    name=_name(self.xr.metadata),
+                    namespace=_NAMESPACE_SYSTEM,
+                ),
+                spec=upcloud_spec,
+            ),
+        )
+
+    def compose_upcloud_usage(self) -> None:
+        """Block UpCloudCluster deletion until the backend is deleted."""
+        resource.update(
+            self.rsp.desired.resources["usage-upcloud-by-backend"],
+            usagev1beta1.Usage(
+                metadata=metav1.ObjectMeta(namespace=_NAMESPACE_SYSTEM),
+                spec=usagev1beta1.Spec(
+                    of=usagev1beta1.Of(
+                        apiVersion="infrastructure.modelplane.ai/v1alpha1",
+                        kind="UpCloudCluster",
+                        resourceSelector=usagev1beta1.ResourceSelectorModel(matchControllerRef=True),
+                    ),
+                    by=usagev1beta1.By(
+                        apiVersion="infrastructure.modelplane.ai/v1alpha1",
+                        kind="ServingStack",
+                        resourceSelector=usagev1beta1.ResourceSelector(matchControllerRef=True),
+                    ),
+                    replayDeletion=True,
+                ),
+            ),
+        )
+        self.rsp.desired.resources["usage-upcloud-by-backend"].ready = fnv1.READY_TRUE
+
+    def resolve_upcloud_backend_secrets(
+        self, *, upcloud_ready: bool, backend_exists: bool
+    ) -> list[ssv1alpha1.Secret] | None:
+        """Resolve secrets for the backend from UpCloudCluster status. Falls
+        back to the observed backend's spec.secrets if UpCloudCluster
+        secrets aren't available but the backend already exists."""
+        upcloud_secrets = self.observed_upcloud_secrets()
+
+        if upcloud_ready and upcloud_secrets:
+            return [ssv1alpha1.Secret(type=s.type, name=s.name, key=s.key) for s in upcloud_secrets]
+
+        if backend_exists:
+            observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
+            if observed:
+                d = resource.struct_to_dict(observed.resource)
+                observed_secrets = d.get("spec", {}).get("secrets", [])
+                if observed_secrets:
+                    return [ssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in observed_secrets]
+
+        return None
+
+    def observed_upcloud_secrets(self) -> list[upcloudv1alpha1.Secret] | None:
+        """Read the UpCloudCluster's status.secrets from observed state."""
+        upcloud_observed = self.req.observed.resources.get("upcloud-cluster")
+        if not upcloud_observed:
+            return None
+        observed_upcloud = upcloudv1alpha1.UpCloudCluster.model_validate(
+            resource.struct_to_dict(upcloud_observed.resource)
+        )
+        if not observed_upcloud.status:
+            return None
+        return observed_upcloud.status.secrets
+
+    def observed_upcloud_secret(self, secret_type: str) -> upcloudv1alpha1.Secret | None:
+        """Read a specific secret from the observed UpCloudCluster status."""
+        upcloud_secrets = self.observed_upcloud_secrets()
+        if not upcloud_secrets:
+            return None
+        return next((s for s in upcloud_secrets if s.type == secret_type), None)
+
     def compose_eks_usage(self) -> None:
         """Block EKSCluster deletion until the backend is deleted."""
         resource.update(
@@ -2210,8 +2401,9 @@ class Composer:
 
         For provisioned clusters it comes from the backing cluster's
         status.cache.storageClassName, which reports the Modelplane-managed
-        class. Vultr and Civo are absent: their cluster XRs compose no
-        cache StorageClass (neither cloud has usable RWX storage).
+        class. Vultr, Civo and UpCloud are absent: their cluster XRs compose
+        no cache StorageClass (none of the three has RWX storage usable for
+        the cache - UpCloud's File Storage NFS has no CSI driver).
         For Existing clusters there is no cluster XR, so it's the
         user-supplied name. None until the cluster XR reports it."""
         provisioned = {

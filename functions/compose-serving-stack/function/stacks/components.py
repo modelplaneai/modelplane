@@ -29,7 +29,7 @@ from typing import Any, Literal
 # The clouds and stacks the join can select - the values of ServingStack
 # spec.cloud and spec.stack, so a wrong or unsupported value fails type
 # checking at the caller.
-Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "Civo", "Existing"]
+Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "Civo", "UpCloud", "Existing"]
 Stack = Literal["Standard", "Dynamo"]
 
 

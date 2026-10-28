@@ -357,6 +357,28 @@ def _civo_cluster(*, node_pools: list[dict], credentials: dict | None, ready: fn
     )
 
 
+def _upcloud_cluster(
+    *, node_pools: list[dict], credentials: dict | None, autoscaler: dict | None, ready: fnv1.Ready
+) -> fnv1.Resource:
+    """The composed UpCloudCluster in fi-hel2 with node_pools, using credentials and autoscaler unless they're None."""
+    spec: dict = {"zone": "fi-hel2", "kubernetesVersion": "1.36", "nodePools": node_pools}
+    if credentials is not None:
+        spec["credentials"] = credentials
+    if autoscaler is not None:
+        spec["autoscaler"] = autoscaler
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                "kind": "UpCloudCluster",
+                "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                "spec": spec,
+            }
+        ),
+        ready=ready,
+    )
+
+
 def _cluster_provider_config(*, kubeconfig: str, identity: dict | None) -> fnv1.Resource:
     """The ClusterProviderConfig reaching test-cluster with the kubeconfig Secret, as identity unless it's None."""
     spec: dict = {
@@ -5957,6 +5979,432 @@ COMPOSE_CASES = [
                     "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
                     "class-gpu-h100-civo": fnv1.ResourceSelector(
                         api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-h100-civo"
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClusterReady", status=fnv1.STATUS_CONDITION_TRUE, reason="ClusterRunning"),
+                fnv1.Condition(type="BackendReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Installing"),
+            ],
+        ),
+    ),
+    ComposeCase(
+        name="UpCloudFirstPass",
+        reason="With no UpCloudCluster observed yet, an UpCloud cluster composes only the activation policy and the UpCloudCluster.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_inference_cluster(
+                    cluster=v1alpha1.Cluster(
+                        source="UpCloud",
+                        upcloud=v1alpha1.Upcloud(
+                            zone="fi-hel2",
+                            autoscaler=v1alpha1.Autoscaler(secretRef=v1alpha1.SecretRefModel(name="upcloud-api")),
+                        ),
+                    ),
+                    node_pools=[
+                        v1alpha1.NodePool(name="l40s-pool", className="gpu-l40s-upcloud", nodeCount=2, maxNodeCount=4),
+                    ],
+                ),
+                resources={
+                    "activation": _observed_activation_policy(
+                        activated=[
+                            "kubernetesclusters.uks.m.upcloud.com",
+                            "kubernetesnodegroups.uks.m.upcloud.com",
+                            "networks.network.m.upcloud.com",
+                        ]
+                    ),
+                },
+            ),
+            required_resources={
+                "class-gpu-l40s-upcloud": fnv1.Resources(
+                    items=[
+                        _inference_class(
+                            name="gpu-l40s-upcloud",
+                            count=1,
+                            memory="46068Mi",
+                            provisioning={
+                                "provider": "UpCloud",
+                                "upcloud": {
+                                    "plan": "GPU-8xCPU-64GB-1xL40S",
+                                    "accelerator": {"type": "nvidia-l40s", "count": 1},
+                                },
+                            },
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_inference_cluster(
+                    gpu_pools=[
+                        {
+                            "name": "l40s-pool",
+                            "nodes": 4,
+                            "devices": [
+                                {
+                                    "name": "gpu",
+                                    "claim": "DRA",
+                                    "driver": "gpu.nvidia.com",
+                                    "deviceClassName": "gpu.nvidia.com",
+                                    "count": 1,
+                                    "capacity": {"memory": {"value": "46068Mi"}},
+                                },
+                            ],
+                        },
+                    ],
+                    cache=None,
+                    gateway=None,
+                ),
+                resources={
+                    "usage-inferenceclass-gpu-l40s-upcloud": _input_usage(
+                        kind="InferenceClass", name="gpu-l40s-upcloud"
+                    ),
+                    "activation": _activation_policy(
+                        activate=[
+                            "kubernetesclusters.uks.m.upcloud.com",
+                            "kubernetesnodegroups.uks.m.upcloud.com",
+                            "networks.network.m.upcloud.com",
+                        ],
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "upcloud-cluster": _upcloud_cluster(
+                        node_pools=[
+                            {
+                                "name": "l40s-pool",
+                                "role": "GPU",
+                                "plan": "GPU-8xCPU-64GB-1xL40S",
+                                "nodeCount": 2,
+                                "maxNodeCount": 4,
+                                "gpu": {"acceleratorType": "nvidia-l40s"},
+                            },
+                        ],
+                        credentials=None,
+                        autoscaler={"secretRef": {"name": "upcloud-api", "key": "token"}},
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "model-replicas": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelReplica",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-routes": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelRoute",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-caches": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache"),
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "class-gpu-l40s-upcloud": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-l40s-upcloud"
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClusterReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Provisioning"),
+                fnv1.Condition(type="BackendReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForCluster"),
+            ],
+        ),
+    ),
+    ComposeCase(
+        name="UpCloudCredentials",
+        reason="An UpCloud cluster's credentials pass through to the UpCloudCluster's spec.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_inference_cluster(
+                    cluster=v1alpha1.Cluster(
+                        source="UpCloud",
+                        upcloud=v1alpha1.Upcloud(
+                            zone="fi-hel2",
+                            credentials=v1alpha1.Credentials(type="ProviderConfig", name="my-upcloud-account"),
+                            autoscaler=v1alpha1.Autoscaler(secretRef=v1alpha1.SecretRefModel(name="upcloud-api")),
+                        ),
+                    ),
+                    node_pools=[
+                        v1alpha1.NodePool(name="l40s-pool", className="gpu-l40s-upcloud", nodeCount=2, maxNodeCount=4),
+                    ],
+                ),
+                resources={
+                    "activation": _observed_activation_policy(
+                        activated=[
+                            "kubernetesclusters.uks.m.upcloud.com",
+                            "kubernetesnodegroups.uks.m.upcloud.com",
+                            "networks.network.m.upcloud.com",
+                        ]
+                    ),
+                },
+            ),
+            required_resources={
+                "class-gpu-l40s-upcloud": fnv1.Resources(
+                    items=[
+                        _inference_class(
+                            name="gpu-l40s-upcloud",
+                            count=1,
+                            memory="46068Mi",
+                            provisioning={
+                                "provider": "UpCloud",
+                                "upcloud": {
+                                    "plan": "GPU-8xCPU-64GB-1xL40S",
+                                    "accelerator": {"type": "nvidia-l40s", "count": 1},
+                                },
+                            },
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_inference_cluster(
+                    gpu_pools=[
+                        {
+                            "name": "l40s-pool",
+                            "nodes": 4,
+                            "devices": [
+                                {
+                                    "name": "gpu",
+                                    "claim": "DRA",
+                                    "driver": "gpu.nvidia.com",
+                                    "deviceClassName": "gpu.nvidia.com",
+                                    "count": 1,
+                                    "capacity": {"memory": {"value": "46068Mi"}},
+                                },
+                            ],
+                        },
+                    ],
+                    cache=None,
+                    gateway=None,
+                ),
+                resources={
+                    "usage-inferenceclass-gpu-l40s-upcloud": _input_usage(
+                        kind="InferenceClass", name="gpu-l40s-upcloud"
+                    ),
+                    "activation": _activation_policy(
+                        activate=[
+                            "kubernetesclusters.uks.m.upcloud.com",
+                            "kubernetesnodegroups.uks.m.upcloud.com",
+                            "networks.network.m.upcloud.com",
+                        ],
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "upcloud-cluster": _upcloud_cluster(
+                        node_pools=[
+                            {
+                                "name": "l40s-pool",
+                                "role": "GPU",
+                                "plan": "GPU-8xCPU-64GB-1xL40S",
+                                "nodeCount": 2,
+                                "maxNodeCount": 4,
+                                "gpu": {"acceleratorType": "nvidia-l40s"},
+                            },
+                        ],
+                        credentials={"type": "ProviderConfig", "name": "my-upcloud-account"},
+                        autoscaler={"secretRef": {"name": "upcloud-api", "key": "token"}},
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "model-replicas": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelReplica",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-routes": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelRoute",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-caches": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache"),
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "class-gpu-l40s-upcloud": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-l40s-upcloud"
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClusterReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Provisioning"),
+                fnv1.Condition(type="BackendReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForCluster"),
+            ],
+        ),
+    ),
+    # The UKS kubeconfig embeds static client certificates, so the
+    # ClusterProviderConfig carries no identity (unlike Nebius).
+    # UpCloudCluster reports no cache StorageClass, so status.cache stays
+    # unset.
+    ComposeCase(
+        name="UpCloudReady",
+        reason="Once its UpCloudCluster is Ready, an UpCloud cluster composes a ClusterProviderConfig without identity, the ServingStack and the Usage.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_inference_cluster(
+                    cluster=v1alpha1.Cluster(
+                        source="UpCloud",
+                        upcloud=v1alpha1.Upcloud(
+                            zone="fi-hel2",
+                            autoscaler=v1alpha1.Autoscaler(secretRef=v1alpha1.SecretRefModel(name="upcloud-api")),
+                        ),
+                    ),
+                    node_pools=[
+                        v1alpha1.NodePool(name="l40s-pool", className="gpu-l40s-upcloud", nodeCount=2, maxNodeCount=4),
+                    ],
+                ),
+                resources={
+                    "upcloud-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "UpCloudCluster",
+                                "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                                "spec": {
+                                    "zone": "fi-hel2",
+                                    "nodePools": [
+                                        {
+                                            "name": "l40s-pool",
+                                            "role": "GPU",
+                                            "plan": "GPU-8xCPU-64GB-1xL40S",
+                                            "nodeCount": 2,
+                                        },
+                                    ],
+                                },
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                        },
+                                    ],
+                                    "secrets": [
+                                        {
+                                            "type": "Kubeconfig",
+                                            "name": "test-cluster-kubeconfig-abcde",
+                                            "key": "kubeconfig",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                    "activation": _observed_activation_policy(
+                        activated=[
+                            "kubernetesclusters.uks.m.upcloud.com",
+                            "kubernetesnodegroups.uks.m.upcloud.com",
+                            "networks.network.m.upcloud.com",
+                        ]
+                    ),
+                },
+            ),
+            required_resources={
+                "class-gpu-l40s-upcloud": fnv1.Resources(
+                    items=[
+                        _inference_class(
+                            name="gpu-l40s-upcloud",
+                            count=1,
+                            memory="46068Mi",
+                            provisioning={
+                                "provider": "UpCloud",
+                                "upcloud": {
+                                    "plan": "GPU-8xCPU-64GB-1xL40S",
+                                    "accelerator": {"type": "nvidia-l40s", "count": 1},
+                                },
+                            },
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_inference_cluster(
+                    gpu_pools=[
+                        {
+                            "name": "l40s-pool",
+                            "nodes": 4,
+                            "devices": [
+                                {
+                                    "name": "gpu",
+                                    "claim": "DRA",
+                                    "driver": "gpu.nvidia.com",
+                                    "deviceClassName": "gpu.nvidia.com",
+                                    "count": 1,
+                                    "capacity": {"memory": {"value": "46068Mi"}},
+                                },
+                            ],
+                        },
+                    ],
+                    cache=None,
+                    gateway=None,
+                ),
+                resources={
+                    "usage-inferenceclass-gpu-l40s-upcloud": _input_usage(
+                        kind="InferenceClass", name="gpu-l40s-upcloud"
+                    ),
+                    "activation": _activation_policy(
+                        activate=[
+                            "kubernetesclusters.uks.m.upcloud.com",
+                            "kubernetesnodegroups.uks.m.upcloud.com",
+                            "networks.network.m.upcloud.com",
+                        ],
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "upcloud-cluster": _upcloud_cluster(
+                        node_pools=[
+                            {
+                                "name": "l40s-pool",
+                                "role": "GPU",
+                                "plan": "GPU-8xCPU-64GB-1xL40S",
+                                "nodeCount": 2,
+                                "maxNodeCount": 4,
+                                "gpu": {"acceleratorType": "nvidia-l40s"},
+                            },
+                        ],
+                        credentials=None,
+                        autoscaler={"secretRef": {"name": "upcloud-api", "key": "token"}},
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "cluster-provider-config-kubernetes": _cluster_provider_config(
+                        kubeconfig="test-cluster-kubeconfig-abcde", identity=None
+                    ),
+                    "serving-stack": _serving_stack(
+                        cloud="UpCloud",
+                        secrets=[{"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"}],
+                        client_cas=None,
+                        gpu=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "usage-upcloud-by-backend": _backend_usage(cluster_kind="UpCloudCluster"),
+                },
+            ),
+            results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="UpCloud cluster ready, composing backend")],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "model-replicas": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelReplica",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-routes": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelRoute",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-caches": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache"),
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "class-gpu-l40s-upcloud": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-l40s-upcloud"
                     ),
                 },
             ),
