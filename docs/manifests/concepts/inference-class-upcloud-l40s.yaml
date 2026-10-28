@@ -1,0 +1,39 @@
+# An InferenceClass describing UpCloud's GPU-8xCPU-64GB-1xL40S plan with
+# 1x NVIDIA L40S.
+#
+# The provisioning block tells Modelplane how to create a node group of
+# this class on UpCloud Managed Kubernetes. UpCloud sizes nodes by server
+# plan; the plan determines the GPU, vCPU, and memory shape of each node.
+# The devices block describes what hardware a node of this class has,
+# DRA-style - used by the scheduler to match models to clusters, and to
+# form DRA ResourceClaims for claim: DRA devices.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: upcloud-l40s-1x
+spec:
+  description: "UpCloud GPU-8xCPU-64GB-1xL40S, 1x NVIDIA L40S 48GB"
+  provisioning:
+    provider: UpCloud
+    upcloud:
+      # GPU plans are zone-gated: at the time of writing they are offered
+      # in fi-hel2 only, and each account's GPU quota is granted by
+      # UpCloud support. List the plans with:
+      #   upctl server plans
+      plan: GPU-8xCPU-64GB-1xL40S
+      accelerator:
+        type: nvidia-l40s
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+      cudaComputeCapability: { version: "8.9.0" }
+    capacity:
+      # The L40S's real usable VRAM, what the NVIDIA DRA driver reports,
+      # not its nominal 48GB. A nodeSelector asking for >= 48Gi would never bind.
+      memory: { value: "46068Mi" }

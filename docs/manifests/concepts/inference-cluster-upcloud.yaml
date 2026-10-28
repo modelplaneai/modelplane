@@ -1,0 +1,68 @@
+# An InferenceCluster backed by an UpCloud Managed Kubernetes (UKS) cluster.
+#
+# Modelplane provisions the full cluster (SDN network, control plane,
+# system + GPU node groups) and installs the inference stack (cert-manager,
+# Envoy Gateway, Prometheus, NVIDIA DRA driver, LeaderWorkerSet, Gateway
+# API). UKS GPU node images ship the NVIDIA driver and container toolkit,
+# so the stack installs no GPU Operator.
+#
+# The system node pool that hosts control-plane components is provisioned
+# automatically and is not declared here. Only GPU node pools - each
+# referencing an InferenceClass that describes the hardware shape and how
+# to provision it - need to be declared.
+#
+# The UKS kubeconfig embeds static client certificates, so Modelplane
+# needs nothing beyond it to authenticate to the cluster. The UpCloud API
+# token on the ClusterProviderConfig named default provisions the cluster.
+#
+# UKS has no server-side autoscaler, so pools with maxNodeCount set are
+# scaled by the Kubernetes cluster autoscaler, which Modelplane installs
+# on the cluster. UpCloud provisions no API credentials there, so the
+# autoscaler block names a Secret in modelplane-system holding an UpCloud
+# API token (key: token) that Modelplane copies to the cluster:
+#
+#   kubectl create secret generic upcloud-autoscaler \
+#     --from-literal=token=<upcloud-api-token> -n modelplane-system
+#
+# Omit the autoscaler block and maxNodeCount for fixed-size pools.
+#
+# ModelCache RWX storage: none. UpCloud File Storage is managed NFS
+# without a CSI driver, so volumes can only be provisioned statically,
+# and Modelplane provisions no alternative. Deploy single-node engines
+# without a ModelCache and let them pull weights directly from the model
+# source.
+#
+# Delete this InferenceCluster with foreground cascading deletion for a
+# clean teardown:
+#
+#   kubectl delete inferencecluster upcloud-fi-hel2 --cascade=foreground
+#
+# The inference stack runs on the UKS cluster and must uninstall while
+# the cluster's API server and kubeconfig still exist - otherwise its
+# Helm releases hang, and a load balancer one of them created can leak
+# and block the network from deleting. Foreground deletion holds the
+# cluster until the stack is uninstalled. Background deletion (the
+# kubectl default) tears everything down at once and can orphan cloud
+# resources.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: upcloud-fi-hel2
+  labels:
+    modelplane.ai/region: fi-hel2
+spec:
+  cluster:
+    source: UpCloud
+    upcloud:
+      # GPU plans are currently offered in fi-hel2 only.
+      zone: fi-hel2
+      autoscaler:
+        secretRef:
+          name: upcloud-autoscaler
+
+  nodePools:
+    - name: gpu-l40s
+      className: upcloud-l40s-1x
+      nodeCount: 1
+      minNodeCount: 1
+      maxNodeCount: 4
