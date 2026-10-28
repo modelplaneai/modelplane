@@ -42,6 +42,7 @@ COMPOSITIONS = {
     "civo": "compose-civo-cluster",
     "coreweave": "compose-coreweave-cluster",
     "nebius": "compose-nebius-cluster",
+    "upcloud": "compose-upcloud-cluster",
     "vultr": "compose-vultr-cluster",
 }
 
