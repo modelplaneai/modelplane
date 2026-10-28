@@ -192,3 +192,9 @@ spec:
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-vultr
       version: v1.0.1
+  - type: xpkg
+    xpkg:
+      apiVersion: pkg.crossplane.io/v1
+      kind: Provider
+      package: xpkg.upbound.io/crossplane-contrib/provider-upcloud
+      version: v1.0.2
