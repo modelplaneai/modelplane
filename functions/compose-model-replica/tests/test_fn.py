@@ -446,7 +446,8 @@ def _epp(*, ready: fnv1.Ready, config_checksum: str) -> fnv1.Resource:
                             "kind": "Deployment",
                             "metadata": {"name": "test-replica-epp", "namespace": "mp-ml-team-51733"},
                             "spec": {
-                                "replicas": 1,
+                                "replicas": 2,
+                                "strategy": {"rollingUpdate": {"maxUnavailable": 1}},
                                 "selector": {"matchLabels": {"app": "test-replica-epp"}},
                                 "template": {
                                     "metadata": {
@@ -498,6 +499,20 @@ def _epp(*, ready: fnv1.Ready, config_checksum: str) -> fnv1.Resource:
                                                 "name": "config",
                                                 "configMap": {"name": "test-replica-epp"},
                                             }
+                                        ],
+                                        "topologySpreadConstraints": [
+                                            {
+                                                "maxSkew": 1,
+                                                "topologyKey": "kubernetes.io/hostname",
+                                                "whenUnsatisfiable": "ScheduleAnyway",
+                                                "labelSelector": {"matchLabels": {"app": "test-replica-epp"}},
+                                            },
+                                            {
+                                                "maxSkew": 1,
+                                                "topologyKey": "topology.kubernetes.io/zone",
+                                                "whenUnsatisfiable": "ScheduleAnyway",
+                                                "labelSelector": {"matchLabels": {"app": "test-replica-epp"}},
+                                            },
                                         ],
                                     },
                                 },
@@ -695,6 +710,35 @@ def _epp_service(*, ready: fnv1.Ready) -> fnv1.Resource:
     )
 
 
+def _epp_disruption_budget(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The Object composing the endpoint picker's PodDisruptionBudget."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "policy/v1",
+                            "kind": "PodDisruptionBudget",
+                            "metadata": {"name": "test-replica-epp", "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                "maxUnavailable": 1,
+                                "selector": {"matchLabels": {"app": "test-replica-epp"}},
+                                "unhealthyPodEvictionPolicy": "AlwaysAllow",
+                            },
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
 def _observed_deployment(*, ready: bool, ready_replicas: int) -> fnv1.Resource:
     """The engine's Deployment Object as observed back.
 
@@ -726,10 +770,10 @@ def _observed_deployment(*, ready: bool, ready_replicas: int) -> fnv1.Resource:
     )
 
 
-# One helper plays nine roles: the observed route, claim template, InferencePool
-# and six endpoint picker objects. The function reads only an observed Object's
-# Ready condition, so all nine have the same shape, and writing out the seven
-# that appear in only two cases inline would bury those cases.
+# One helper plays ten roles: the observed route, claim template, InferencePool
+# and seven endpoint picker objects. The function reads only an observed
+# Object's Ready condition, so all ten have the same shape, and writing out the
+# eight that appear in only two cases inline would bury those cases.
 def _observed_object(*, ready: bool) -> fnv1.Resource:
     """A composed Object as observed back, with the Ready condition its readiness policy derives."""
     return fnv1.Resource(
@@ -1021,6 +1065,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
                     "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
                     "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-disruption-budget": _epp_disruption_budget(ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             results=[
@@ -1101,6 +1146,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
                     "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
                     "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-disruption-budget": _epp_disruption_budget(ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             results=[
@@ -1253,6 +1299,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
                     "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
                     "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-disruption-budget": _epp_disruption_budget(ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             context=structpb.Struct(),
@@ -1300,6 +1347,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _observed_object(ready=True),
                     "epp-serviceaccount": _observed_object(ready=True),
                     "epp-service": _observed_object(ready=False),
+                    "epp-disruption-budget": _observed_object(ready=True),
                 },
             ),
             required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
@@ -1335,6 +1383,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_TRUE),
                     "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_TRUE),
                     "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-disruption-budget": _epp_disruption_budget(ready=fnv1.READY_TRUE),
                 },
             ),
             context=structpb.Struct(),
@@ -1382,6 +1431,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _observed_object(ready=True),
                     "epp-serviceaccount": _observed_object(ready=True),
                     "epp-service": _observed_object(ready=True),
+                    "epp-disruption-budget": _observed_object(ready=True),
                 },
             ),
             required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
@@ -1417,6 +1467,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_TRUE),
                     "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_TRUE),
                     "epp-service": _epp_service(ready=fnv1.READY_TRUE),
+                    "epp-disruption-budget": _epp_disruption_budget(ready=fnv1.READY_TRUE),
                 },
             ),
             context=structpb.Struct(),
@@ -1461,6 +1512,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _observed_object(ready=True),
                     "epp-serviceaccount": _observed_object(ready=True),
                     "epp-service": _observed_object(ready=True),
+                    "epp-disruption-budget": _observed_object(ready=True),
                 },
             ),
             required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
@@ -1496,6 +1548,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_TRUE),
                     "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_TRUE),
                     "epp-service": _epp_service(ready=fnv1.READY_TRUE),
+                    "epp-disruption-budget": _epp_disruption_budget(ready=fnv1.READY_TRUE),
                 },
             ),
             context=structpb.Struct(),
@@ -1537,6 +1590,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _observed_object(ready=True),
                     "epp-serviceaccount": _observed_object(ready=True),
                     "epp-service": _observed_object(ready=True),
+                    "epp-disruption-budget": _observed_object(ready=True),
                 },
             ),
             required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
@@ -1572,6 +1626,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_TRUE),
                     "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_TRUE),
                     "epp-service": _epp_service(ready=fnv1.READY_TRUE),
+                    "epp-disruption-budget": _epp_disruption_budget(ready=fnv1.READY_TRUE),
                 },
             ),
             context=structpb.Struct(),
@@ -1616,6 +1671,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _observed_object(ready=True),
                     "epp-serviceaccount": _observed_object(ready=True),
                     "epp-service": _observed_object(ready=True),
+                    "epp-disruption-budget": _observed_object(ready=True),
                 },
             ),
             required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
@@ -1651,6 +1707,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_TRUE),
                     "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_TRUE),
                     "epp-service": _epp_service(ready=fnv1.READY_TRUE),
+                    "epp-disruption-budget": _epp_disruption_budget(ready=fnv1.READY_TRUE),
                 },
             ),
             context=structpb.Struct(),
@@ -1692,6 +1749,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _observed_object(ready=True),
                     "epp-serviceaccount": _observed_object(ready=True),
                     "epp-service": _observed_object(ready=True),
+                    "epp-disruption-budget": _observed_object(ready=True),
                 },
             ),
             required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
@@ -1727,6 +1785,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_TRUE),
                     "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_TRUE),
                     "epp-service": _epp_service(ready=fnv1.READY_TRUE),
+                    "epp-disruption-budget": _epp_disruption_budget(ready=fnv1.READY_TRUE),
                 },
             ),
             context=structpb.Struct(),

@@ -105,6 +105,15 @@ _EPP_CONFIG_FILE = "epp-config.yaml"
 _EPP_METRICS_PORT = 9090
 _EPP_ROLE = "picker"
 
+# Two pickers, both serving, so a drained node leaves one routing. llm-d's
+# leader election would keep a single prefix-cache view, but only the leader
+# passes its readiness probe. A disruption budget would then never allow its
+# eviction, and a rolling update could never replace it (llm-d's own chart
+# uses the Recreate strategy for that reason). Without leader election each
+# picker learns prefixes only from the requests it routes, which matters only
+# when a replica runs more than one copy of an engine.
+_EPP_REPLICAS = 2
+
 # The longest a label value can be.
 _LABEL_VALUE_MAX = 63
 
@@ -495,7 +504,7 @@ def _epp_objects(
     image_pull_secrets: list[dict],
     replica: v1alpha1.ModelReplica,
 ) -> dict[str, k8sobjv1alpha1.Object]:
-    """The endpoint picker: ServiceAccount, RBAC, ConfigMap, Deployment, Service.
+    """The endpoint picker: ServiceAccount, RBAC, ConfigMap, Deployment, Service, PDB.
 
     container, config_yaml and image_pull_secrets are the picker as the user's
     serving.endpointPicker writes it, or the default for the serving strategy.
@@ -591,7 +600,21 @@ def _epp_objects(
     }
     if mounts:
         picker["volumeMounts"] = mounts
-    pod_spec: dict[str, Any] = {"serviceAccountName": epp, "containers": [picker]}
+    pod_spec: dict[str, Any] = {
+        "serviceAccountName": epp,
+        "containers": [picker],
+        # Spread the pickers across nodes and zones where there's room, and
+        # share a node where there isn't, as on a single system node.
+        "topologySpreadConstraints": [
+            {
+                "maxSkew": 1,
+                "topologyKey": key,
+                "whenUnsatisfiable": "ScheduleAnyway",
+                "labelSelector": {"matchLabels": {"app": app}},
+            }
+            for key in ("kubernetes.io/hostname", "topology.kubernetes.io/zone")
+        ],
+    }
     if volumes:
         pod_spec["volumes"] = volumes
     if image_pull_secrets:
@@ -601,7 +624,11 @@ def _epp_objects(
         "kind": "Deployment",
         "metadata": {"name": epp, "namespace": ns},
         "spec": {
-            "replicas": 1,
+            "replicas": _EPP_REPLICAS,
+            # Available while one picker is, which is all serving needs. The
+            # default, 25%, rounds down to none for two pickers, so a picker
+            # left pending by a drain would report the replica as not serving.
+            "strategy": {"rollingUpdate": {"maxUnavailable": 1}},
             "selector": {"matchLabels": {"app": app}},
             "template": {
                 "metadata": {
@@ -627,6 +654,19 @@ def _epp_objects(
             ],
         },
     }
+    # Lets a drain evict one picker at a time, so the other keeps routing until
+    # its peer is ready elsewhere. A picker that isn't ready can always be
+    # evicted, so one that never starts doesn't hold up a drain.
+    budget = {
+        "apiVersion": "policy/v1",
+        "kind": "PodDisruptionBudget",
+        "metadata": {"name": epp, "namespace": ns},
+        "spec": {
+            "maxUnavailable": 1,
+            "selector": {"matchLabels": {"app": app}},
+            "unhealthyPodEvictionPolicy": "AlwaysAllow",
+        },
+    }
     return {
         "epp-serviceaccount": base.wrap_object(provider_config, sa),
         "epp-role": base.wrap_object(provider_config, role),
@@ -636,4 +676,5 @@ def _epp_objects(
         # rather than at provider-kubernetes' next resync.
         "epp": base.wrap_object(provider_config, deployment, cel_query=_EPP_AVAILABLE_CEL, watch=True),
         "epp-service": base.wrap_object(provider_config, service),
+        "epp-disruption-budget": base.wrap_object(provider_config, budget),
     }
