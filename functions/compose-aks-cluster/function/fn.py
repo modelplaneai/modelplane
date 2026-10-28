@@ -148,6 +148,7 @@ _ORPHAN_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update"]
 _NETWORK_OPERATOR_CHART_REPO = "https://helm.ngc.nvidia.com/nvidia"
 _NETWORK_OPERATOR_CHART_NAME = "network-operator"
 _NETWORK_OPERATOR_CHART_VERSION = "26.4.0"
+_NETWORK_OPERATOR_RELEASE_NAME = "mp-network-operator"
 _NETWORK_OPERATOR_NAMESPACE = "network-operator"
 
 # Name of the RWX StorageClass Modelplane composes for ModelCache.
@@ -182,6 +183,26 @@ def _namespace(meta: metav1.ObjectMeta | None) -> str:
     if meta is None or meta.namespace is None:
         raise ValueError("metadata.namespace is unexpectedly absent")
     return meta.namespace
+
+
+# provider-helm reads the external-name annotation as the Helm release name,
+# which otherwise defaults to the Release's generated metadata.name: a long XR
+# name pushes that past Helm's 53-character limit. So Releases are named
+# mp-<chart>, like compose-serving-stack's: each runs on a cluster of its own,
+# so a fixed name can't collide.
+_HELM_RELEASE_NAME_MAX_LENGTH = 53
+
+
+def _release_name(installed: str | None, fixed: str) -> str:
+    """The Helm release name for a Release: fixed, unless it was installed under another.
+
+    installed is the Release's observed external name. Renaming an installed
+    release would install its chart a second time, so that name is kept, unless
+    it's longer than Helm allows: a release with that name was never installed.
+    """
+    if installed and len(installed) <= _HELM_RELEASE_NAME_MAX_LENGTH:
+        return installed
+    return fixed
 
 
 def _kubeconfig_secret_name(xr: v1alpha1.AKSCluster) -> str:
@@ -446,7 +467,14 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-network-operator"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
+                metadata=metav1.ObjectMeta(
+                    namespace=_namespace(self.xr.metadata),
+                    annotations={
+                        _ANNOTATION_EXTERNAL_NAME: _release_name(
+                            self._observed_external_name("release-network-operator"), _NETWORK_OPERATOR_RELEASE_NAME
+                        )
+                    },
+                ),
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
@@ -578,6 +606,15 @@ class Composer:
             cache=v1alpha1.Cache(storageClassName=_MANAGED_STORAGE_CLASS),
         )
         resource.update_status(self.rsp.desired.composite, status)
+
+    def _observed_external_name(self, name: str) -> str | None:
+        """The external name of an observed composed resource, from the
+        external-name annotation its provider sets."""
+        observed = self.req.observed.resources.get(name)
+        if observed is None:
+            return None
+        observed_resource = resource.struct_to_dict(observed.resource)
+        return observed_resource.get("metadata", {}).get("annotations", {}).get(_ANNOTATION_EXTERNAL_NAME) or None
 
     def mark_readiness(self) -> None:
         """Mark composed resources ready based on their observed conditions."""

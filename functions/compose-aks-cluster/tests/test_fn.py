@@ -39,6 +39,17 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
+@dataclasses.dataclass
+class ReleaseNameCase:
+    """A test case for _release_name."""
+
+    name: str
+    reason: str
+    installed: str | None
+    fixed: str
+    want: str
+
+
 def _xr(*, credentials: v1alpha1.Credentials | None, node_pools: list[v1alpha1.NodePool]) -> fnv1.Resource:
     """The observed AKSCluster XR, with the given credentials and node pools."""
     xr = v1alpha1.AKSCluster(
@@ -494,7 +505,220 @@ COMPOSE_CASES = [
                             {
                                 "apiVersion": "helm.m.crossplane.io/v1beta1",
                                 "kind": "Release",
+                                "metadata": {
+                                    "namespace": "modelplane-system",
+                                    "annotations": {"crossplane.io/external-name": "mp-network-operator"},
+                                },
+                                "spec": {
+                                    "managementPolicies": ["Observe", "Create", "Update"],
+                                    "providerConfigRef": {
+                                        "kind": "ProviderConfig",
+                                        "name": "test-cluster-kubeconfig-55b57",
+                                    },
+                                    "forProvider": {
+                                        "chart": {
+                                            "name": "network-operator",
+                                            "repository": "https://helm.ngc.nvidia.com/nvidia",
+                                            "version": "26.4.0",
+                                        },
+                                        "namespace": "network-operator",
+                                        "values": {
+                                            "deployCR": True,
+                                            "ofedDriver": {"deploy": True},
+                                            "rdmaSharedDevicePlugin": {"deploy": True},
+                                            # The driver and device plugin must
+                                            # tolerate the GPU taint to run on
+                                            # the InfiniBand nodes.
+                                            "daemonsets": {
+                                                "tolerations": [
+                                                    {
+                                                        "key": "nvidia.com/gpu",
+                                                        "operator": "Exists",
+                                                        "effect": "NoSchedule",
+                                                    },
+                                                ],
+                                            },
+                                        },
+                                    },
+                                },
+                            }
+                        ),
+                    ),
+                    "storage-class-rwx-fs": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "Object",
                                 "metadata": {"namespace": "modelplane-system"},
+                                "spec": {
+                                    "managementPolicies": ["Observe", "Create", "Update"],
+                                    "providerConfigRef": {
+                                        "kind": "ProviderConfig",
+                                        "name": "test-cluster-kubeconfig-55b57",
+                                    },
+                                    "readiness": {"policy": "SuccessfulCreate"},
+                                    "forProvider": {
+                                        "manifest": {
+                                            "apiVersion": "storage.k8s.io/v1",
+                                            "kind": "StorageClass",
+                                            "metadata": {"name": "modelplane-rwx-fs"},
+                                            "provisioner": "file.csi.azure.com",
+                                            "parameters": {"skuName": "Premium_LRS"},
+                                            "mountOptions": [
+                                                "dir_mode=0777",
+                                                "file_mode=0777",
+                                                "uid=0",
+                                                "gid=0",
+                                                "mfsymlinks",
+                                                "cache=strict",
+                                                "actimeo=30",
+                                                "nosharesock",
+                                            ],
+                                            "reclaimPolicy": "Delete",
+                                            "allowVolumeExpansion": True,
+                                            "volumeBindingMode": "WaitForFirstConsumer",
+                                        },
+                                    },
+                                },
+                            }
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    # provider-helm installs a Release under its external name, which defaults
+    # to its metadata.name. Renaming a Release installed that way would install
+    # the chart a second time.
+    Case(
+        name="GeneratedNameKept",
+        reason="A network operator Release installed under its generated name keeps it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            diskSizeGb=200,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                            fabric="InfiniBand",
+                        ),
+                    ],
+                ),
+                resources={
+                    "release-network-operator": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                                "kind": "Release",
+                                "metadata": {
+                                    "name": "test-cluster-3f9a1c2b7d4e",
+                                    "namespace": "modelplane-system",
+                                    "annotations": {"crossplane.io/external-name": "test-cluster-3f9a1c2b7d4e"},
+                                },
+                                "spec": {
+                                    "forProvider": {
+                                        "chart": {
+                                            "name": "network-operator",
+                                            "repository": "https://helm.ngc.nvidia.com/nvidia",
+                                            "version": "26.4.0",
+                                        },
+                                        "namespace": "network-operator",
+                                    },
+                                },
+                            }
+                        )
+                    ),
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "containerservice.azure.m.upbound.io/v1beta1",
+                                "kind": "KubernetesCluster",
+                                "metadata": {"name": "modelplane-system-test-cluster-aks-1173e"},
+                                "spec": {
+                                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                                    "forProvider": {
+                                        "location": "westeurope",
+                                        "kubernetesVersion": "1.34",
+                                        "dnsPrefix": "modelplane-system-test-cluster-aks-1173e",
+                                        "nodeResourceGroup": "modelplane-system-test-cluster-aks-1173e-nodes",
+                                        "resourceGroupNameSelector": {"matchControllerRef": True},
+                                        "identity": {"type": "SystemAssigned"},
+                                        "defaultNodePool": {
+                                            "name": "system",
+                                            "vmSize": "Standard_D4s_v5",
+                                            "autoScalingEnabled": True,
+                                            "minCount": 1,
+                                            "maxCount": 2,
+                                            "osDiskSizeGb": 100,
+                                            "temporaryNameForRotation": "systemtmp",
+                                            "nodeLabels": {"modelplane.ai/pool": "system"},
+                                            "upgradeSettings": {"maxSurge": "10%"},
+                                            "vnetSubnetIdSelector": {"matchControllerRef": True},
+                                        },
+                                        "networkProfile": {
+                                            "networkPlugin": "azure",
+                                            "networkPluginMode": "overlay",
+                                            "podCidr": "10.244.0.0/16",
+                                            "serviceCidr": "10.96.0.0/16",
+                                            "dnsServiceIp": "10.96.0.10",
+                                        },
+                                    },
+                                    "writeConnectionSecretToRef": {"name": "test-cluster-kubeconfig-55b57"},
+                                },
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "resource-group": _resource_group(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "virtual-network": _virtual_network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "nodepool-gpuh100": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "release-network-operator": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                                "kind": "Release",
+                                "metadata": {
+                                    "namespace": "modelplane-system",
+                                    "annotations": {"crossplane.io/external-name": "test-cluster-3f9a1c2b7d4e"},
+                                },
                                 "spec": {
                                     "managementPolicies": ["Observe", "Create", "Update"],
                                     "providerConfigRef": {
@@ -893,3 +1117,45 @@ def test_compose(case: Case) -> None:
     """RunFunction composes AKS cluster infrastructure."""
     got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
     assert _to_dict(got) == _to_dict(case.want), case.reason
+
+
+# These cases call _release_name directly, because through RunFunction each
+# installed name would need a whole compose case.
+RELEASE_NAME_CASES = [
+    ReleaseNameCase(
+        name="NotInstalled",
+        reason="A Release with no observed external name gets the fixed name.",
+        installed=None,
+        fixed="mp-network-operator",
+        want="mp-network-operator",
+    ),
+    ReleaseNameCase(
+        name="InstalledNameKept",
+        reason="A Release installed under its generated name keeps it, so the chart isn't installed a second time.",
+        installed="test-cluster-3f9a1c2b7d4e",
+        fixed="mp-network-operator",
+        want="test-cluster-3f9a1c2b7d4e",
+    ),
+    ReleaseNameCase(
+        name="NameAtLimit",
+        reason="A Release whose name is exactly Helm's 53-character limit keeps it.",
+        installed="cluster-orchestration-orchestrat-cluster-1a2b3c4d5e6f",
+        fixed="mp-network-operator",
+        want="cluster-orchestration-orchestrat-cluster-1a2b3c4d5e6f",
+    ),
+    # Helm rejects the install of a release whose name is too long, so a Release
+    # named that way has nothing installed under its name to keep.
+    ReleaseNameCase(
+        name="NameTooLong",
+        reason="A Release whose generated name is longer than Helm allows gets the fixed name.",
+        installed="cluster-orchestration-orchestrating-cluster-1a2b3c4d5e6f",
+        fixed="mp-network-operator",
+        want="mp-network-operator",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", RELEASE_NAME_CASES, ids=lambda case: case.name)
+def test_release_name(case: ReleaseNameCase) -> None:
+    """_release_name picks the Helm release name for a Release."""
+    assert fn._release_name(case.installed, case.fixed) == case.want, case.reason

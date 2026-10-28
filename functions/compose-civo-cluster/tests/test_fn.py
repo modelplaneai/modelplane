@@ -40,6 +40,17 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
+@dataclasses.dataclass
+class ReleaseNameCase:
+    """A test case for _release_name."""
+
+    name: str
+    reason: str
+    installed: str | None
+    fixed: str
+    want: str
+
+
 def _xr(*, credentials: v1alpha1.Credentials | None, node_pools: list[v1alpha1.NodePool]) -> fnv1.Resource:
     """The observed CivoCluster XR in LON1, with the given credentials and node pools."""
     xr = v1alpha1.CivoCluster(
@@ -265,14 +276,17 @@ def _provider_config() -> fnv1.Resource:
     )
 
 
-def _autoscaler_release(*, autoscaling_groups: list[dict]) -> fnv1.Resource:
-    """The composed cluster autoscaler Release, scaling the given node groups."""
+def _autoscaler_release(*, release_name: str, autoscaling_groups: list[dict]) -> fnv1.Resource:
+    """The composed cluster autoscaler Release, installed as release_name and scaling the given node groups."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
                 "apiVersion": "helm.m.crossplane.io/v1beta1",
                 "kind": "Release",
-                "metadata": {"namespace": "modelplane-system"},
+                "metadata": {
+                    "namespace": "modelplane-system",
+                    "annotations": {"crossplane.io/external-name": release_name},
+                },
                 "spec": {
                     "managementPolicies": ["Observe", "Create", "Update"],
                     "providerConfigRef": {
@@ -375,7 +389,80 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "provider-config-helm": _provider_config(),
-                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[]),
+                    "release-cluster-autoscaler": _autoscaler_release(
+                        release_name="mp-cluster-autoscaler", autoscaling_groups=[]
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    # provider-helm installs a Release under its external name, which defaults
+    # to its metadata.name. Renaming a Release installed that way would install
+    # the chart a second time.
+    Case(
+        name="GeneratedNameKept",
+        reason="An autoscaler Release installed before its name was fixed keeps the release name it was installed under.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            size="an.g1.l40s.kube.x1",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=True),
+                    "release-cluster-autoscaler": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                                "kind": "Release",
+                                "metadata": {
+                                    "name": "test-cluster-3f9a1c2b7d4e",
+                                    "namespace": "modelplane-system",
+                                    "annotations": {"crossplane.io/external-name": "test-cluster-3f9a1c2b7d4e"},
+                                },
+                                "spec": {
+                                    "forProvider": {
+                                        "chart": {
+                                            "name": "cluster-autoscaler",
+                                            "repository": "https://kubernetes.github.io/autoscaler",
+                                            "version": "9.57.0",
+                                        },
+                                        "namespace": "kube-system",
+                                    },
+                                },
+                            }
+                        )
+                    ),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "node-pool-gpu-l40s": _node_pool_gpu(
+                        management_policies=["Observe", "Create", "Update", "Delete"],
+                        init_node_count=1,
+                        node_count=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "provider-config-helm": _provider_config(),
+                    "release-cluster-autoscaler": _autoscaler_release(
+                        release_name="test-cluster-3f9a1c2b7d4e", autoscaling_groups=[]
+                    ),
                 },
             ),
             context=structpb.Struct(),
@@ -462,6 +549,7 @@ COMPOSE_CASES = [
                     ),
                     "provider-config-helm": _provider_config(),
                     "release-cluster-autoscaler": _autoscaler_release(
+                        release_name="mp-cluster-autoscaler",
                         autoscaling_groups=[
                             {"name": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "minSize": 1, "maxSize": 4}
                         ],
@@ -544,7 +632,9 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "provider-config-helm": _provider_config(),
-                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[]),
+                    "release-cluster-autoscaler": _autoscaler_release(
+                        release_name="mp-cluster-autoscaler", autoscaling_groups=[]
+                    ),
                 },
             ),
             context=structpb.Struct(),
@@ -587,7 +677,9 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "provider-config-helm": _provider_config(),
-                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[]),
+                    "release-cluster-autoscaler": _autoscaler_release(
+                        release_name="mp-cluster-autoscaler", autoscaling_groups=[]
+                    ),
                 },
             ),
             context=structpb.Struct(),
@@ -644,7 +736,9 @@ COMPOSE_CASES = [
                         ),
                     ),
                     "provider-config-helm": _provider_config(),
-                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[]),
+                    "release-cluster-autoscaler": _autoscaler_release(
+                        release_name="mp-cluster-autoscaler", autoscaling_groups=[]
+                    ),
                 },
             ),
             context=structpb.Struct(),
@@ -658,3 +752,45 @@ def test_compose(case: Case) -> None:
     """RunFunction composes a Civo cluster's infrastructure."""
     got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
     assert _to_dict(got) == _to_dict(case.want), case.reason
+
+
+# These cases call _release_name directly, because through RunFunction each
+# installed name would need a whole compose case.
+RELEASE_NAME_CASES = [
+    ReleaseNameCase(
+        name="NotInstalled",
+        reason="A Release with no observed external name gets the fixed name.",
+        installed=None,
+        fixed="mp-cluster-autoscaler",
+        want="mp-cluster-autoscaler",
+    ),
+    ReleaseNameCase(
+        name="InstalledNameKept",
+        reason="A Release installed under its generated name keeps it, so the chart isn't installed a second time.",
+        installed="test-cluster-3f9a1c2b7d4e",
+        fixed="mp-cluster-autoscaler",
+        want="test-cluster-3f9a1c2b7d4e",
+    ),
+    ReleaseNameCase(
+        name="NameAtLimit",
+        reason="A Release whose name is exactly Helm's 53-character limit keeps it.",
+        installed="cluster-orchestration-orchestrat-cluster-1a2b3c4d5e6f",
+        fixed="mp-cluster-autoscaler",
+        want="cluster-orchestration-orchestrat-cluster-1a2b3c4d5e6f",
+    ),
+    # Helm rejects the install of a release whose name is too long, so a Release
+    # named that way has nothing installed under its name to keep.
+    ReleaseNameCase(
+        name="NameTooLong",
+        reason="A Release whose generated name is longer than Helm allows gets the fixed name.",
+        installed="cluster-orchestration-orchestrating-cluster-1a2b3c4d5e6f",
+        fixed="mp-cluster-autoscaler",
+        want="mp-cluster-autoscaler",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", RELEASE_NAME_CASES, ids=lambda case: case.name)
+def test_release_name(case: ReleaseNameCase) -> None:
+    """_release_name picks the Helm release name for a Release."""
+    assert fn._release_name(case.installed, case.fixed) == case.want, case.reason

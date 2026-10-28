@@ -113,6 +113,7 @@ _AUTOSCALER_NAMESPACE = "kube-system"
 _AUTOSCALER_CHART_REPO = "https://kubernetes.github.io/autoscaler"
 _AUTOSCALER_CHART_NAME = "cluster-autoscaler"
 _AUTOSCALER_CHART_VERSION = "9.57.0"
+_AUTOSCALER_RELEASE_NAME = "mp-cluster-autoscaler"
 
 # Secret the autoscaler's Civo cloud provider reads its API access from:
 # civo-api-access in kube-system with api-key, api-url, cluster-id, and
@@ -155,6 +156,26 @@ def _namespace(meta: metav1.ObjectMeta | None) -> str:
     if meta is None or meta.namespace is None:
         raise ValueError("metadata.namespace is unexpectedly absent")
     return meta.namespace
+
+
+# provider-helm reads the external-name annotation as the Helm release name,
+# which otherwise defaults to the Release's generated metadata.name: a long XR
+# name pushes that past Helm's 53-character limit. So Releases are named
+# mp-<chart>, like compose-serving-stack's: each runs on a cluster of its own,
+# so a fixed name can't collide.
+_HELM_RELEASE_NAME_MAX_LENGTH = 53
+
+
+def _release_name(installed: str | None, fixed: str) -> str:
+    """The Helm release name for a Release: fixed, unless it was installed under another.
+
+    installed is the Release's observed external name. Renaming an installed
+    release would install its chart a second time, so that name is kept, unless
+    it's longer than Helm allows: a release with that name was never installed.
+    """
+    if installed and len(installed) <= _HELM_RELEASE_NAME_MAX_LENGTH:
+        return installed
+    return fixed
 
 
 def _kubeconfig_secret_name(xr: v1alpha1.CivoCluster) -> str:
@@ -224,9 +245,9 @@ class Composer:
         return "provider-config-helm" in observed or any(name.startswith("node-pool-") for name in observed)
 
     def _observed_external_name(self, name: str) -> str | None:
-        """The Civo ID of an observed composed resource, from the
-        external-name annotation the provider sets once the resource
-        exists."""
+        """The external name of an observed composed resource, from the
+        external-name annotation its provider sets: a Civo resource's ID,
+        or a Release's Helm release name."""
         observed = self.req.observed.resources.get(name)
         if observed is None:
             return None
@@ -386,7 +407,14 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-cluster-autoscaler"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
+                metadata=metav1.ObjectMeta(
+                    namespace=_namespace(self.xr.metadata),
+                    annotations={
+                        _ANNOTATION_EXTERNAL_NAME: _release_name(
+                            self._observed_external_name("release-cluster-autoscaler"), _AUTOSCALER_RELEASE_NAME
+                        )
+                    },
+                ),
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(

@@ -219,6 +219,7 @@ _EFA_DRA_DRIVER_NAMESPACE = "kube-system"
 _EFA_DRA_DRIVER_CHART_REPO = "https://aws.github.io/eks-charts"
 _EFA_DRA_DRIVER_CHART_NAME = "aws-dranet"
 _EFA_DRA_DRIVER_CHART_VERSION = "1.0.0"
+_EFA_DRA_DRIVER_RELEASE_NAME = "mp-aws-dranet"
 
 # GPU taint applied to GPU node groups so non-GPU pods don't land on
 # expensive GPU nodes.
@@ -278,6 +279,7 @@ _AUTOSCALER_SERVICE_ACCOUNT = "cluster-autoscaler"
 _AUTOSCALER_CHART_REPO = "https://kubernetes.github.io/autoscaler"
 _AUTOSCALER_CHART_NAME = "cluster-autoscaler"
 _AUTOSCALER_CHART_VERSION = "9.57.0"
+_AUTOSCALER_RELEASE_NAME = "mp-cluster-autoscaler"
 
 # IAM permissions the autoscaler needs to discover node groups and adjust their
 # ASGs' desired capacity. The Full Cluster Autoscaler Features policy from
@@ -314,6 +316,26 @@ _ANNOTATION_EXTERNAL_NAME = "crossplane.io/external-name"
 # user doesn't bring their own. EFS dynamic provisioning creates an access
 # point per PVC inside the auto-provisioned filesystem.
 _MANAGED_STORAGE_CLASS = "modelplane-rwx-efs"
+
+
+# provider-helm reads the external-name annotation as the Helm release name,
+# which otherwise defaults to the Release's generated metadata.name: a long XR
+# name pushes that past Helm's 53-character limit. So Releases are named
+# mp-<chart>, like compose-serving-stack's: each runs on a cluster of its own,
+# so a fixed name can't collide.
+_HELM_RELEASE_NAME_MAX_LENGTH = 53
+
+
+def _release_name(installed: str | None, fixed: str) -> str:
+    """The Helm release name for a Release: fixed, unless it was installed under another.
+
+    installed is the Release's observed external name. Renaming an installed
+    release would install its chart a second time, so that name is kept, unless
+    it's longer than Helm allows: a release with that name was never installed.
+    """
+    if installed and len(installed) <= _HELM_RELEASE_NAME_MAX_LENGTH:
+        return installed
+    return fixed
 
 
 def _kubeconfig_secret_name(xr: v1alpha1.EKSCluster) -> str:
@@ -1552,7 +1574,14 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-cluster-autoscaler"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
+                metadata=metav1.ObjectMeta(
+                    namespace=_namespace(self.xr.metadata),
+                    annotations={
+                        _ANNOTATION_EXTERNAL_NAME: _release_name(
+                            self._observed_external_name("release-cluster-autoscaler"), _AUTOSCALER_RELEASE_NAME
+                        )
+                    },
+                ),
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
@@ -1598,7 +1627,14 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-efa-dra-driver"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
+                metadata=metav1.ObjectMeta(
+                    namespace=_namespace(self.xr.metadata),
+                    annotations={
+                        _ANNOTATION_EXTERNAL_NAME: _release_name(
+                            self._observed_external_name("release-efa-dra-driver"), _EFA_DRA_DRIVER_RELEASE_NAME
+                        )
+                    },
+                ),
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
@@ -1681,6 +1717,15 @@ class Composer:
             cache=v1alpha1.Cache(storageClassName=_MANAGED_STORAGE_CLASS),
         )
         resource.update_status(self.rsp.desired.composite, status)
+
+    def _observed_external_name(self, name: str) -> str | None:
+        """The external name of an observed composed resource, from the
+        external-name annotation its provider sets."""
+        observed = self.req.observed.resources.get(name)
+        if observed is None:
+            return None
+        observed_resource = resource.struct_to_dict(observed.resource)
+        return observed_resource.get("metadata", {}).get("annotations", {}).get(_ANNOTATION_EXTERNAL_NAME) or None
 
     def _observed_efs_filesystem_id(self) -> str | None:
         """The composed EFS filesystem's id, from the observed FileSystem MR's

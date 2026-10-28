@@ -102,6 +102,9 @@ _GPU_TAINT_KEY = "nvidia.com/gpu"
 _GPU_TAINT_VALUE = "true"
 _GPU_TAINT_EFFECT = "NO_SCHEDULE"
 
+# Annotation the provider sets on a managed resource with its external name.
+_ANNOTATION_EXTERNAL_NAME = "crossplane.io/external-name"
+
 # Management policies that exclude Delete, used for resources installed on the
 # workload cluster (the RWX StorageClass Object and the CSI driver Helm
 # Release). These exist only to configure the cluster and are only ever
@@ -145,6 +148,7 @@ runcmd:
 _CSI_CHART_REPO = "oci://cr.eu-north1.nebius.cloud/mk8s/helm"
 _CSI_CHART_NAME = "csi-mounted-fs-path"
 _CSI_CHART_VERSION = "0.1.6"
+_CSI_RELEASE_NAME = "mp-csi-mounted-fs-path"
 _CSI_NAMESPACE = "kube-system"
 
 # The driver name the chart registers (its values.yaml driverName default).
@@ -168,6 +172,26 @@ def _namespace(meta: metav1.ObjectMeta | None) -> str:
     if meta is None or meta.namespace is None:
         raise ValueError("metadata.namespace is unexpectedly absent")
     return meta.namespace
+
+
+# provider-helm reads the external-name annotation as the Helm release name,
+# which otherwise defaults to the Release's generated metadata.name: a long XR
+# name pushes that past Helm's 53-character limit. So Releases are named
+# mp-<chart>, like compose-serving-stack's: each runs on a cluster of its own,
+# so a fixed name can't collide.
+_HELM_RELEASE_NAME_MAX_LENGTH = 53
+
+
+def _release_name(installed: str | None, fixed: str) -> str:
+    """The Helm release name for a Release: fixed, unless it was installed under another.
+
+    installed is the Release's observed external name. Renaming an installed
+    release would install its chart a second time, so that name is kept, unless
+    it's longer than Helm allows: a release with that name was never installed.
+    """
+    if installed and len(installed) <= _HELM_RELEASE_NAME_MAX_LENGTH:
+        return installed
+    return fixed
 
 
 def _kubeconfig_secret_name(xr: v1alpha1.NebiusCluster) -> str:
@@ -315,6 +339,15 @@ class Composer:
             return None
         return Credentials(namespace=ns, name=secret_ref.name, key=secret_ref.key)
 
+    def _observed_external_name(self, name: str) -> str | None:
+        """The external name of an observed composed resource, from the
+        external-name annotation its provider sets."""
+        observed = self.req.observed.resources.get(name)
+        if observed is None:
+            return None
+        observed_resource = resource.struct_to_dict(observed.resource)
+        return observed_resource.get("metadata", {}).get("annotations", {}).get(_ANNOTATION_EXTERNAL_NAME) or None
+
     def _observed_credentials(self) -> Credentials | None:
         """The credentials the composed kubernetes ProviderConfig was last
         written with, None before one is observed."""
@@ -453,7 +486,14 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-csi-mounted-fs-path"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
+                metadata=metav1.ObjectMeta(
+                    namespace=_namespace(self.xr.metadata),
+                    annotations={
+                        _ANNOTATION_EXTERNAL_NAME: _release_name(
+                            self._observed_external_name("release-csi-mounted-fs-path"), _CSI_RELEASE_NAME
+                        )
+                    },
+                ),
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(

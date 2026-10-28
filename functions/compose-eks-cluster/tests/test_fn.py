@@ -39,6 +39,17 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
+@dataclasses.dataclass
+class ReleaseNameCase:
+    """A test case for _release_name."""
+
+    name: str
+    reason: str
+    installed: str | None
+    fixed: str
+    want: str
+
+
 def _xr(*, credentials: v1alpha1.Credentials | None, node_pools: list[v1alpha1.NodePool]) -> fnv1.Resource:
     """The observed EKSCluster XR in us-west-2, with the given credentials and node pools."""
     xr = v1alpha1.EKSCluster(
@@ -1019,14 +1030,17 @@ def _autoscaler_pod_identity(*, cred_kind: str, cred_name: str) -> fnv1.Resource
     )
 
 
-def _autoscaler_release() -> fnv1.Resource:
-    """The cluster autoscaler's Helm release."""
+def _autoscaler_release(*, release_name: str) -> fnv1.Resource:
+    """The cluster autoscaler's Helm release, installed as release_name."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
                 "apiVersion": "helm.m.crossplane.io/v1beta1",
                 "kind": "Release",
-                "metadata": {"namespace": "modelplane-system"},
+                "metadata": {
+                    "namespace": "modelplane-system",
+                    "annotations": {"crossplane.io/external-name": release_name},
+                },
                 "spec": {
                     "managementPolicies": ["Observe", "Create", "Update"],
                     "providerConfigRef": {"kind": "ProviderConfig", "name": "test-cluster-kubeconfig-55b57"},
@@ -1557,7 +1571,7 @@ COMPOSE_CASES = [
                         ),
                         ready=fnv1.READY_TRUE,
                     ),
-                    "release-cluster-autoscaler": _autoscaler_release(),
+                    "release-cluster-autoscaler": _autoscaler_release(release_name="mp-cluster-autoscaler"),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
                     "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
                 },
@@ -2260,13 +2274,16 @@ COMPOSE_CASES = [
                     "pod-identity-cluster-autoscaler": _autoscaler_pod_identity(
                         cred_kind="ClusterProviderConfig", cred_name="default"
                     ),
-                    "release-cluster-autoscaler": _autoscaler_release(),
+                    "release-cluster-autoscaler": _autoscaler_release(release_name="mp-cluster-autoscaler"),
                     "release-efa-dra-driver": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
                                 "apiVersion": "helm.m.crossplane.io/v1beta1",
                                 "kind": "Release",
-                                "metadata": {"namespace": "modelplane-system"},
+                                "metadata": {
+                                    "namespace": "modelplane-system",
+                                    "annotations": {"crossplane.io/external-name": "mp-aws-dranet"},
+                                },
                                 "spec": {
                                     "managementPolicies": ["Observe", "Create", "Update"],
                                     "providerConfigRef": {
@@ -2496,13 +2513,302 @@ COMPOSE_CASES = [
                     "pod-identity-cluster-autoscaler": _autoscaler_pod_identity(
                         cred_kind="ClusterProviderConfig", cred_name="default"
                     ),
-                    "release-cluster-autoscaler": _autoscaler_release(),
+                    "release-cluster-autoscaler": _autoscaler_release(release_name="mp-cluster-autoscaler"),
                     "release-efa-dra-driver": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
                                 "apiVersion": "helm.m.crossplane.io/v1beta1",
                                 "kind": "Release",
-                                "metadata": {"namespace": "modelplane-system"},
+                                "metadata": {
+                                    "namespace": "modelplane-system",
+                                    "annotations": {"crossplane.io/external-name": "mp-aws-dranet"},
+                                },
+                                "spec": {
+                                    "managementPolicies": ["Observe", "Create", "Update"],
+                                    "providerConfigRef": {
+                                        "kind": "ProviderConfig",
+                                        "name": "test-cluster-kubeconfig-55b57",
+                                    },
+                                    "forProvider": {
+                                        "chart": {
+                                            "name": "aws-dranet",
+                                            "repository": "https://aws.github.io/eks-charts",
+                                            "version": "1.0.0",
+                                        },
+                                        "namespace": "kube-system",
+                                        "values": {
+                                            "tolerations": [
+                                                {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                                            ],
+                                        },
+                                    },
+                                },
+                            }
+                        )
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    # provider-helm installs a Release under its external name, which defaults
+    # to its metadata.name. Renaming a Release installed that way would install
+    # the chart a second time.
+    Case(
+        name="GeneratedNameKept",
+        reason="Autoscaler and EFA DRA driver Releases installed under their generated names keep them.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-h200",
+                            role="GPU",
+                            instanceType="p5en.48xlarge",
+                            nodeCount=2,
+                            minNodeCount=0,
+                            maxNodeCount=2,
+                            diskSizeGb=1024,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h200"),
+                            fabric="EFA",
+                            zones=[v1alpha1.Zone("us-west-2a")],
+                        ),
+                    ],
+                ),
+                resources={
+                    "release-cluster-autoscaler": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                                "kind": "Release",
+                                "metadata": {
+                                    "name": "test-cluster-3f9a1c2b7d4e",
+                                    "namespace": "modelplane-system",
+                                    "annotations": {"crossplane.io/external-name": "test-cluster-3f9a1c2b7d4e"},
+                                },
+                                "spec": {
+                                    "forProvider": {
+                                        "chart": {
+                                            "name": "cluster-autoscaler",
+                                            "repository": "https://kubernetes.github.io/autoscaler",
+                                            "version": "9.57.0",
+                                        },
+                                        "namespace": "kube-system",
+                                    },
+                                },
+                            }
+                        )
+                    ),
+                    "release-efa-dra-driver": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                                "kind": "Release",
+                                "metadata": {
+                                    "name": "test-cluster-8e5d0a6c1f2b",
+                                    "namespace": "modelplane-system",
+                                    "annotations": {"crossplane.io/external-name": "test-cluster-8e5d0a6c1f2b"},
+                                },
+                                "spec": {
+                                    "forProvider": {
+                                        "chart": {
+                                            "name": "aws-dranet",
+                                            "repository": "https://aws.github.io/eks-charts",
+                                            "version": "1.0.0",
+                                        },
+                                        "namespace": "kube-system",
+                                    },
+                                },
+                            }
+                        )
+                    ),
+                    "cluster": _observed_eks_cluster(cluster_security_group_id=None, ready_condition=True),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "subnet-0": _subnet(
+                        name="test-cluster-subnet-us-west-2a-952dc",
+                        az="us-west-2a",
+                        cidr="10.0.0.0/20",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "subnet-1": _subnet(
+                        name="test-cluster-subnet-us-west-2b-2b80f",
+                        az="us-west-2b",
+                        cidr="10.0.16.0/20",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "subnet-2": _subnet(
+                        name="test-cluster-subnet-us-west-2c-03273",
+                        az="us-west-2c",
+                        cidr="10.0.32.0/20",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "private-subnet-0": _private_subnet(
+                        name="test-cluster-private-subnet-us-west-2a-6a89f",
+                        az="us-west-2a",
+                        cidr="10.0.48.0/20",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "private-subnet-1": _private_subnet(
+                        name="test-cluster-private-subnet-us-west-2b-b7832",
+                        az="us-west-2b",
+                        cidr="10.0.64.0/20",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "private-subnet-2": _private_subnet(
+                        name="test-cluster-private-subnet-us-west-2c-ef57d",
+                        az="us-west-2c",
+                        cidr="10.0.80.0/20",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "internet-gateway": _internet_gateway(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "nat-eip": _nat_eip(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "nat-gateway": _nat_gateway(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "route-table": _route_table(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "route-default": _route_default(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "private-route-table": _private_route_table(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "private-route-default": _private_route_default(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "route-table-association-0": _route_table_association(
+                        az="us-west-2a", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "route-table-association-1": _route_table_association(
+                        az="us-west-2b", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "route-table-association-2": _route_table_association(
+                        az="us-west-2c", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "private-route-table-association-0": _private_route_table_association(
+                        az="us-west-2a", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "private-route-table-association-1": _private_route_table_association(
+                        az="us-west-2b", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "private-route-table-association-2": _private_route_table_association(
+                        az="us-west-2c", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "iam-role-cluster": _cluster_role(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "iam-attach-cluster-policy": _role_policy_attachment(
+                        role="cluster",
+                        arn="arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "iam-role-node": _node_role(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "iam-attach-node-worker": _role_policy_attachment(
+                        role="node",
+                        arn="arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "iam-attach-node-cni": _role_policy_attachment(
+                        role="node",
+                        arn="arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "iam-attach-node-ecr": _role_policy_attachment(
+                        role="node",
+                        arn="arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "cluster": _eks_cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "cluster-auth": _cluster_auth(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodegroup-system": _nodegroup_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "launch-template-gpu-h200": _launch_template_efa(security_groups=None),
+                    "efa-security-group": _efa_security_group(),
+                    "efa-security-group-ingress": _efa_security_group_ingress(),
+                    "efa-security-group-egress": _efa_security_group_egress(),
+                    "nodegroup-gpu-h200": _nodegroup_gpu_efa(),
+                    "addon-vpc-cni": _addon(name="vpc-cni", cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "addon-kube-proxy": _addon(
+                        name="kube-proxy", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "addon-coredns": _addon(name="coredns", cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "efs-filesystem": _efs_filesystem(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "efs-security-group": _efs_security_group(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "efs-security-group-ingress": _efs_security_group_ingress(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "efs-mount-target-0": _efs_mount_target(
+                        subnet_name="test-cluster-private-subnet-us-west-2a-6a89f",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "efs-mount-target-1": _efs_mount_target(
+                        subnet_name="test-cluster-private-subnet-us-west-2b-b7832",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "efs-mount-target-2": _efs_mount_target(
+                        subnet_name="test-cluster-private-subnet-us-west-2c-ef57d",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "iam-role-efs-csi": _pod_identity_role(
+                        role="efs-csi", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "iam-attach-efs-csi": _role_policy_attachment(
+                        role="efs-csi",
+                        arn="arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy",
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                    ),
+                    "addon-eks-pod-identity-agent": _addon(
+                        name="eks-pod-identity-agent", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "pod-identity-efs-csi": _pod_identity_association(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "addon-aws-efs-csi-driver": _addon(
+                        name="aws-efs-csi-driver", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "iam-policy-cluster-autoscaler": _autoscaler_policy(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "iam-role-cluster-autoscaler": _pod_identity_role(
+                        role="cluster-autoscaler", cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "iam-attach-cluster-autoscaler": _autoscaler_attachment(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "pod-identity-cluster-autoscaler": _autoscaler_pod_identity(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
+                    "release-cluster-autoscaler": _autoscaler_release(release_name="test-cluster-3f9a1c2b7d4e"),
+                    "release-efa-dra-driver": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                                "kind": "Release",
+                                "metadata": {
+                                    "namespace": "modelplane-system",
+                                    "annotations": {"crossplane.io/external-name": "test-cluster-8e5d0a6c1f2b"},
+                                },
                                 "spec": {
                                     "managementPolicies": ["Observe", "Create", "Update"],
                                     "providerConfigRef": {
@@ -2724,7 +3030,7 @@ COMPOSE_CASES = [
                     "pod-identity-cluster-autoscaler": _autoscaler_pod_identity(
                         cred_kind="ClusterProviderConfig", cred_name="default"
                     ),
-                    "release-cluster-autoscaler": _autoscaler_release(),
+                    "release-cluster-autoscaler": _autoscaler_release(release_name="mp-cluster-autoscaler"),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
                     "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
                 },
@@ -2937,3 +3243,45 @@ def test_compose(case: Case) -> None:
     """RunFunction composes EKS cluster infrastructure."""
     got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
     assert _to_dict(got) == _to_dict(case.want), case.reason
+
+
+# These cases call _release_name directly, because through RunFunction each
+# installed name would need a whole compose case.
+RELEASE_NAME_CASES = [
+    ReleaseNameCase(
+        name="NotInstalled",
+        reason="A Release with no observed external name gets the fixed name.",
+        installed=None,
+        fixed="mp-cluster-autoscaler",
+        want="mp-cluster-autoscaler",
+    ),
+    ReleaseNameCase(
+        name="InstalledNameKept",
+        reason="A Release installed under its generated name keeps it, so the chart isn't installed a second time.",
+        installed="test-cluster-3f9a1c2b7d4e",
+        fixed="mp-cluster-autoscaler",
+        want="test-cluster-3f9a1c2b7d4e",
+    ),
+    ReleaseNameCase(
+        name="NameAtLimit",
+        reason="A Release whose name is exactly Helm's 53-character limit keeps it.",
+        installed="cluster-orchestration-orchestrat-cluster-1a2b3c4d5e6f",
+        fixed="mp-cluster-autoscaler",
+        want="cluster-orchestration-orchestrat-cluster-1a2b3c4d5e6f",
+    ),
+    # Helm rejects the install of a release whose name is too long, so a Release
+    # named that way has nothing installed under its name to keep.
+    ReleaseNameCase(
+        name="NameTooLong",
+        reason="A Release whose generated name is longer than Helm allows gets the fixed name.",
+        installed="cluster-orchestration-orchestrating-cluster-1a2b3c4d5e6f",
+        fixed="mp-cluster-autoscaler",
+        want="mp-cluster-autoscaler",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", RELEASE_NAME_CASES, ids=lambda case: case.name)
+def test_release_name(case: ReleaseNameCase) -> None:
+    """_release_name picks the Helm release name for a Release."""
+    assert fn._release_name(case.installed, case.fixed) == case.want, case.reason
