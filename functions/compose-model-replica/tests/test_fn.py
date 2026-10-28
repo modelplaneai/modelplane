@@ -21,6 +21,7 @@ mp-ml-team-51733, the namespace mirroring the replica's.
 import asyncio
 import dataclasses
 import json
+from typing import Any
 
 import pytest
 from crossplane.function import resource
@@ -43,8 +44,8 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-def _model_replica(*, copies: int) -> fnv1.Resource:
-    """The ModelReplica XR test-replica in ml-team, with one Standalone engine.
+def _model_replica(*, copies: int, model_cache_ref: str | None) -> fnv1.Resource:
+    """The ModelReplica XR test-replica in ml-team, with one Standalone engine, reading the named ModelCache if any.
 
     The device request's CEL selector is as compose-model-deployment stamps it.
     """
@@ -59,6 +60,7 @@ def _model_replica(*, copies: int) -> fnv1.Resource:
         ),
         spec=v1alpha1.SpecModel1(
             clusterName="cluster-a",
+            modelCacheRef=v1alpha1.ModelCacheRef(name=model_cache_ref) if model_cache_ref else None,
             engines=[
                 v1alpha1.Engine(
                     name="main",
@@ -210,12 +212,33 @@ def _cluster(*, provider_config_ref: str | None) -> fnv1.Resource:
     return fnv1.Resource(resource=resource.dict_to_struct(cluster))
 
 
-def _deployment(*, ready: fnv1.Ready, name: str, claim_template_name: str, labels: dict, copies: int) -> fnv1.Resource:
-    """The Object composing an engine's Deployment.
+def _deployment(
+    *, ready: fnv1.Ready, name: str, claim_template_name: str, labels: dict, copies: int, cache_claim: str | None
+) -> fnv1.Resource:
+    """The Object composing an engine's Deployment, mounting the cache claim if any.
 
     Its pod carries the labels the collector attributes the engine's metrics by:
     the deployment, the engine and the member's role.
     """
+    engine: dict[str, Any] = {
+        "name": "engine",
+        "image": "vllm/vllm-openai:latest",
+        "args": ["--model=Qwen/Qwen3-0.6B"],
+        "ports": [{"name": "http", "containerPort": 8000}],
+        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+        "readinessProbe": {
+            "httpGet": {"path": "/health", "port": 8000},
+            "initialDelaySeconds": 30,
+            "periodSeconds": 10,
+            "timeoutSeconds": 5,
+        },
+        "resources": {"claims": [{"name": "devices"}]},
+    }
+    volumes: list[dict] = [{"name": "dshm", "emptyDir": {"medium": "Memory"}}]
+    if cache_claim is not None:
+        engine["volumeMounts"].append({"name": "model-cache", "mountPath": "/mnt/models"})
+        engine["env"] = [{"name": "HF_HUB_CACHE", "value": "/mnt/models"}]
+        volumes.append({"name": "model-cache", "persistentVolumeClaim": {"claimName": cache_claim}})
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -242,23 +265,8 @@ def _deployment(*, ready: fnv1.Ready, name: str, claim_template_name: str, label
                                 "template": {
                                     "metadata": {"labels": labels},
                                     "spec": {
-                                        "containers": [
-                                            {
-                                                "name": "engine",
-                                                "image": "vllm/vllm-openai:latest",
-                                                "args": ["--model=Qwen/Qwen3-0.6B"],
-                                                "ports": [{"name": "http", "containerPort": 8000}],
-                                                "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
-                                                "readinessProbe": {
-                                                    "httpGet": {"path": "/health", "port": 8000},
-                                                    "initialDelaySeconds": 30,
-                                                    "periodSeconds": 10,
-                                                    "timeoutSeconds": 5,
-                                                },
-                                                "resources": {"claims": [{"name": "devices"}]},
-                                            }
-                                        ],
-                                        "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                                        "containers": [engine],
+                                        "volumes": volumes,
                                         "nodeSelector": {"modelplane.ai/pool": "frontier"},
                                         "resourceClaims": [
                                             {
@@ -695,8 +703,8 @@ def _epp_service(*, ready: fnv1.Ready) -> fnv1.Resource:
     )
 
 
-def _observed_deployment(*, ready: bool, ready_replicas: int) -> fnv1.Resource:
-    """The engine's Deployment Object as observed back.
+def _observed_deployment(*, ready: bool, ready_replicas: int, cache_claim: str | None) -> fnv1.Resource:
+    """The engine's Deployment Object as observed back, its pods mounting the cache claim if any.
 
     ready sets the Object's derived Ready condition, and ready_replicas the
     Deployment's status.readyReplicas, which a Deployment leaves out at 0.
@@ -704,12 +712,26 @@ def _observed_deployment(*, ready: bool, ready_replicas: int) -> fnv1.Resource:
     observed_manifest: dict = {"kind": "Deployment"}
     if ready_replicas:
         observed_manifest["status"] = {"readyReplicas": ready_replicas}
+    engine: dict[str, Any] = {
+        "name": "engine",
+        "image": "vllm/vllm-openai:latest",
+        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+    }
+    volumes: list[dict] = [{"name": "dshm", "emptyDir": {"medium": "Memory"}}]
+    if cache_claim is not None:
+        engine["volumeMounts"].append({"name": "model-cache", "mountPath": "/mnt/models"})
+        engine["env"] = [{"name": "HF_HUB_CACHE", "value": "/mnt/models"}]
+        volumes.append({"name": "model-cache", "persistentVolumeClaim": {"claimName": cache_claim}})
+    applied_manifest = {
+        "kind": "Deployment",
+        "spec": {"template": {"spec": {"containers": [engine], "volumes": volumes}}},
+    }
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
                 "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
                 "kind": "Object",
-                "spec": {"forProvider": {"manifest": {"kind": "Deployment"}}},
+                "spec": {"forProvider": {"manifest": applied_manifest}},
                 "status": {
                     "atProvider": {"manifest": observed_manifest},
                     "conditions": [
@@ -752,6 +774,30 @@ def _observed_object(*, ready: bool) -> fnv1.Resource:
     )
 
 
+def _model_cache(*, clusters: list[dict]) -> fnv1.Resource:
+    """The ModelCache qwen in ml-team, reporting clusters as its per-cluster status."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "ModelCache",
+                "metadata": {"name": "qwen", "namespace": "ml-team"},
+                "spec": {"source": "HuggingFace", "huggingFace": {"repo": "Qwen/Qwen3-0.6B", "sizeGiB": 20}},
+                "status": {"clusters": clusters},
+            }
+        )
+    )
+
+
+def _cache_mount(*, claim_name: str) -> dict:
+    """The mount a HuggingFace ModelCache publishes for a cluster it has staged the model on."""
+    return {
+        "volumes": [{"name": "model-cache", "persistentVolumeClaim": {"claimName": claim_name}}],
+        "volumeMounts": [{"name": "model-cache", "mountPath": "/mnt/models"}],
+        "env": [{"name": "HF_HUB_CACHE", "value": "/mnt/models"}],
+    }
+
+
 def _to_dict(msg: message.Message) -> dict:
     """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
     return json.loads(json_format.MessageToJson(msg, sort_keys=True))
@@ -771,8 +817,8 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_prefill_decode_replica(serving=v1alpha1.Serving(mode="PrefillDecode")),
                 resources={
-                    "model-serving-prefill": _observed_deployment(ready=True, ready_replicas=1),
-                    "model-serving-decode": _observed_deployment(ready=True, ready_replicas=1),
+                    "model-serving-prefill": _observed_deployment(ready=True, ready_replicas=1, cache_claim=None),
+                    "model-serving-decode": _observed_deployment(ready=True, ready_replicas=1, cache_claim=None),
                 },
             ),
             required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
@@ -818,8 +864,8 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_prefill_decode_replica(serving=v1alpha1.Serving(mode="PrefillDecode")),
                 resources={
-                    "model-serving-prefill": _observed_deployment(ready=True, ready_replicas=1),
-                    "model-serving-decode": _observed_deployment(ready=False, ready_replicas=0),
+                    "model-serving-prefill": _observed_deployment(ready=True, ready_replicas=1, cache_claim=None),
+                    "model-serving-decode": _observed_deployment(ready=False, ready_replicas=0, cache_claim=None),
                 },
             ),
             required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
@@ -948,6 +994,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-prefill": _deployment(
+                        cache_claim=None,
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-prefill-10d7e",
@@ -966,6 +1013,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED, name="test-replica-prefill-standalone-devices-51762"
                     ),
                     "model-serving-decode": _deployment(
+                        cache_claim=None,
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-decode-44185",
@@ -1067,7 +1115,7 @@ COMPOSE_CASES = [
             "endpoint picker, and marks none of it ready."
         ),
         req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=_model_replica(copies=1)),
+            observed=fnv1.State(composite=_model_replica(copies=1, model_cache_ref=None)),
             required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")])},
         ),
         want=fnv1.RunFunctionResponse(
@@ -1075,6 +1123,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        cache_claim=None,
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
@@ -1137,7 +1186,7 @@ COMPOSE_CASES = [
         name="ClusterUnresolved",
         reason="Before its cluster resolves, a replica composes nothing and reports waiting, with the XR not ready.",
         req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=_model_replica(copies=1)),
+            observed=fnv1.State(composite=_model_replica(copies=1, model_cache_ref=None)),
         ),
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
@@ -1172,7 +1221,7 @@ COMPOSE_CASES = [
             "not ready."
         ),
         req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=_model_replica(copies=1)),
+            observed=fnv1.State(composite=_model_replica(copies=1, model_cache_ref=None)),
             required_resources={"cluster": fnv1.Resources(items=[_cluster(provider_config_ref=None)])},
         ),
         want=fnv1.RunFunctionResponse(
@@ -1213,9 +1262,9 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_model_replica(copies=1),
+                composite=_model_replica(copies=1, model_cache_ref=None),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1),
+                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1, cache_claim=None),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                 },
@@ -1227,6 +1276,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        cache_claim=None,
                         copies=1,
                         ready=fnv1.READY_TRUE,
                         name="test-replica-main-6b608",
@@ -1288,9 +1338,9 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_model_replica(copies=1),
+                composite=_model_replica(copies=1, model_cache_ref=None),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1),
+                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1, cache_claim=None),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -1309,6 +1359,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        cache_claim=None,
                         copies=1,
                         ready=fnv1.READY_TRUE,
                         name="test-replica-main-6b608",
@@ -1370,9 +1421,9 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_model_replica(copies=1),
+                composite=_model_replica(copies=1, model_cache_ref=None),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1),
+                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1, cache_claim=None),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -1391,6 +1442,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        cache_claim=None,
                         copies=1,
                         ready=fnv1.READY_TRUE,
                         name="test-replica-main-6b608",
@@ -1449,9 +1501,9 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_model_replica(copies=2),
+                composite=_model_replica(copies=2, model_cache_ref=None),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=1),
+                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=1, cache_claim=None),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -1470,6 +1522,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        cache_claim=None,
                         ready=fnv1.READY_UNSPECIFIED,
                         copies=2,
                         name="test-replica-main-6b608",
@@ -1525,9 +1578,9 @@ COMPOSE_CASES = [
         reason=("With no copy ready, the replica has started but isn't serving, whatever its routing."),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_model_replica(copies=2),
+                composite=_model_replica(copies=2, model_cache_ref=None),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=0),
+                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=0, cache_claim=None),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -1546,6 +1599,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        cache_claim=None,
                         ready=fnv1.READY_UNSPECIFIED,
                         copies=2,
                         name="test-replica-main-6b608",
@@ -1604,9 +1658,9 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_model_replica(copies=2),
+                composite=_model_replica(copies=2, model_cache_ref=None),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=2),
+                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=2, cache_claim=None),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -1625,6 +1679,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        cache_claim=None,
                         ready=fnv1.READY_UNSPECIFIED,
                         copies=2,
                         name="test-replica-main-6b608",
@@ -1680,9 +1735,9 @@ COMPOSE_CASES = [
         reason=("With both copies ready and the routing in place, the replica is serving at full capacity."),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_model_replica(copies=2),
+                composite=_model_replica(copies=2, model_cache_ref=None),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=2),
+                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=2, cache_claim=None),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -1701,6 +1756,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 resources={
                     "model-serving-main": _deployment(
+                        cache_claim=None,
                         ready=fnv1.READY_TRUE,
                         copies=2,
                         name="test-replica-main-6b608",
@@ -1747,6 +1803,1351 @@ COMPOSE_CASES = [
                     status=fnv1.STATUS_CONDITION_TRUE,
                     reason="AllCopiesReady",
                     message="2 of 2 engine copies ready",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="CacheReady",
+        reason="A replica whose ModelCache is Ready on its cluster mounts the cache the way the ModelCache says to.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_replica(copies=1, model_cache_ref="qwen")),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+                "cache": fnv1.Resources(
+                    items=[
+                        _model_cache(
+                            clusters=[
+                                {
+                                    "name": "cluster-a",
+                                    "phase": "Ready",
+                                    "mount": _cache_mount(claim_name="modelcache-ml-team-qwen-17db2"),
+                                }
+                            ]
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                resources={
+                    "model-serving-main": _deployment(
+                        cache_claim="modelcache-ml-team-qwen-17db2",
+                        copies=1,
+                        ready=fnv1.READY_UNSPECIFIED,
+                        name="test-replica-main-6b608",
+                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        labels={
+                            "modelplane.ai/deployment": "my-deployment",
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Standalone",
+                            "modelplane.ai/serving": "test-replica",
+                            "modelplane.ai/workload": "test-replica-main-6b608",
+                        },
+                    ),
+                    "model-route": _route(ready=fnv1.READY_UNSPECIFIED),
+                    "resource-claim-main-standalone": _claim_template(
+                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-e609d"
+                    ),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
+                    "epp": _epp(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        config_checksum="c4f1cefa4a1fe67069eaa6e9dde3e5b9bc7e79d3f807ecd076dd021259b2ab39",
+                    ),
+                    "epp-config": _epp_config(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-role": _epp_role(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="Composing vllm/vllm-openai:latest on cluster-a",
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="qwen",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ModelAccepted", status=fnv1.STATUS_CONDITION_FALSE, reason="Deploying"),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForModel"),
+                fnv1.Condition(
+                    type="ModelReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForModel",
+                    message="0 of 1 engine copies ready",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="CacheHydrating",
+        reason="Before its ModelCache is Ready on its cluster, a new replica composes nothing and says why it waits.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_replica(copies=1, model_cache_ref="qwen")),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+                "cache": fnv1.Resources(
+                    items=[
+                        _model_cache(
+                            clusters=[
+                                {
+                                    "name": "cluster-a",
+                                    "phase": "Hydrating",
+                                    "message": "Downloading Qwen/Qwen3-0.6B into PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-qwen-17db2",
+                                }
+                            ]
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="qwen",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ModelAccepted",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCache",
+                    message="ModelCache qwen is Hydrating on cluster cluster-a: Downloading Qwen/Qwen3-0.6B into PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-qwen-17db2",
+                ),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForModel"),
+                fnv1.Condition(type="ModelReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForModel"),
+            ],
+        ),
+    ),
+    Case(
+        name="CacheNotOnCluster",
+        reason="A new replica on a cluster its ModelCache doesn't stage to composes nothing and says so.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_replica(copies=1, model_cache_ref="qwen")),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+                "cache": fnv1.Resources(
+                    items=[
+                        _model_cache(
+                            clusters=[
+                                {
+                                    "name": "cluster-b",
+                                    "phase": "Ready",
+                                    "mount": _cache_mount(claim_name="modelcache-ml-team-qwen-17db2"),
+                                }
+                            ]
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="qwen",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ModelAccepted",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCache",
+                    message="ModelCache qwen isn't staged on cluster cluster-a",
+                ),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForModel"),
+                fnv1.Condition(type="ModelReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForModel"),
+            ],
+        ),
+    ),
+    Case(
+        name="CacheReadyWithoutMount",
+        reason="A new replica whose cache is Ready but hasn't published how to mount it waits for the mount.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_replica(copies=1, model_cache_ref="qwen")),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+                "cache": fnv1.Resources(
+                    items=[
+                        _model_cache(
+                            clusters=[
+                                {
+                                    "name": "cluster-a",
+                                    "phase": "Ready",
+                                }
+                            ]
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="qwen",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ModelAccepted",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCache",
+                    message="Waiting for ModelCache qwen to publish how to mount it on cluster cluster-a",
+                ),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForModel"),
+                fnv1.Condition(type="ModelReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForModel"),
+            ],
+        ),
+    ),
+    Case(
+        name="CacheNotFound",
+        reason="A new replica whose ModelCache doesn't exist composes nothing and says so.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_replica(copies=1, model_cache_ref="qwen")),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+                "cache": fnv1.Resources(items=[]),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="qwen",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ModelAccepted",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCache",
+                    message="ModelCache qwen not found in namespace ml-team",
+                ),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForModel"),
+                fnv1.Condition(type="ModelReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForModel"),
+            ],
+        ),
+    ),
+    Case(
+        name="CacheUnresolved",
+        reason="Before its ModelCache resolves, a new replica composes nothing.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_replica(copies=1, model_cache_ref="qwen")),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="qwen",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ModelAccepted",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCache",
+                    message="Waiting for ModelCache qwen",
+                ),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForModel"),
+                fnv1.Condition(type="ModelReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForModel"),
+            ],
+        ),
+    ),
+    Case(
+        name="CacheLostKeepsEngines",
+        reason="A replica whose engines already run keeps the cache they mount when the cache stops being Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_replica(copies=1, model_cache_ref="qwen"),
+                resources={
+                    "model-serving-main": _observed_deployment(
+                        ready=True, ready_replicas=1, cache_claim="modelcache-ml-team-qwen-17db2"
+                    ),
+                    "model-route": _observed_object(ready=True),
+                    "resource-claim-main-standalone": _observed_object(ready=True),
+                },
+            ),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+                "cache": fnv1.Resources(
+                    items=[
+                        _model_cache(
+                            clusters=[
+                                {
+                                    "name": "cluster-a",
+                                    "phase": "Pending",
+                                    "message": "Waiting for PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-qwen-17db2 to bind",
+                                }
+                            ]
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                resources={
+                    "model-serving-main": _deployment(
+                        cache_claim="modelcache-ml-team-qwen-17db2",
+                        copies=1,
+                        ready=fnv1.READY_TRUE,
+                        name="test-replica-main-6b608",
+                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        labels={
+                            "modelplane.ai/deployment": "my-deployment",
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Standalone",
+                            "modelplane.ai/serving": "test-replica",
+                            "modelplane.ai/workload": "test-replica-main-6b608",
+                        },
+                    ),
+                    "model-route": _route(ready=fnv1.READY_TRUE),
+                    "resource-claim-main-standalone": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    ),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
+                    "epp": _epp(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        config_checksum="c4f1cefa4a1fe67069eaa6e9dde3e5b9bc7e79d3f807ecd076dd021259b2ab39",
+                    ),
+                    "epp-config": _epp_config(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-role": _epp_role(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_WARNING,
+                    message=(
+                        "ModelCache qwen publishes no mount for cluster cluster-a. The replica's engines keep the "
+                        "cache they mount now."
+                    ),
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="qwen",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ModelAccepted", status=fnv1.STATUS_CONDITION_TRUE, reason="Accepted"),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForRouting"),
+                fnv1.Condition(
+                    type="ModelReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRouting",
+                    message="1 of 1 engine copies ready",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="UpgradeKeepsCacheMount",
+        reason="A running replica whose Ready cache hasn't published a mount yet, as after an upgrade, composes its workload as before.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_replica(copies=1, model_cache_ref="qwen"),
+                resources={
+                    "model-serving-main": _observed_deployment(
+                        ready=True, ready_replicas=1, cache_claim="modelcache-ml-team-qwen-17db2"
+                    ),
+                    "model-route": _observed_object(ready=True),
+                    "resource-claim-main-standalone": _observed_object(ready=True),
+                },
+            ),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+                "cache": fnv1.Resources(
+                    items=[
+                        _model_cache(
+                            clusters=[
+                                {
+                                    "name": "cluster-a",
+                                    "phase": "Ready",
+                                }
+                            ]
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                resources={
+                    "model-serving-main": _deployment(
+                        cache_claim="modelcache-ml-team-qwen-17db2",
+                        copies=1,
+                        ready=fnv1.READY_TRUE,
+                        name="test-replica-main-6b608",
+                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        labels={
+                            "modelplane.ai/deployment": "my-deployment",
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Standalone",
+                            "modelplane.ai/serving": "test-replica",
+                            "modelplane.ai/workload": "test-replica-main-6b608",
+                        },
+                    ),
+                    "model-route": _route(ready=fnv1.READY_TRUE),
+                    "resource-claim-main-standalone": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    ),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
+                    "epp": _epp(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        config_checksum="c4f1cefa4a1fe67069eaa6e9dde3e5b9bc7e79d3f807ecd076dd021259b2ab39",
+                    ),
+                    "epp-config": _epp_config(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-role": _epp_role(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_WARNING,
+                    message=(
+                        "ModelCache qwen publishes no mount for cluster cluster-a. The replica's engines keep the "
+                        "cache they mount now."
+                    ),
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="qwen",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ModelAccepted", status=fnv1.STATUS_CONDITION_TRUE, reason="Accepted"),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForRouting"),
+                fnv1.Condition(
+                    type="ModelReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRouting",
+                    message="1 of 1 engine copies ready",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="CacheAddedKeepsPods",
+        reason="A running replica that gains a cache that isn't Ready keeps its engines without one.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_replica(copies=1, model_cache_ref="qwen"),
+                resources={
+                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1, cache_claim=None),
+                    "model-route": _observed_object(ready=True),
+                    "resource-claim-main-standalone": _observed_object(ready=True),
+                },
+            ),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+                "cache": fnv1.Resources(
+                    items=[
+                        _model_cache(
+                            clusters=[
+                                {
+                                    "name": "cluster-a",
+                                    "phase": "Hydrating",
+                                    "message": "Downloading Qwen/Qwen3-0.6B into PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-qwen-17db2",
+                                }
+                            ]
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                resources={
+                    "model-serving-main": _deployment(
+                        cache_claim=None,
+                        copies=1,
+                        ready=fnv1.READY_TRUE,
+                        name="test-replica-main-6b608",
+                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        labels={
+                            "modelplane.ai/deployment": "my-deployment",
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Standalone",
+                            "modelplane.ai/serving": "test-replica",
+                            "modelplane.ai/workload": "test-replica-main-6b608",
+                        },
+                    ),
+                    "model-route": _route(ready=fnv1.READY_TRUE),
+                    "resource-claim-main-standalone": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    ),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
+                    "epp": _epp(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        config_checksum="c4f1cefa4a1fe67069eaa6e9dde3e5b9bc7e79d3f807ecd076dd021259b2ab39",
+                    ),
+                    "epp-config": _epp_config(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-role": _epp_role(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_WARNING,
+                    message=(
+                        "ModelCache qwen publishes no mount for cluster cluster-a. The replica's engines keep "
+                        "running without a cache."
+                    ),
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="qwen",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ModelAccepted", status=fnv1.STATUS_CONDITION_TRUE, reason="Accepted"),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForRouting"),
+                fnv1.Condition(
+                    type="ModelReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRouting",
+                    message="1 of 1 engine copies ready",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="CacheAddedThenReady",
+        reason="A running replica that gains a cache mounts it once the cache is Ready on its cluster.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_replica(copies=1, model_cache_ref="qwen"),
+                resources={
+                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1, cache_claim=None),
+                    "model-route": _observed_object(ready=True),
+                    "resource-claim-main-standalone": _observed_object(ready=True),
+                },
+            ),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+                "cache": fnv1.Resources(
+                    items=[
+                        _model_cache(
+                            clusters=[
+                                {
+                                    "name": "cluster-a",
+                                    "phase": "Ready",
+                                    "mount": _cache_mount(claim_name="modelcache-ml-team-qwen-17db2"),
+                                }
+                            ]
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                resources={
+                    "model-serving-main": _deployment(
+                        cache_claim="modelcache-ml-team-qwen-17db2",
+                        copies=1,
+                        ready=fnv1.READY_TRUE,
+                        name="test-replica-main-6b608",
+                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        labels={
+                            "modelplane.ai/deployment": "my-deployment",
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Standalone",
+                            "modelplane.ai/serving": "test-replica",
+                            "modelplane.ai/workload": "test-replica-main-6b608",
+                        },
+                    ),
+                    "model-route": _route(ready=fnv1.READY_TRUE),
+                    "resource-claim-main-standalone": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    ),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
+                    "epp": _epp(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        config_checksum="c4f1cefa4a1fe67069eaa6e9dde3e5b9bc7e79d3f807ecd076dd021259b2ab39",
+                    ),
+                    "epp-config": _epp_config(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-role": _epp_role(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            results=[],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="qwen",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ModelAccepted", status=fnv1.STATUS_CONDITION_TRUE, reason="Accepted"),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForRouting"),
+                fnv1.Condition(
+                    type="ModelReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRouting",
+                    message="1 of 1 engine copies ready",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="SwitchedCacheKeepsMount",
+        reason="A running replica switched to a cache that isn't Ready keeps the cache its engines mount now.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_replica(copies=1, model_cache_ref="qwen"),
+                resources={
+                    "model-serving-main": _observed_deployment(
+                        ready=True, ready_replicas=1, cache_claim="modelcache-ml-team-llama-0a1b2"
+                    ),
+                    "model-route": _observed_object(ready=True),
+                    "resource-claim-main-standalone": _observed_object(ready=True),
+                },
+            ),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+                "cache": fnv1.Resources(
+                    items=[
+                        _model_cache(
+                            clusters=[
+                                {
+                                    "name": "cluster-a",
+                                    "phase": "Pending",
+                                    "message": "Waiting for PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-qwen-17db2 to bind",
+                                }
+                            ]
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                resources={
+                    "model-serving-main": _deployment(
+                        cache_claim="modelcache-ml-team-llama-0a1b2",
+                        copies=1,
+                        ready=fnv1.READY_TRUE,
+                        name="test-replica-main-6b608",
+                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        labels={
+                            "modelplane.ai/deployment": "my-deployment",
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Standalone",
+                            "modelplane.ai/serving": "test-replica",
+                            "modelplane.ai/workload": "test-replica-main-6b608",
+                        },
+                    ),
+                    "model-route": _route(ready=fnv1.READY_TRUE),
+                    "resource-claim-main-standalone": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    ),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
+                    "epp": _epp(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        config_checksum="c4f1cefa4a1fe67069eaa6e9dde3e5b9bc7e79d3f807ecd076dd021259b2ab39",
+                    ),
+                    "epp-config": _epp_config(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-role": _epp_role(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_WARNING,
+                    message=(
+                        "ModelCache qwen publishes no mount for cluster cluster-a. The replica's engines keep the "
+                        "cache they mount now."
+                    ),
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="qwen",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ModelAccepted", status=fnv1.STATUS_CONDITION_TRUE, reason="Accepted"),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForRouting"),
+                fnv1.Condition(
+                    type="ModelReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRouting",
+                    message="1 of 1 engine copies ready",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="CacheDeletedKeepsMount",
+        reason="A running replica whose cache is deleted keeps the cache its engines mount now.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_replica(copies=1, model_cache_ref="qwen"),
+                resources={
+                    "model-serving-main": _observed_deployment(
+                        ready=True, ready_replicas=1, cache_claim="modelcache-ml-team-qwen-17db2"
+                    ),
+                    "model-route": _observed_object(ready=True),
+                    "resource-claim-main-standalone": _observed_object(ready=True),
+                },
+            ),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+                "cache": fnv1.Resources(items=[]),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                resources={
+                    "model-serving-main": _deployment(
+                        cache_claim="modelcache-ml-team-qwen-17db2",
+                        copies=1,
+                        ready=fnv1.READY_TRUE,
+                        name="test-replica-main-6b608",
+                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        labels={
+                            "modelplane.ai/deployment": "my-deployment",
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Standalone",
+                            "modelplane.ai/serving": "test-replica",
+                            "modelplane.ai/workload": "test-replica-main-6b608",
+                        },
+                    ),
+                    "model-route": _route(ready=fnv1.READY_TRUE),
+                    "resource-claim-main-standalone": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    ),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
+                    "epp": _epp(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        config_checksum="c4f1cefa4a1fe67069eaa6e9dde3e5b9bc7e79d3f807ecd076dd021259b2ab39",
+                    ),
+                    "epp-config": _epp_config(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-role": _epp_role(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_WARNING,
+                    message=(
+                        "ModelCache qwen publishes no mount for cluster cluster-a. The replica's engines keep the "
+                        "cache they mount now."
+                    ),
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="qwen",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ModelAccepted", status=fnv1.STATUS_CONDITION_TRUE, reason="Accepted"),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForRouting"),
+                fnv1.Condition(
+                    type="ModelReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRouting",
+                    message="1 of 1 engine copies ready",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="GangKeepsCacheMount",
+        reason="A running LeaderWorkerSet replica whose cache isn't Ready keeps the cache its leader and workers mount.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.ModelReplica(
+                            metadata=metav1.ObjectMeta(
+                                name="test-replica",
+                                namespace="ml-team",
+                                labels={
+                                    "modelplane.ai/deployment": "my-deployment",
+                                    "modelplane.ai/cluster": "cluster-a",
+                                },
+                            ),
+                            spec=v1alpha1.SpecModel1(
+                                clusterName="cluster-a",
+                                modelCacheRef=v1alpha1.ModelCacheRef(name="kimi"),
+                                engines=[
+                                    v1alpha1.Engine(
+                                        name="main",
+                                        copies=1,
+                                        members=[
+                                            v1alpha1.Member(
+                                                role="Leader",
+                                                nodePoolName="frontier",
+                                                deviceRequests=[
+                                                    v1alpha1.DeviceRequest(
+                                                        name="gpu",
+                                                        deviceClassName="gpu.nvidia.com",
+                                                        count=1,
+                                                        selectors=[
+                                                            v1alpha1.Selector(
+                                                                cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                                            )
+                                                        ],
+                                                    )
+                                                ],
+                                                template=v1alpha1.Template(
+                                                    spec=v1alpha1.Spec(
+                                                        containers=[
+                                                            v1alpha1.Container(
+                                                                name="engine",
+                                                                image="vllm/vllm-openai:latest",
+                                                                args=["--model=moonshotai/Kimi-K2-Instruct"],
+                                                            )
+                                                        ]
+                                                    )
+                                                ),
+                                            ),
+                                            v1alpha1.Member(
+                                                role="Worker",
+                                                nodePoolName="frontier",
+                                                worker=v1alpha1.Worker(nodes=1),
+                                                deviceRequests=[
+                                                    v1alpha1.DeviceRequest(
+                                                        name="gpu",
+                                                        deviceClassName="gpu.nvidia.com",
+                                                        count=1,
+                                                        selectors=[
+                                                            v1alpha1.Selector(
+                                                                cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                                            )
+                                                        ],
+                                                    )
+                                                ],
+                                                template=v1alpha1.Template(
+                                                    spec=v1alpha1.Spec(
+                                                        containers=[
+                                                            v1alpha1.Container(
+                                                                name="engine",
+                                                                image="vllm/vllm-openai:latest",
+                                                                args=["--model=moonshotai/Kimi-K2-Instruct"],
+                                                            )
+                                                        ]
+                                                    )
+                                                ),
+                                            ),
+                                        ],
+                                    )
+                                ],
+                            ),
+                        ).model_dump(exclude_none=True, mode="json", by_alias=True)
+                    )
+                ),
+                resources={
+                    # Only the pod templates of the LeaderWorkerSet it last
+                    # composed matter here, so the rest is left out.
+                    "model-serving-main": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "Object",
+                                "spec": {
+                                    "forProvider": {
+                                        "manifest": {
+                                            "apiVersion": "leaderworkerset.x-k8s.io/v1",
+                                            "kind": "LeaderWorkerSet",
+                                            "spec": {
+                                                "leaderWorkerTemplate": {
+                                                    "leaderTemplate": {
+                                                        "spec": {
+                                                            "containers": [
+                                                                {
+                                                                    "name": "engine",
+                                                                    "env": [
+                                                                        {"name": "HF_HUB_CACHE", "value": "/mnt/models"}
+                                                                    ],
+                                                                    "volumeMounts": [
+                                                                        {"name": "dshm", "mountPath": "/dev/shm"},
+                                                                        {
+                                                                            "name": "model-cache",
+                                                                            "mountPath": "/mnt/models",
+                                                                        },
+                                                                    ],
+                                                                }
+                                                            ],
+                                                            "volumes": [
+                                                                {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+                                                                {
+                                                                    "name": "model-cache",
+                                                                    "persistentVolumeClaim": {
+                                                                        "claimName": "modelcache-ml-team-kimi-aa322"
+                                                                    },
+                                                                },
+                                                            ],
+                                                        }
+                                                    },
+                                                    "workerTemplate": {
+                                                        "spec": {
+                                                            "containers": [
+                                                                {
+                                                                    "name": "engine",
+                                                                    "env": [
+                                                                        {"name": "HF_HUB_CACHE", "value": "/mnt/models"}
+                                                                    ],
+                                                                    "volumeMounts": [
+                                                                        {"name": "dshm", "mountPath": "/dev/shm"},
+                                                                        {
+                                                                            "name": "model-cache",
+                                                                            "mountPath": "/mnt/models",
+                                                                        },
+                                                                    ],
+                                                                }
+                                                            ],
+                                                            "volumes": [
+                                                                {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+                                                                {
+                                                                    "name": "model-cache",
+                                                                    "persistentVolumeClaim": {
+                                                                        "claimName": "modelcache-ml-team-kimi-aa322"
+                                                                    },
+                                                                },
+                                                            ],
+                                                        }
+                                                    },
+                                                }
+                                            },
+                                        }
+                                    }
+                                },
+                                "status": {
+                                    "atProvider": {"manifest": {"status": {"readyReplicas": 1}}},
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2025-01-01T00:00:00Z",
+                                        }
+                                    ],
+                                },
+                            }
+                        )
+                    ),
+                    "model-route": _observed_object(ready=True),
+                    "resource-claim-main-leader": _observed_object(ready=True),
+                    "resource-claim-main-worker": _observed_object(ready=True),
+                },
+            ),
+            required_resources={
+                "cluster": fnv1.Resources(items=[_cluster(provider_config_ref="cluster-a-pc")]),
+                "cache": fnv1.Resources(
+                    items=[
+                        _model_cache(
+                            clusters=[
+                                {
+                                    "name": "cluster-a",
+                                    "phase": "Hydrating",
+                                    "message": "Downloading moonshotai/Kimi-K2-Instruct into PersistentVolumeClaim mp-ml-team-51733/modelcache-ml-team-kimi-aa322",
+                                }
+                            ]
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                resources={
+                    "model-serving-main": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "Object",
+                                "spec": {
+                                    "forProvider": {
+                                        "manifest": {
+                                            "apiVersion": "leaderworkerset.x-k8s.io/v1",
+                                            "kind": "LeaderWorkerSet",
+                                            "metadata": {
+                                                "name": "test-replica-main-6b608",
+                                                "namespace": "mp-ml-team-51733",
+                                            },
+                                            "spec": {
+                                                "leaderWorkerTemplate": {
+                                                    "leaderTemplate": {
+                                                        "metadata": {
+                                                            "labels": {
+                                                                "modelplane.ai/deployment": "my-deployment",
+                                                                "modelplane.ai/engine": "main",
+                                                                "modelplane.ai/lws-role": "leader",
+                                                                "modelplane.ai/role": "Leader",
+                                                                "modelplane.ai/serving": "test-replica",
+                                                            }
+                                                        },
+                                                        "spec": {
+                                                            "containers": [
+                                                                {
+                                                                    "args": ["--model=moonshotai/Kimi-K2-Instruct"],
+                                                                    "env": [
+                                                                        {
+                                                                            "name": "MODELPLANE_LEADER_ADDRESS",
+                                                                            "value": "$(LWS_LEADER_ADDRESS)",
+                                                                        },
+                                                                        {
+                                                                            "name": "MODELPLANE_RANK",
+                                                                            "value": "$(LWS_WORKER_INDEX)",
+                                                                        },
+                                                                        {
+                                                                            "name": "HF_HUB_CACHE",
+                                                                            "value": "/mnt/models",
+                                                                        },
+                                                                    ],
+                                                                    "image": "vllm/vllm-openai:latest",
+                                                                    "name": "engine",
+                                                                    "ports": [{"containerPort": 8000, "name": "http"}],
+                                                                    "readinessProbe": {
+                                                                        "httpGet": {"path": "/health", "port": 8000},
+                                                                        "initialDelaySeconds": 30,
+                                                                        "periodSeconds": 10,
+                                                                        "timeoutSeconds": 5,
+                                                                    },
+                                                                    "resources": {"claims": [{"name": "devices"}]},
+                                                                    "volumeMounts": [
+                                                                        {"mountPath": "/dev/shm", "name": "dshm"},
+                                                                        {
+                                                                            "mountPath": "/mnt/models",
+                                                                            "name": "model-cache",
+                                                                        },
+                                                                    ],
+                                                                }
+                                                            ],
+                                                            "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                                            "resourceClaims": [
+                                                                {
+                                                                    "name": "devices",
+                                                                    "resourceClaimTemplateName": "test-replica-main-leader-devices-34ec6",
+                                                                }
+                                                            ],
+                                                            "tolerations": [
+                                                                {
+                                                                    "effect": "NoSchedule",
+                                                                    "key": "nvidia.com/gpu",
+                                                                    "operator": "Exists",
+                                                                }
+                                                            ],
+                                                            "volumes": [
+                                                                {"emptyDir": {"medium": "Memory"}, "name": "dshm"},
+                                                                {
+                                                                    "name": "model-cache",
+                                                                    "persistentVolumeClaim": {
+                                                                        "claimName": "modelcache-ml-team-kimi-aa322"
+                                                                    },
+                                                                },
+                                                            ],
+                                                        },
+                                                    },
+                                                    "size": 2,
+                                                    "workerTemplate": {
+                                                        "metadata": {
+                                                            "labels": {
+                                                                "modelplane.ai/deployment": "my-deployment",
+                                                                "modelplane.ai/engine": "main",
+                                                                "modelplane.ai/role": "Worker",
+                                                            }
+                                                        },
+                                                        "spec": {
+                                                            "containers": [
+                                                                {
+                                                                    "args": ["--model=moonshotai/Kimi-K2-Instruct"],
+                                                                    "env": [
+                                                                        {
+                                                                            "name": "MODELPLANE_LEADER_ADDRESS",
+                                                                            "value": "$(LWS_LEADER_ADDRESS)",
+                                                                        },
+                                                                        {
+                                                                            "name": "MODELPLANE_RANK",
+                                                                            "value": "$(LWS_WORKER_INDEX)",
+                                                                        },
+                                                                        {
+                                                                            "name": "HF_HUB_CACHE",
+                                                                            "value": "/mnt/models",
+                                                                        },
+                                                                    ],
+                                                                    "image": "vllm/vllm-openai:latest",
+                                                                    "name": "engine",
+                                                                    "resources": {"claims": [{"name": "devices"}]},
+                                                                    "volumeMounts": [
+                                                                        {"mountPath": "/dev/shm", "name": "dshm"},
+                                                                        {
+                                                                            "mountPath": "/mnt/models",
+                                                                            "name": "model-cache",
+                                                                        },
+                                                                    ],
+                                                                }
+                                                            ],
+                                                            "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                                            "resourceClaims": [
+                                                                {
+                                                                    "name": "devices",
+                                                                    "resourceClaimTemplateName": "test-replica-main-worker-devices-db183",
+                                                                }
+                                                            ],
+                                                            "tolerations": [
+                                                                {
+                                                                    "effect": "NoSchedule",
+                                                                    "key": "nvidia.com/gpu",
+                                                                    "operator": "Exists",
+                                                                }
+                                                            ],
+                                                            "volumes": [
+                                                                {"emptyDir": {"medium": "Memory"}, "name": "dshm"},
+                                                                {
+                                                                    "name": "model-cache",
+                                                                    "persistentVolumeClaim": {
+                                                                        "claimName": "modelcache-ml-team-kimi-aa322"
+                                                                    },
+                                                                },
+                                                            ],
+                                                        },
+                                                    },
+                                                },
+                                                "replicas": 1,
+                                            },
+                                        }
+                                    },
+                                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                                    "readiness": {
+                                        "celQuery": "has(object.status.conditions) && object.status.conditions.exists(c, "
+                                        'c.type == "Available" && c.status == "True") && '
+                                        "has(object.status.readyReplicas) && object.status.readyReplicas >= "
+                                        "object.spec.replicas",
+                                        "policy": "DeriveFromCelQuery",
+                                    },
+                                    "watch": True,
+                                },
+                            }
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "model-route": _route(ready=fnv1.READY_TRUE),
+                    "resource-claim-main-leader": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-leader-devices-34ec6"
+                    ),
+                    "resource-claim-main-worker": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-worker-devices-db183"
+                    ),
+                    "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
+                    "epp": _epp(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        config_checksum="c4f1cefa4a1fe67069eaa6e9dde3e5b9bc7e79d3f807ecd076dd021259b2ab39",
+                    ),
+                    "epp-config": _epp_config(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-role": _epp_role(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_WARNING,
+                    message=(
+                        "ModelCache kimi publishes no mount for cluster cluster-a. The replica's engines keep the "
+                        "cache they mount now."
+                    ),
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "cluster": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        match_name="cluster-a",
+                    ),
+                    "cache": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelCache",
+                        match_name="kimi",
+                        namespace="ml-team",
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ModelAccepted", status=fnv1.STATUS_CONDITION_TRUE, reason="Accepted"),
+                fnv1.Condition(type="ModelServing", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForRouting"),
+                fnv1.Condition(
+                    type="ModelReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRouting",
+                    message="1 of 1 engine copies ready",
                 ),
             ],
         ),

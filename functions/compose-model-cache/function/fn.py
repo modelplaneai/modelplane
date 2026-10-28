@@ -21,6 +21,7 @@ at /mnt/models, so weights are downloaded once per cluster and read N
 times by every pod in an LWS gang.
 """
 
+import shlex
 from typing import Literal
 
 import grpc
@@ -89,6 +90,17 @@ _NS_PREFIX = "mp"
 HYDRATION_IMAGE = "python:3.13-slim@sha256:57b29a7c050c4e679e4bea572e14b3965cf4b5839de2da49d55e49ffc4024f39"
 HYDRATION_MOUNT = "/mnt/artifact"
 
+# Where an engine pod reads the cache, and the name of the volume it reads it
+# through. A ModelReplica copies the mount status publishes into its pods.
+# compose-model-replica's cache.mounted finds a running replica's cache by
+# this volume name and HF_HUB_CACHE, so the three must change together.
+MOUNT_PATH = "/mnt/models"
+_MOUNT_VOLUME = "model-cache"
+
+# The annotation the scheduler sets on a claim it's waiting to provision for a
+# node.
+_SELECTED_NODE_ANNOTATION = "volume.kubernetes.io/selected-node"
+
 # ttlSecondsAfterFinished governs how long the completed Job (and its
 # PVC-pinning pod) lingers before its TTL controller cascade-deletes both. Keep
 # it short so a just-deleted cache's PVC isn't pinned for long - but above
@@ -96,14 +108,21 @@ HYDRATION_MOUNT = "/mnt/artifact"
 # success (to latch Ready and drop the Job) before the TTL fires.
 _JOB_TTL_SECONDS = 180
 
-# Every management policy except Delete. Once a cluster is Ready the Job is
-# dropped from the composition; without Delete, dropping orphans the external Job
-# instead of deleting it, so its own TTL controller cascade-cleans the completed
-# pod that pins the PVC - whereas Crossplane's delete would orphan that pod. (No
-# "all but Delete" shorthand exists, and deletionPolicy: Orphan is ignored once
-# managementPolicies is on.) Re-adding the Job after a flap is a cheap skip.
+# A hydrating Job has every management policy, so deleting the ModelCache
+# before the download finishes deletes the Job too. Otherwise the Job would
+# outlive its cache, and a cache created later under the same name would get a
+# claim of the same name for that Job to download into, whatever its own source.
 _ManagementPolicy = Literal["Observe", "Create", "Update", "Delete", "LateInitialize", "*"]
-_JOB_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update", "LateInitialize"]
+_JOB_HYDRATING: list[_ManagementPolicy] = ["*"]
+
+# Every management policy except Delete, for a finished Job. Once a cluster is
+# Ready the Job is first composed with these, then dropped from the
+# composition; without Delete, dropping orphans the external Job instead of
+# deleting it, so its own TTL controller cascade-cleans the completed pod that
+# pins the PVC - whereas Crossplane's delete would orphan that pod. (No "all but
+# Delete" shorthand exists, and deletionPolicy: Orphan is ignored once
+# managementPolicies is on.) Re-adding the Job after a flap is a cheap skip.
+_JOB_FINISHED: list[_ManagementPolicy] = ["Observe", "Create", "Update", "LateInitialize"]
 
 
 def _storage_class(cluster: icv1alpha1.InferenceCluster) -> str | None:
@@ -117,7 +136,6 @@ def _storage_class(cluster: icv1alpha1.InferenceCluster) -> str | None:
     return None
 
 
-# A completion marker written only after a fully successful download. The Job
 # A completion marker, checked instead of directory emptiness. A re-run
 # (eviction, replay, backoff) skips when the marker is present. Checking the
 # marker — not a non-empty dir — keeps re-runs safe: an interrupted download
@@ -159,12 +177,17 @@ def _hf_hydration(hf: v1alpha1.HuggingFace, auth_secret_name: str | None) -> tup
                 },
             }
         )
-    revision_arg = f" --revision {hf.revision}" if hf.revision else ""
+    # Every user value is quoted, because the command runs in a shell and a
+    # pattern is a glob.
+    revision_arg = f" --revision {shlex.quote(hf.revision)}" if hf.revision else ""
+    patterns = "".join(f" --include {shlex.quote(p.root)}" for p in hf.include or []) + "".join(
+        f" --exclude {shlex.quote(p.root)}" for p in hf.exclude or []
+    )
     command = (
         "set -e; "
         f"{_SKIP_IF_HYDRATED}"
         "pip install --quiet huggingface_hub; "
-        f"hf download {hf.repo}{revision_arg}; "
+        f"hf download {shlex.quote(hf.repo)}{revision_arg}{patterns}; "
         f"touch {_HYDRATED_MARKER}"
     )
     return env, command
@@ -315,12 +338,13 @@ class Composer:
     def compose_cluster_resources(self, cluster: icv1alpha1.InferenceCluster, phase: _Phase) -> None:
         """Compose the PVC always, and the hydration Job until the cluster is Ready.
 
-        Once Ready the Job is dropped: with _JOB_MANAGEMENT (no Delete) that
-        orphans the external Job rather than deleting it, so its own TTL
-        controller cascade-cleans the Job and the completed pod pinning the PVC -
-        instead of Crossplane orphaning the pod. Readiness is latched in the XR
-        status, so dropping the Job doesn't regress it, and a flap that re-adds
-        it is a cheap idempotent skip."""
+        Once Ready the Job is composed with _JOB_FINISHED (no Delete) until its
+        Object no longer has Delete, then dropped. Dropping it then orphans the
+        external Job rather than deleting it, so its own TTL controller
+        cascade-cleans the Job and the completed pod pinning the PVC - instead
+        of Crossplane orphaning the pod. Readiness is latched in the XR status,
+        so dropping the Job doesn't regress it, and a flap that re-adds it is a
+        cheap idempotent skip."""
         # match_clusters only returns clusters whose status.providerConfigRef.name
         # is set, so this is never None here.
         assert cluster.status and cluster.status.providerConfigRef and cluster.status.providerConfigRef.name
@@ -340,7 +364,7 @@ class Composer:
         if phase != PHASE_READY and not self._auth_missing():
             # The token Secret is composed before the Job that consumes it, and
             # dropped alongside the Job once the cluster is Ready. Unlike the Job
-            # (orphaned via _JOB_MANAGEMENT, then TTL-cleaned), the Secret keeps
+            # (orphaned via _JOB_FINISHED, then TTL-cleaned), the Secret keeps
             # default management policies, so dropping it DELETES it from the
             # inference cluster. That's deliberate: the token is only needed
             # while hydrating, so removing it afterwards limits its exposure. A
@@ -354,8 +378,22 @@ class Composer:
                 )
             resource.update(
                 self.rsp.desired.resources[self._job_key(name)],
-                self._wrap_remote(pc, self._job_manifest(), _JOB_READY_CEL, management_policies=_JOB_MANAGEMENT),
+                self._wrap_remote(pc, self._job_manifest(), _JOB_READY_CEL, management_policies=_JOB_HYDRATING),
             )
+        elif phase == PHASE_READY and self._job_deletes(name):
+            resource.update(
+                self.rsp.desired.resources[self._job_key(name)],
+                self._wrap_remote(pc, self._job_manifest(), _JOB_READY_CEL, management_policies=_JOB_FINISHED),
+            )
+
+    def _job_deletes(self, cluster_name: str) -> bool:
+        """Whether the cluster's observed hydration Job Object would delete the Job if dropped."""
+        observed = self.req.observed.resources.get(self._job_key(cluster_name))
+        if not observed:
+            return False
+        obj = k8sobjv1alpha1.Object.model_validate(resource.struct_to_dict(observed.resource))
+        policies = obj.spec.managementPolicies
+        return policies is None or any(p in ("*", "Delete") for p in policies)
 
     def _pvc_manifest(self, cluster: icv1alpha1.InferenceCluster) -> dict:
         hf = self.xr.spec.huggingFace
@@ -407,10 +445,11 @@ class Composer:
             spec.managementPolicies = management_policies
         return k8sobjv1alpha1.Object(spec=spec)
 
-    # --- naming (must stay in sync with backends/base.cache_pvc_name) ---
-    # Both sides share resource.child_name("modelcache", namespace, name), so the
-    # serving pods mount the PVC this composes by the same name in the same
-    # mirrored namespace.
+    # --- naming ---
+    # A replica reads the claim's name from the mount status publishes, so
+    # nothing else derives it. Keep it stable: running engines mount the claim
+    # by this name, and ModelExpress identifies the cache by it, so a new name
+    # rolls every cached engine onto a claim the cache must download again.
     def _pvc_name(self) -> str:
         return resource.child_name("modelcache", _namespace(self.xr.metadata), _name(self.xr.metadata))
 
@@ -496,12 +535,15 @@ class Composer:
 
     def _observed_status(self, key: str) -> dict:
         """Remote resource status echoed back under Object.status.atProvider.manifest.status."""
+        return self._observed_manifest(key).get("status", {}) or {}
+
+    def _observed_manifest(self, key: str) -> dict:
+        """The remote resource as provider-kubernetes last observed it, under Object.status.atProvider.manifest."""
         observed = self.req.observed.resources.get(key)
         if not observed:
             return {}
         obj = k8sobjv1alpha1.Object.model_validate(resource.struct_to_dict(observed.resource))
-        manifest = (obj.status.atProvider.manifest if obj.status and obj.status.atProvider else None) or {}
-        return manifest.get("status", {}) or {}
+        return (obj.status.atProvider.manifest if obj.status and obj.status.atProvider else None) or {}
 
     def mark_ready_resources(self, per_cluster_phase: list[tuple[str, _Phase]]) -> None:
         """Mark composed Objects ready from each Object's own Ready condition.
@@ -532,9 +574,63 @@ class Composer:
         ready_count = sum(1 for _, p in per_cluster_phase if p == PHASE_READY)
         status = v1alpha1.Status(
             summary=v1alpha1.Summary(ready=f"{ready_count}/{len(matched)}"),
-            clusters=[v1alpha1.Cluster(name=n, phase=p) for n, p in per_cluster_phase],
+            clusters=[
+                v1alpha1.Cluster(
+                    name=n,
+                    phase=p,
+                    message=self._message(n, p),
+                    mount=self._mount() if p == PHASE_READY else None,
+                )
+                for n, p in per_cluster_phase
+            ],
         )
-        resource.update_status(self.rsp.desired.composite, status)
+        resource.update_status(self.rsp.desired.composite, status.model_dump(exclude_none=True, by_alias=True))
+
+    def _mount(self) -> v1alpha1.Mount:
+        """How an engine pod reads the staged model: the claim at MOUNT_PATH, found by repo ID.
+
+        HF_HUB_CACHE points HuggingFace's resolver at the hub cache the
+        hydration Job staged, so an engine loads the model by its repo ID.
+        """
+        return v1alpha1.Mount(
+            volumes=[
+                v1alpha1.Volume(
+                    name=_MOUNT_VOLUME,
+                    persistentVolumeClaim=v1alpha1.PersistentVolumeClaim(claimName=self._pvc_name()),
+                )
+            ],
+            volumeMounts=[v1alpha1.VolumeMount(name=_MOUNT_VOLUME, mountPath=MOUNT_PATH)],
+            env=[v1alpha1.EnvItem(name="HF_HUB_CACHE", value=MOUNT_PATH)],
+        )
+
+    def _message(self, cluster_name: str, phase: _Phase) -> str | None:
+        """Why the model isn't readable on a cluster yet, or None once it is."""
+        if phase == PHASE_READY:
+            return None
+        if self._auth_missing():
+            auth = self.xr.spec.huggingFace.authSecret  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
+            assert auth is not None
+            return f"Waiting for key {auth.key or 'HF_TOKEN'} in Secret {_namespace(self.xr.metadata)}/{auth.name}"
+        repo = self.xr.spec.huggingFace.repo  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
+        pvc = f"{self.namespace}/{self._pvc_name()}"
+        if phase == PHASE_PENDING:
+            annotations = (self._observed_manifest(self._pvc_key(cluster_name)).get("metadata") or {}).get(
+                "annotations"
+            ) or {}
+            node = annotations.get(_SELECTED_NODE_ANNOTATION)
+            return f"Waiting for PersistentVolumeClaim {pvc} to bind" + (f" on node {node}" if node else "")
+        if phase == PHASE_HYDRATING:
+            return f"Downloading {repo} into PersistentVolumeClaim {pvc}"
+        job = self._observed_status(self._job_key(cluster_name))
+        failed = int(job.get("failed") or 0)
+        reason = next(
+            (c.get("message") for c in job.get("conditions", []) if c.get("type") == "Failed" and c.get("message")),
+            None,
+        )
+        times = f" {failed} times" if failed else ""
+        return f"Job {self.namespace}/{self._job_name()} failed{times} downloading {repo}" + (
+            f": {reason}" if reason else ""
+        )
 
     def derive_conditions(
         self, matched: list[icv1alpha1.InferenceCluster], per_cluster_phase: list[tuple[str, _Phase]]

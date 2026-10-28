@@ -28,6 +28,7 @@ engines are composed once by fn.py, not here.
 from collections.abc import Mapping
 
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
+from models.ai.modelplane.modelcache import v1alpha1 as mcv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
@@ -42,6 +43,7 @@ class NativeBackend:
         provider_config: str,
         serving_label: str,
         stack: str,
+        cache: mcv1alpha1.Mount | None,
     ) -> dict[str, k8sobjv1alpha1.Object]:
         member = base.engine_member(engine, base.ROLE_STANDALONE)
         # select_backend dispatches the native backend only for an engine with a
@@ -58,7 +60,7 @@ class NativeBackend:
         pod_labels = {base.LABEL_SERVING: serving_label, base.LABEL_WORKLOAD: name}
         selector = {base.LABEL_WORKLOAD: name}
 
-        cache_volumes, cache_volume_mounts = base.cache_mounts(replica)
+        cache_volumes, cache_volume_mounts = base.cache_mounts(cache)
 
         container = {
             "name": "engine",
@@ -81,12 +83,12 @@ class NativeBackend:
         # Modelplane's entries lead so the user's can reference them. A scaled
         # Standalone deployment is as valid a ModelExpress peer set as a gang,
         # so it gets that env too.
-        env = [*base.cache_env(replica), *base.modelexpress_env(replica, stack)]
+        env = [*base.cache_env(cache), *base.modelexpress_env(replica, stack, cache)]
         if engine_container.env:
             env.extend(e.model_dump(exclude_none=True) for e in engine_container.env)
         if env:
             container["env"] = env
-        security_context = base.modelexpress_security_context(replica, stack)
+        security_context = base.modelexpress_security_context(replica, stack, cache)
         if security_context:
             container["securityContext"] = security_context
 

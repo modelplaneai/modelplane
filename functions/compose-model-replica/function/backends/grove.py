@@ -40,6 +40,7 @@ from collections.abc import Mapping
 
 from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
+from models.ai.modelplane.modelcache import v1alpha1 as mcv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
@@ -61,6 +62,7 @@ class GroveBackend:
         provider_config: str,
         serving_label: str,
         stack: str,
+        cache: mcv1alpha1.Mount | None,
     ) -> dict[str, k8sobjv1alpha1.Object]:
         leader = base.engine_member(engine, base.ROLE_LEADER)
         worker = base.engine_member(engine, base.ROLE_WORKER)
@@ -74,7 +76,7 @@ class GroveBackend:
         # The worker clique's pod count: one follower pod per node.
         worker_replicas = int(worker.worker.nodes) if worker.worker else 1
 
-        cache_volumes, cache_volume_mounts = base.cache_mounts(replica)
+        cache_volumes, cache_volume_mounts = base.cache_mounts(cache)
 
         def container(member: v1alpha1.Member, *, serving: bool) -> dict:
             engine_container = base.engine_container(member)
@@ -100,14 +102,14 @@ class GroveBackend:
             # too, since each pod publishes itself as a source independently.
             env = [
                 base.grove_leader_address_env(),
-                *base.cache_env(replica),
-                *base.modelexpress_env(replica, stack),
+                *base.cache_env(cache),
+                *base.modelexpress_env(replica, stack, cache),
             ]
             if engine_container.env:
                 env.extend(e.model_dump(exclude_none=True) for e in engine_container.env)
             if env:
                 c["env"] = env
-            security_context = base.modelexpress_security_context(replica, stack)
+            security_context = base.modelexpress_security_context(replica, stack, cache)
             if security_context:
                 c["securityContext"] = security_context
             if serving:
