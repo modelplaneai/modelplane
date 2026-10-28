@@ -1,0 +1,16 @@
+# Points the UpCloud provider at the API token Secret you created. Named
+# default, so InferenceClusters with an UpCloud source use it without
+# further configuration. The token provisions clusters - UKS kubeconfigs
+# embed static client certificates, so consumers never need it to reach
+# the clusters Modelplane provisions.
+apiVersion: provider.m.upcloud.com/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: upcloud-credentials
+      key: creds

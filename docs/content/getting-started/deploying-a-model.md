@@ -43,6 +43,9 @@ you just added:
 {{< tab "CoreWeave" >}}
 {{< manifests "getting-started/coreweave/model-deployment.yaml" >}}
 {{< /tab >}}
+{{< tab "UpCloud" >}}
+{{< manifests "getting-started/upcloud/model-deployment.yaml" >}}
+{{< /tab >}}
 {{< /tabs >}}
 
 Wait until `REPLICAS` shows `1`:

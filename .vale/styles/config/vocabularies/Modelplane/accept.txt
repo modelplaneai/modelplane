@@ -602,6 +602,9 @@ Crusoe
 Civo
 K3s
 edixos
+UpCloud
+UKS
+upctl
 
 # On-premises NVIDIA systems
 DGX
@@ -1224,6 +1227,9 @@ Crusoe
 Civo
 K3s
 edixos
+UpCloud
+UKS
+upctl
 
 # On-premises NVIDIA systems
 DGX
