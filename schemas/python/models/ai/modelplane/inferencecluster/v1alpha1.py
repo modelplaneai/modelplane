@@ -24,7 +24,7 @@ class Aks(BaseModel):
     """
     kubernetesVersion: str | None = '1.34'
     """
-    AKS cluster Kubernetes version. Defaults to a version where Dynamic Resource Allocation (how GPUs bind to pods) is generally available.
+    AKS cluster Kubernetes version. Defaults to a version where Dynamic Resource Allocation (how GPUs bind to pods) is generally available. A CPU pool needs 1.36 or newer: its cores are claimed as consumable capacity, which Kubernetes enables by default from 1.36 (DRAConsumableCapacity).
     """
     location: constr(min_length=1, max_length=32)
     """
@@ -111,6 +111,9 @@ class Gke(BaseModel):
     GCP ProviderConfig or ClusterProviderConfig used to authenticate to the GCP API. Defaults to the ClusterProviderConfig named default.
     """
     kubernetesVersion: str | None = '1.35'
+    """
+    GKE cluster Kubernetes version. Defaults to a version where Dynamic Resource Allocation (how GPUs bind to pods) is generally available. A CPU pool needs 1.36 or newer: its cores are claimed as consumable capacity, which Kubernetes enables by default from 1.36 (DRAConsumableCapacity).
+    """
     region: constr(min_length=1, max_length=32)
 
 
@@ -121,7 +124,7 @@ class Nebius(BaseModel):
     """
     kubernetesVersion: str | None = '1.34'
     """
-    mk8s cluster Kubernetes version. Defaults to a version where Dynamic Resource Allocation (DRA) is generally available.
+    mk8s cluster Kubernetes version. Defaults to a version where Dynamic Resource Allocation (DRA) is generally available. A CPU pool needs 1.36 or newer: its cores are claimed as consumable capacity, which Kubernetes enables by default from 1.36 (DRAConsumableCapacity).
     """
 
 
@@ -401,7 +404,7 @@ class SchedulablePool(BaseModel):
     """
     observedNodes: conint(ge=0) | None = None
     """
-    The nodes this pool has now, ready or not, as the cluster agent observes them. Absent until the agent reports on the pool, and while it can't observe it.
+    The nodes this pool has now, ready or not, as the cluster agent observes them. Absent until the agent reports on the pool, and while it can't observe it. Always absent on a pool that isn't an NVIDIA GPU pool, which the agent doesn't observe.
     """
 
 

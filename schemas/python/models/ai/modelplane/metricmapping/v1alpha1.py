@@ -65,16 +65,16 @@ class Label(BaseModel):
 
 
 class Metric(BaseModel):
-    cumulative: bool | None = None
-    """
-    Set when the component reports a cumulative total as a gauge. Modelplane converts the series to a monotonic cumulative sum before renaming it, so the exported type matches the measurement and a modelplane_* name never carries two types across sources.
-    """
     from_: constr(pattern=r'^[a-zA-Z_:][a-zA-Z0-9_:]*$', max_length=255) = Field(
         ..., alias='from'
     )
     """
     The metric's name as the component exposes it, matched exactly wherever it appears in the fleet.
     A histogram is named by its base name, without the _count, _sum or _bucket a Prometheus query would use: the collector holds it as one metric, and `part` is what reaches into it.
+    """
+    fromType: Literal['Gauge'] | None = None
+    """
+    What type the component reports this as, when that isn't the type the name claims. Gauge is for a component that reports a running total, such as accumulated energy, as a gauge where the name says a counter. Modelplane converts it to a monotonic cumulative sum, so a modelplane_* name carries one type whichever component feeds it.
     """
     fromUnit: (
         Literal[
