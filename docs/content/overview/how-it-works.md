@@ -119,9 +119,9 @@ For each replica, the scheduler picks a `(cluster, pool)` in two steps:
    "a GPU with at least 141Gi of memory." A pool fits when it has the devices the
    model asks for, free on enough of its nodes to fit a replica.
 
-An agent on each cluster reports the free devices on each pool's nodes, and the
-scheduler fits replicas against those, so replicas share a node when it has
-room. Replicas are pinned to their cluster once placed and stay there across
+An agent on each cluster reports the free devices on each NVIDIA GPU pool's
+nodes, and the scheduler fits replicas against those, so replicas share a node
+when it has room. Replicas are pinned to their cluster once placed and stay there across
 reconciles; if a cluster is deleted, the scheduler re-places its replicas
 elsewhere. [How it schedules]({{< ref "/architecture/scheduling.md" >}})
 covers the placement rules and their limits in full.

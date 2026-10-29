@@ -95,8 +95,8 @@ The cluster's scheduler is free to bind a gang's pods to one node, so the
 scheduler lets them share a node like any other pods.
 
 A cluster agent, which the serving stack installs on every `InferenceCluster`,
-reports how many of each pool's nodes have each number of free devices. The
-`InferenceCluster` publishes that histogram in its status:
+reports how many of each NVIDIA GPU pool's nodes have each number of free
+devices. The `InferenceCluster` publishes that histogram in its status:
 
 ```yaml
 status:
@@ -126,7 +126,8 @@ scheduled pods hold as taken, and the scheduler doesn't charge a pool for them
 twice.
 
 The scheduler counts a pool in whole nodes when the agent hasn't reported on it
-or can't observe it. Such a pool publishes no `observedNodes`, and every node it
+or can't observe it. The agent doesn't observe CPU or AMD GPU pools yet, so
+they're always counted in whole nodes. Such a pool publishes no `observedNodes`, and every node it
 can have starts empty. A pod that claims any device takes a whole one.
 
 ## Pinning placement to a pool

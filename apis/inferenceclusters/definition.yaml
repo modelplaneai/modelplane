@@ -650,6 +650,8 @@ spec:
                         The nodes this pool has now, ready or not, as the
                         cluster agent observes them. Absent until the agent
                         reports on the pool, and while it can't observe it.
+                        Always absent on a pool that isn't an NVIDIA GPU
+                        pool, which the agent doesn't observe.
                     lastAllocationTime:
                       type: string
                       format: date-time
