@@ -55,6 +55,9 @@ spec:
                 items:
                   type: object
                   required: [from, to]
+                  x-kubernetes-validations:
+                  - rule: "!has(self.fromType) || self.to.endsWith('_total')"
+                    message: fromType Gauge converts the metric to a counter, so to must name one, ending in _total.
                   properties:
                     from:
                       type: string
@@ -166,14 +169,17 @@ spec:
                         Check rather than assume: vLLM publishes
                         kv_cache_usage_perc and the value is a fraction, so a
                         name is no guide.
-                    cumulative:
-                      type: boolean
+                    fromType:
+                      type: string
+                      enum: [Gauge]
                       description: >-
-                        Set when the component reports a cumulative total as a
-                        gauge. Modelplane converts the series to a monotonic
-                        cumulative sum before renaming it, so the exported
-                        type matches the measurement and a modelplane_* name
-                        never carries two types across sources.
+                        What type the component reports this as, when that
+                        isn't the type the name claims. Gauge is for a
+                        component that reports a running total, such as
+                        accumulated energy, as a gauge where the name says a
+                        counter. Modelplane converts it to a monotonic
+                        cumulative sum, so a modelplane_* name carries one type
+                        whichever component feeds it.
           status:
             type: object
             properties:

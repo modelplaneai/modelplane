@@ -427,6 +427,11 @@ _UNIT_FACTOR = {
     "Percent": "0.01",
 }
 
+# The OTTL that converts each fromType to the counter a _total name claims.
+_TYPE_CONVERSION = {
+    "Gauge": 'convert_gauge_to_sum("cumulative", true)',
+}
+
 
 def statements(mappings: list[mmv1alpha1.MetricMapping]) -> tuple[list[str], list[str], list[str], list[str]]:
     """Compile the mappings to OTTL, as (extract, scale, datapoint, metric) statements.
@@ -455,11 +460,11 @@ def statements(mappings: list[mmv1alpha1.MetricMapping]) -> tuple[list[str], lis
                 source = f"{source}{_PART_SUFFIX[m.part]}"
             if m.fromUnit:
                 scale.append(f'scale_metric({_UNIT_FACTOR[m.fromUnit]}) where metric.name == "{source}"')
-            if m.cumulative:
+            if m.fromType:
                 # In the conversion block with the unit scaling: both make
                 # the series agree with the name it's about to get, and
                 # both must run while it still answers to the source name.
-                scale.append(f'convert_gauge_to_sum("cumulative", true) where metric.name == "{source}"')
+                scale.append(f'{_TYPE_CONVERSION[m.fromType]} where metric.name == "{source}"')
             # Labels before the rename, while the series still answers to the
             # name this mapping selected on. After it, two folded mappings share
             # one name and a statement could no longer tell them apart.

@@ -153,7 +153,7 @@ _GPU_UNITS = {
 # exporter reports
 # its accumulated energy as a gauge where DCGM's is a counter, and
 # modelplane_energy_joules_total is a counter, so the energy series is marked
-# cumulative and the collector converts it to a monotonic sum - one name,
+# fromType Gauge and the collector converts it to a monotonic sum - one name,
 # one type, whichever vendor feeds it.
 _AMD_GPU = {
     "gpu_used_vram": "modelplane_gpu_memory_used_bytes",
@@ -175,7 +175,7 @@ _AMD_GPU_UNITS = {
     "gpu_energy_consumed": "Microjoules",
 }
 
-_AMD_GPU_CUMULATIVE = ("gpu_energy_consumed",)
+_AMD_GPU_TYPES = {"gpu_energy_consumed": "Gauge"}
 
 
 # How each request vLLM finished ended, by vLLM's finished_reason renamed to
@@ -237,13 +237,14 @@ def _mapping(
     units: dict[str, str] | None = None,
     tokens: tuple[str, str] | None = None,
     extra: tuple[dict[str, object], ...] = (),
-    cumulative: tuple[str, ...] = (),
+    types: dict[str, str] | None = None,
 ) -> v1alpha1.MetricMapping:
     units = units or {}
+    types = types or {}
     metrics: list[dict[str, object]] = [
         {"from": src, "to": dst}
         | ({"fromUnit": units[src]} if src in units else {})
-        | ({"cumulative": True} if src in cumulative else {})
+        | ({"fromType": types[src]} if src in types else {})
         for src, dst in pairs.items()
     ]
     if tokens:
@@ -269,7 +270,7 @@ def mappings() -> list[v1alpha1.MetricMapping]:
         _mapping("modelplane-sglang", _SGLANG, tokens=_SGLANG_TOKENS, extra=(_SGLANG_RESPONSES,)),
         _mapping("modelplane-picker", _PICKER),
         _mapping("modelplane-gpu", _GPU, _GPU_UNITS),
-        _mapping("modelplane-gpu-amd", _AMD_GPU, _AMD_GPU_UNITS, cumulative=_AMD_GPU_CUMULATIVE),
+        _mapping("modelplane-gpu-amd", _AMD_GPU, _AMD_GPU_UNITS, types=_AMD_GPU_TYPES),
     ]
 
 
