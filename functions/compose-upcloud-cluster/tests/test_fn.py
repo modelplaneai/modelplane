@@ -654,6 +654,64 @@ COMPOSE_CASES = [
             context=structpb.Struct(),
         ),
     ),
+    # The release excludes Delete, so dropping it from desired state when
+    # spec.autoscaler goes away would orphan a running autoscaler that keeps
+    # scaling its old node groups. The token Secret Object is dropped: its
+    # source reference left with spec.autoscaler.
+    Case(
+        name="AutoscalerRemoved",
+        reason="With spec.autoscaler removed after the release was composed, an UpCloudCluster keeps the ProviderConfigs and the release composed with an empty node group list, and drops the token Secret copy.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    autoscaler=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="GPU-8xCPU-64GB-1xL40S",
+                            nodeCount=2,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=True),
+                    "release-cluster-autoscaler": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                                "kind": "Release",
+                                "metadata": {"namespace": "modelplane-system"},
+                            }
+                        ),
+                    ),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "node-pool-system": _node_pool_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "node-pool-gpu-l40s": _node_pool_gpu(
+                        management_policies=None,
+                        init_node_count=None,
+                        node_count=2,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "provider-config-helm": _provider_config_helm(),
+                    "provider-config-kubernetes": _provider_config_kubernetes(),
+                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[]),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
     Case(
         name="CustomCredentials",
         reason="An UpCloudCluster naming its own ProviderConfig gets it on every UpCloud resource, and its System-role pool gets no GPU label or taint.",

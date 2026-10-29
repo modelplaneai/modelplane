@@ -238,9 +238,19 @@ class Composer:
             # without credentials for it nothing composes the
             # ProviderConfigs, the token Secret or the release. The XRD
             # requires spec.autoscaler when any pool sets maxNodeCount.
-            if self.xr.spec.autoscaler:
+            # Once the release is observed it stays composed even after
+            # spec.autoscaler is removed: the release excludes Delete, so
+            # dropping it would orphan a running autoscaler that keeps
+            # scaling its old node groups against the nodeCount Crossplane
+            # enforces on the now-fixed pools. With no autoscaled pools the
+            # group list is empty and the chart renders no Deployment. The
+            # token Secret Object is composed only while spec.autoscaler
+            # names its source Secret; dropped, the copy stays on the
+            # cluster because the Object excludes Delete too.
+            if self.xr.spec.autoscaler or "release-cluster-autoscaler" in self.req.observed.resources:
                 self.compose_provider_configs()
-                self.compose_autoscaler_secret()
+                if self.xr.spec.autoscaler:
+                    self.compose_autoscaler_secret()
                 self.compose_cluster_autoscaler()
         self.write_status()
         self.mark_readiness()

@@ -132,6 +132,8 @@ spec:
                     message: gpu is required when role is GPU.
                   - rule: "!has(self.minNodeCount) || has(self.maxNodeCount)"
                     message: maxNodeCount is required when minNodeCount is set.
+                  - rule: "self.name != 'system'"
+                    message: system is reserved for the injected system node pool.
                   properties:
                     name:
                       type: string

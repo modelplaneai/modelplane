@@ -539,6 +539,11 @@ spec:
                   x-kubernetes-validations:
                   - rule: "has(self.reservationRef) == has(oldSelf.reservationRef) && (!has(self.reservationRef) || self.reservationRef.name == oldSelf.reservationRef.name)"
                     message: A node pool's reservationRef is immutable. Add a new pool instead.
+                  - rule: "self.name != 'system'"
+                    message: >-
+                      system is reserved for the system node pool every
+                      provisioned cluster injects; a pool by that name would
+                      take its place.
                   properties:
                     name:
                       type: string
