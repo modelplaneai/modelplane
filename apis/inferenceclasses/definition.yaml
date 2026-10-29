@@ -438,6 +438,10 @@ spec:
                           is informational.
                         minLength: 1
                         maxLength: 63
+                      diskSizeGb:
+                        type: integer
+                        default: 100
+                        minimum: 10
                       accelerator:
                         type: object
                         description: >-

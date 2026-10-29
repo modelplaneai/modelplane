@@ -62,23 +62,21 @@ def _xr(
     return fnv1.Resource(resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json", by_alias=True)))
 
 
-def _desired_xr() -> fnv1.Resource:
-    """The desired XR, publishing the cluster's kubeconfig Secret."""
-    return fnv1.Resource(
-        resource=resource.dict_to_struct(
+def _desired_xr(*, cluster_id: str | None) -> fnv1.Resource:
+    """The desired XR, publishing the cluster's kubeconfig Secret and, once
+    the cluster is observed, its UpCloud UUID."""
+    status: dict[str, Any] = {
+        "secrets": [
             {
-                "status": {
-                    "secrets": [
-                        {
-                            "type": "Kubeconfig",
-                            "name": "test-cluster-kubeconfig-55b57",
-                            "key": "kubeconfig",
-                        },
-                    ],
-                },
-            }
-        ),
-    )
+                "type": "Kubeconfig",
+                "name": "test-cluster-kubeconfig-55b57",
+                "key": "kubeconfig",
+            },
+        ],
+    }
+    if cluster_id is not None:
+        status["clusterId"] = cluster_id
+    return fnv1.Resource(resource=resource.dict_to_struct({"status": status}))
 
 
 def _network(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
@@ -213,6 +211,7 @@ def _node_pool_gpu(
     """
     for_provider: dict[str, Any] = {
         "plan": "GPU-8xCPU-64GB-1xL40S",
+        "gpuPlan": {"storageSize": 100, "storageTier": "maxiops"},
         "labels": {
             "modelplane.ai/pool": "gpu-l40s",
             "modelplane.ai/gpu": "nvidia-l40s",
@@ -417,7 +416,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(cluster_id=None),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(
@@ -454,7 +453,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -537,7 +536,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(
@@ -589,7 +588,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -639,7 +638,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -680,7 +679,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
                 resources={
                     "network": _network(cred_kind="ProviderConfig", cred_name="team-a"),
                     "cluster": _cluster(cred_kind="ProviderConfig", cred_name="team-a", ready=fnv1.READY_TRUE),

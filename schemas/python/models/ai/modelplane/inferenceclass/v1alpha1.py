@@ -207,6 +207,7 @@ class Upcloud(BaseModel):
     """
     GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block.
     """
+    diskSizeGb: conint(ge=10) | None = 100
     plan: constr(min_length=1, max_length=63)
     """
     UpCloud GPU server plan (e.g. GPU-8xCPU-64GB-1xL40S). The plan determines the GPU model and count; the accelerator block below is informational.

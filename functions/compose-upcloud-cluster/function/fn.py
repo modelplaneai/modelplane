@@ -106,6 +106,11 @@ _GPU_TAINT_KEY = "nvidia.com/gpu"
 _GPU_TAINT_VALUE = "true"
 _GPU_TAINT_EFFECT = "NoSchedule"
 
+# Storage tier for node group disks on plans whose storage UpCloud
+# unbundles (GPU and Cloud Native plans). maxiops is UpCloud's SSD tier,
+# matching the other clouds' SSD boot disks.
+_NODE_STORAGE_TIER = "maxiops"
+
 # Control plane plan for every cluster: three API servers and a
 # three-member etcd on separate infrastructure, up to 120 nodes. The
 # dev-md plan has no redundancy, and the plan is create-time only, so
@@ -546,6 +551,23 @@ class Composer:
             ),
         )
 
+        # UKS unbundles storage from GPU and Cloud Native plans, so the
+        # pool's disk size lands in the matching plan block. Starter and
+        # Premium plans bundle a fixed disk, leaving it nowhere to go.
+        # Sizing GPU disks matters: UKS's default GPU plan disk is too
+        # small to hold an inference serving image, and a full disk evicts
+        # every pod on the node on ephemeral-storage pressure.
+        if pool.plan.startswith("GPU-"):
+            fp.gpuPlan = nodegroupv1alpha1.GpuPlan(
+                storageSize=pool.diskSizeGb,
+                storageTier=_NODE_STORAGE_TIER,
+            )
+        elif pool.plan.startswith("CLOUDNATIVE-"):
+            fp.cloudNativePlan = nodegroupv1alpha1.CloudNativePlan(
+                storageSize=pool.diskSizeGb,
+                storageTier=_NODE_STORAGE_TIER,
+            )
+
         if pool.role == "GPU":
             fp.taint = [
                 nodegroupv1alpha1.TaintItem(
@@ -589,6 +611,13 @@ class Composer:
                 ),
             ],
         )
+        # The cluster's UpCloud UUID. compose-inference-cluster builds
+        # account-unique gateway load balancer names from it. Assigned only
+        # when observed: an explicit None would serialize as a null
+        # tombstone under exclude_unset.
+        cluster_id = self._observed_cluster_id()
+        if cluster_id is not None:
+            status.clusterId = cluster_id
         resource.update_status(self.rsp.desired.composite, status)
 
     def mark_readiness(self) -> None:

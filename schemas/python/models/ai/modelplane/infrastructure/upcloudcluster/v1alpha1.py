@@ -68,6 +68,10 @@ class Gpu(BaseModel):
 
 
 class NodePool(BaseModel):
+    diskSizeGb: conint(ge=10, le=4096) | None = 100
+    """
+    Node disk size in GB. Honored for GPU and Cloud Native plans, whose storage UpCloud unbundles from the plan; Starter and Premium plans bundle a fixed disk and ignore it. UKS's default GPU plan disk is too small to hold an inference serving image.
+    """
     gpu: Gpu | None = None
     """
     GPU configuration. Required when role is GPU.
@@ -152,6 +156,10 @@ class Secret(BaseModel):
 
 
 class Status(BaseModel):
+    clusterId: constr(max_length=36) | None = None
+    """
+    UUID of the UKS cluster at UpCloud, once observed. compose-inference-cluster builds account-unique gateway load balancer names from it.
+    """
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.

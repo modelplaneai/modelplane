@@ -67,8 +67,13 @@ def _desired_xr(*, status: dict | None, ready: fnv1.Ready) -> fnv1.Resource:
     return fnv1.Resource(resource=resource.dict_to_struct({"status": status}), ready=ready)
 
 
-def _cluster(*, provider_config_ref: bool) -> fnv1.Resource:
+def _cluster(*, provider_config_ref: bool, service_annotations: dict | None) -> fnv1.Resource:
     """The gateway's InferenceCluster, gw-eu, as the clusters requirement returns it."""
+    status: dict = {}
+    if provider_config_ref:
+        status["providerConfigRef"] = {"name": "gw-eu-cluster-kubeconfig"}
+    if service_annotations is not None:
+        status["gateway"] = {"serviceAnnotations": service_annotations}
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -81,7 +86,7 @@ def _cluster(*, provider_config_ref: bool) -> fnv1.Resource:
                         "existing": {"secretRef": {"name": "gw-eu-kubeconfig", "key": "kubeconfig"}},
                     }
                 },
-                "status": {"providerConfigRef": {"name": "gw-eu-cluster-kubeconfig"}} if provider_config_ref else {},
+                "status": status,
             }
         )
     )
@@ -224,8 +229,11 @@ def _observed_envoy_deployment(*, ready: bool) -> fnv1.Resource:
 # composed at all.
 
 
-def _envoy_proxy() -> fnv1.Resource:
+def _envoy_proxy(*, service_annotations: dict | None) -> fnv1.Resource:
     """The composed EnvoyProxy, configuring the gateway's proxy pods and its usage-record access log."""
+    envoy_service: dict = {"externalTrafficPolicy": "Cluster"}
+    if service_annotations is not None:
+        envoy_service["annotations"] = service_annotations
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -253,7 +261,7 @@ def _envoy_proxy() -> fnv1.Resource:
                                 "provider": {
                                     "type": "Kubernetes",
                                     "kubernetes": {
-                                        "envoyService": {"externalTrafficPolicy": "Cluster"},
+                                        "envoyService": envoy_service,
                                         "envoyDeployment": {
                                             "name": "envoy-modelplane-system-inference-gateway",
                                             "replicas": 2,
@@ -1125,7 +1133,7 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None)),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(
                     items=[_inference_gateway(name="eu", address=None), _inference_gateway(name="aaa", address=None)]
                 ),
@@ -1167,7 +1175,7 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(composite=_xr(name="aaa", tls=False, caller_secret_labels=None)),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(
                     items=[
                         _inference_gateway(name="aaa", address=None),
@@ -1207,7 +1215,7 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None)),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=False)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=False, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
             },
         ),
@@ -1247,7 +1255,7 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None)),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
             },
         ),
@@ -1256,7 +1264,79 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
+                    "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
+                    "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
+                    "client-selfsigned-issuer": _client_selfsigned_issuer(),
+                    "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
+                    "client-ca-issuer": _client_ca_issuer(),
+                    "client-ca-bundle": _client_ca_bundle(),
+                    "client-ca-configmap": _client_ca_configmap(),
+                    "failover-policy": _failover_policy(),
+                    "client-traffic-policy": _client_traffic_policy(),
+                    "healthz-filter": _healthz_filter(),
+                    "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL, message="Waiting for the Gateway on cluster gw-eu to be programmed"
+                )
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="GatewayReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForGateway",
+                    message="Waiting for the Gateway on cluster gw-eu to be programmed",
+                )
+            ],
+        ),
+    ),
+    Case(
+        name="ClusterServiceAnnotations",
+        reason=(
+            "A cluster publishing gateway service annotations gets them on this gateway's LoadBalancer Service "
+            "through the EnvoyProxy, with {gateway} replaced by the Gateway's name."
+        ),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None)),
+            required_resources={
+                "clusters": fnv1.Resources(
+                    items=[
+                        _cluster(
+                            provider_config_ref=True,
+                            service_annotations={
+                                "service.beta.kubernetes.io/upcloud-load-balancer-config": (
+                                    '{"name": "11111111-2222-3333-4444-555555555555-{gateway}"}'
+                                ),
+                            },
+                        )
+                    ]
+                ),
+                "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
+                resources={
+                    "envoy-proxy": _envoy_proxy(
+                        service_annotations={
+                            "service.beta.kubernetes.io/upcloud-load-balancer-config": (
+                                '{"name": "11111111-2222-3333-4444-555555555555-inference-gateway"}'
+                            ),
+                        },
+                    ),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1306,7 +1386,7 @@ COMPOSE_CASES = [
                 resources={"gateway": _observed_gateway(address="34.56.129.3", ready=False)},
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
             },
         ),
@@ -1324,7 +1404,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_FALSE,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1372,7 +1452,7 @@ COMPOSE_CASES = [
                 resources={"gateway": _observed_gateway(address="2001:db8::1", ready=False)},
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
             },
         ),
@@ -1390,7 +1470,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_FALSE,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1442,7 +1522,7 @@ COMPOSE_CASES = [
                 )
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(
                     items=[
                         _inference_gateway(
@@ -1457,7 +1537,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1531,7 +1611,7 @@ COMPOSE_CASES = [
                 },
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
             },
         ),
@@ -1550,7 +1630,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_UNSPECIFIED,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1592,7 +1672,7 @@ COMPOSE_CASES = [
                 },
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
             },
         ),
@@ -1610,7 +1690,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_UNSPECIFIED,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1650,7 +1730,7 @@ COMPOSE_CASES = [
                 },
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
             },
         ),
@@ -1668,7 +1748,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_FALSE,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1722,7 +1802,7 @@ COMPOSE_CASES = [
                 },
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
             },
         ),
@@ -1740,7 +1820,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_FALSE,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1796,7 +1876,7 @@ COMPOSE_CASES = [
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
                 "clusters": fnv1.Resources(
                     items=[
-                        _cluster(provider_config_ref=True),
+                        _cluster(provider_config_ref=True, service_annotations=None),
                         fnv1.Resource(
                             resource=resource.dict_to_struct(
                                 {
@@ -1875,7 +1955,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2139,7 +2219,7 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(composite=_xr(name="eu", tls=True, caller_secret_labels=None)),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
                 "tls-secret-0": fnv1.Resources(),
             },
@@ -2149,7 +2229,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=True, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2210,7 +2290,7 @@ COMPOSE_CASES = [
                 },
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
                 "caller-secrets": fnv1.Resources(
                     items=[_caller_key_secret(name="ml-team-keys", data={"ml-team-assistant": "c2stbXAtYTFiMmMz"})]
@@ -2264,7 +2344,7 @@ COMPOSE_CASES = [
                             }
                         )
                     ),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
                     "gateway": _gateway(https=True, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2368,7 +2448,7 @@ COMPOSE_CASES = [
                 },
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
                 "caller-secrets": fnv1.Resources(
                     items=[_caller_key_secret(name="ml-team-keys", data={"a": "c2stMQ=="})]
@@ -2390,7 +2470,7 @@ COMPOSE_CASES = [
                 ),
                 resources={
                     "caller-secret-ml-team-keys": _caller_secret(name="callers-ml-team-keys", data={"a": "c2stMQ=="}),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2457,7 +2537,7 @@ COMPOSE_CASES = [
                 },
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
                 "caller-secrets": fnv1.Resources(
                     items=[
@@ -2483,7 +2563,7 @@ COMPOSE_CASES = [
                 resources={
                     "caller-secret-team-a-keys": _caller_secret(name="callers-team-a-keys", data={"a": "c2stMQ=="}),
                     "caller-secret-team-b-keys": _caller_secret(name="callers-team-b-keys", data={"b": "c2stMQ=="}),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2547,7 +2627,7 @@ COMPOSE_CASES = [
                 },
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
                 "caller-secrets": fnv1.Resources(
                     items=[_caller_key_secret(name="team-a-keys", data={"a": "c2stMQ==", "z": "c2stMQ=="})]
@@ -2571,7 +2651,7 @@ COMPOSE_CASES = [
                     "caller-secret-team-a-keys": _caller_secret(
                         name="callers-team-a-keys", data={"a": "c2stMQ==", "z": "c2stMQ=="}
                     ),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2639,7 +2719,7 @@ COMPOSE_CASES = [
                 },
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
                 "caller-secrets": fnv1.Resources(
                     items=[
@@ -2667,7 +2747,7 @@ COMPOSE_CASES = [
                     "caller-secret-team-b-keys": _caller_secret(
                         name="callers-team-b-keys", data={"x": "c2stMg==", "y": "c2stMQ=="}
                     ),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2734,7 +2814,7 @@ COMPOSE_CASES = [
                 },
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
                 "caller-secrets": fnv1.Resources(
                     items=[
@@ -2762,7 +2842,7 @@ COMPOSE_CASES = [
                     "caller-secret-team-b-keys": _caller_secret(
                         name="callers-team-b-keys", data={"a": "c2stMQ==", "b": "c2stMg=="}
                     ),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2811,7 +2891,7 @@ COMPOSE_CASES = [
                 composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"})
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
                 "caller-secrets": fnv1.Resources(
                     items=[
@@ -2828,7 +2908,7 @@ COMPOSE_CASES = [
                 resources={
                     "caller-secret-team-a-keys": _caller_secret(name="callers-team-a-keys", data={"a": "c2stMQ=="}),
                     "caller-secret-team-b-keys": _caller_secret(name="callers-team-b-keys", data={"b": "c2stMg=="}),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2893,7 +2973,7 @@ COMPOSE_CASES = [
                 composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"})
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
                 "caller-secrets": fnv1.Resources(),
             },
@@ -2903,7 +2983,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -3002,7 +3082,7 @@ COMPOSE_CASES = [
                 composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"})
             ),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
             },
         ),
@@ -3011,7 +3091,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -3123,7 +3203,7 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(composite=_xr(name="eu", tls=True, caller_secret_labels={"team": "ml"})),
             required_resources={
-                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True, service_annotations=None)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
                 "caller-secrets": fnv1.Resources(
                     items=[_caller_key_secret(name="ml-team-keys", data={"alice": "a2V5"})]
@@ -3175,7 +3255,7 @@ COMPOSE_CASES = [
                             }
                         )
                     ),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(service_annotations=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=True, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),

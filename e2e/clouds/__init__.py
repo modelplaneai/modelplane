@@ -291,10 +291,10 @@ CLOUDS: dict[str, Cloud] = {
     # Nebius's shape: UKS GPU node images ship the NVIDIA driver and
     # container toolkit, so the half installs no gpu-operator, and its
     # charts keep default names. The labels and taint mirror what
-    # compose-upcloud-cluster stamps on GPU node groups. UpCloud doesn't
-    # document its UKS node image OS; nothing in the UpCloud half reads
-    # the NFD OS release labels (no GPU operator), so the values here
-    # just keep the fake nodes shaped like every leg's.
+    # compose-upcloud-cluster stamps on GPU node groups. The OS release
+    # labels match a live UKS 1.36 GPU node (Debian 13); nothing in the
+    # UpCloud half reads them (no GPU operator), they just keep the fake
+    # nodes shaped like the real ones.
     "upcloud": Cloud(
         cloud="UpCloud",
         labels={
@@ -303,8 +303,8 @@ CLOUDS: dict[str, Cloud] = {
             "modelplane.ai/gpu": "nvidia-l40s",
             "nvidia.com/gpu.present": "true",
             "feature.node.kubernetes.io/pci-10de.present": "true",
-            "feature.node.kubernetes.io/system-os_release.ID": "ubuntu",
-            "feature.node.kubernetes.io/system-os_release.VERSION_ID": "24.04",
+            "feature.node.kubernetes.io/system-os_release.ID": "debian",
+            "feature.node.kubernetes.io/system-os_release.VERSION_ID": "13",
         },
         taint_value="true",
         expected_daemonsets={

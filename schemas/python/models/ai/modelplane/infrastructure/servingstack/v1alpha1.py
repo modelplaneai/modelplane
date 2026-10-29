@@ -70,6 +70,12 @@ class Gateway(BaseModel):
     """
     The name this cluster's gateway is reached by, projected from the InferenceCluster. The gateway serves a certificate for it, so an InferenceGateway can originate TLS and know it reached the right cluster.
     """
+    serviceAnnotations: dict[str, constr(max_length=1024)] | None = Field(
+        None, max_length=8
+    )
+    """
+    Annotations for the gateway's LoadBalancer Service, applied through a per-Gateway EnvoyProxy. {gateway} in a value is replaced with the Gateway's name. Projected from the InferenceCluster, not user input.
+    """
 
 
 class Pool(BaseModel):

@@ -375,6 +375,12 @@ class Gateway(BaseModel):
     """
     The stable internal name an InferenceGateway addresses the gateway by, derived by Modelplane. Each InferenceGateway resolves it to address with a Service on its own cluster; it is also the gateway's TLS SNI and certificate SAN. ModelDeployment builds a ModelEndpoint origin from it. Set once the gateway has an address and both directions are mutually authenticated, and withheld otherwise.
     """
+    serviceAnnotations: dict[str, constr(max_length=1024)] | None = Field(
+        None, max_length=8
+    )
+    """
+    Annotations every gateway's LoadBalancer Service on this cluster carries, applied through a per-Gateway EnvoyProxy. {gateway} in a value is replaced with the Gateway's name by the function composing it. Set only on clouds whose load balancers need them.
+    """
 
 
 class ProviderConfigRef(BaseModel):
