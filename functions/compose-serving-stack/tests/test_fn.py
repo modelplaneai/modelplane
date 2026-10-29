@@ -7753,7 +7753,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                         ],
                         serviceAnnotations={
                             "service.beta.kubernetes.io/upcloud-load-balancer-config": (
-                                '{"name": "11111111-2222-3333-4444-555555555555-{gateway}"}'
+                                '{"name": "11111111-2222-3333-4444-555555555555-{gateway}", "frontends": [{"mode": "tcp"}]}'
                             ),
                         },
                     ),
@@ -7795,6 +7795,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "kube-prometheus-stack": _observed_ready(),
                     "node-feature-discovery": _observed_ready(),
                     "nvidia-dra-driver-gpu": _observed_ready(),
+                    "dcgm-exporter": _observed_ready(),
                     "leader-worker-set": _observed_ready(),
                 },
             ),
@@ -7840,6 +7841,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "kube-prometheus-stack",
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
+            "dcgm-exporter",
             # The Standard stack.
             "leader-worker-set",
         },
@@ -7869,7 +7871,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                         ],
                         serviceAnnotations={
                             "service.beta.kubernetes.io/upcloud-load-balancer-config": (
-                                '{"name": "11111111-2222-3333-4444-555555555555-{gateway}"}'
+                                '{"name": "11111111-2222-3333-4444-555555555555-{gateway}", "frontends": [{"mode": "tcp"}]}'
                             ),
                         },
                     ),
@@ -7911,6 +7913,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "kube-prometheus-stack": _observed_ready(),
                     "node-feature-discovery": _observed_ready(),
                     "nvidia-dra-driver-gpu": _observed_ready(),
+                    "dcgm-exporter": _observed_ready(),
                     "grove": _observed_ready(),
                     "kai-queue": _observed_ready(),
                     "kai-queue-root": _observed_ready(),
@@ -7970,6 +7973,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "kube-prometheus-stack",
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
+            "dcgm-exporter",
             # The Dynamo stack.
             "grove",
             "kai-queue",

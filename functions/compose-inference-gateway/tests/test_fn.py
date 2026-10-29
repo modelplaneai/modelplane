@@ -1316,7 +1316,7 @@ COMPOSE_CASES = [
                             provider_config_ref=True,
                             service_annotations={
                                 "service.beta.kubernetes.io/upcloud-load-balancer-config": (
-                                    '{"name": "11111111-2222-3333-4444-555555555555-{gateway}"}'
+                                    '{"name": "11111111-2222-3333-4444-555555555555-{gateway}", "frontends": [{"mode": "tcp"}]}'
                                 ),
                             },
                         )
@@ -1333,7 +1333,7 @@ COMPOSE_CASES = [
                     "envoy-proxy": _envoy_proxy(
                         service_annotations={
                             "service.beta.kubernetes.io/upcloud-load-balancer-config": (
-                                '{"name": "11111111-2222-3333-4444-555555555555-inference-gateway"}'
+                                '{"name": "11111111-2222-3333-4444-555555555555-inference-gateway", "frontends": [{"mode": "tcp"}]}'
                             ),
                         },
                     ),

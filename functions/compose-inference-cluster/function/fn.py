@@ -2183,7 +2183,11 @@ class Composer:
         if not observed_upcloud.status or not observed_upcloud.status.clusterId:
             return None
         name = f"{observed_upcloud.status.clusterId}-{{gateway}}"
-        return {_UPCLOUD_LB_CONFIG_ANNOTATION: json.dumps({"name": name})}
+        # The cloud controller hardcodes every frontend to HTTP mode, which
+        # can't carry the cluster gateway's TLS: the load balancer parses
+        # the handshake as HTTP and resets the connection. TCP passthrough
+        # suits both gateways; Envoy is the HTTP layer.
+        return {_UPCLOUD_LB_CONFIG_ANNOTATION: json.dumps({"name": name, "frontends": [{"mode": "tcp"}]})}
 
     def observed_upcloud_secrets(self) -> list[upcloudv1alpha1.Secret] | None:
         """Read the UpCloudCluster's status.secrets from observed state."""

@@ -18,17 +18,20 @@ No generator covers UpCloud, so Modelplane pins the whole cloud half by
 hand, in the same shape a generator emits. Where a component also
 appears on a generated cloud, this file states the same pin, so one
 review moves both halves when a version changes - regenerate, then
-mirror the shared pins here.
+mirror the shared pins here. The DCGM exporter's metrics CSV goes one
+step further: rather than restating it, this file imports it from the
+shared generated/aicr/dcgm.py, as civo.py does.
 
 UpCloud pre-installs the NVIDIA driver and container toolkit in its UKS
 GPU node images, at the default root (/), and runs no managed GPU
 Operator add-on. So like Nebius this half installs no GPU Operator:
 NFD labels the GPU nodes and the DRA driver's kubelet plugin publishes
-their devices. With no operator there is no DCGM exporter either, so
-the modelplane_gpu_* and energy series are empty on UpCloud, the same
-gap Nebius has.
+their devices. With no operator supplying one, the standalone
+dcgm-exporter chart exports the GPU fields the collector's
+modelplane-gpu job scrapes.
 """
 
+from function.stacks.clouds.generated.aicr.dcgm import DCGM_METRICS_CSV
 from function.stacks.components import Chart, Component
 
 COMPONENTS: list[Component] = [
@@ -157,6 +160,54 @@ COMPONENTS: list[Component] = [
         values={
             "gpuResourcesEnabledOverride": True,
             "resources": {"computeDomains": {"enabled": False}},
+        },
+    ),
+    # Exports DCGM fields for the collector's modelplane-gpu job, which
+    # keeps pods named .*dcgm.* with a port named metrics. Without this every
+    # modelplane_gpu_* series is empty. DCGM runs embedded (the chart
+    # default). The counters are the generated clouds' list, not the
+    # chart's shorter default, so UpCloud exports the same DCGM fields as
+    # EKS, GKE, AKS and Civo. The node terms are the DRA kubelet plugin's
+    # PCI terms; the standalone NFD above labels UKS GPU nodes pci-10de.
+    # The collector finds the pod itself, so no ServiceMonitor.
+    Chart(
+        key="dcgm-exporter",
+        release="mp-dcgm-exporter",
+        namespace="dcgm-exporter",
+        chart="dcgm-exporter",
+        repository="https://nvidia.github.io/dcgm-exporter/helm-charts",
+        version="4.8.4",
+        values={
+            "serviceMonitor": {"enabled": False},
+            "customMetrics": DCGM_METRICS_CSV,
+            # Attribute each GPU's series to the pod holding it. UpCloud GPUs
+            # are allocated through DRA, which the exporter only maps back to
+            # pods with this set; the chart adds the RBAC it needs.
+            "kubernetesDRA": {"enabled": True},
+            "tolerations": [
+                {
+                    "key": "nvidia.com/gpu",
+                    "operator": "Exists",
+                    "effect": "NoSchedule",
+                },
+            ],
+            # The first three nodeSelectorTerms of dra-driver-nvidia-gpu
+            # v0.5.0's kubeletPlugin affinity. Recheck them when that chart
+            # moves.
+            "affinity": {
+                "nodeAffinity": {
+                    "requiredDuringSchedulingIgnoredDuringExecution": {
+                        "nodeSelectorTerms": [
+                            {"matchExpressions": [{"key": key, "operator": "In", "values": ["true"]}]}
+                            for key in (
+                                "feature.node.kubernetes.io/pci-10de.present",
+                                "feature.node.kubernetes.io/pci-0302_10de.present",
+                                "feature.node.kubernetes.io/pci-0300_10de.present",
+                            )
+                        ],
+                    },
+                },
+            },
         },
     ),
 ]
