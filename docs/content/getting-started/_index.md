@@ -34,6 +34,12 @@ bigger GPU, all behind one endpoint.
 You'll need an AWS or GCP account with permission to create clusters. Each step
 covers what it needs as you reach it.
 
+Without a cloud account you can still run the tour through
+[Deploying a model]({{< ref "getting-started/deploying-a-model.md" >}}). Each of
+those steps has a **kind** tab that registers a second local cluster and serves
+a real model on its CPU. The steps after that spread the fleet across regions,
+which local clusters can't do.
+
 ## The tour
 
 1. [Install the control plane]({{< ref "/install" >}}): install Modelplane on a Kubernetes cluster.

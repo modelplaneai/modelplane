@@ -1,0 +1,39 @@
+# The kind path's hardware and cluster. The class describes the fake GPU the
+# dra-example-driver publishes, and has no provisioning block, since the cluster
+# already exists. claim: DRA is required: the scheduler places an engine only
+# on a device it can claim.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: synthetic-gpu
+spec:
+  description: "Fake GPU via dra-example-driver (no real hardware)"
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.example.com
+    deviceClassName: gpu.example.com
+    count: 1
+    capacity:
+      memory: { value: "80Gi" }   # what the example driver publishes per device
+---
+# Registers the local workload cluster through the kubeconfig Secret you
+# created. Modelplane doesn't label an existing cluster's nodes, so the pool's
+# node carries modelplane.ai/pool=gpu-synthetic because you labeled it.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: local
+  labels:
+    modelplane.ai/region: local
+spec:
+  cluster:
+    source: Existing
+    existing:
+      secretRef:
+        name: local-cluster-kubeconfig
+        key: kubeconfig
+  nodePools:
+  - name: gpu-synthetic
+    className: synthetic-gpu
+    nodeCount: 1

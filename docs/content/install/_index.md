@@ -30,10 +30,8 @@ You can run the control plane anywhere. To try it locally, create a
 [kind](https://kind.sigs.k8s.io/) cluster:
 
 ```bash
-# Pin to kind v0.30.0 default image (containerd 2.1.4)
-# kind v0.31+ ships containerd 2.2.0 which breaks Modelplane
 kind create cluster --name modelplane \
-  --image kindest/node:v1.34.0@sha256:7416a61b42b1662ca6ca89f02028ac133a309a2a30ba309614e8ec94d976dc5a
+  --image kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
 ```
 
 Give your container engine room for it. On Docker Desktop, raise the memory limit

@@ -3,6 +3,13 @@ title: Scale the model
 weight: 50
 description: Serve the model from two regions behind one endpoint.
 ---
+{{< hint "note" >}}
+This step needs the second region from
+[Scale the platform]({{< ref "getting-started/scale-the-platform.md" >}}). The
+kind path ends after
+[Deploying a model]({{< ref "getting-started/deploying-a-model.md" >}}).
+{{< /hint >}}
+
 A `ModelService` can front more than one `ModelDeployment`. Here you add a second
 deployment in a different region and point the same service at both. The
 endpoint you already curled stays the same. Behind it, traffic now load-balances

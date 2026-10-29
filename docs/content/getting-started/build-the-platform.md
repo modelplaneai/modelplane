@@ -1,10 +1,10 @@
 ---
 title: Build the platform
 weight: 20
-description: Set up the gateway, give the control plane cloud credentials, and provision your first GPU cluster.
+description: Give the control plane access to your infrastructure, register your first GPU cluster, and set up the gateway.
 ---
 This is the platform team's side of Modelplane. You set up the gateway that
-fronts your models, give the control plane credentials for your cloud account,
+fronts your models, give the control plane access to where models will run,
 and register your first GPU cluster: a hardware profile published as an
 `InferenceClass` and an `InferenceCluster` that offers it.
 
@@ -51,12 +51,19 @@ against this capacity without knowing which cluster it runs on.
 - A Civo account with access to GPU node sizes
 - A Civo API key
 {{< /tab >}}
+{{< tab "kind" >}}
+- No cloud account and no GPU
+- Room in your container engine for a second kind cluster and the serving stack
+  Modelplane installs on it. On Docker Desktop, raise the memory limit from the
+  8 GB the control plane needs to **12 GB**.
+{{< /tab >}}
 {{< /tabs >}}
 
-## Configure cloud credentials
+## Give the control plane access
 
-Give the control plane credentials so it can provision clusters in your cloud
-account.
+Give the control plane what it needs to reach the cluster models will run on:
+credentials to provision one in your cloud account, or a kubeconfig for a
+cluster you run yourself.
 
 {{<tabs>}}
 {{< tab "EKS" >}}
@@ -181,6 +188,67 @@ Apply the `ClusterProviderConfig` referencing your secret:
 
 {{< manifests "getting-started/clusterproviderconfig-civo.yaml" >}}
 {{< /tab >}}
+
+{{< tab "kind" >}}
+You don't configure credentials here. Instead you create a second kind cluster
+for Modelplane to deploy into, then give the control plane a kubeconfig for it.
+
+Create the cluster, on the same image as the control plane. Creating it switches
+your current context to it. The commands up to the `Secret` run against it:
+
+```bash
+kind create cluster --name modelplane-workload \
+  --image kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+```
+
+The gateway and the serving stack need `LoadBalancer` addresses, which kind
+doesn't provide. Install MetalLB, and give it a pool inside the Docker network
+kind runs on so the control plane can reach the addresses it hands out:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml
+kubectl -n metallb-system rollout status deploy/controller --timeout=180s
+PREFIX=$(docker network inspect kind -f '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' \
+  | grep -E '^[0-9]+\.' | head -1 | cut -d. -f1-2)
+kubectl apply -f - <<EOF
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata: { name: kind-pool, namespace: metallb-system }
+spec: { addresses: ["${PREFIX}.255.100-${PREFIX}.255.149"] }
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata: { name: kind-l2, namespace: metallb-system }
+spec: { ipAddressPools: [kind-pool] }
+EOF
+```
+
+Install the [`dra-example-driver`](https://github.com/kubernetes-sigs/dra-example-driver),
+which publishes fake GPU devices for Modelplane to schedule against, and label
+the node for the pool you register in the next section. Modelplane doesn't
+label the nodes of a cluster it didn't provision:
+
+```bash
+kubectl apply -f {{< manifest-url "getting-started/kind/dra-example-driver.yaml" >}}
+kubectl label node modelplane-workload-control-plane modelplane.ai/pool=gpu-synthetic
+```
+
+{{< hint "note" >}}
+This tab uses a fake GPU rather than a Modelplane CPU pool. CPU pools publish
+a node's cores through `dra-driver-cpu`, which needs a kernel with NUMA support,
+and Docker Desktop's doesn't have one.
+{{< /hint >}}
+
+Switch back to the control plane, and store the cluster's kubeconfig there in a
+`Secret`. `--internal` gives the address on the kind network, which the control
+plane's pods can reach:
+
+```bash
+kubectl config use-context kind-modelplane
+kubectl create secret generic local-cluster-kubeconfig --namespace modelplane-system \
+  --from-literal=kubeconfig="$(kind get kubeconfig --internal --name modelplane-workload)"
+```
+{{< /tab >}}
 {{</tabs>}}
 
 ## Publish hardware and register the cluster
@@ -256,6 +324,17 @@ GPU Operator installs it on first boot):
 kubectl wait --for=condition=Ready ic/civo-nyc1 --timeout=20m
 ```
 {{< /tab >}}
+
+{{< tab "kind" >}}
+{{< manifests "getting-started/kind/platform.yaml" >}}
+
+Modelplane installs the serving stack on your cluster. This takes a few
+minutes:
+
+```bash
+kubectl wait --for=condition=Ready ic/local --timeout=10m
+```
+{{< /tab >}}
 {{< /tabs >}}
 
 {{< hint "note" >}}
@@ -267,13 +346,15 @@ pool, then installing the inference stack with LeaderWorkerSet for multi-node
 serving (the default; a cluster can opt into Grove and KAI Scheduler instead via
 `InferenceCluster.spec.stack: Dynamo`), llm-d for inference-aware routing,
 Envoy Gateway for traffic management, and the storage class for model weights.
-This is the same reconciliation loop Crossplane uses to configure other
+On a cluster you run yourself, it skips creating the cluster and installs the
+same stack. This is the same reconciliation loop Crossplane uses to configure other
 infrastructure, extended to the inference layer.
 {{< /hint >}}
 
 {{< hint "note" >}}
 A cloud GPU cluster costs money while it runs. To stop the tour and resume
-later, follow [Clean up]({{< ref "getting-started/clean-up.md" >}}).
+later, follow [Clean up]({{< ref "getting-started/clean-up.md" >}}). The kind
+path doesn't cost anything, but keeps two clusters running on your machine.
 {{< /hint >}}
 
 ## Set up the InferenceGateway
@@ -311,6 +392,9 @@ for an example with TLS and authentication.
 {{< /tab >}}
 {{< tab "Civo" >}}
 {{< manifests "getting-started/civo/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< tab "kind" >}}
+{{< manifests "getting-started/kind/inference-gateway.yaml" >}}
 {{< /tab >}}
 {{< /tabs >}}
 

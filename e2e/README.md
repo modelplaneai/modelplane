@@ -273,7 +273,6 @@ e2e/
     __init__.py              # the matrix: per-cloud node shape, taint, expected DaemonSets
     conftest.py              # fixtures: the clusters, the ServingStack Ready wait
     test_placement.py        # DaemonSet fan-out + placement/toleration audits
-  dra-example-driver.yaml    # vendored fake DRA GPU driver (applied to workload)
   manifests/                 # applied to the control plane after setup
     00-namespaces.yaml
     10-inference-gateway.yaml
@@ -283,6 +282,11 @@ e2e/
     50-model-service.yaml
     60-telemetry.yaml         # a TelemetryDestination with a debug sink
 ```
+
+The vendored **dra-example-driver** lives with the docs, at
+`docs/manifests/getting-started/kind/dra-example-driver.yaml`, because the
+getting-started tour's kind tab tells readers to apply it too. Keeping one copy
+means CI runs the driver the tour installs.
 
 ## Why the extra moving parts
 

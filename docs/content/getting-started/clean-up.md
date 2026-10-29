@@ -46,6 +46,14 @@ Wait until all clusters are deleted:
 kubectl get ic --watch
 ```
 
+On the kind path you created the workload cluster yourself, so deleting its
+`InferenceCluster` only uninstalls the serving stack. Delete the cluster once
+that finishes:
+
+```bash
+kind delete cluster --name modelplane-workload
+```
+
 ## Delete the control plane
 
 Delete the kind cluster:

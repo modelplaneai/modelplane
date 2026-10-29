@@ -17,8 +17,9 @@ kubectl create namespace ml-team
 ```
 
 The device selector matches against the capacity declared in the
-`InferenceClass`, not the pod's resource requests. Any L4 node satisfies
-`>= 20Gi`, so this deployment runs on the cluster you just added:
+`InferenceClass`, not the pod's resource requests. Any L4 node, or the kind
+path's fake GPU, satisfies `>= 20Gi`, so this deployment runs on the cluster
+you just added:
 
 {{< tabs >}}
 {{< tab "EKS" >}}
@@ -32,6 +33,13 @@ The device selector matches against the capacity declared in the
 {{< /tab >}}
 {{< tab "Nebius" >}}
 {{< manifests "getting-started/nebius/model-deployment.yaml" >}}
+{{< /tab >}}
+{{< tab "kind" >}}
+This deployment claims the fake GPU but serves the model with llama.cpp on the
+CPU, so it answers real requests with no GPU. The engine downloads about 400 MB
+of weights when it starts, and again whenever it restarts.
+
+{{< manifests "getting-started/kind/model-deployment.yaml" >}}
 {{< /tab >}}
 {{< /tabs >}}
 
@@ -89,6 +97,26 @@ kubectl run -i --rm curl-test \
   -d "{\"model\":\"ml-team/qwen\",\"messages\":[{\"role\":\"user\",\"content\":\"What is Kubernetes in one sentence?\"}],\"max_tokens\":100}"'
 ```
 
+{{< hint "tip" >}}
+On the kind path, the gateway's address is on kind's Docker network, which macOS
+and Windows can't reach from outside Docker. To send requests from your own
+terminal, forward a local port to the gateway in a second terminal:
+
+```bash
+kubectl --context kind-modelplane-workload -n envoy-gateway-system port-forward \
+  "$(kubectl --context kind-modelplane-workload -n envoy-gateway-system get svc -o name \
+    -l gateway.envoyproxy.io/owning-gateway-name=inference-gateway)" 8080:80
+```
+
+Then send the same request to `localhost`:
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"ml-team/qwen","messages":[{"role":"user","content":"What is Kubernetes in one sentence?"}],"max_tokens":100}'
+```
+{{< /hint >}}
+
 The request routes to the replica on the cluster Modelplane placed it on.
 You should get a response in a few seconds:
 
@@ -124,4 +152,8 @@ model behind a stable endpoint. Each team worked without needing to know what
 the other was doing. Modelplane matched them.
 
 In the next step, the platform team grows the fleet. [Scale the platform]({{< ref "getting-started/scale-the-platform.md" >}}) to add more clusters across regions.
+
+The kind path ends here, since the remaining steps need clusters in more than
+one region. To remove what you created, skip to
+[Clean up]({{< ref "getting-started/clean-up.md" >}}).
 

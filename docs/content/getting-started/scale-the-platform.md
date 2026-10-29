@@ -9,6 +9,13 @@ the fleet with larger-GPU capacity so the ML team has more to schedule against.
 
 Provisioning takes about 10 to 15 minutes.
 
+{{< hint "note" >}}
+This step needs a cloud account. The kind path ends after
+[Deploying a model]({{< ref "getting-started/deploying-a-model.md" >}}): one
+machine has no regions to spread across. Read on to see what the fleet looks
+like, or go to [Clean up]({{< ref "getting-started/clean-up.md" >}}).
+{{< /hint >}}
+
 ## Register more clusters
 
 {{< tabs >}}

@@ -55,6 +55,10 @@ WORKLOAD_CONTEXT = f"kind-{WORKLOAD}"
 WORKLOAD_NODE_IMAGE = "kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256"
 DEADLOCKING_KUBELETS = ("v1.34.0", "v1.34.1")
 
+# Shared with the getting-started tour's kind tab, so the driver readers apply
+# is the one CI runs.
+DRA_EXAMPLE_DRIVER = ROOT / "docs" / "manifests" / "getting-started" / "kind" / "dra-example-driver.yaml"
+
 METALLB_URL = "https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml"
 CROSSPLANE_VERSION = "2.4.0"
 
@@ -167,7 +171,7 @@ def up_workload(*, cloud: clouds.Cloud | None = None) -> None:
     # never schedules, and the fleet scheduler rejects an engine whose only
     # device is Synthetic.
     log.info("Installing dra-example-driver (fake GPUs) on the workload cluster")
-    kubectl(WORKLOAD_CONTEXT, "apply", f"--filename={ROOT / 'e2e' / 'dra-example-driver.yaml'}")
+    kubectl(WORKLOAD_CONTEXT, "apply", f"--filename={DRA_EXAMPLE_DRIVER}")
     kubectl(
         WORKLOAD_CONTEXT,
         "rollout", "status", "--namespace=dra-example-driver", "ds/dra-example-driver-kubeletplugin", "--timeout=120s",
