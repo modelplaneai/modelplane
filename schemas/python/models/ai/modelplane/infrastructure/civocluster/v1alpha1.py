@@ -76,9 +76,9 @@ class NodePool(BaseModel):
     """
     Number of nodes. Fixed unless maxNodeCount enables autoscaling.
     """
-    role: Literal['System', 'GPU']
+    role: Literal['System', 'GPU', 'CPU']
     """
-    Determines what workloads this pool runs. System pools host controllers, gateways, and infrastructure. GPU pools host inference workloads and are tainted to exclude non-GPU pods.
+    Determines what workloads this pool runs. System pools host controllers, gateways, and infrastructure. GPU pools host inference workloads and are tainted to exclude non-GPU pods. CPU pools host CPU inference workloads: a non-GPU size and the modelplane.ai/cpu label and taint.
     """
     size: constr(min_length=1, max_length=63)
     """
@@ -97,7 +97,7 @@ class Spec(BaseModel):
     """
     kubernetesVersion: constr(min_length=1, max_length=32) | None = None
     """
-    Civo Kubernetes (k3s) version. Civo requires an exact version string including the k3s build suffix (e.g. 1.34.1-k3s1); list current versions with civo kubernetes versions. Choose 1.34 or newer so Dynamic Resource Allocation (how GPUs bind to pods) is generally available. Defaults to Civo's current default version.
+    Civo Kubernetes (k3s) version. Civo requires an exact version string including the k3s build suffix (e.g. 1.36.0-k3s1); list current versions with civo kubernetes versions. Choose 1.34 or newer so Dynamic Resource Allocation (how devices bind to pods) is generally available, and 1.36 or newer for a CPU pool: its cores are claimed as consumable capacity, which Kubernetes enables by default from 1.36 (DRAConsumableCapacity). Defaults to Civo's current default version, which may be older than a CPU pool needs.
     """
     nodePools: list[NodePool] = Field(..., max_length=8, min_length=1)
     """

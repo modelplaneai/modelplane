@@ -65,6 +65,10 @@ class Label(BaseModel):
 
 
 class Metric(BaseModel):
+    cumulative: bool | None = None
+    """
+    Set when the component reports a cumulative total as a gauge. Modelplane converts the series to a monotonic cumulative sum before renaming it, so the exported type matches the measurement and a modelplane_* name never carries two types across sources.
+    """
     from_: constr(pattern=r'^[a-zA-Z_:][a-zA-Z0-9_:]*$', max_length=255) = Field(
         ..., alias='from'
     )
@@ -73,11 +77,18 @@ class Metric(BaseModel):
     A histogram is named by its base name, without the _count, _sum or _bucket a Prometheus query would use: the collector holds it as one metric, and `part` is what reaches into it.
     """
     fromUnit: (
-        Literal['Millijoules', 'Mebibytes', 'Milliseconds', 'Nanoseconds', 'Percent']
+        Literal[
+            'Millijoules',
+            'Microjoules',
+            'Mebibytes',
+            'Milliseconds',
+            'Nanoseconds',
+            'Percent',
+        ]
         | None
     ) = None
     """
-    What the component measures this in, when that isn't the unit the name claims. Modelplane converts to the base unit: millijoules and milliseconds are divided by a thousand, nanoseconds by a billion, percent by a hundred, and mebibytes multiplied out to bytes. A histogram is converted whole - its sum, its bounds and its bucket boundaries - so its quantiles come out in the target unit too.
+    What the component measures this in, when that isn't the unit the name claims. Modelplane converts to the base unit: millijoules and milliseconds are divided by a thousand, microjoules by a million, nanoseconds by a billion, percent by a hundred, and mebibytes multiplied out to bytes. A histogram is converted whole - its sum, its bounds and its bucket boundaries - so its quantiles come out in the target unit too.
     Percent is for a component that counts a saturation from nought to a hundred where the name says a ratio. Check rather than assume: vLLM publishes kv_cache_usage_perc and the value is a fraction, so a name is no guide.
     """
     labels: list[Label] | None = Field(None, max_length=16)

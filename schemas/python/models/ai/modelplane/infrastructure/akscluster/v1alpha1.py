@@ -99,9 +99,9 @@ class NodePool(BaseModel):
     """
     Initial number of nodes.
     """
-    role: Literal['System', 'GPU']
+    role: Literal['System', 'GPU', 'CPU']
     """
-    Determines what workloads this pool runs. System pools host controllers, gateways, and infrastructure. GPU pools host inference workloads and get the NVIDIA driver installed by AKS.
+    Determines what workloads this pool runs. System pools host controllers, gateways, and infrastructure. GPU pools host inference workloads and get the NVIDIA driver installed by AKS. CPU pools host CPU inference workloads: no GPU driver, and the modelplane.ai/cpu label and taint.
     """
     vmSize: constr(min_length=1, max_length=63)
     """

@@ -24,6 +24,11 @@
 
 from function.stacks.components import Chart, Component
 
+# DRA drivers this cloud supports that arrive outside the serving
+# stack; the stacks package folds them into its derived
+# supported-drivers table (see generate.py's EXTERNAL_DRIVERS).
+EXTERNAL_DRIVERS: list[str] = ["dra.net"]
+
 COMPONENTS: list[Component] = [
     Chart(
         key="cert-manager",
@@ -61,6 +66,7 @@ COMPONENTS: list[Component] = [
         repository="https://kubernetes-sigs.github.io/node-feature-discovery/charts",
         version="0.19.0",
         wait=True,
+        dra_drivers=["gpu.nvidia.com"],
         values={
             "gc": {"enable": True, "tolerations": []},
             "master": {"enable": True, "tolerations": []},
@@ -84,6 +90,7 @@ COMPONENTS: list[Component] = [
         chart="nodewright",
         repository="oci://ghcr.io/nvidia/nodewright/charts",
         version="v0.19.0",
+        dra_drivers=["gpu.nvidia.com"],
         values={
             "controllerManager": {
                 "manager": {
@@ -186,7 +193,10 @@ COMPONENTS: list[Component] = [
             },
             "prometheus-node-exporter": {
                 "fullnameOverride": "prometheus-node-exporter",
-                "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
+                "tolerations": [
+                    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                    {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+                ],
             },
             "prometheusOperator": {"admissionWebhooks": {"patch": {"tolerations": []}}, "tolerations": []},
             "thanosRuler": {"thanosRulerSpec": {"tolerations": []}},
@@ -201,6 +211,7 @@ COMPONENTS: list[Component] = [
         version="v26.7.1",
         wait=True,
         depends_on=["node-feature-discovery", "cert-manager", "kube-prometheus-stack"],
+        dra_drivers=["gpu.nvidia.com"],
         values={
             "ccManager": {"enabled": False},
             "daemonsets": {"tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]},
@@ -341,6 +352,7 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
         repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
         version="0.5.0",
         depends_on=["gpu-operator"],
+        dra_drivers=["gpu.nvidia.com"],
         values={
             "controller": {
                 "affinity": {},
@@ -368,6 +380,7 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
         repository="oci://ghcr.io/nvidia",
         version="v1.25.0",
         depends_on=["cert-manager", "gpu-operator", "prometheus-operator-crds"],
+        dra_drivers=["gpu.nvidia.com"],
         values={
             "fullnameOverride": "nvsentinel",
             "global": {

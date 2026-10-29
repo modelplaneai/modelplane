@@ -99,9 +99,9 @@ class Accelerator(BaseModel):
 
 
 class Aks(BaseModel):
-    accelerator: Accelerator
+    accelerator: Accelerator | None = None
     """
-    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block.
+    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, the pool has no GPU: Modelplane provisions it with a standard node image and the modelplane.ai/cpu label and taint.
     """
     diskSizeGb: conint(ge=10) | None = 100
     vmSize: constr(min_length=1)
@@ -119,9 +119,9 @@ class AcceleratorModel(BaseModel):
 
 
 class Civo(BaseModel):
-    accelerator: AcceleratorModel
+    accelerator: AcceleratorModel | None = None
     """
-    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block.
+    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, the pool has no GPU: Modelplane provisions it with a standard node image and the modelplane.ai/cpu label and taint.
     """
     size: constr(min_length=1, max_length=63)
     """
@@ -138,9 +138,9 @@ class AcceleratorModel1(BaseModel):
 
 
 class Eks(BaseModel):
-    accelerator: AcceleratorModel1
+    accelerator: AcceleratorModel1 | None = None
     """
-    GPU accelerator to attach when provisioning the node group. Provisioning input only: the scheduler matches against spec.devices, not this block.
+    GPU accelerator to attach when provisioning the node group. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, the group has no GPU: Modelplane provisions it with a standard node image and the modelplane.ai/cpu label and taint.
     """
     diskSizeGb: conint(ge=10) | None = 100
     instanceType: constr(min_length=1)
@@ -158,9 +158,9 @@ class AcceleratorModel2(BaseModel):
 
 
 class Gke(BaseModel):
-    accelerator: AcceleratorModel2
+    accelerator: AcceleratorModel2 | None = None
     """
-    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block, so count here is the GCP machine's GPU count and need not be restated in devices.
+    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block, so count here is the GCP machine's GPU count and need not be restated in devices. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, the pool has no GPU: Modelplane provisions it with a standard node image and the modelplane.ai/cpu label and taint.
     """
     diskSizeGb: conint(ge=10) | None = 100
     machineType: constr(min_length=1)
@@ -175,9 +175,9 @@ class AcceleratorModel3(BaseModel):
 
 
 class Nebius(BaseModel):
-    accelerator: AcceleratorModel3
+    accelerator: AcceleratorModel3 | None = None
     """
-    GPU accelerator to attach when provisioning the node group. Provisioning input only: the scheduler matches against spec.devices, not this block.
+    GPU accelerator to attach when provisioning the node group. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, the group has no GPU: Modelplane provisions it with a standard node image and the modelplane.ai/cpu label and taint.
     """
     diskSizeGb: conint(ge=10) | None = 100
     driversPreset: constr(min_length=1, max_length=63) | None = 'cuda13.0'
@@ -203,9 +203,9 @@ class AcceleratorModel4(BaseModel):
 
 
 class Vultr(BaseModel):
-    accelerator: AcceleratorModel4
+    accelerator: AcceleratorModel4 | None = None
     """
-    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block.
+    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, the pool has no GPU: Modelplane provisions it with a standard node image and the modelplane.ai/cpu label and taint.
     """
     plan: constr(min_length=1, max_length=63)
     """

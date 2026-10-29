@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, Field, constr
+from pydantic import AwareDatetime, BaseModel, Field, RootModel, constr
 
 from .....io.k8s.apimachinery.pkg.apis.meta import v1
 
@@ -39,6 +39,10 @@ class Crossplane(BaseModel):
     compositionSelector: CompositionSelector | None = None
     compositionUpdatePolicy: Literal['Automatic', 'Manual'] | None = None
     resourceRefs: list[ResourceRef] | None = None
+
+
+class DraDriver(RootModel[constr(min_length=1, max_length=253)]):
+    root: constr(min_length=1, max_length=253)
 
 
 class ClientCA(BaseModel):
@@ -118,6 +122,10 @@ class Spec(BaseModel):
     crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
+    """
+    draDrivers: list[DraDriver] | None = Field(None, max_length=16)
+    """
+    DRA driver names whose device stacks this cluster needs (gpu.nvidia.com, dra.cpu, ...), collected by the cluster composition from the claim: DRA devices of the cluster's referenced InferenceClasses. A component tagged with a driver installs only when that driver is listed; untagged components always install. Absent means the same as empty: only the untagged components install.
     """
     gateway: Gateway
     """

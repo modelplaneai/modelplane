@@ -125,9 +125,9 @@ class NodePool(BaseModel):
     """
     Initial number of nodes.
     """
-    role: Literal['System', 'GPU']
+    role: Literal['System', 'GPU', 'CPU']
     """
-    Determines what workloads this group runs. System groups host controllers, gateways, and infrastructure. GPU groups host inference workloads and use a GPU-enabled AMI.
+    Determines what workloads this group runs. System groups host controllers, gateways, and infrastructure. GPU groups host inference workloads and use a GPU-enabled AMI. CPU groups host CPU inference workloads: a standard AMI, no GPU, and the modelplane.ai/cpu label and taint.
     """
     zones: list[Zone] | None = Field(None, max_length=8, min_length=1)
     """

@@ -39,7 +39,7 @@ class Civo(BaseModel):
     """
     kubernetesVersion: constr(min_length=1, max_length=32) | None = None
     """
-    Civo Kubernetes (k3s) version. Civo requires an exact version string including the k3s build suffix; list current versions with civo kubernetes versions. Choose 1.34 or newer so Dynamic Resource Allocation (how GPUs bind to pods) is generally available. Defaults to Civo's current default version.
+    Civo Kubernetes (k3s) version. Civo requires an exact version string including the k3s build suffix; list current versions with civo kubernetes versions. Choose 1.34 or newer so Dynamic Resource Allocation (how devices bind to pods) is generally available, and 1.36 or newer for a CPU pool: its cores are claimed as consumable capacity, which Kubernetes enables by default from 1.36 (DRAConsumableCapacity). Defaults to Civo's current default version, which may be older than a CPU pool needs.
     """
     region: constr(min_length=1, max_length=32)
     """
@@ -339,6 +339,13 @@ class Gateway(BaseModel):
     """
 
 
+class ProviderConfigRef(BaseModel):
+    name: str | None = None
+    """
+    Name of the ProviderConfig targeting the remote cluster. Used by ModelReplica to create resources on the cluster.
+    """
+
+
 class Attributes(BaseModel):
     bool_: bool | None = Field(None, alias='bool')
     int_: int | None = Field(None, alias='int')
@@ -371,7 +378,7 @@ class NodesByFreeDevice(BaseModel):
     """
 
 
-class GpuPool(BaseModel):
+class SchedulablePool(BaseModel):
     devices: list[Device] | None = Field(None, max_length=16)
     """
     Devices copied from the pool's InferenceClass. ModelDeployment.nodeSelector matches against these.
@@ -398,13 +405,6 @@ class GpuPool(BaseModel):
     """
 
 
-class ProviderConfigRef(BaseModel):
-    name: str | None = None
-    """
-    Name of the ProviderConfig targeting the remote cluster. Used by ModelReplica to create resources on the cluster.
-    """
-
-
 class Status(BaseModel):
     cache: CacheModel | None = None
     """
@@ -418,15 +418,15 @@ class Status(BaseModel):
     """
     This cluster's own gateway: the Envoy gateway the serving stack runs at the cluster's edge, which an InferenceGateway routes to. These fields are how an InferenceGateway reaches it.
     """
-    gpuPools: list[GpuPool] | None = Field(None, max_length=8)
-    """
-    Schedulable GPU node pools on this cluster, derived from the referenced classes, the per-pool node counts, and what the cluster agent observes of each pool. ModelDeployment scheduling matches against these.
-    """
     namespace: str | None = None
     """
     Namespace where the internal XRs (cluster, backend) were created.
     """
     providerConfigRef: ProviderConfigRef | None = None
+    schedulablePools: list[SchedulablePool] | None = Field(None, max_length=8)
+    """
+    Schedulable node pools on this cluster - GPU and CPU alike; every pool whose class declares devices - derived from the referenced classes, the per-pool node counts, and what the cluster agent observes of each pool. ModelDeployment scheduling matches against these.
+    """
 
 
 class InferenceCluster(BaseModel):
