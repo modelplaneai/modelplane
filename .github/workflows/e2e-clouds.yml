@@ -34,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cloud: [eks, aks, gke, civo, nebius, vultr, existing]
+        cloud: [eks, aks, gke, civo, nebius, vultr, existing, existing-filtered]
 
     steps:
       # Two kind clusters and the serving stack need more disk than the runner

@@ -96,21 +96,27 @@ cloud's serving stack — the AICR-generated component lists for EKS/AKS/GKE, or
 the hand-written halves for Civo, Nebius, Vultr and Existing — onto the same
 workload kind cluster, with no cloud credentials. The trick is
 [KWOK](https://kwok.sigs.k8s.io): bring-up applies its pinned `kwok.yaml` and
-`stage-fast.yaml` manifests and two fake Nodes labelled and tainted exactly
-like that cloud's GPU pools. The real kind node plays the untainted system
-pool, so system components install and run for real; the GPU-toleration
-DaemonSets fan out to the fake nodes, where KWOK marks their pods Running —
-which is all helm `--wait` and the composition's readiness gates need.
+`stage-fast.yaml` manifests and two fake Nodes per device pool, labelled and
+tainted exactly like that cloud's pools — an NVIDIA GPU pool and a CPU pool
+on every leg, plus an AMD GPU pool on Existing, the one cloud that installs
+the AMD stack. The real kind node plays the untainted system pool, so system
+components install and run for real; each device stack's DaemonSets fan out
+to their own pool's fake nodes, where KWOK marks their pods Running — which
+is all helm `--wait` and the composition's readiness gates need.
 
 The clouds are one data-driven matrix: each leg in `clouds/__init__.py` holds
-everything cloud-specific — the fake nodes' labels, the GPU taint value, the
-stack's `spec.cloud`, and the DaemonSets expected to fan out to the GPU pool.
-Adding fidelity for a cloud means editing its leg, not a copy of the test.
+everything cloud-specific — each fake pool's labels, the GPU taint value, the
+stack's `spec.cloud`, the `spec.draDrivers` its classes would claim (which
+filters the stack to exactly those device stacks), and the DaemonSets
+expected to fan out to the pools. Adding fidelity for a cloud means editing
+its leg, not a copy of the test.
 
 A leg is itself a copy of what its cloud's cluster composition applies, so it
 can drift from the composition as well as the stack from it. `e2e/test_legs.py`
 pins each leg's taint value to the `_GPU_TAINT*` constants of the composition
-it mirrors (GKE's managed taint and BYO pools' come from outside Modelplane).
+it mirrors (GKE's managed taint and BYO pools' come from outside Modelplane),
+and the shared CPU taint key to every composition's `_LABEL_CPU` — GKE
+included, which sets the CPU taint itself where its GPU taint is managed.
 It reads the compositions' source and needs no cluster, so it runs as the
 `e2e-legs` check in `nix flake check` rather than here: a composition-only
 change triggers the flake checks but not this workflow. The labels are a known
@@ -130,15 +136,24 @@ clusters (`--no-apply` stops short of the fake nodes and the XR, `--test`
 reruns the tests alone). A session fixture waits for the `ServingStack` to go
 Ready, then the asserts are two-sided:
 
-- **DaemonSet fan-out**: the leg's expected DaemonSets (the DRA kubelet
-  plugin, NFD worker, node-exporter; toolkit-hardening on AKS) reach their
-  ready counts — a toleration too *narrow* (e.g. the wrong `Equal` value on
-  AKS) shows up as a shortfall.
-- **Placement/toleration audit**: no pod outside the GPU allowlist carries a
-  wildcard or `nvidia.com/gpu` toleration, nothing unexpected sits on a fake
-  GPU node, and GPU-only pods never sit on the system pool — a toleration too
-  *broad* (the "tolerates every taint" class of bug) fails here even when the
-  scheduler happened to keep the pod on the system node.
+- **DaemonSet fan-out**: the leg's expected DaemonSets (the NVIDIA DRA
+  kubelet plugin, dra-driver-cpu, NFD worker, node-exporter; the AMD
+  operands on Existing; toolkit-hardening on AKS) reach their ready counts —
+  a toleration too *narrow* (e.g. the wrong `Equal` value on AKS), a
+  selector missing its pool, or a filter that wrongly dropped a claimed
+  stack shows up as a shortfall.
+- **Placement/toleration audit**: no pod outside a pool's allowlist carries
+  a wildcard or that pool's taint toleration, everything on a fake node
+  belongs to that node's pool, and pool-only pods (the DRA drivers, the GPU
+  operands) never sit anywhere else — a toleration too *broad* (the
+  "tolerates every taint" class of bug) fails here even when the scheduler
+  happened to keep the pod on the system node.
+- **Unclaimed-stack absence**: the legs above claim every stack their cloud
+  carries, so a join that ignored `spec.draDrivers` would pass them all.
+  The `existing-filtered` leg is the exclusion side: same pools as
+  `existing`, AMD fake nodes included, but `gpu.amd.com` left unclaimed —
+  the AMD DaemonSets must not exist at all, even though the pool is there
+  and Existing's list pins the stack.
 
 What cloud mode does **not** test: AKS's admission rejection of wildcard
 tolerations (the audit approximates it client-side), real DRA allocation and
