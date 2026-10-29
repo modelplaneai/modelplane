@@ -72,7 +72,7 @@ publish:
 ```yaml
 # The InferenceCluster.
 status:
-  gpuPools:
+  schedulablePools:
   - name: gpu-l4x4-a
     nodes: 1          # The most nodes the pool can have.
     observedNodes: 1  # New. The nodes the pool has now, ready or not.

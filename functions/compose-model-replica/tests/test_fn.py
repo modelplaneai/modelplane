@@ -216,7 +216,7 @@ def _cluster(*, provider_config_ref: str | None, observed: bool) -> fnv1.Resourc
         cluster["status"] = {
             "providerConfigRef": {"name": provider_config_ref},
             "gateway": {"address": "10.0.0.1"},
-            "gpuPools": [pool],
+            "schedulablePools": [pool],
         }
     return fnv1.Resource(resource=resource.dict_to_struct(cluster))
 
@@ -282,7 +282,17 @@ def _deployment(*, ready: fnv1.Ready, name: str, claim_template_name: str, label
                                                 "key": "nvidia.com/gpu",
                                                 "operator": "Exists",
                                                 "effect": "NoSchedule",
-                                            }
+                                            },
+                                            {
+                                                "key": "amd.com/gpu",
+                                                "operator": "Exists",
+                                                "effect": "NoSchedule",
+                                            },
+                                            {
+                                                "key": "modelplane.ai/cpu",
+                                                "operator": "Exists",
+                                                "effect": "NoSchedule",
+                                            },
                                         ],
                                     },
                                 },

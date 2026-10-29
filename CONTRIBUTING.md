@@ -429,7 +429,10 @@ checks to trip. In order:
    `dra` owns the DRA selector paths the upstream values don't. The fork
    is deleted the day NVIDIA/aicr#2517 lands.
 3. Expect `ALLOW`/`DROP` to fail closed on any component the new catalog
-   adds; classify it with a reason.
+   adds; classify it with a reason. An `ALLOW` entry also names the DRA
+   drivers whose device stacks the component belongs to (empty for a
+   component every cluster needs) - deciding that is part of classifying
+   it; see design/multi-accelerator.md.
 4. Expect `check_namespace_holds` to fail closed if the catalog moved a
    component's chart namespace: Helm can't move a release across
    namespaces, so existing clusters would wedge on a fresh-install

@@ -168,6 +168,16 @@ what is genuinely CPU-specific: the driver's reserved cores, the
 CPU is also why there is no opt-in path: a CPU class can run on any cloud, so
 every cloud filters and `spec.draDrivers` flows everywhere from the start.
 
+One floor is CPU's alone: the driver's grouped mode publishes each NUMA
+node's cores as one device whose CPUs are consumable capacity
+(KEP-5075), which Kubernetes enables by default from 1.36 and managed
+control planes can't enable earlier - on 1.34/1.35 the scheduler
+allocates the device but strips the capacity accounting, and the engine
+pod fails at NodePrepareResources. So a CPU pool needs Kubernetes 1.36
+on a managed cloud, while GPU pools keep the 1.34/1.35 floors; cluster
+manifests for CPU pools pin the version rather than taking the cloud's
+default.
+
 **Supported drivers per cloud.** A cloud supports the drivers its component
 list is tagged with, so in the stacks package the per-cloud table is derived
 from the tags rather than declared beside them; it can't drift from what the
@@ -229,7 +239,13 @@ layers reject the mismatch:
    "Supported drivers per cloud"). A class is not checked on its own —
    `compose-inference-class` stays a pass-through — so an unsupported driver
    surfaces when a cluster references the class, the first moment it could
-   do harm, and the per-cloud table has a single hand-kept mirror.
+   do harm, and the per-cloud table has a single hand-kept mirror. The gate
+   stops with a fatal result, because it can fire on a cluster that is
+   already running — a shared class edited to claim a new driver — and
+   everything composes after it: on a bare return Crossplane would
+   garbage-collect the cloud cluster XR, the ServingStack and their Usages.
+   A fatal result returns before Crossplane applies desired state or
+   collects anything, and the condition still lands on the XR.
 2. The component join raises if a ServingStack names a driver its cloud
    neither tags components with nor declares external, and if a component
    depends on one that filtering could remove from under it: a dependency

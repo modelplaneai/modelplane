@@ -173,7 +173,7 @@ def _cluster(
             }
         ],
         "providerConfigRef": {"name": name},
-        "gpuPools": [
+        "schedulablePools": [
             {
                 "name": "default",
                 "nodes": nodes,

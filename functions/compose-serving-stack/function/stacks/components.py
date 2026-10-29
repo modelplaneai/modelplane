@@ -56,6 +56,15 @@ class Chart:
     depends on, so the install gate orders on health rather than
     deploy - the generator derives it from the dependency edges, and the
     hand-written files state it where a cross-half edge lands on them.
+
+    `dra_drivers` names the DRA drivers whose device stacks this
+    component belongs to (gpu.nvidia.com, dra.cpu, ...). An untagged
+    component is needed regardless of devices and always installs; a
+    tagged one installs only when one of its drivers is in ServingStack
+    spec.draDrivers. A component can serve several stacks (NFD labels
+    nodes for every GPU driver). The tags on a dependency edge are
+    constrained so filtering can't break it; join()'s docstring states
+    and its checks enforce that rule.
     """
 
     key: str
@@ -67,6 +76,7 @@ class Chart:
     wait: bool = False
     depends_on: list[str] = field(default_factory=list)
     values: dict[str, Any] | None = None
+    dra_drivers: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -82,12 +92,15 @@ class Manifests:
     applied to every doc in the entry (see fn.py's _k8s_object): use it
     when readiness must reflect a controller-populated status field,
     and keep an entry to one doc when only that doc has one.
+
+    `dra_drivers` behaves as on Chart.
     """
 
     key: str
     manifests: list[dict[str, Any]]
     depends_on: list[str] = field(default_factory=list)
     ready: str | None = None
+    dra_drivers: list[str] = field(default_factory=list)
 
 
 # A plain assignment rather than a `type` statement: the packages

@@ -100,7 +100,7 @@ reports how many of each pool's nodes have each number of free devices. The
 
 ```yaml
 status:
-  gpuPools:
+  schedulablePools:
   - name: gpu-l4x4-a
     nodes: 3          # The most nodes the pool can have.
     observedNodes: 1  # The nodes the pool has now, ready or not.

@@ -18,8 +18,9 @@ Modelplane's own half of the serving stack, where the Standard and
 Dynamo stacks don't differ: the gateway path (Envoy Gateway, Envoy AI
 Gateway and its CRDs, the Gateway API Inference Extension CRDs, the
 gateway namespace and EnvoyProxy), the gateway's PKI (a self-signed
-Issuer and trust-manager), the DRA critical-pods quota and the cluster
-agent.
+Issuer and trust-manager), the DRA critical-pods quotas, the cluster
+agent, and the device stacks every cloud pins identically - today
+dra-driver-cpu, whose nodes look the same whatever provisioned them.
 
 The GatewayClass and Gateway are deliberately absent: they read
 spec.gateway (className, hostname), which is per-cluster configuration,
@@ -27,7 +28,7 @@ so the function renders them itself.
 
 Versions here are Modelplane's pins: this file carries what no
 generator resolves - the contract surface a ModelReplica composes
-against, whose versions have nothing to do with the hardware (see
+against, whose versions have nothing to do with the GPU hardware (see
 design/serving-stack-generation.md, "Component sources").
 """
 
@@ -67,7 +68,11 @@ _TRUST_MANAGER_VERSION = "v0.25.0"
 # Must match the namespace every cloud half installs the NVIDIA DRA
 # driver into - generated and hand-written alike - so this quota lands
 # where the kubelet plugin runs.
-_DRA_DRIVER_NAMESPACE = "nvidia-dra-driver"
+_NVIDIA_DRA_DRIVER_NAMESPACE = "nvidia-dra-driver"
+
+# The namespace the dra-driver-cpu component below installs into; its
+# critical-pods quota must land in the same place.
+_CPU_DRA_DRIVER_NAMESPACE = "dra-driver-cpu"
 
 # The cluster agent is Modelplane's own. Its chart and image share one
 # repository, tagged 0.1.0 and v0.1.0 respectively, and the chart's default
@@ -282,17 +287,83 @@ COMPONENTS: list[Component] = [
     # priority. GKE only admits such pods in a namespace whose
     # ResourceQuota permits those priority classes; without it the
     # daemonset gets FailedCreate and never publishes ResourceSlices.
-    # Laid down everywhere: it only grants headroom, so it's harmless on
-    # clusters that don't restrict them.
+    # Laid down wherever the NVIDIA stack installs: it only grants
+    # headroom, so it's harmless on clusters that don't restrict them,
+    # but the tag keeps it off clusters where nothing creates the
+    # nvidia-dra-driver namespace, where the Object could never apply.
     Manifests(
         key="dra-driver-critical-pods-quota",
+        dra_drivers=["gpu.nvidia.com"],
         manifests=[
             {
                 "apiVersion": "v1",
                 "kind": "ResourceQuota",
                 "metadata": {
                     "name": "allow-critical-pods",
-                    "namespace": _DRA_DRIVER_NAMESPACE,
+                    "namespace": _NVIDIA_DRA_DRIVER_NAMESPACE,
+                },
+                "spec": {
+                    "hard": {"pods": "1000"},
+                    "scopeSelector": {
+                        "matchExpressions": [
+                            {
+                                "operator": "In",
+                                "scopeName": "PriorityClass",
+                                "values": [
+                                    "system-node-critical",
+                                    "system-cluster-critical",
+                                ],
+                            },
+                        ],
+                    },
+                },
+            },
+        ],
+    ),
+    # Publishes each CPU node's cores as DRA devices and registers the
+    # dra.cpu DeviceClass CPU classes claim through: one device per NUMA
+    # node (the chart's default grouped mode), with the node's
+    # allocatable CPUs as consumable capacity. A claimed device pins the
+    # engine container to a cpuset. Pinned here because a CPU node needs
+    # the same driver whatever provisioned it, so every cloud - Existing
+    # included - installs the one pin. The nodeSelector keeps it to CPU
+    # pools, which every cluster composition labels modelplane.ai/cpu;
+    # the tolerations are set because the chart's default is a keyless
+    # wildcard, which AKS rejects at admission and the e2e toleration
+    # audit flags - the CPU taint is the only one the selector can land
+    # the driver behind. reservedCPUs holds cores 0-1 back for the OS
+    # and kubelet, so a class's capacity.cpu is the node's vCPUs less
+    # two - a fixed, documented value rather than a per-pool knob
+    # someone must keep in step with the class by hand.
+    Chart(
+        key="dra-driver-cpu",
+        release="mp-dra-driver-cpu",
+        namespace=_CPU_DRA_DRIVER_NAMESPACE,
+        chart="dra-driver-cpu",
+        repository="oci://registry.k8s.io/dra-driver-cpu/charts",
+        version="0.3.0",
+        dra_drivers=["dra.cpu"],
+        values={
+            "nodeSelector": {"modelplane.ai/cpu": "true"},
+            "tolerations": [
+                {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+            ],
+            "driverConfig": {"reservedCPUs": "0-1"},
+        },
+    ),
+    # dra-driver-cpu's daemonset runs at system-node-critical priority
+    # like the NVIDIA kubelet plugin above, so its namespace needs the
+    # same quota on GKE.
+    Manifests(
+        key="dra-driver-cpu-critical-pods-quota",
+        dra_drivers=["dra.cpu"],
+        manifests=[
+            {
+                "apiVersion": "v1",
+                "kind": "ResourceQuota",
+                "metadata": {
+                    "name": "allow-critical-pods",
+                    "namespace": _CPU_DRA_DRIVER_NAMESPACE,
                 },
                 "spec": {
                     "hard": {"pods": "1000"},

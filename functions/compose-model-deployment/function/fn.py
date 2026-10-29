@@ -177,7 +177,7 @@ def _inference_cluster(
     ic.status = ic.status or icv1alpha1.Status()
     ic.status.providerConfigRef = ic.status.providerConfigRef or icv1alpha1.ProviderConfigRef()
     ic.status.gateway = ic.status.gateway or icv1alpha1.Gateway()
-    ic.status.gpuPools = ic.status.gpuPools or []
+    ic.status.schedulablePools = ic.status.schedulablePools or []
     return ic
 
 

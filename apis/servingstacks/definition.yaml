@@ -63,6 +63,22 @@ spec:
                 - Vultr
                 - Civo
                 - Existing
+              draDrivers:
+                type: array
+                description: >-
+                  DRA driver names whose device stacks this cluster needs
+                  (gpu.nvidia.com, dra.cpu, ...), collected by the cluster
+                  composition from the claim: DRA devices of the cluster's
+                  referenced InferenceClasses. A component tagged with a
+                  driver installs only when that driver is listed; untagged
+                  components always install. Absent means the same as
+                  empty: only the untagged components install.
+                maxItems: 16
+                x-kubernetes-list-type: set
+                items:
+                  type: string
+                  minLength: 1
+                  maxLength: 253
               secrets:
                 type: array
                 description: >-

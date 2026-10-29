@@ -103,6 +103,13 @@ _FABRIC_INFINIBAND = "InfiniBand"
 _GPU_TAINT = "nvidia.com/gpu=true:NoSchedule"
 _GPU_TAINT_KEY = "nvidia.com/gpu"
 
+# Label and taint on CPU inference pools. The label is what the serving
+# stack's dra-driver-cpu selects its nodes by; the taint keeps system
+# workloads off the pool as the GPU taint does on GPU pools, and engine
+# pods tolerate it (compose-model-replica).
+_LABEL_CPU = "modelplane.ai/cpu"
+_CPU_TAINT = "modelplane.ai/cpu=true:NoSchedule"
+
 # Node pool gpuDriver value asking AKS to install the NVIDIA driver on GPU
 # nodes. The device plugin is not installed in this path - the serving
 # stack's DRA driver binds GPUs to pods, as on EKS.
@@ -410,6 +417,12 @@ class Composer:
                     _LABEL_POOL: pool.name,
                 }
                 fp.nodeTaints = [_GPU_TAINT]
+            elif pool.role == "CPU":
+                fp.nodeLabels = {
+                    _LABEL_POOL: pool.name,
+                    _LABEL_CPU: "true",
+                }
+                fp.nodeTaints = [_CPU_TAINT]
 
             resource.update(
                 self.rsp.desired.resources[f"nodepool-{pool.name}"],

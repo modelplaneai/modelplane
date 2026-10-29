@@ -498,6 +498,14 @@ SYSTEM: list[Values] = []
 # AKS; GKE's own taint carries present).
 GPU: list[Values] = [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
 
+# Tolerate every schedulable pool's taint - GPU and CPU alike - for
+# node-reaching DaemonSets that aren't part of any one device stack and
+# must observe every node Modelplane schedules models onto.
+NODE: list[Values] = [
+    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+    {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+]
+
 # Recipe component name -> dotted values path -> the tolerations that
 # replace a wildcard found there. Like ALLOW/DROP this fails closed: a
 # wildcard at an unclassified path fails the run, else an aicr bump
@@ -519,7 +527,7 @@ TOLERATIONS = {
         "gc.tolerations": SYSTEM,
     },
     "kube-prometheus-stack": {
-        "prometheus-node-exporter.tolerations": GPU,
+        "prometheus-node-exporter.tolerations": NODE,
         "alertmanager.alertmanagerSpec.tolerations": SYSTEM,
         "grafana.tolerations": SYSTEM,
         "kube-state-metrics.tolerations": SYSTEM,
@@ -565,22 +573,27 @@ MANIFEST_TOLERATIONS = {
     ("gpu-operator", "DaemonSet", "nvidia-toolkit-hardening"): GPU,
 }
 
-# Recipe component name -> the key we emit it as. The key and the
-# mp-prefixed release name are Modelplane's, not AICR's, so a
-# component's identity survives upstream renames (see the design's
-# "Ordering and identity").
+# Recipe component name -> (the key we emit it as, the DRA drivers
+# whose device stacks it belongs to). The key and the mp-prefixed
+# release name are Modelplane's, not AICR's, so a component's identity
+# survives upstream renames (see the design's "Ordering and identity").
+# The driver list fails closed like the allowlist itself: classifying a
+# new component includes deciding which stacks it serves, the review a
+# bump already requires - the tag just records it. What the tag means
+# for installs lives on Component.dra_drivers and join() in the stacks
+# package (and in design/multi-accelerator.md).
 ALLOW = {
-    "nfd": "node-feature-discovery",
-    "cert-manager": "cert-manager",
-    "kube-prometheus-stack": "kube-prometheus-stack",
-    "prometheus-operator-crds": "prometheus-operator-crds",
-    "prometheus-adapter": "prometheus-adapter",
-    "k8s-ephemeral-storage-metrics": "k8s-ephemeral-storage-metrics",
-    "gpu-operator": "gpu-operator",
-    "nvidia-dra-driver-gpu": "nvidia-dra-driver-gpu",
-    "nvsentinel": "nvsentinel",
-    "nodewright-operator": "nodewright-operator",
-    "nodewright-customizations": "nodewright-customizations",
+    "nfd": ("node-feature-discovery", ["gpu.nvidia.com"]),
+    "cert-manager": ("cert-manager", []),
+    "kube-prometheus-stack": ("kube-prometheus-stack", []),
+    "prometheus-operator-crds": ("prometheus-operator-crds", []),
+    "prometheus-adapter": ("prometheus-adapter", []),
+    "k8s-ephemeral-storage-metrics": ("k8s-ephemeral-storage-metrics", []),
+    "gpu-operator": ("gpu-operator", ["gpu.nvidia.com"]),
+    "nvidia-dra-driver-gpu": ("nvidia-dra-driver-gpu", ["gpu.nvidia.com"]),
+    "nvsentinel": ("nvsentinel", ["gpu.nvidia.com"]),
+    "nodewright-operator": ("nodewright-operator", ["gpu.nvidia.com"]),
+    "nodewright-customizations": ("nodewright-customizations", ["gpu.nvidia.com"]),
 }
 
 # In the recipe, deliberately not in the stack. Each entry needs a
@@ -622,6 +635,16 @@ NAMESPACE_PINS = {
     # project's former name) to nodewright; Modelplane's releases live
     # in skyhook.
     "nodewright-operator": "skyhook",
+}
+
+# DRA drivers a cloud supports that arrive outside the serving stack,
+# emitted into the generated module so the stacks package's derived
+# supported-drivers table can't drift from the generated file. EKS's
+# dra.net is the aws-efa DROP entry above as the filter sees it:
+# compose-eks-cluster installs the EFA DRA driver when a pool asks for
+# the fabric, and the kimi-k2 and qwen3-coder recipes claim it today.
+EXTERNAL_DRIVERS = {
+    "eks": ["dra.net"],
 }
 
 # Long recipe-carried config blobs keep their content, not their
@@ -1014,7 +1037,7 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
             continue
         if name not in ALLOW:
             sys.exit(f"unknown component {name!r}: classify it in ALLOW or DROP")
-        key = ALLOW[name]
+        key, dra_drivers = ALLOW[name]
 
         values = deep_merge(bundle_values(bundle_dir, name), ref.get("overrides"))
         for path in TRIM.get(name, []):
@@ -1048,7 +1071,7 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
         depends = []
         for dep in ref.get("dependencyRefs", []):
             if dep in ALLOW:
-                depends.append(ALLOW[dep])
+                depends.append(ALLOW[dep][0])
             elif dep in DROP:
                 findings.append(
                     f"dropped dep: {name} -> {dep} (dropped; the join with "
@@ -1088,13 +1111,16 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
             findings.append(
                 f"pre-manifests: {name}: {len(manifests)} objects (namespace + {', '.join(f.name for f in pre)})"
             )
-            components.append(
-                {
-                    "type": "Manifests",
-                    "key": f"{key}-pre-manifests",
-                    "manifests": manifests,
-                }
-            )
+            pre_entry = {
+                "type": "Manifests",
+                "key": f"{key}-pre-manifests",
+                "manifests": manifests,
+            }
+            # The chart's own tags, because the chart depends on this
+            # entry - join()'s dependency-tagging rule.
+            if dra_drivers:
+                pre_entry["dra_drivers"] = dra_drivers
+            components.append(pre_entry)
             depends.append(f"{key}-pre-manifests")
 
         entry = {
@@ -1111,6 +1137,8 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
         }
         if depends:
             entry["depends_on"] = depends
+        if dra_drivers:
+            entry["dra_drivers"] = dra_drivers
         if values:
             entry["values"] = values
         components.append(entry)
@@ -1132,14 +1160,17 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
             for doc in manifests:
                 findings += scope_manifest_tolerations(name, doc)
             findings.append(f"manifests: {name}: {len(manifests)} objects ({', '.join(f.name for f in rendered)})")
-            components.append(
-                {
-                    "type": "Manifests",
-                    "key": f"{key}-manifests",
-                    "depends_on": [key],
-                    "manifests": manifests,
-                }
-            )
+            post_entry = {
+                "type": "Manifests",
+                "key": f"{key}-manifests",
+                "depends_on": [key],
+                "manifests": manifests,
+            }
+            # Depending on a tagged chart requires carrying its tags, so
+            # the filter keeps or drops the pair together.
+            if dra_drivers:
+                post_entry["dra_drivers"] = dra_drivers
+            components.append(post_entry)
 
     # The bundle is consumed fail-closed, like the recipe: every
     # component directory must belong to a classified component and use
@@ -1289,6 +1320,7 @@ def emit(
         "version",
         "wait",
         "depends_on",
+        "dra_drivers",
         "values",
         "manifests",
     ]
@@ -1309,6 +1341,11 @@ def emit(
         f"# Kubernetes floor: {floor or 'none asserted'}; {cloud} XRD default {spec['k8s_default']}",
         "",
         f"from function.stacks.components import {', '.join(names)}",
+        "",
+        "# DRA drivers this cloud supports that arrive outside the serving",
+        "# stack; the stacks package folds them into its derived",
+        "# supported-drivers table (see generate.py's EXTERNAL_DRIVERS).",
+        f"EXTERNAL_DRIVERS: list[str] = {pyfmt(EXTERNAL_DRIVERS.get(cloud, []))}",
         "",
         "COMPONENTS: list[Component] = [",
     ]

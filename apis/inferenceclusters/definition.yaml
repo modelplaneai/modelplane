@@ -333,9 +333,13 @@ spec:
                           exact version string including the k3s build
                           suffix; list current versions with civo kubernetes
                           versions. Choose 1.34 or newer so Dynamic Resource
-                          Allocation (how GPUs bind to pods) is generally
-                          available. Defaults to Civo's current default
-                          version.
+                          Allocation (how devices bind to pods) is generally
+                          available, and 1.36 or newer for a CPU pool: its
+                          cores are claimed as consumable capacity, which
+                          Kubernetes enables by default from 1.36
+                          (DRAConsumableCapacity). Defaults to Civo's current
+                          default version, which may be older than a CPU
+                          pool needs.
                         minLength: 1
                         maxLength: 32
                       credentials:
@@ -613,10 +617,11 @@ spec:
                       PVCs on this cluster. ModelCache reads this to target
                       the cache PVC.
                     maxLength: 253
-              gpuPools:
+              schedulablePools:
                 type: array
                 description: >-
-                  Schedulable GPU node pools on this cluster, derived from the
+                  Schedulable node pools on this cluster - GPU and CPU alike;
+                  every pool whose class declares devices - derived from the
                   referenced classes, the per-pool node counts, and what the
                   cluster agent observes of each pool. ModelDeployment
                   scheduling matches against these.

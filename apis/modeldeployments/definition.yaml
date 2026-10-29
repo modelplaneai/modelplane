@@ -458,7 +458,7 @@ spec:
                                       pods: what devices each pod needs from its node.
                                       The scheduler matches it against a candidate
                                       pool's InferenceClass devices (surfaced on
-                                      InferenceCluster status.gpuPools) and places the
+                                      InferenceCluster status.schedulablePools) and places the
                                       member on a pool that satisfies it, preferring
                                       one pool for the whole engine and splitting
                                       members across pools only when no pool satisfies

@@ -106,8 +106,8 @@ def agent_reports(cluster: icv1alpha1.InferenceCluster, replica: v1alpha1.ModelR
     observedNodes for is one the agent is reporting on.
     """
     pinned = {m.nodePoolName for e in replica.spec.engines for m in e.members}
-    gpu_pools = (cluster.status.gpuPools if cluster.status else None) or []
-    return any(p.name in pinned and p.observedNodes is not None for p in gpu_pools)
+    pools = (cluster.status.schedulablePools if cluster.status else None) or []
+    return any(p.name in pinned and p.observedNodes is not None for p in pools)
 
 
 def pods_scheduled(replica: v1alpha1.ModelReplica, status: rov1alpha1.Status | None) -> resource.Condition:

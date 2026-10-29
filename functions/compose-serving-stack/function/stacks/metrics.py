@@ -139,6 +139,44 @@ _GPU_UNITS = {
     "DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION": "Millijoules",
 }
 
+# The AMD GPUs, through the AMD GPU operator's device-metrics-exporter, onto
+# the same modelplane_gpu_* names the DCGM series map to, so a dashboard reads
+# one surface whichever vendor's pool served it. The exporter reports VRAM in
+# MiB, activity in percent and energy in microjoules, each renamed onto a name
+# that claims a different unit, so each says so. Junction temperature is the
+# one the Instinct MI3xx series reports (MI2xx reports edge instead).
+# Tensor activity (MFMA utilization, the analog of DCGM's tensor-pipe
+# activity) is a GPU_PROF_* field the exporter ships disabled; the stack's
+# exporter config turns ProfilerMetrics on to publish it (see the AMD
+# chart pin in clouds/existing.py) at the cost of the single profiler
+# instance the hardware allows. The
+# exporter reports
+# its accumulated energy as a gauge where DCGM's is a counter, and
+# modelplane_energy_joules_total is a counter, so the energy series is marked
+# cumulative and the collector converts it to a monotonic sum - one name,
+# one type, whichever vendor feeds it.
+_AMD_GPU = {
+    "gpu_used_vram": "modelplane_gpu_memory_used_bytes",
+    "gpu_free_vram": "modelplane_gpu_memory_free_bytes",
+    "gpu_gfx_activity": "modelplane_gpu_compute_active_ratio",
+    "gpu_umc_activity": "modelplane_gpu_memory_bandwidth_ratio",
+    "gpu_prof_tensor_active_percent": "modelplane_gpu_tensor_active_ratio",
+    "gpu_junction_temperature": "modelplane_gpu_temperature_celsius",
+    "gpu_power_usage": "modelplane_gpu_power_watts",
+    "gpu_energy_consumed": "modelplane_energy_joules_total",
+}
+
+_AMD_GPU_UNITS = {
+    "gpu_used_vram": "Mebibytes",
+    "gpu_free_vram": "Mebibytes",
+    "gpu_gfx_activity": "Percent",
+    "gpu_umc_activity": "Percent",
+    "gpu_prof_tensor_active_percent": "Percent",
+    "gpu_energy_consumed": "Microjoules",
+}
+
+_AMD_GPU_CUMULATIVE = ("gpu_energy_consumed",)
+
 
 # How each request vLLM finished ended, by vLLM's finished_reason renamed to
 # reason: stop, length and abort at v0.9.2, and error and repetition as well
@@ -199,10 +237,14 @@ def _mapping(
     units: dict[str, str] | None = None,
     tokens: tuple[str, str] | None = None,
     extra: tuple[dict[str, object], ...] = (),
+    cumulative: tuple[str, ...] = (),
 ) -> v1alpha1.MetricMapping:
     units = units or {}
     metrics: list[dict[str, object]] = [
-        {"from": src, "to": dst} | ({"fromUnit": units[src]} if src in units else {}) for src, dst in pairs.items()
+        {"from": src, "to": dst}
+        | ({"fromUnit": units[src]} if src in units else {})
+        | ({"cumulative": True} if src in cumulative else {})
+        for src, dst in pairs.items()
     ]
     if tokens:
         metrics += _tokens(*tokens)
@@ -227,6 +269,7 @@ def mappings() -> list[v1alpha1.MetricMapping]:
         _mapping("modelplane-sglang", _SGLANG, tokens=_SGLANG_TOKENS, extra=(_SGLANG_RESPONSES,)),
         _mapping("modelplane-picker", _PICKER),
         _mapping("modelplane-gpu", _GPU, _GPU_UNITS),
+        _mapping("modelplane-gpu-amd", _AMD_GPU, _AMD_GPU_UNITS, cumulative=_AMD_GPU_CUMULATIVE),
     ]
 
 

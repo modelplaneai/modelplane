@@ -102,6 +102,12 @@ _GPU_TAINT_KEY = "nvidia.com/gpu"
 _GPU_TAINT_VALUE = "true"
 _GPU_TAINT_EFFECT = "NO_SCHEDULE"
 
+# Label and taint on CPU inference groups. The label is what the serving
+# stack's dra-driver-cpu selects its nodes by; the taint keeps system
+# workloads off the group as the GPU taint does on GPU groups, and
+# engine pods tolerate it (compose-model-replica).
+_LABEL_CPU = "modelplane.ai/cpu"
+
 # Management policies that exclude Delete, used for resources installed on the
 # workload cluster (the RWX StorageClass Object and the CSI driver Helm
 # Release). These exist only to configure the cluster and are only ever
@@ -552,6 +558,8 @@ class Composer:
             labels = {_LABEL_POOL: pool.name}
             if pool.role == "GPU" and pool.gpu:
                 labels[_LABEL_GPU] = pool.gpu.acceleratorType
+            elif pool.role == "CPU":
+                labels[_LABEL_CPU] = "true"
 
             template = nodegroupv1beta1.Template(
                 resources=nodegroupv1beta1.Resources(
@@ -582,6 +590,14 @@ class Composer:
                     nodegroupv1beta1.Taint(
                         key=_GPU_TAINT_KEY,
                         value=_GPU_TAINT_VALUE,
+                        effect=_GPU_TAINT_EFFECT,
+                    ),
+                ]
+            elif pool.role == "CPU":
+                template.taints = [
+                    nodegroupv1beta1.Taint(
+                        key=_LABEL_CPU,
+                        value="true",
                         effect=_GPU_TAINT_EFFECT,
                     ),
                 ]

@@ -65,6 +65,14 @@ _SYSTEM_POOL_MAX_NODE_COUNT = 2
 _LABEL_GPU = "modelplane.ai/gpu"
 _LABEL_POOL = "modelplane.ai/pool"
 
+# Label and taint on CPU inference pools. The label is what the serving
+# stack's dra-driver-cpu selects its nodes by; the taint keeps system
+# workloads off the pool as the GPU taint does on GPU pools, and engine
+# pods tolerate it (compose-model-replica). GKE auto-taints GPU pools
+# with nvidia.com/gpu but knows nothing of CPU inference pools, so the
+# taint is set explicitly here.
+_LABEL_CPU = "modelplane.ai/cpu"
+
 # GKE's cluster autoscaler uses this label to recognise a node pool as one whose
 # nodes run the NVIDIA GPU DRA driver, and so models the DRA ResourceSlices such
 # a node would publish. Without it the autoscaler can't tell that a new node
@@ -390,6 +398,14 @@ class Composer:
                     _LABEL_POOL: pool.name,
                     _LABEL_GPU_DRA_DRIVER: "true",
                 }
+            elif pool.role == "CPU":
+                node_config.labels = {
+                    _LABEL_POOL: pool.name,
+                    _LABEL_CPU: "true",
+                }
+                node_config.taint = [
+                    nodepoolv1beta1.TaintItem(key=_LABEL_CPU, value="true", effect="NO_SCHEDULE"),
+                ]
             else:
                 node_config.labels = {
                     _LABEL_POOL: pool.name,

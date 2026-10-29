@@ -101,10 +101,13 @@ spec:
                         Determines what workloads this group runs. System
                         groups host controllers, gateways, and infrastructure.
                         GPU groups host inference workloads and are tainted to
-                        exclude non-GPU pods.
+                        exclude non-GPU pods. CPU groups host CPU inference
+                        workloads: a CPU platform, no GPU, and the
+                        modelplane.ai/cpu label and taint.
                       enum:
                       - System
                       - GPU
+                      - CPU
                     platform:
                       type: string
                       description: >-

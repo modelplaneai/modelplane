@@ -61,12 +61,14 @@ def _inference_cluster(*, cluster: v1alpha1.Cluster, node_pools: list[v1alpha1.N
     )
 
 
-def _desired_inference_cluster(*, gpu_pools: list[dict], cache: dict | None, gateway: dict | None) -> fnv1.Resource:
+def _desired_inference_cluster(
+    *, schedulable_pools: list[dict], cache: dict | None, gateway: dict | None
+) -> fnv1.Resource:
     """The desired InferenceCluster XR's status, with its cache and gateway unless they're None."""
     status: dict = {
         "providerConfigRef": {"name": "test-cluster-cluster-kubeconfig-d0f89"},
         "namespace": "modelplane-system",
-        "gpuPools": gpu_pools,
+        "schedulablePools": schedulable_pools,
     }
     if cache is not None:
         status["cache"] = cache
@@ -92,6 +94,32 @@ def _inference_class(*, name: str, count: int, memory: str, provisioning: dict) 
                             "deviceClassName": "gpu.nvidia.com",
                             "count": count,
                             "capacity": {"memory": {"value": memory}},
+                        },
+                    ],
+                    "provisioning": provisioning,
+                },
+            }
+        )
+    )
+
+
+def _cpu_inference_class(*, name: str, cpus: str, provisioning: dict) -> fnv1.Resource:
+    """An InferenceClass of one DRA-claimed CPU device of cpus cores, as its class requirement returns it."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "InferenceClass",
+                "metadata": {"name": name},
+                "spec": {
+                    "devices": [
+                        {
+                            "name": "cpu",
+                            "claim": "DRA",
+                            "driver": "dra.cpu",
+                            "deviceClassName": "dra.cpu",
+                            "count": 1,
+                            "capacity": {"cpu": {"value": cpus}},
                         },
                     ],
                     "provisioning": provisioning,
@@ -267,6 +295,33 @@ def _vultr_cluster(*, credentials: dict | None, ready: fnv1.Ready) -> fnv1.Resou
     )
 
 
+def _vultr_cluster_cpu(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed VultrCluster with cpu-pool, a CPU-role pool with no gpu block."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                "kind": "VultrCluster",
+                "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                "spec": {
+                    "region": "ewr",
+                    "kubernetesVersion": "v1.36.2+1",
+                    "nodePools": [
+                        {
+                            "name": "cpu-pool",
+                            "role": "CPU",
+                            "plan": "vc2-6c-16gb",
+                            "nodeCount": 2,
+                            "maxNodeCount": 4,
+                        },
+                    ],
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
 def _civo_cluster(*, node_pools: list[dict], credentials: dict | None, ready: fnv1.Ready) -> fnv1.Resource:
     """The composed CivoCluster in LON1 with node_pools, using credentials unless they're None."""
     spec: dict = {"region": "LON1", "nodePools": node_pools}
@@ -309,13 +364,29 @@ def _cluster_provider_config(*, kubeconfig: str, identity: dict | None) -> fnv1.
 
 
 def _serving_stack(
-    *, cloud: str, secrets: list[dict], client_cas: list[dict] | None, gpu: dict | None, ready: fnv1.Ready
+    *,
+    cloud: str,
+    secrets: list[dict],
+    client_cas: list[dict] | None,
+    gpu: dict | None,
+    ready: fnv1.Ready,
+    dra_drivers: tuple[str, ...],
 ) -> fnv1.Resource:
-    """The composed ServingStack, its gateway accepting client_cas and its spec.gpu set to gpu unless they're None."""
+    """The composed ServingStack, its gateway accepting client_cas and its spec.gpu set to gpu unless they're None.
+
+    dra_drivers is the drivers the cluster's classes claim, always stamped
+    on the spec.
+    """
     gateway: dict = {"hostname": "gateway-test-cluster-09532.modelplane-system.svc.cluster.local"}
     if client_cas is not None:
         gateway["clientCAs"] = client_cas
-    spec: dict = {"cloud": cloud, "gateway": gateway, "stack": "Standard", "secrets": secrets}
+    spec: dict = {
+        "cloud": cloud,
+        "gateway": gateway,
+        "stack": "Standard",
+        "secrets": secrets,
+        "draDrivers": list(dra_drivers),
+    }
     if gpu is not None:
         spec["gpu"] = gpu
     return fnv1.Resource(
@@ -544,7 +615,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -569,6 +640,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[{"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu=None,
@@ -648,7 +720,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -682,6 +754,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[
                             {"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"},
                             {
@@ -778,7 +851,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -902,7 +975,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -1008,7 +1081,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -1033,6 +1106,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[{"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu=None,
@@ -1142,7 +1216,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "gpu-l4x4-a",
                             "nodes": 3,
@@ -1174,6 +1248,7 @@ COMPOSE_CASES = [
                         client_cas=None,
                         gpu=None,
                         ready=fnv1.READY_TRUE,
+                        dra_drivers=("gpu.nvidia.com",),
                     ),
                     "pool-observation-gpu-l4x4-a": _pool_observation(pool="gpu-l4x4-a"),
                 },
@@ -1273,7 +1348,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "gpu-l4x4-a",
                             "nodes": 3,
@@ -1302,6 +1377,7 @@ COMPOSE_CASES = [
                         client_cas=None,
                         gpu=None,
                         ready=fnv1.READY_TRUE,
+                        dra_drivers=("gpu.nvidia.com",),
                     ),
                     "pool-observation-gpu-l4x4-a": _pool_observation(pool="gpu-l4x4-a"),
                 },
@@ -1407,7 +1483,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "gpu-l4x4-a",
                             "nodes": 3,
@@ -1439,6 +1515,7 @@ COMPOSE_CASES = [
                         client_cas=None,
                         gpu=None,
                         ready=fnv1.READY_TRUE,
+                        dra_drivers=("gpu.nvidia.com",),
                     ),
                     "pool-observation-gpu-l4x4-a": _pool_observation(pool="gpu-l4x4-a"),
                 },
@@ -1543,7 +1620,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "gpu-l4x4-a",
                             "nodes": 3,
@@ -1572,6 +1649,7 @@ COMPOSE_CASES = [
                         client_cas=None,
                         gpu=None,
                         ready=fnv1.READY_TRUE,
+                        dra_drivers=("gpu.nvidia.com",),
                     ),
                     "pool-observation-gpu-l4x4-a": _pool_observation(pool="gpu-l4x4-a"),
                 },
@@ -1695,7 +1773,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "gpu-l4x4-a",
                             "nodes": 3,
@@ -1726,6 +1804,7 @@ COMPOSE_CASES = [
                         client_cas=None,
                         gpu=None,
                         ready=fnv1.READY_UNSPECIFIED,
+                        dra_drivers=("gpu.nvidia.com",),
                     ),
                     "pool-observation-gpu-l4x4-a": _pool_observation(pool="gpu-l4x4-a"),
                 },
@@ -1826,7 +1905,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -1999,7 +2078,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -2174,7 +2253,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -2222,6 +2301,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="GKE",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[
                             {"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"},
                             {
@@ -2367,7 +2447,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -2422,6 +2502,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="EKS",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[{"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu=None,
@@ -2532,7 +2613,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -2686,7 +2767,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -2824,7 +2905,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "h100-pool",
                             "nodes": 4,
@@ -3012,7 +3093,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "h100-pool",
                             "nodes": 4,
@@ -3083,6 +3164,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Nebius",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[
                             {"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"},
                             {
@@ -3183,7 +3265,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "h100pool",
                             "nodes": 4,
@@ -3361,7 +3443,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "h100pool",
                             "nodes": 4,
@@ -3423,6 +3505,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="AKS",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[{"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu=None,
@@ -3518,7 +3601,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -3662,7 +3745,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -3710,6 +3793,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="GKE",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[
                             {"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"},
                             {
@@ -3794,7 +3878,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l40s-pool",
                             "nodes": 4,
@@ -3893,7 +3977,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l40s-pool",
                             "nodes": 4,
@@ -4028,7 +4112,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l40s-pool",
                             "nodes": 4,
@@ -4058,6 +4142,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Vultr",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[{"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu=None,
@@ -4084,6 +4169,148 @@ COMPOSE_CASES = [
                     "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
                     "class-gpu-l40s-vultr": fnv1.ResourceSelector(
                         api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-l40s-vultr"
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClusterReady", status=fnv1.STATUS_CONDITION_TRUE, reason="ClusterRunning"),
+                fnv1.Condition(type="BackendReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Installing"),
+            ],
+        ),
+    ),
+    # A class with no accelerator describes a CPU pool: the VultrCluster pool is
+    # CPU-role with no gpu block, the ServingStack installs the dra.cpu stack,
+    # and the class's CPU device lists in schedulablePools like any other.
+    ComposeCase(
+        name="VultrReadyCPUPool",
+        reason="Once its VultrCluster is Ready, a Vultr cluster whose pool's class names no accelerator composes a CPU-role pool, a ServingStack claiming dra.cpu and the Usage.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_inference_cluster(
+                    cluster=v1alpha1.Cluster(source="Vultr", vultr=v1alpha1.Vultr(region="ewr")),
+                    node_pools=[
+                        v1alpha1.NodePool(name="cpu-pool", className="cpu-vultr", nodeCount=2, maxNodeCount=4),
+                    ],
+                ),
+                resources={
+                    "vultr-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "VultrCluster",
+                                "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                                "spec": {
+                                    "region": "ewr",
+                                    "nodePools": [
+                                        {
+                                            "name": "cpu-pool",
+                                            "role": "CPU",
+                                            "plan": "vc2-6c-16gb",
+                                            "nodeCount": 2,
+                                        },
+                                    ],
+                                },
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                        },
+                                    ],
+                                    "secrets": [
+                                        {
+                                            "type": "Kubeconfig",
+                                            "name": "test-cluster-kubeconfig-abcde",
+                                            "key": "kubeconfig",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                    "activation": _observed_activation_policy(
+                        activated=["kubernetes.vke.vultr.m.upbound.io", "kubernetesnodepools.vke.vultr.m.upbound.io"]
+                    ),
+                },
+            ),
+            required_resources={
+                "class-cpu-vultr": fnv1.Resources(
+                    items=[
+                        _cpu_inference_class(
+                            name="cpu-vultr",
+                            cpus="6",
+                            provisioning={
+                                "provider": "Vultr",
+                                "vultr": {"plan": "vc2-6c-16gb"},
+                            },
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_inference_cluster(
+                    schedulable_pools=[
+                        {
+                            "name": "cpu-pool",
+                            "nodes": 4,
+                            "devices": [
+                                {
+                                    "name": "cpu",
+                                    "claim": "DRA",
+                                    "driver": "dra.cpu",
+                                    "deviceClassName": "dra.cpu",
+                                    "count": 1,
+                                    "capacity": {"cpu": {"value": "6"}},
+                                },
+                            ],
+                        },
+                    ],
+                    cache=None,
+                    gateway=None,
+                ),
+                resources={
+                    "activation": _activation_policy(
+                        activate=["kubernetes.vke.vultr.m.upbound.io", "kubernetesnodepools.vke.vultr.m.upbound.io"],
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "vultr-cluster": _vultr_cluster_cpu(ready=fnv1.READY_TRUE),
+                    "cluster-provider-config-kubernetes": _cluster_provider_config(
+                        kubeconfig="test-cluster-kubeconfig-abcde", identity=None
+                    ),
+                    "serving-stack": _serving_stack(
+                        cloud="Vultr",
+                        secrets=[{"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"}],
+                        client_cas=None,
+                        gpu=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                        dra_drivers=("dra.cpu",),
+                    ),
+                    "usage-vultr-by-backend": _backend_usage(cluster_kind="VultrCluster"),
+                },
+            ),
+            results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Vultr cluster ready, composing backend")],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "model-replicas": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelReplica",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-routes": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelRoute",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-caches": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache"),
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "class-cpu-vultr": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="cpu-vultr"
                     ),
                 },
             ),
@@ -4140,7 +4367,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l40s-pool",
                             "nodes": 4,
@@ -4262,7 +4489,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l40s-pool",
                             "nodes": 4,
@@ -4418,7 +4645,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l40s-pool",
                             "nodes": 4,
@@ -4466,6 +4693,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Civo",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[{"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu=None,
@@ -4606,7 +4834,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "h100-pool",
                             "nodes": 1,
@@ -4653,6 +4881,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Civo",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[{"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu={"pools": [{"name": "h100-pool", "disableNvLink": True}]},
@@ -4802,7 +5031,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -4834,6 +5063,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[{"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu=None,
@@ -4925,7 +5155,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -4952,6 +5182,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[{"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu=None,
@@ -5029,7 +5260,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -5056,6 +5287,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[{"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu=None,
@@ -5134,7 +5366,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -5160,6 +5392,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[{"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu=None,
@@ -5243,7 +5476,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[
+                    schedulable_pools=[
                         {
                             "name": "l4-pool",
                             "nodes": 4,
@@ -5268,6 +5501,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=("gpu.nvidia.com",),
                         secrets=[{"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu=None,
@@ -5384,6 +5618,122 @@ COMPOSE_CASES = [
             ],
         ),
     ),
+    # The devices gate fires on a cluster that is already running - a shared
+    # class edited to claim a driver the cloud can't serve. Everything after
+    # the gate composes the cluster, so a bare return would empty the desired
+    # state and Crossplane would garbage-collect the cloud cluster XR, the
+    # ServingStack and their Usages. The fatal result is what stops that:
+    # Crossplane returns before applying desired state or collecting anything,
+    # and still applies the condition. This is the case that regresses if the
+    # gate goes back to returning without a fatal result.
+    ComposeCase(
+        name="UnsupportedDriverHolds",
+        reason="A running cluster whose class turns unsupported gets a fatal result, so Crossplane holds its resources instead of collecting them.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_inference_cluster(
+                    cluster=v1alpha1.Cluster(source="GKE", gke=v1alpha1.Gke(region="us-central1")),
+                    node_pools=[
+                        v1alpha1.NodePool(name="l4-pool", className="gpu-l4", nodeCount=2, maxNodeCount=4),
+                    ],
+                ),
+                resources={
+                    "gke-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "GKECluster",
+                                "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2026-06-08T00:00:00Z",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
+            required_resources={
+                "class-gpu-l4": fnv1.Resources(
+                    items=[
+                        fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                {
+                                    "apiVersion": "modelplane.ai/v1alpha1",
+                                    "kind": "InferenceClass",
+                                    "metadata": {"name": "gpu-l4"},
+                                    "spec": {
+                                        "devices": [
+                                            {
+                                                "name": "gpu",
+                                                "claim": "DRA",
+                                                "driver": "gpu.amd.com",
+                                                "deviceClassName": "gpu.amd.com",
+                                                "count": 1,
+                                                "capacity": {"memory": {"value": "24Gi"}},
+                                            },
+                                        ],
+                                        "provisioning": {
+                                            "provider": "GKE",
+                                            "gke": {
+                                                "machineType": "g2-standard-48",
+                                                "diskSizeGb": 100,
+                                                "accelerator": {"type": "nvidia-l4", "count": 1},
+                                            },
+                                        },
+                                    },
+                                }
+                            )
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_FATAL,
+                    message="class gpu-l4 claims gpu.amd.com; the GKE serving stack installs dra.cpu, gpu.nvidia.com",
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "model-replicas": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelReplica",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-routes": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelRoute",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-caches": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache"),
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "class-gpu-l4": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-l4"
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="UnsupportedDevices",
+                    message="class gpu-l4 claims gpu.amd.com; the GKE serving stack installs dra.cpu, gpu.nvidia.com",
+                ),
+            ],
+        ),
+    ),
     # The hostname gate, which is what keeps a cluster off the schedule until
     # traffic to it is mutually authenticated in both directions. These cases
     # observe an existing cluster's ServingStack ready, with whatever it and the
@@ -5426,7 +5776,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[],
+                    schedulable_pools=[],
                     cache=None,
                     gateway={
                         "address": "34.55.100.10",
@@ -5441,6 +5791,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=(),
                         secrets=[{"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"}],
                         client_cas=[{"name": "fleet-0", "certificate": "fleet-ca"}],
                         gpu=None,
@@ -5499,7 +5850,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[], cache=None, gateway={"address": "34.55.100.10", "caCertificate": "cluster-ca"}
+                    schedulable_pools=[], cache=None, gateway={"address": "34.55.100.10", "caCertificate": "cluster-ca"}
                 ),
                 resources={
                     "cluster-provider-config-kubernetes": _cluster_provider_config(
@@ -5507,6 +5858,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=(),
                         secrets=[{"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"}],
                         client_cas=None,
                         gpu=None,
@@ -5569,7 +5921,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_inference_cluster(gpu_pools=[], cache=None, gateway={"address": "34.55.100.10"}),
+                composite=_desired_inference_cluster(
+                    schedulable_pools=[], cache=None, gateway={"address": "34.55.100.10"}
+                ),
                 resources={
                     "usage-replicas": _guard_cluster_usage(reason="InferenceGateways use this InferenceCluster"),
                     "cluster-provider-config-kubernetes": _cluster_provider_config(
@@ -5577,6 +5931,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=(),
                         secrets=[{"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"}],
                         client_cas=[{"name": "fleet-0", "certificate": "fleet-ca"}],
                         gpu=None,
@@ -5638,7 +5993,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_inference_cluster(gpu_pools=[], cache=None, gateway=None),
+                composite=_desired_inference_cluster(schedulable_pools=[], cache=None, gateway=None),
                 resources={
                     "usage-replicas": _guard_cluster_usage(reason="InferenceGateways use this InferenceCluster"),
                     "cluster-provider-config-kubernetes": _cluster_provider_config(
@@ -5646,6 +6001,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=(),
                         secrets=[{"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"}],
                         client_cas=[{"name": "fleet-0", "certificate": "fleet-ca"}],
                         gpu=None,
@@ -5717,7 +6073,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 composite=_desired_inference_cluster(
-                    gpu_pools=[],
+                    schedulable_pools=[],
                     cache=None,
                     gateway={
                         "address": "34.55.100.10",
@@ -5732,6 +6088,7 @@ COMPOSE_CASES = [
                     ),
                     "serving-stack": _serving_stack(
                         cloud="Existing",
+                        dra_drivers=(),
                         secrets=[{"type": "Kubeconfig", "name": "my-kubeconfig", "key": "kubeconfig"}],
                         client_cas=[
                             {"name": "aaa", "certificate": "aaa-ca"},
@@ -5807,3 +6164,106 @@ GATEWAY_HOSTNAME_CASES = [
 def test_gateway_hostname(case: GatewayHostnameCase) -> None:
     """_gateway_hostname derives a cluster's gateway hostname."""
     assert fn._gateway_hostname(case.cluster_name) == case.want, case.reason
+
+
+def _composer(*, source: fn.Cloud, devices_by_class: dict[str, list[dict]]) -> fn.Composer:
+    """A Composer for a test-cluster of the given source whose resolved
+    classes each declare the given devices, calling the derivation and
+    gate directly - through RunFunction every combination would need a
+    whole compose case."""
+    cluster = v1alpha1.Cluster(source=source)
+    req = fnv1.RunFunctionRequest(
+        observed=fnv1.State(composite=_inference_cluster(cluster=cluster, node_pools=None)),
+    )
+    composer = fn.Composer(req, fnv1.RunFunctionResponse())
+    for name, devices in devices_by_class.items():
+        composer.classes[name] = fn.iclv1alpha1.InferenceClass.model_validate(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "InferenceClass",
+                "metadata": {"name": name},
+                "spec": {"devices": devices},
+            }
+        )
+    return composer
+
+
+def test_dra_drivers_sorted() -> None:
+    """dra_drivers collects each claim: DRA device's driver once, sorted."""
+    composer = _composer(
+        source="Existing",
+        devices_by_class={
+            "nvidia-a": [{"name": "gpu", "claim": "DRA", "driver": "gpu.nvidia.com", "deviceClassName": "g"}],
+            "nvidia-b": [{"name": "gpu", "claim": "DRA", "driver": "gpu.nvidia.com", "deviceClassName": "g"}],
+            "cpu": [{"name": "cpu", "claim": "DRA", "driver": "dra.cpu", "deviceClassName": "dra.cpu"}],
+        },
+    )
+    assert composer.dra_drivers() == ["dra.cpu", "gpu.nvidia.com"]
+
+
+def test_dra_drivers_synthetic() -> None:
+    """A Synthetic device is never claimed: its driver names the attribute
+    domain its CEL selectors read, not an installable stack, so it stays
+    off spec.draDrivers. An unset claim defaults to DRA and counts."""
+    composer = _composer(
+        source="Existing",
+        devices_by_class={
+            "efa": [
+                {"name": "gpu", "driver": "gpu.nvidia.com", "deviceClassName": "g"},
+                {"name": "fabric", "claim": "Synthetic", "driver": "fabric.example.com"},
+            ],
+        },
+    )
+    assert composer.dra_drivers() == ["gpu.nvidia.com"]
+
+
+def test_unsupported_devices() -> None:
+    """A class claiming a driver its cloud can't serve gates ClusterReady
+    with UnsupportedDevices and the design's message, and stops with a
+    fatal result so a running cluster holds its existing resources
+    rather than being garbage-collected."""
+    composer = _composer(
+        source="Vultr",
+        devices_by_class={
+            "amd-mi355x-8x": [
+                {"name": "gpu", "claim": "DRA", "driver": "gpu.amd.com", "deviceClassName": "gpu.amd.com"},
+            ],
+        },
+    )
+    assert composer.check_devices_supported("Vultr") is False
+    conditions = {c.type: c for c in composer.rsp.conditions}
+    assert conditions["ClusterReady"].status == fnv1.STATUS_CONDITION_FALSE
+    assert conditions["ClusterReady"].reason == "UnsupportedDevices"
+    assert conditions["ClusterReady"].message == (
+        "class amd-mi355x-8x claims gpu.amd.com; the Vultr serving stack installs dra.cpu, gpu.nvidia.com"
+    )
+    assert [(r.severity, r.message) for r in composer.rsp.results] == [
+        (
+            fnv1.SEVERITY_FATAL,
+            "class amd-mi355x-8x claims gpu.amd.com; the Vultr serving stack installs dra.cpu, gpu.nvidia.com",
+        ),
+    ]
+
+
+def test_external_driver() -> None:
+    """dra.net is declared external on EKS - compose_eks_cluster installs
+    the EFA driver - so it passes there and gates everywhere else."""
+    devices = {
+        "efa": [{"name": "efa", "claim": "DRA", "driver": "dra.net", "deviceClassName": "efa.networking.k8s.aws"}],
+    }
+    assert _composer(source="EKS", devices_by_class=devices).check_devices_supported("EKS") is True
+    assert _composer(source="GKE", devices_by_class=devices).check_devices_supported("GKE") is False
+
+
+def test_existing_never_gates() -> None:
+    """Existing is BYO: any driver is treated as externally installed, so
+    nothing gates - a typo'd driver surfaces when its ResourceClaim can't
+    allocate, not as a condition."""
+    composer = _composer(
+        source="Existing",
+        devices_by_class={
+            "byo": [{"name": "gpu", "claim": "DRA", "driver": "gpu.example.com", "deviceClassName": "g"}],
+        },
+    )
+    assert composer.check_devices_supported("Existing") is True
+    assert list(composer.rsp.conditions) == []

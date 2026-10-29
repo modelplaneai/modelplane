@@ -46,6 +46,16 @@ class JoinFailsClosedCase:
 
 
 @dataclasses.dataclass
+class SupportedDriversCase:
+    """A test case for stacks.supported_drivers."""
+
+    name: str
+    reason: str
+    cloud: str
+    want: frozenset[str]
+
+
+@dataclasses.dataclass
 class WithNvLinkDisabledCase:
     """A test case for civo.with_nvlink_disabled."""
 
@@ -190,6 +200,178 @@ def test_join_fails_closed(case: JoinFailsClosedCase) -> None:
         stacks.join(case.cloud, case.stack)  # ty: ignore[invalid-argument-type]  # cases pass values outside the Literals
 
 
+# The drivers each cloud's serving stack supports, pinned as literals so
+# a new dra_drivers tag or external declaration lands here deliberately -
+# and moves compose-inference-cluster's hand-kept _SUPPORTED_DRA_DRIVERS
+# mirror in the same review. Existing additionally treats any driver
+# beyond its tags as externally installed (see test_join_unknown_existing).
+SUPPORTED_DRIVERS_CASES = [
+    SupportedDriversCase(
+        name="EKS",
+        reason="EKS tags the NVIDIA and CPU stacks and declares dra.net installed outside the serving stack.",
+        cloud="EKS",
+        want=frozenset({"gpu.nvidia.com", "dra.cpu", "dra.net"}),
+    ),
+    SupportedDriversCase(
+        name="AKS",
+        reason="AKS tags the NVIDIA and CPU stacks.",
+        cloud="AKS",
+        want=frozenset({"gpu.nvidia.com", "dra.cpu"}),
+    ),
+    SupportedDriversCase(
+        name="GKE",
+        reason="GKE tags the NVIDIA and CPU stacks.",
+        cloud="GKE",
+        want=frozenset({"gpu.nvidia.com", "dra.cpu"}),
+    ),
+    SupportedDriversCase(
+        name="Nebius",
+        reason="Nebius tags the NVIDIA and CPU stacks.",
+        cloud="Nebius",
+        want=frozenset({"gpu.nvidia.com", "dra.cpu"}),
+    ),
+    SupportedDriversCase(
+        name="Vultr",
+        reason="Vultr tags the NVIDIA and CPU stacks.",
+        cloud="Vultr",
+        want=frozenset({"gpu.nvidia.com", "dra.cpu"}),
+    ),
+    SupportedDriversCase(
+        name="Civo",
+        reason="Civo tags the NVIDIA and CPU stacks.",
+        cloud="Civo",
+        want=frozenset({"gpu.nvidia.com", "dra.cpu"}),
+    ),
+    SupportedDriversCase(
+        name="Existing",
+        reason="Existing is the one cloud that tags the AMD stack, beside NVIDIA and CPU.",
+        cloud="Existing",
+        want=frozenset({"gpu.nvidia.com", "gpu.amd.com", "dra.cpu"}),
+    ),
+]
+
+
+@pytest.mark.parametrize("case", SUPPORTED_DRIVERS_CASES, ids=lambda case: case.name)
+def test_supported_drivers(case: SupportedDriversCase) -> None:
+    """Each cloud's derived supported drivers match the pinned set."""
+    assert stacks.supported_drivers(case.cloud) == case.want, case.reason  # ty: ignore[invalid-argument-type]  # parametrize erases the Literal
+
+
+@pytest.mark.parametrize("stack", stacks.stacks())
+@pytest.mark.parametrize("cloud", stacks.clouds())
+def test_join_filter_empty(cloud: stacks.Cloud, stack: stacks.Stack) -> None:
+    """An empty draDrivers list keeps exactly the untagged components."""
+    assert stacks.join(cloud, stack, dra_drivers=[]) == [c for c in stacks.join(cloud, stack) if not c.dra_drivers]
+
+
+@pytest.mark.parametrize("stack", stacks.stacks())
+@pytest.mark.parametrize("cloud", stacks.clouds())
+def test_join_filter_all(cloud: stacks.Cloud, stack: stacks.Stack) -> None:
+    """Listing every tagged driver reproduces the unfiltered join."""
+    joined = stacks.join(cloud, stack)
+    drivers = sorted({d for c in joined for d in c.dra_drivers})
+    assert stacks.join(cloud, stack, dra_drivers=drivers) == joined
+
+
+def test_join_filter_nvidia() -> None:
+    """gpu.nvidia.com alone installs the NVIDIA stack and no other."""
+    keys = {c.key for c in stacks.join("Existing", "Standard", dra_drivers=["gpu.nvidia.com"])}
+    assert {"node-feature-discovery", "nvidia-dra-driver-gpu", "dra-driver-critical-pods-quota"} <= keys
+    assert {"dra-driver-cpu", "dra-driver-cpu-critical-pods-quota", "amd-gpu-operator"}.isdisjoint(keys)
+
+
+def test_join_filter_cpu() -> None:
+    """dra.cpu alone installs the CPU driver and neither GPU stack - NFD included."""
+    keys = {c.key for c in stacks.join("Existing", "Standard", dra_drivers=["dra.cpu"])}
+    assert {"dra-driver-cpu", "dra-driver-cpu-critical-pods-quota"} <= keys
+    assert {"node-feature-discovery", "nvidia-dra-driver-gpu", "amd-gpu-operator"}.isdisjoint(keys)
+
+
+def test_join_filter_amd() -> None:
+    """gpu.amd.com on Existing installs the AMD operator and the NFD both GPU stacks share."""
+    keys = {c.key for c in stacks.join("Existing", "Standard", dra_drivers=["gpu.amd.com"])}
+    assert {"amd-gpu-operator", "node-feature-discovery"} <= keys
+    assert {"nvidia-dra-driver-gpu", "dra-driver-critical-pods-quota", "dra-driver-cpu"}.isdisjoint(keys)
+
+
+@pytest.mark.parametrize("cloud", [c for c in stacks.clouds() if c != "Existing"])
+def test_join_unknown_driver(cloud: stacks.Cloud) -> None:
+    """A driver the cloud neither tags nor declares external fails the join."""
+    with pytest.raises(ValueError, match=r"gpu\.example\.com"):
+        stacks.join(cloud, "Standard", dra_drivers=["gpu.example.com"])
+
+
+def test_join_unknown_existing() -> None:
+    """Existing treats an unlisted driver as externally installed: no raise, no tagged component."""
+    joined = stacks.join("Existing", "Standard", dra_drivers=["gpu.example.com"])
+    assert [c.key for c in joined if c.dra_drivers] == []
+
+
+def test_join_external_driver() -> None:
+    """EKS's declared-external dra.net is accepted and installs nothing; elsewhere it raises."""
+    joined = stacks.join("EKS", "Standard", dra_drivers=["dra.net"])
+    assert [c.key for c in joined if c.dra_drivers] == []
+    with pytest.raises(ValueError, match=r"dra\.net"):
+        stacks.join("GKE", "Standard", dra_drivers=["dra.net"])
+
+
+def test_join_tagged_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A dependency not carrying every driver its dependent does fails every join for the cloud."""
+    broken = [
+        stacks.Chart(
+            key="dep",
+            release="mp-dep",
+            namespace="d",
+            chart="dep",
+            repository="r",
+            version="1",
+            wait=True,
+            dra_drivers=["gpu.nvidia.com"],
+        ),
+        stacks.Chart(
+            key="user",
+            release="mp-user",
+            namespace="d",
+            chart="user",
+            repository="r",
+            version="1",
+            depends_on=["dep"],
+            dra_drivers=["gpu.nvidia.com", "dra.cpu"],
+        ),
+    ]
+    monkeypatch.setitem(stacks._CLOUDS, "Existing", broken)
+    with pytest.raises(ValueError, match="filtering could remove"):
+        stacks.join("Existing", "Standard")
+
+
+def test_join_untagged_dependent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An untagged component depending on a tagged one fails: the filter keeps it but can drop its dependency."""
+    broken = [
+        stacks.Chart(
+            key="dep",
+            release="mp-dep",
+            namespace="d",
+            chart="dep",
+            repository="r",
+            version="1",
+            wait=True,
+            dra_drivers=["gpu.nvidia.com"],
+        ),
+        stacks.Chart(
+            key="user",
+            release="mp-user",
+            namespace="d",
+            chart="user",
+            repository="r",
+            version="1",
+            depends_on=["dep"],
+        ),
+    ]
+    monkeypatch.setitem(stacks._CLOUDS, "Existing", broken)
+    with pytest.raises(ValueError, match="filtering could remove"):
+        stacks.join("Existing", "Standard")
+
+
 @pytest.mark.parametrize("cloud", ["AKS", "EKS", "GKE"])
 def test_generated_dcgm_csv(cloud: str) -> None:
     """Each generated cloud's inline DCGM exporter CSV is the shared one.
@@ -305,6 +487,7 @@ WITH_NVLINK_DISABLED_CASES = [
                 version="v26.7.1",
                 wait=True,
                 depends_on=["node-feature-discovery", "cert-manager"],
+                dra_drivers=["gpu.nvidia.com"],
                 values={
                     "ccManager": {"enabled": False},
                     "cdi": {"default": True, "enabled": True},
@@ -354,6 +537,7 @@ WITH_NVLINK_DISABLED_CASES = [
                 repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
                 version="0.5.0",
                 depends_on=["gpu-operator", "nvlink-disabled-driver-h100-pool"],
+                dra_drivers=["gpu.nvidia.com"],
                 values={
                     "gpuResourcesEnabledOverride": True,
                     "nvidiaDriverRoot": "/run/nvidia/driver",
@@ -413,6 +597,7 @@ WITH_NVLINK_DISABLED_CASES = [
                 version="v26.7.1",
                 wait=True,
                 depends_on=["node-feature-discovery", "cert-manager"],
+                dra_drivers=["gpu.nvidia.com"],
                 values={
                     "ccManager": {"enabled": False},
                     "cdi": {"default": True, "enabled": True},
@@ -459,6 +644,7 @@ WITH_NVLINK_DISABLED_CASES = [
                 repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
                 version="0.5.0",
                 depends_on=["gpu-operator", "nvlink-disabled-driver-pool-a", "nvlink-disabled-driver-pool-b"],
+                dra_drivers=["gpu.nvidia.com"],
                 values={
                     "gpuResourcesEnabledOverride": True,
                     "nvidiaDriverRoot": "/run/nvidia/driver",

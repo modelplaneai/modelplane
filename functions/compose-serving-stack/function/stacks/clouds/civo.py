@@ -220,19 +220,21 @@ COMPONENTS: list[Component] = [
                     ],
                 },
             },
-            # Disable components we don't need for observability.
-            "grafana": {"enabled": False},
-            "alertmanager": {"enabled": False},
             # The node-exporter chart's default toleration is keyless - it
-            # tolerates every taint, landing the pod on tainted GPU nodes by
-            # accident rather than by intent. Scope it to the GPU taint,
+            # tolerates every taint, landing the pod on tainted nodes by
+            # accident rather than by intent. Scope it to the GPU and CPU pool
+            # taints,
             # mirroring the generated clouds (TOLERATIONS in generate.py); as
             # a DaemonSet it still reaches every untainted node.
             "prometheus-node-exporter": {
                 "tolerations": [
                     {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                    {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
                 ],
             },
+            # Disable components we don't need for observability.
+            "grafana": {"enabled": False},
+            "alertmanager": {"enabled": False},
         },
     ),
     Chart(
@@ -245,6 +247,10 @@ COMPONENTS: list[Component] = [
         # gpu-operator below depends on this chart, so its Ready must
         # mean healthy, not just deployed.
         wait=True,
+        # NFD exists here to label GPU nodes for the DRA driver, so it
+        # carries the GPU stack's driver and stays off clusters whose
+        # classes claim no GPUs.
+        dra_drivers=["gpu.nvidia.com"],
         # The worker must run on the very nodes it is supposed to label:
         # the DRA driver's kubelet plugin schedules only onto nodes
         # carrying an NFD GPU label (feature.node.kubernetes.io/pci-10de
@@ -287,6 +293,7 @@ COMPONENTS: list[Component] = [
         # modelplane_energy_joules_total is empty on Civo - the
         # collector's modelplane-gpu job would find no pod to scrape.
         depends_on=["node-feature-discovery", "cert-manager"],
+        dra_drivers=["gpu.nvidia.com"],
         values={
             "ccManager": {"enabled": False},
             "cdi": {"default": True, "enabled": True},
@@ -363,6 +370,7 @@ COMPONENTS: list[Component] = [
         repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
         version="0.5.0",
         depends_on=["gpu-operator"],
+        dra_drivers=["gpu.nvidia.com"],
         values={
             "gpuResourcesEnabledOverride": True,
             "nvidiaDriverRoot": "/run/nvidia/driver",

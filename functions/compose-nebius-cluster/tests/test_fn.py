@@ -312,6 +312,55 @@ def _nodegroup_gpu(
     )
 
 
+def _nodegroup_cpu(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed node group for the cpu-pool pool, with the CPU label and taint and no GPU settings."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "mk8s.nebius.m.upbound.io/v1beta1",
+                "kind": "NodeGroup",
+                "spec": {
+                    "providerConfigRef": {"kind": cred_kind, "name": cred_name},
+                    "forProvider": {
+                        "name": "test-cluster-cpu-pool",
+                        "parentIdSelector": {"matchControllerRef": True},
+                        "version": "1.34",
+                        "template": {
+                            "resources": {"platform": "cpu-d3", "preset": "8vcpu-32gb"},
+                            "bootDisk": {"sizeGibibytes": 100, "type": "NETWORK_SSD"},
+                            "networkInterfaces": [
+                                {"subnetIdSelector": {"matchControllerRef": True}},
+                            ],
+                            "filesystems": [
+                                {
+                                    "attachMode": "READ_WRITE",
+                                    "mountTag": "modelplane-cache",
+                                    "existingFilesystem": {"idSelector": {"matchControllerRef": True}},
+                                },
+                            ],
+                            "cloudInitUserDataSecretRef": {
+                                "name": "test-cluster-cloud-init-fd2f2",
+                                "key": "userData",
+                            },
+                            "metadata": {
+                                "labels": {
+                                    "modelplane.ai/pool": "cpu-pool",
+                                    "modelplane.ai/cpu": "true",
+                                },
+                            },
+                            "taints": [
+                                {"key": "modelplane.ai/cpu", "value": "true", "effect": "NO_SCHEDULE"},
+                            ],
+                        },
+                        "autoscaling": {"minNodeCount": 1, "maxNodeCount": 4},
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
 def _provider_config(*, api_version: str) -> fnv1.Resource:
     """A Ready ProviderConfig targeting the cluster as the Nebius service account."""
     return fnv1.Resource(
@@ -413,6 +462,73 @@ COMPOSE_CASES = [
                         autoscaling={"minNodeCount": 1, "maxNodeCount": 4},
                         fixed_node_count=None,
                         fabric=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "nebius-provider-config": fnv1.ResourceSelector(
+                        api_version="nebius.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
+                    ),
+                },
+            ),
+        ),
+    ),
+    Case(
+        name="FirstPassCPUPool",
+        reason="A CPU-role node group composes with the modelplane.ai/pool and modelplane.ai/cpu labels and the CPU taint, and no GPU settings.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="cpu-pool",
+                            role="CPU",
+                            platform="cpu-d3",
+                            preset="8vcpu-32gb",
+                            nodeCount=1,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+            ),
+            required_resources={
+                "nebius-provider-config": fnv1.Resources(
+                    items=[_nebius_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(credentials_secret=True),
+                resources={
+                    "network": _network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "filesystem": _filesystem(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cloud-init": _cloud_init_secret(),
+                    "nodegroup-system": _nodegroup_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodegroup-cpu-pool": _nodegroup_cpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
