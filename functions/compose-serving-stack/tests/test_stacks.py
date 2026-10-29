@@ -531,7 +531,7 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
 
 # The clouds that install NVIDIA's standalone dcgm-exporter chart rather
 # than the gpu-operator.
-STANDALONE_EXPORTER_CLOUDS = ("Nebius", "CoreWeave")
+STANDALONE_EXPORTER_CLOUDS = ("Nebius", "CoreWeave", "UpCloud")
 
 
 @pytest.mark.parametrize("cloud", STANDALONE_EXPORTER_CLOUDS)

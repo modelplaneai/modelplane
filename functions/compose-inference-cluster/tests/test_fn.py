@@ -6959,7 +6959,7 @@ COMPOSE_CASES = [
                     gateway={
                         "serviceAnnotations": {
                             "service.beta.kubernetes.io/upcloud-load-balancer-config": (
-                                '{"name": "11111111-2222-3333-4444-555555555555-{gateway}"}'
+                                '{"name": "11111111-2222-3333-4444-555555555555-{gateway}", "frontends": [{"mode": "tcp"}]}'
                             ),
                         },
                     },
@@ -7003,7 +7003,7 @@ COMPOSE_CASES = [
                         gpu=None,
                         service_annotations={
                             "service.beta.kubernetes.io/upcloud-load-balancer-config": (
-                                '{"name": "11111111-2222-3333-4444-555555555555-{gateway}"}'
+                                '{"name": "11111111-2222-3333-4444-555555555555-{gateway}", "frontends": [{"mode": "tcp"}]}'
                             ),
                         },
                         dra_drivers=("gpu.nvidia.com",),

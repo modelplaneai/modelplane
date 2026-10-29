@@ -95,7 +95,7 @@ OBJECTS_CASES = [
             hostname="test-backend.gateways.example.com",
             serviceAnnotations={
                 "service.beta.kubernetes.io/upcloud-load-balancer-config": (
-                    '{"name": "11111111-2222-3333-4444-555555555555-{gateway}"}'
+                    '{"name": "11111111-2222-3333-4444-555555555555-{gateway}", "frontends": [{"mode": "tcp"}]}'
                 ),
             },
         ),
@@ -115,7 +115,7 @@ OBJECTS_CASES = [
                                     "externalTrafficPolicy": "Cluster",
                                     "annotations": {
                                         "service.beta.kubernetes.io/upcloud-load-balancer-config": (
-                                            '{"name": "11111111-2222-3333-4444-555555555555-cluster-gateway"}'
+                                            '{"name": "11111111-2222-3333-4444-555555555555-cluster-gateway", "frontends": [{"mode": "tcp"}]}'
                                         ),
                                     },
                                 },

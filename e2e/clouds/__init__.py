@@ -311,6 +311,7 @@ CLOUDS: dict[str, Cloud] = {
             "nvidia-dra-driver/dra-driver-nvidia-gpu-kubelet-plugin": 2,
             "node-feature-discovery/mp-node-feature-discovery-worker": 3,
             "monitoring/mp-kube-prometheus-stack-prometheus-node-exporter": 3,
+            "dcgm-exporter/mp-dcgm-exporter": 2,
         },
     ),
     # The hand-written Vultr half (stacks/clouds/vultr.py) has no NFD: Vultr
