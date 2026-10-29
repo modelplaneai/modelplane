@@ -161,6 +161,17 @@ spec:
                         with upctl server plans.
                       minLength: 1
                       maxLength: 63
+                    diskSizeGb:
+                      type: integer
+                      default: 100
+                      description: >-
+                        Node disk size in GB. Honored for GPU and Cloud
+                        Native plans, whose storage UpCloud unbundles from
+                        the plan; Starter and Premium plans bundle a fixed
+                        disk and ignore it. UKS's default GPU plan disk is
+                        too small to hold an inference serving image.
+                      minimum: 10
+                      maximum: 4096
                     nodeCount:
                       type: integer
                       default: 1
@@ -208,6 +219,13 @@ spec:
           status:
             description: UpCloudClusterStatus defines the observed state of UpCloudCluster.
             properties:
+              clusterId:
+                type: string
+                description: >-
+                  UUID of the UKS cluster at UpCloud, once observed.
+                  compose-inference-cluster builds account-unique gateway
+                  load balancer names from it.
+                maxLength: 36
               secrets:
                 type: array
                 description: >-
