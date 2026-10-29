@@ -36,17 +36,32 @@ clouds:
   - name: Vultr
     term: Vultr
     icon: brand-vultr
-gpus:
+  - name: Civo
+    term: Civo
+    icon: brand-civo
+  - name: Bring your own
+    term: Existing
+accelerators:
   - name: A16
     mem: 16G
+    icon: brand-nvidia
   - name: L4
     mem: 24G
+    icon: brand-nvidia
   - name: A100
     mem: 40/80G
+    icon: brand-nvidia
   - name: H100
     mem: 80G
+    icon: brand-nvidia
   - name: H200
     mem: 141G
+    icon: brand-nvidia
+  - name: MI325X
+    mem: 256G
+    icon: brand-amd
+  - name: CPU
+    icon: cpu
 servingModes:
   - Standalone
   - LeaderWorker

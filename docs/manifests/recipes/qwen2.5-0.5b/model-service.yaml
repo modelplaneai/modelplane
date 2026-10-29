@@ -1,0 +1,15 @@
+# Publishes the deployment's endpoints as one model a caller can name:
+# <namespace>/<service>, so ml-team/qwen here. Modelplane composes one
+# ModelEndpoint per ModelReplica, labeled with the deployment name, so
+# this selector reaches every replica.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: qwen
+  namespace: ml-team
+spec:
+  endpoints:
+  - name: qwen-demo
+    selector:
+      matchLabels:
+        modelplane.ai/deployment: qwen-demo

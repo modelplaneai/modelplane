@@ -1,0 +1,29 @@
+# An InferenceClass describing a Civo CPU node pool - no GPU at all.
+#
+# The provisioning block has no accelerator, so the cluster composition
+# builds the pool with the CPU role: a standard node image and the
+# modelplane.ai/cpu label and taint, nothing GPU. The serving stack installs
+# dra-driver-cpu when a class claims dra.cpu, which publishes each node's
+# cores as claimable devices (one device per NUMA node) and registers the
+# dra.cpu DeviceClass.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: civo-cpu-8vcpu
+spec:
+  description: "Civo g4p.kube.medium, 8 vCPUs, no GPU"
+  provisioning:
+    provider: Civo
+    civo:
+      size: g4p.kube.medium
+  devices:
+  - name: cpu
+    claim: DRA
+    driver: dra.cpu
+    deviceClassName: dra.cpu
+    count: 1
+    capacity:
+      # The node's 8 vCPUs less the two dra-driver-cpu reserves for the OS
+      # and kubelet (reservedCPUs 0-1), which is what the driver's
+      # ResourceSlices report as claimable.
+      cpu: { value: "6" }

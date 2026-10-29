@@ -1,0 +1,20 @@
+# Registers the bring-your-own cluster and installs the serving stack onto
+# it through the kubeconfig Secret. The composed ServingStack gets
+# draDrivers: [gpu.amd.com], so the AMD GPU operator (DRA mode) installs and
+# the NVIDIA and CPU device stacks stay out. Existing is the one cloud that
+# installs the AMD stack today.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: amd-byo
+spec:
+  cluster:
+    source: Existing
+    existing:
+      secretRef:
+        name: byo-cluster-kubeconfig
+        key: kubeconfig
+  nodePools:
+  - name: gpu-mi325x
+    className: amd-mi325x-8x
+    nodeCount: 1

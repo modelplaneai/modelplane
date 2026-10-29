@@ -1,0 +1,29 @@
+# An InferenceClass describing a BYO 8x AMD Instinct MI325X node pool.
+#
+# No provisioning block: this class describes hardware that already exists on
+# a bring-your-own cluster whose node images carry the amdgpu kernel driver.
+# When a cluster references it, the serving stack installs the AMD GPU
+# operator in DRA mode (driver management off), whose DRA driver publishes
+# the GPUs as gpu.amd.com ResourceSlices. Label the pool's nodes
+# modelplane.ai/pool=<pool name>; the amd.com/gpu=true:NoSchedule taint is
+# the convention that keeps system workloads off them, and engine pods
+# tolerate it.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: amd-mi325x-8x
+spec:
+  description: "BYO 8x AMD Instinct MI325X 256GB"
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.amd.com
+    deviceClassName: gpu.amd.com
+    count: 8
+    attributes:
+      productName: { string: AMD_Instinct_MI325_OAM }
+    capacity:
+      # The MI325X's usable HBM3e as the AMD DRA driver's ResourceSlices
+      # report it, not its nominal 256GB. A nodeSelector asking for
+      # >= 256Gi would never bind.
+      memory: { value: "262128Mi" }
