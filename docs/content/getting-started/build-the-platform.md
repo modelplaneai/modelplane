@@ -334,6 +334,13 @@ kubectl wait --for=condition=Ready ic/upcloud-fi-hel2 --timeout=20m
 {{< /tab >}}
 {{< /tabs >}}
 
+To see which stage provisioning is in, run `kubectl get ic`. The `CLUSTER`,
+`POOLS` and `STACK` columns show each stage's progress. `CLUSTER` or `POOLS`
+reads `Failed` while the cloud provider reports that it failed to create, update
+or delete one of the stage's resources. Not every resource reports failures;
+[provisioning status]({{< ref "platform/inference-cluster.md#provisioning-status" >}})
+says which ones do.
+
 {{< hint "note" >}}
 Modelplane is reconciling the infrastructure against the source of truth, the
 manifest you just applied.
