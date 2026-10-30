@@ -219,6 +219,45 @@ spec:
           status:
             description: AKSClusterStatus defines the observed state of AKSCluster.
             properties:
+              nodePools:
+                type: array
+                description: >-
+                  The provisioning state of each node pool in spec.nodePools.
+                  The system node pool Modelplane adds belongs to the cluster
+                  itself, so its state is part of the ClusterReady condition.
+                maxItems: 8
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys:
+                - name
+                items:
+                  type: object
+                  required:
+                  - name
+                  - state
+                  properties:
+                    name:
+                      type: string
+                      description: Name of the node pool in spec.nodePools.
+                      maxLength: 40
+                    state:
+                      type: string
+                      description: >-
+                        Pending until Modelplane composes the pool's cloud
+                        resources, Provisioning until their provider reports
+                        them all Ready, then Ready. Failed while the provider
+                        reports that its last create, update or delete of one
+                        of them failed.
+                      enum:
+                      - Pending
+                      - Provisioning
+                      - Ready
+                      - Failed
+                    message:
+                      type: string
+                      description: >-
+                        The provider's error, prefixed with the name of the
+                        composed resource it's about. Set only when state is
+                        Failed.
               secrets:
                 type: array
                 description: >-

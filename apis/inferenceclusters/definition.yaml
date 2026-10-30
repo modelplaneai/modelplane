@@ -583,6 +583,39 @@ spec:
           status:
             type: object
             properties:
+              nodePools:
+                type: array
+                description: >-
+                  The provisioning state of each node pool in spec.nodePools,
+                  as the cluster Modelplane provisions reports it. Not set
+                  when source is Existing, because Modelplane doesn't
+                  provision those pools.
+                maxItems: 8
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys: [name]
+                items:
+                  type: object
+                  required: [name, state]
+                  properties:
+                    name:
+                      type: string
+                      maxLength: 40
+                      description: Name of the node pool in spec.nodePools.
+                    state:
+                      type: string
+                      enum: [Pending, Provisioning, Ready, Failed]
+                      description: >-
+                        Pending until Modelplane composes the pool's cloud
+                        resources, Provisioning until their provider reports
+                        them all Ready, then Ready. Failed while the provider
+                        reports that its last create, update or delete of one
+                        of them failed.
+                    message:
+                      type: string
+                      description: >-
+                        The provider's error, prefixed with the name of the
+                        composed resource it's about. Set only when state is
+                        Failed.
               providerConfigRef:
                 type: object
                 properties:
