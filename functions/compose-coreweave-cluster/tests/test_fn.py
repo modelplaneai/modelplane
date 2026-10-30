@@ -102,12 +102,13 @@ def _xr(*, credentials: v1alpha1.Credentials | None, node_pools: list[v1alpha1.N
     return fnv1.Resource(resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json", by_alias=True)))
 
 
-def _desired_xr(*, ready: fnv1.Ready) -> fnv1.Resource:
-    """The desired XR, publishing the kubeconfig Secret and the cache StorageClass."""
+def _desired_xr(*, ready: fnv1.Ready, node_pools: list[dict]) -> fnv1.Resource:
+    """The desired XR, publishing the kubeconfig Secret, the cache StorageClass and node_pools' states."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
                 "status": {
+                    "nodePools": node_pools,
                     "secrets": [
                         {
                             "type": "Kubeconfig",
@@ -574,7 +575,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_FALSE),
+                composite=_desired_xr(ready=fnv1.READY_FALSE, node_pools=[{"name": "gpu-h100", "state": "Pending"}]),
                 resources={
                     "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(
@@ -590,6 +591,20 @@ COMPOSE_CASES = [
                 ),
             ],
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 5 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
@@ -647,7 +662,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_FALSE),
+                composite=_desired_xr(ready=fnv1.READY_FALSE, node_pools=[{"name": "gpu-h100", "state": "Pending"}]),
                 resources={
                     "vpc": _vpc(cred_kind="ProviderConfig", cred_name="team", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(cred_kind="ProviderConfig", cred_name="team", ready=fnv1.READY_UNSPECIFIED),
@@ -661,6 +676,20 @@ COMPOSE_CASES = [
                 ),
             ],
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 5 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
@@ -713,7 +742,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_FALSE),
+                composite=_desired_xr(ready=fnv1.READY_FALSE, node_pools=[{"name": "gpu-h100", "state": "Pending"}]),
                 resources={
                     "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -722,6 +751,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="3 of 5 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
@@ -775,7 +818,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_UNSPECIFIED),
+                composite=_desired_xr(
+                    ready=fnv1.READY_UNSPECIFIED, node_pools=[{"name": "gpu-h100", "state": "Provisioning"}]
+                ),
                 resources={
                     "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -809,6 +854,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="7 of 9 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
@@ -875,7 +934,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_UNSPECIFIED),
+                composite=_desired_xr(
+                    ready=fnv1.READY_UNSPECIFIED, node_pools=[{"name": "gpu-h100", "state": "Ready"}]
+                ),
                 resources={
                     "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -923,6 +984,19 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="8 of 9 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
@@ -984,7 +1058,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_UNSPECIFIED),
+                composite=_desired_xr(
+                    ready=fnv1.READY_UNSPECIFIED, node_pools=[{"name": "gpu-h100", "state": "Provisioning"}]
+                ),
                 resources={
                     "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -1032,6 +1108,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="8 of 9 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
@@ -1127,7 +1217,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_UNSPECIFIED),
+                composite=_desired_xr(
+                    ready=fnv1.READY_UNSPECIFIED, node_pools=[{"name": "gpu-h100", "state": "Provisioning"}]
+                ),
                 resources={
                     "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -1194,6 +1286,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="8 of 10 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
@@ -1246,7 +1352,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_UNSPECIFIED),
+                composite=_desired_xr(
+                    ready=fnv1.READY_UNSPECIFIED, node_pools=[{"name": "cpu-pool", "state": "Provisioning"}]
+                ),
                 resources={
                     "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -1276,6 +1384,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="7 of 9 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
@@ -1405,7 +1527,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_UNSPECIFIED),
+                composite=_desired_xr(
+                    ready=fnv1.READY_UNSPECIFIED, node_pools=[{"name": "gpu-h100", "state": "Ready"}]
+                ),
                 resources={
                     "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -1456,6 +1580,18 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
@@ -1524,7 +1660,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_UNSPECIFIED),
+                composite=_desired_xr(
+                    ready=fnv1.READY_UNSPECIFIED, node_pools=[{"name": "gpu-h100", "state": "Provisioning"}]
+                ),
                 resources={
                     "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(
@@ -1577,6 +1715,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="6 of 9 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
@@ -1626,7 +1778,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_FALSE),
+                composite=_desired_xr(ready=fnv1.READY_FALSE, node_pools=[{"name": "gpu-h100", "state": "Pending"}]),
                 resources={
                     "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(
@@ -1657,6 +1809,20 @@ COMPOSE_CASES = [
                 ),
             ],
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 5 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
@@ -1697,7 +1863,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_FALSE),
+                composite=_desired_xr(ready=fnv1.READY_FALSE, node_pools=[{"name": "gpu-h100", "state": "Pending"}]),
                 resources={
                     "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -1714,6 +1880,20 @@ COMPOSE_CASES = [
                 ),
             ],
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 5 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
@@ -1777,7 +1957,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(ready=fnv1.READY_FALSE),
+                composite=_desired_xr(ready=fnv1.READY_FALSE, node_pools=[{"name": "gpu-h100", "state": "Pending"}]),
                 resources={
                     "vpc": _vpc(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -1794,6 +1974,20 @@ COMPOSE_CASES = [
                 ),
             ],
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 5 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "coreweave-provider-config": fnv1.ResourceSelector(
