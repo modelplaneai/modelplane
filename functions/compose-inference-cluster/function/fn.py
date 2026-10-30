@@ -2233,16 +2233,19 @@ class Composer:
                 self.fail(CONDITION_REASON_INVALID_NODE_POOL, msg)
                 return False
             prov = cls.spec.provisioning.upcloud
+            # A class with no accelerator describes a CPU pool (see the GKE
+            # builder above).
             node_pool = upcloudv1alpha1.NodePool(
                 name=pool.name,
-                role="GPU",
+                role="GPU" if prov.accelerator else "CPU",
                 plan=prov.plan,
                 diskSizeGb=prov.diskSizeGb,
                 nodeCount=pool.nodeCount,
-                gpu=upcloudv1alpha1.Gpu(
-                    acceleratorType=prov.accelerator.type,
-                ),
             )
+            if prov.accelerator:
+                node_pool.gpu = upcloudv1alpha1.Gpu(
+                    acceleratorType=prov.accelerator.type,
+                )
             # Only set the autoscaling bounds when the pool opts in, so
             # fixed-size pools stay fixed (resource.update serializes with
             # exclude_unset, keeping unset bounds out of the UpCloudCluster
