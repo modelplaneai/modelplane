@@ -108,6 +108,50 @@ must meet what Modelplane would otherwise set up for you:
   describes how the collector discovers the exporter, the DCGM fields it
   needs, and how to check what yours publishes.
 
+## Provisioning status
+
+An `InferenceCluster` reports how far provisioning has got through four
+conditions, one for each stage:
+
+| Condition | Covers | Reasons while not `True` |
+|---|---|---|
+| `Accepted` | The node pools' classes and capacity reservations exist and suit the cloud, and the classes claim devices the cloud supports. | `WaitingForClasses`, `WaitingForReservations`, `InvalidNodePool`, `UnsupportedDevices` |
+| `ClusterReady` | The network, control plane, system nodes and cluster add-ons. | `Pending`, `Provisioning`, `Failed` |
+| `NodePoolsReady` | The node pools in `spec.nodePools`. | `Pending`, `Provisioning`, `Failed` |
+| `ServingStackReady` | The serving stack. | `Pending`, `Provisioning` |
+
+A stage that's done is `True` with the reason `Available`. A stage is `Pending`
+while it waits for an earlier one, so while a new cluster provisions, the first
+condition that isn't `True` names the stage it's in. Once a stage has started,
+it reports its own state: on a running cluster, the serving stack stays
+`Available` while a node pool you add is `Provisioning`.
+
+`Provisioning` means Modelplane is creating or updating the stage's resources.
+`ClusterReady`'s message counts how many of them are ready, and
+`NodePoolsReady`'s counts the ready pools.
+
+`Failed` means the cloud provider reports that its last create, update or
+delete of one of the stage's resources failed. `ClusterReady`'s message is the
+provider's error, prefixed with the resource's name. `NodePoolsReady`'s message
+names the failed pools, and each pool's error is in `status.nodePools`. Only
+resources the cloud provider creates asynchronously, such as the control plane
+and node groups, report failures this way. A failed IAM role, Helm release or
+in-cluster object leaves its stage `Provisioning`.
+
+An `Existing` cluster reports `ClusterReady` and `NodePoolsReady` with the
+reason `Existing`, because Modelplane doesn't provision it.
+
+`kubectl get` shows each stage's reason:
+
+```bash
+kubectl get ic eks-us-east
+```
+
+```text
+NAME          SOURCE   CLUSTER     POOLS          STACK     GATEWAY   SYNCED   READY   COMPOSITION                          AGE
+eks-us-east   EKS      Available   Provisioning   Pending             True     False   inferenceclusters.modelplane.ai      24m
+```
+
 ## Serving stack
 
 `spec.stack` selects the serving layer the cluster runs: `Standard` (the default)
