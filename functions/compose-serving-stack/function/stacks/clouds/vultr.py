@@ -33,6 +33,11 @@ on those nodes.
 
 from function.stacks.components import Chart, Component
 
+# DRA drivers this cloud supports that arrive outside the serving
+# stack; the stacks package folds them into its derived
+# supported-drivers table.
+EXTERNAL_DRIVERS: list[str] = []
+
 COMPONENTS: list[Component] = [
     Chart(
         key="cert-manager",

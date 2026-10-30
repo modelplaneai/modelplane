@@ -154,6 +154,11 @@ def with_nvlink_disabled(components: list[Component], pools: list[str]) -> list[
     return out
 
 
+# DRA drivers this cloud supports that arrive outside the serving
+# stack; the stacks package folds them into its derived
+# supported-drivers table.
+EXTERNAL_DRIVERS: list[str] = []
+
 COMPONENTS: list[Component] = [
     Chart(
         key="cert-manager",

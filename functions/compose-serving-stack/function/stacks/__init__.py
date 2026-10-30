@@ -70,10 +70,10 @@ _EXTERNAL_DRIVERS: dict[Cloud, frozenset[str]] = {
     "EKS": frozenset(eks.EXTERNAL_DRIVERS),
     "AKS": frozenset(aks.EXTERNAL_DRIVERS),
     "GKE": frozenset(gke.EXTERNAL_DRIVERS),
-    "Nebius": frozenset(),
-    "Vultr": frozenset(),
-    "Civo": frozenset(),
-    "Existing": frozenset(),
+    "Nebius": frozenset(nebius.EXTERNAL_DRIVERS),
+    "Vultr": frozenset(vultr.EXTERNAL_DRIVERS),
+    "Civo": frozenset(civo.EXTERNAL_DRIVERS),
+    "Existing": frozenset(existing.EXTERNAL_DRIVERS),
 }
 
 

@@ -32,6 +32,11 @@ carry the amdgpu kernel driver.
 
 from function.stacks.components import Chart, Component, Manifests
 
+# DRA drivers this cloud supports that arrive outside the serving
+# stack. None are declared: join() treats every driver this list
+# doesn't tag as externally installed on Existing.
+EXTERNAL_DRIVERS: list[str] = []
+
 COMPONENTS: list[Component] = [
     Chart(
         key="cert-manager",
