@@ -128,6 +128,37 @@ class Nebius(BaseModel):
     """
 
 
+class SecretRefModel(BaseModel):
+    key: constr(min_length=1, max_length=253) | None = 'token'
+    name: constr(min_length=1, max_length=253)
+
+
+class Autoscaler(BaseModel):
+    secretRef: SecretRefModel
+    """
+    Reference to a Secret in the modelplane-system namespace holding an UpCloud API token.
+    """
+
+
+class Upcloud(BaseModel):
+    autoscaler: Autoscaler | None = None
+    """
+    Credentials for the Kubernetes cluster autoscaler that scales pools with maxNodeCount set. UpCloud provisions no API credentials on UKS clusters, so the referenced Secret is copied to the cluster for the autoscaler to read. Required when any pool sets maxNodeCount.
+    """
+    credentials: Credentials | None = None
+    """
+    UpCloud ProviderConfig or ClusterProviderConfig used to authenticate to the UpCloud API. Defaults to the ClusterProviderConfig named default.
+    """
+    kubernetesVersion: constr(min_length=1, max_length=16) | None = '1.36'
+    """
+    UKS Kubernetes version as major.minor (e.g. 1.36); list current versions with upctl kubernetes versions. Defaults to the newest UKS version. Choose 1.34 or newer so Dynamic Resource Allocation (how GPUs bind to pods) is generally available.
+    """
+    zone: constr(min_length=1, max_length=32)
+    """
+    UpCloud zone for the cluster (e.g. fi-hel2, de-fra1). GPU plans are currently available in fi-hel2 only.
+    """
+
+
 class Vultr(BaseModel):
     credentials: Credentials | None = None
     """
@@ -168,9 +199,15 @@ class Cluster(BaseModel):
     """
     Nebius mk8s cluster configuration. Required when source is Nebius; may be empty, since every field has a default. The cluster is created in the project the referenced ProviderConfig or ClusterProviderConfig sets as its projectID; Nebius projects are bound to a region, so the project also determines where the cluster runs.
     """
-    source: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Civo', 'Existing']
+    source: Literal[
+        'GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Civo', 'UpCloud', 'Existing'
+    ]
     """
     Cluster provisioning method.
+    """
+    upcloud: Upcloud | None = None
+    """
+    UpCloud Managed Kubernetes (UKS) cluster configuration. Required when source is UpCloud.
     """
     vultr: Vultr | None = None
     """
@@ -339,6 +376,12 @@ class Gateway(BaseModel):
     hostname: str | None = None
     """
     The stable internal name an InferenceGateway addresses the gateway by, derived by Modelplane. Each InferenceGateway resolves it to address with a Service on its own cluster; it is also the gateway's TLS SNI and certificate SAN. ModelDeployment builds a ModelEndpoint origin from it. Set once the gateway has an address and both directions are mutually authenticated, and withheld otherwise.
+    """
+    serviceAnnotations: dict[str, constr(max_length=1024)] | None = Field(
+        None, max_length=8
+    )
+    """
+    Annotations every gateway's LoadBalancer Service on this cluster carries, applied through a per-Gateway EnvoyProxy. {gateway} in a value is replaced with the Gateway's name by the function composing it. Set only on clouds whose load balancers need them.
     """
 
 

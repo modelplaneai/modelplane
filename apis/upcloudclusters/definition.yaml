@@ -1,0 +1,271 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: upcloudclusters.infrastructure.modelplane.ai
+spec:
+  group: infrastructure.modelplane.ai
+  names:
+    categories:
+    - crossplane
+    - modelplane
+    - infrastructure
+    kind: UpCloudCluster
+    plural: upcloudclusters
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    referenceable: true
+    additionalPrinterColumns:
+    - name: ZONE
+      type: string
+      jsonPath: .spec.zone
+    schema:
+      openAPIV3Schema:
+        description: >-
+          An UpCloudCluster provisions an UpCloud Managed Kubernetes (UKS)
+          cluster on a dedicated SDN network, with node groups for GPU
+          inference and system workloads. It outputs a Secret containing the
+          cluster kubeconfig. The kubeconfig embeds static client
+          certificates, so consumers need nothing beyond it to reach the
+          cluster. UKS has no server-side node group autoscaler; pools with
+          maxNodeCount set are scaled by the Kubernetes cluster autoscaler
+          installed on the cluster, which authenticates to the UpCloud API
+          with the token Secret spec.autoscaler references. UpCloud honors
+          only nodeCount changes on an existing node group; any other node
+          group change replaces the group.
+        properties:
+          spec:
+            description: UpCloudClusterSpec defines the desired state of UpCloudCluster.
+            required:
+            - zone
+            - nodePools
+            x-kubernetes-validations:
+            - rule: "!self.nodePools.exists(p, has(p.maxNodeCount)) || has(self.autoscaler)"
+              message: >-
+                autoscaler is required when any node pool sets maxNodeCount:
+                the cluster autoscaler authenticates to the UpCloud API with
+                the token Secret it references.
+            properties:
+              zone:
+                type: string
+                description: >-
+                  UpCloud zone for the cluster and its network (e.g. fi-hel2,
+                  de-fra1). GPU plans are currently available in fi-hel2
+                  only; list zones with upctl zone list.
+                minLength: 1
+                maxLength: 32
+              kubernetesVersion:
+                type: string
+                default: "1.36"
+                description: >-
+                  UKS Kubernetes version as major.minor (e.g. 1.36); list
+                  current versions with upctl kubernetes versions. Defaults
+                  to the newest UKS version. Choose 1.34 or newer so Dynamic
+                  Resource Allocation (how devices bind to pods) is generally
+                  available, and 1.36 or newer for a CPU pool: its cores are
+                  claimed as consumable capacity, which Kubernetes enables by
+                  default from 1.36 (DRAConsumableCapacity).
+                minLength: 1
+                maxLength: 16
+              credentials:
+                type: object
+                description: >-
+                  UpCloud ProviderConfig or ClusterProviderConfig used to
+                  authenticate to the UpCloud API. Defaults to the
+                  ClusterProviderConfig named default.
+                properties:
+                  type:
+                    type: string
+                    default: ClusterProviderConfig
+                    enum:
+                    - ProviderConfig
+                    - ClusterProviderConfig
+                  name:
+                    type: string
+                    default: default
+                    minLength: 1
+                    maxLength: 253
+              autoscaler:
+                type: object
+                description: >-
+                  Credentials for the Kubernetes cluster autoscaler that
+                  scales pools with maxNodeCount set. UpCloud provisions no
+                  API credentials on UKS clusters, so the referenced Secret
+                  is copied to the cluster for the autoscaler to read.
+                  Required when any pool sets maxNodeCount.
+                required:
+                - secretRef
+                properties:
+                  secretRef:
+                    type: object
+                    description: >-
+                      Reference to a Secret in this UpCloudCluster's
+                      namespace holding an UpCloud API token.
+                    required:
+                    - name
+                    properties:
+                      name:
+                        type: string
+                        minLength: 1
+                        maxLength: 253
+                      key:
+                        type: string
+                        default: token
+                        minLength: 1
+                        maxLength: 253
+              nodePools:
+                type: array
+                description: >-
+                  Node pools for the cluster. At least one System pool is
+                  required for controllers and infrastructure workloads.
+                minItems: 1
+                maxItems: 8
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys:
+                - name
+                items:
+                  type: object
+                  required:
+                  - name
+                  - role
+                  - plan
+                  x-kubernetes-validations:
+                  - rule: "self.role != 'GPU' || has(self.gpu)"
+                    message: gpu is required when role is GPU.
+                  - rule: "!has(self.minNodeCount) || has(self.maxNodeCount)"
+                    message: maxNodeCount is required when minNodeCount is set.
+                  - rule: "self.name != 'system'"
+                    message: system is reserved for the injected system node pool.
+                  properties:
+                    name:
+                      type: string
+                      description: >-
+                        Unique name for this node pool. Used as the UKS node
+                        group name, so it must be lowercase alphanumeric and
+                        dashes.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+                    role:
+                      type: string
+                      description: >-
+                        Determines what workloads this pool runs. System
+                        pools host controllers, gateways, and infrastructure.
+                        GPU pools host inference workloads and are tainted to
+                        exclude non-GPU pods. CPU pools host CPU inference
+                        workloads: a non-GPU plan and the modelplane.ai/cpu
+                        label and taint.
+                      enum:
+                      - System
+                      - GPU
+                      - CPU
+                    plan:
+                      type: string
+                      description: >-
+                        UpCloud server plan for the pool's nodes (e.g.
+                        GPU-8xCPU-64GB-1xL40S, PREMIUM-4xCPU-16GB). This is
+                        the instance type used by other clouds; list plans
+                        with upctl server plans.
+                      minLength: 1
+                      maxLength: 63
+                    diskSizeGb:
+                      type: integer
+                      default: 100
+                      description: >-
+                        Node disk size in GB. Honored for GPU and Cloud
+                        Native plans, whose storage UpCloud unbundles from
+                        the plan; Starter and Premium plans bundle a fixed
+                        disk and ignore it. UKS's default GPU plan disk is
+                        too small to hold an inference serving image.
+                      minimum: 10
+                      maximum: 4096
+                    nodeCount:
+                      type: integer
+                      default: 1
+                      description: >-
+                        Number of nodes. Fixed unless maxNodeCount enables
+                        autoscaling.
+                      minimum: 1
+                      maximum: 120
+                    minNodeCount:
+                      type: integer
+                      description: >-
+                        Minimum number of nodes for autoscaling. Defaults to
+                        nodeCount when maxNodeCount is set. Requires
+                        maxNodeCount.
+                      minimum: 1
+                      maximum: 120
+                    maxNodeCount:
+                      type: integer
+                      description: >-
+                        Maximum number of nodes for autoscaling. When set the
+                        node pool autoscales between minNodeCount (or
+                        nodeCount) and this. UKS has no server-side
+                        autoscaler, so the Kubernetes cluster autoscaler is
+                        installed on the cluster to drive the pool's node
+                        count through the UpCloud API, which requires
+                        spec.autoscaler. Omit for fixed-size pools.
+                      minimum: 1
+                      maximum: 120
+                    gpu:
+                      type: object
+                      description: >-
+                        GPU configuration. Required when role is GPU.
+                      required:
+                      - acceleratorType
+                      properties:
+                        acceleratorType:
+                          type: string
+                          description: >-
+                            GPU accelerator type (e.g. nvidia-l40s,
+                            nvidia-h100). Used to label GPU nodes; the actual
+                            GPU and count are determined by the plan.
+                          minLength: 1
+                          maxLength: 63
+            type: object
+          status:
+            description: UpCloudClusterStatus defines the observed state of UpCloudCluster.
+            properties:
+              clusterId:
+                type: string
+                description: >-
+                  UUID of the UKS cluster at UpCloud, once observed.
+                  compose-inference-cluster builds account-unique gateway
+                  load balancer names from it.
+                maxLength: 36
+              secrets:
+                type: array
+                description: >-
+                  Secrets produced by this cluster. Consumers use these to
+                  authenticate to the cluster. All secrets are in the same
+                  namespace as this UpCloudCluster.
+                items:
+                  type: object
+                  required:
+                  - type
+                  - name
+                  - key
+                  properties:
+                    type:
+                      type: string
+                      description: >-
+                        The type of credential this secret contains.
+                        Kubeconfig contains a kubeconfig file with the
+                        cluster endpoint, CA certificate, and static client
+                        certificates.
+                      enum:
+                      - Kubeconfig
+                    name:
+                      type: string
+                      description: Name of the Secret.
+                      maxLength: 253
+                    key:
+                      type: string
+                      description: >-
+                        Key within the Secret that holds the credential data.
+                      maxLength: 253
+            type: object
+        required:
+        - spec
+        type: object
+    served: true

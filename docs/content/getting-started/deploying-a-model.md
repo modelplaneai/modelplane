@@ -33,6 +33,9 @@ The device selector matches against the capacity declared in the
 {{< tab "Nebius" >}}
 {{< manifests "getting-started/nebius/model-deployment.yaml" >}}
 {{< /tab >}}
+{{< tab "UpCloud" >}}
+{{< manifests "getting-started/upcloud/model-deployment.yaml" >}}
+{{< /tab >}}
 {{< /tabs >}}
 
 Wait until `REPLICAS` shows `1`:

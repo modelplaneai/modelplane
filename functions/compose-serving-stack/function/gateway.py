@@ -31,6 +31,19 @@ from models.ai.modelplane.infrastructure.servingstack import v1alpha1
 # fn.compose_gateway_pki). The HTTPS listener terminates TLS with it.
 _GATEWAY_SERVING_SECRET = "cluster-gateway-serving"
 
+# The Gateway's name, which also replaces {gateway} in
+# spec.gateway.serviceAnnotations values, so a cloud can name each
+# gateway's load balancer uniquely.
+_GATEWAY_NAME = "cluster-gateway"
+
+# The per-cluster EnvoyProxy carrying the gateway Service's cloud-specific
+# annotations. The Gateway references it through its own parametersRef,
+# which replaces (not merges with) the GatewayClass-level EnvoyProxy the
+# stack's common components lay down, so it restates the
+# externalTrafficPolicy pin from common.py's gateway-proxy component; a
+# change to one moves both.
+_LB_PROXY_NAME = "cluster-gateway-lb"
+
 # Label compose-inference-cluster stamps on the namespaces it mirrors onto this
 # cluster. The gateway's listeners select on it so a replica's HTTPRoute attaches
 # from its own team's namespace.
@@ -51,8 +64,13 @@ READY_CEL = "has(object.status.addresses) && object.status.addresses.size() > 0"
 
 
 def objects(gw: v1alpha1.Gateway) -> list[tuple[str, dict[str, Any], str | None]]:
-    """The gateway pair as (key, manifest, readiness CEL) triples."""
-    return [
+    """The gateway pair as (key, manifest, readiness CEL) triples.
+
+    With spec.gateway.serviceAnnotations set, a per-cluster EnvoyProxy
+    joins the pair to put them on the Gateway's LoadBalancer Service,
+    and the Gateway references it instead of the GatewayClass default.
+    """
+    triples: list[tuple[str, dict[str, Any], str | None]] = [
         (
             "gateway-class",
             {
@@ -73,17 +91,57 @@ def objects(gw: v1alpha1.Gateway) -> list[tuple[str, dict[str, Any], str | None]
             },
             None,
         ),
+    ]
+
+    gateway_spec: dict[str, Any] = {
+        "gatewayClassName": gw.className,
+    }
+    if gw.serviceAnnotations:
+        triples.append(
+            (
+                "gateway-lb-proxy",
+                {
+                    "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+                    "kind": "EnvoyProxy",
+                    "metadata": {"name": _LB_PROXY_NAME, "namespace": "modelplane-system"},
+                    "spec": {
+                        "provider": {
+                            "type": "Kubernetes",
+                            "kubernetes": {
+                                "envoyService": {
+                                    "externalTrafficPolicy": "Cluster",
+                                    "annotations": {
+                                        k: v.replace("{gateway}", _GATEWAY_NAME)
+                                        for k, v in gw.serviceAnnotations.items()
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                None,
+            )
+        )
+        gateway_spec["infrastructure"] = {
+            "parametersRef": {
+                "group": "gateway.envoyproxy.io",
+                "kind": "EnvoyProxy",
+                "name": _LB_PROXY_NAME,
+            },
+        }
+
+    triples.append(
         (
             "gateway",
             {
                 "apiVersion": "gateway.networking.k8s.io/v1",
                 "kind": "Gateway",
                 "metadata": {
-                    "name": "cluster-gateway",
+                    "name": _GATEWAY_NAME,
                     "namespace": "modelplane-system",
                 },
                 "spec": {
-                    "gatewayClassName": gw.className,
+                    **gateway_spec,
                     # One HTTPS listener and nothing else. The gateway's Service
                     # is a public load balancer with a port per listener, and the
                     # serving HTTPRoutes carry no sectionName, so they attach to
@@ -115,5 +173,6 @@ def objects(gw: v1alpha1.Gateway) -> list[tuple[str, dict[str, Any], str | None]
                 },
             },
             READY_CEL,
-        ),
-    ]
+        )
+    )
+    return triples

@@ -488,6 +488,17 @@ class Composer:
         assert self.cluster and self.cluster.status and self.cluster.status.providerConfigRef
         return self.cluster.status.providerConfigRef.name or ""
 
+    def _gateway_service_annotations(self) -> dict[str, str] | None:
+        """Annotations this gateway's LoadBalancer Service must carry,
+        published by the cluster for clouds whose load balancers need them,
+        with {gateway} replaced by this Gateway's name."""
+        if not (self.cluster and self.cluster.status and self.cluster.status.gateway):
+            return None
+        annotations = self.cluster.status.gateway.serviceAnnotations
+        if not annotations:
+            return None
+        return {k: v.replace("{gateway}", _GATEWAY_NAME) for k, v in annotations.items()}
+
     def compose_secrets(self) -> None:
         """Copy the gateway's Secrets to its cluster.
 
@@ -545,7 +556,16 @@ class Composer:
         the header carrying it is removed before the request reaches a
         third-party backend, so a log reading the header would drop the caller
         from the records that attribute provider spend.
+
+        The cluster's gateway service annotations, published on the
+        InferenceCluster by clouds whose load balancers need them, land on
+        this gateway's LoadBalancer Service with {gateway} replaced by this
+        Gateway's name.
         """
+        envoy_service: dict = {"externalTrafficPolicy": "Cluster"}
+        annotations = self._gateway_service_annotations()
+        if annotations:
+            envoy_service["annotations"] = annotations
         resource.update(
             self.rsp.desired.resources["envoy-proxy"],
             _k8s_object(
@@ -558,7 +578,7 @@ class Composer:
                         "provider": {
                             "type": "Kubernetes",
                             "kubernetes": {
-                                "envoyService": {"externalTrafficPolicy": "Cluster"},
+                                "envoyService": envoy_service,
                                 "envoyDeployment": {
                                     "replicas": _PROXY_REPLICAS,
                                     "patch": {"type": "StrategicMerge", "value": _NDOTS_PATCH},

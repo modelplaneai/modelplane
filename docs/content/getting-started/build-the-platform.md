@@ -51,6 +51,10 @@ against this capacity without knowing which cluster it runs on.
 - A Civo account with access to GPU node sizes
 - A Civo API key
 {{< /tab >}}
+{{< tab "UpCloud" >}}
+- An UpCloud account with access to GPU plans (quota is granted per account; ask UpCloud support to raise it)
+- An UpCloud API token
+{{< /tab >}}
 {{< /tabs >}}
 
 ## Configure cloud credentials
@@ -181,6 +185,23 @@ Apply the `ClusterProviderConfig` referencing your secret:
 
 {{< manifests "getting-started/clusterproviderconfig-civo.yaml" >}}
 {{< /tab >}}
+
+{{< tab "UpCloud" >}}
+Create a Kubernetes secret from your API token, as the JSON `creds` key
+the provider parses:
+
+{{< editCode >}}
+```bash
+kubectl create secret generic upcloud-credentials \
+  --from-literal=creds='{"token": "$@<upcloud-api-token>$@"}' \
+  -n crossplane-system
+```
+{{< /editCode >}}
+
+Apply the `ClusterProviderConfig` referencing your secret:
+
+{{< manifests "getting-started/clusterproviderconfig-upcloud.yaml" >}}
+{{< /tab >}}
 {{</tabs>}}
 
 ## Publish hardware and register the cluster
@@ -256,6 +277,16 @@ GPU Operator installs it on first boot):
 kubectl wait --for=condition=Ready ic/civo-nyc1 --timeout=20m
 ```
 {{< /tab >}}
+
+{{< tab "UpCloud" >}}
+{{< manifests "getting-started/upcloud/platform.yaml" >}}
+
+Modelplane provisions the cluster. This takes about 15 minutes:
+
+```bash
+kubectl wait --for=condition=Ready ic/upcloud-fi-hel2 --timeout=20m
+```
+{{< /tab >}}
 {{< /tabs >}}
 
 {{< hint "note" >}}
@@ -311,6 +342,9 @@ for an example with TLS and authentication.
 {{< /tab >}}
 {{< tab "Civo" >}}
 {{< manifests "getting-started/civo/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< tab "UpCloud" >}}
+{{< manifests "getting-started/upcloud/inference-gateway.yaml" >}}
 {{< /tab >}}
 {{< /tabs >}}
 

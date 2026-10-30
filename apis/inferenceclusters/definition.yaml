@@ -32,6 +32,8 @@ spec:
             x-kubernetes-validations:
             - rule: "self.cluster.source != 'Nebius' || !has(self.nodePools) || self.nodePools.all(p, !has(p.fabric) || p.fabric.type != 'InfiniBand' || has(p.fabric.infiniband))"
               message: fabric.infiniband is required when fabric.type is InfiniBand and cluster.source is Nebius.
+            - rule: "self.cluster.source != 'UpCloud' || !has(self.nodePools) || !self.nodePools.exists(p, has(p.maxNodeCount)) || (has(self.cluster.upcloud) && has(self.cluster.upcloud.autoscaler))"
+              message: cluster.upcloud.autoscaler is required when a node pool sets maxNodeCount and cluster.source is UpCloud.
             properties:
               cluster:
                 type: object
@@ -51,12 +53,14 @@ spec:
                   message: spec.cluster.vultr is required when spec.cluster.source is Vultr.
                 - rule: "self.source != 'Civo' || has(self.civo)"
                   message: spec.cluster.civo is required when spec.cluster.source is Civo.
+                - rule: "self.source != 'UpCloud' || has(self.upcloud)"
+                  message: spec.cluster.upcloud is required when spec.cluster.source is UpCloud.
                 properties:
                   source:
                     type: string
                     description: >-
                       Cluster provisioning method.
-                    enum: [GKE, EKS, AKS, Nebius, Vultr, Civo, Existing]
+                    enum: [GKE, EKS, AKS, Nebius, Vultr, Civo, UpCloud, Existing]
                   existing:
                     type: object
                     description: >-
@@ -373,6 +377,77 @@ spec:
                             default: default
                             minLength: 1
                             maxLength: 253
+                  upcloud:
+                    type: object
+                    description: >-
+                      UpCloud Managed Kubernetes (UKS) cluster configuration.
+                      Required when source is UpCloud.
+                    required: [zone]
+                    properties:
+                      zone:
+                        type: string
+                        description: >-
+                          UpCloud zone for the cluster (e.g. fi-hel2,
+                          de-fra1). GPU plans are currently available in
+                          fi-hel2 only.
+                        minLength: 1
+                        maxLength: 32
+                      kubernetesVersion:
+                        type: string
+                        default: "1.36"
+                        description: >-
+                          UKS Kubernetes version as major.minor (e.g. 1.36);
+                          list current versions with upctl kubernetes
+                          versions. Defaults to the newest UKS version.
+                          Choose 1.34 or newer so Dynamic Resource Allocation
+                          (how GPUs bind to pods) is generally available.
+                        minLength: 1
+                        maxLength: 16
+                      credentials:
+                        type: object
+                        description: >-
+                          UpCloud ProviderConfig or ClusterProviderConfig used
+                          to authenticate to the UpCloud API. Defaults to the
+                          ClusterProviderConfig named default.
+                        properties:
+                          type:
+                            type: string
+                            default: ClusterProviderConfig
+                            enum:
+                            - ProviderConfig
+                            - ClusterProviderConfig
+                          name:
+                            type: string
+                            default: default
+                            minLength: 1
+                            maxLength: 253
+                      autoscaler:
+                        type: object
+                        description: >-
+                          Credentials for the Kubernetes cluster autoscaler
+                          that scales pools with maxNodeCount set. UpCloud
+                          provisions no API credentials on UKS clusters, so
+                          the referenced Secret is copied to the cluster for
+                          the autoscaler to read. Required when any pool sets
+                          maxNodeCount.
+                        required: [secretRef]
+                        properties:
+                          secretRef:
+                            type: object
+                            description: >-
+                              Reference to a Secret in the modelplane-system
+                              namespace holding an UpCloud API token.
+                            required: [name]
+                            properties:
+                              name:
+                                type: string
+                                minLength: 1
+                                maxLength: 253
+                              key:
+                                type: string
+                                default: token
+                                minLength: 1
+                                maxLength: 253
               stack:
                 type: string
                 default: Standard
@@ -459,6 +534,12 @@ spec:
                 items:
                   type: object
                   required: [name, className]
+                  x-kubernetes-validations:
+                  - rule: "self.name != 'system'"
+                    message: >-
+                      system is reserved for the system node pool every
+                      provisioned cluster injects; a pool by that name would
+                      take its place.
                   properties:
                     name:
                       type: string
@@ -619,6 +700,18 @@ spec:
                       certificate. An InferenceGateway validates the gateway's
                       serving certificate against it. Written once cert-manager on
                       the cluster has issued.
+                  serviceAnnotations:
+                    type: object
+                    description: >-
+                      Annotations every gateway's LoadBalancer Service on
+                      this cluster carries, applied through a per-Gateway
+                      EnvoyProxy. {gateway} in a value is replaced with the
+                      Gateway's name by the function composing it. Set only
+                      on clouds whose load balancers need them.
+                    maxProperties: 8
+                    additionalProperties:
+                      type: string
+                      maxLength: 1024
               cache:
                 type: object
                 description: >-

@@ -62,6 +62,7 @@ spec:
                 - Nebius
                 - Vultr
                 - Civo
+                - UpCloud
                 - Existing
               draDrivers:
                 type: array
@@ -229,6 +230,17 @@ spec:
                           description: The CA certificate, PEM encoded.
                           minLength: 1
                           maxLength: 16384
+                  serviceAnnotations:
+                    type: object
+                    description: >-
+                      Annotations for the gateway's LoadBalancer Service,
+                      applied through a per-Gateway EnvoyProxy. {gateway} in
+                      a value is replaced with the Gateway's name. Projected
+                      from the InferenceCluster, not user input.
+                    maxProperties: 8
+                    additionalProperties:
+                      type: string
+                      maxLength: 1024
             type: object
           status:
             description: ServingStackStatus defines the observed state of ServingStack.

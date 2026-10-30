@@ -292,6 +292,40 @@ CLOUDS: dict[str, Cloud] = {
             "dcgm-exporter/mp-dcgm-exporter": 2,
         },
     ),
+    # The hand-written UpCloud half (stacks/clouds/upcloud.py) matches
+    # Nebius's shape: UKS GPU node images ship the NVIDIA driver and
+    # container toolkit, so the half installs no gpu-operator, and its
+    # charts keep default names. The labels and taint mirror what
+    # compose-upcloud-cluster stamps on GPU node groups. The OS release
+    # labels match a live UKS 1.36 GPU node (Debian 13); nothing in the
+    # UpCloud half reads them (no GPU operator), they just keep the fake
+    # nodes shaped like the real ones.
+    "upcloud": Cloud(
+        cloud="UpCloud",
+        labels={
+            "node.kubernetes.io/instance-type": "GPU-8xCPU-64GB-1xL40S",
+            "modelplane.ai/pool": "gpu-fake",
+            "modelplane.ai/gpu": "nvidia-l40s",
+            "nvidia.com/gpu.present": "true",
+            "feature.node.kubernetes.io/pci-10de.present": "true",
+            "feature.node.kubernetes.io/system-os_release.ID": "debian",
+            "feature.node.kubernetes.io/system-os_release.VERSION_ID": "13",
+        },
+        taint_value="true",
+        cpu_labels={
+            "node.kubernetes.io/instance-type": "PREMIUM-8xCPU-32GB",
+            "modelplane.ai/pool": "cpu-fake",
+            "modelplane.ai/cpu": "true",
+        },
+        dra_drivers=("dra.cpu", "gpu.nvidia.com"),
+        expected_daemonsets={
+            "nvidia-dra-driver/dra-driver-nvidia-gpu-kubelet-plugin": 2,
+            "dra-driver-cpu/mp-dra-driver-cpu": 2,
+            "node-feature-discovery/mp-node-feature-discovery-worker": 3,
+            "monitoring/mp-kube-prometheus-stack-prometheus-node-exporter": 5,
+            "dcgm-exporter/mp-dcgm-exporter": 2,
+        },
+    ),
     # The hand-written Vultr half (stacks/clouds/vultr.py) has no NFD: Vultr
     # pre-installs the NVIDIA GPU Operator (and with it NFD) on every VKE GPU
     # cluster, so the stack must not run a second instance. That platform

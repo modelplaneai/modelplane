@@ -1,8 +1,9 @@
 {
   "packages": {
-    "fs://apis": "a214ca0e4ca2772e256e3da42cb23ba4c79d25a648e3eee69acc5c87b9b3dab2",
+    "fs://apis": "016f117a465b05d2421bb39eaa9914f3956ced9f35f2fc0a067abefa09bd6fb0",
     "git://https://github.com/crossplane/crossplane/cluster/crds": "90d8b72ad8b829f0bcd7d7d5a98eaa0d579f244a",
     "git://https://github.com/modelplaneai/cluster-agent/cluster/charts/cluster-agent/files/crds": "ca7631d72ef8550a2d2f415f33db1ec52b20c65c",
+    "xpkg://xpkg.upbound.io/crossplane-contrib/provider-upcloud:v1.0.2": "sha256:8cad22497dc00f9bf6ce998d9d46d945044b8e8ab4723caa72d7fe296321b9f6",
     "xpkg://xpkg.upbound.io/upbound/provider-aws-ec2:v2.9.4": "sha256:7a0febdfb8da2d59a9fdcdbc2d476811f00566fcb941880313fc2034b0ca6177",
     "xpkg://xpkg.upbound.io/upbound/provider-aws-efs:v2.9.4": "sha256:46bc928b63c2ab10c673f8872270e0cfcfce529a0d16deb48d0078f936aebe51",
     "xpkg://xpkg.upbound.io/upbound/provider-aws-eks:v2.9.4": "sha256:0d182a7bfced789e274cc0b2e94e4286d912f13ee70b9dab3e7e0caca2611d8f",

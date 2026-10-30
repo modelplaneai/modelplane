@@ -91,9 +91,9 @@ runs, so prefer a separate control plane for cloud work.
 
 ## Cloud serving stacks on kind (`--cloud`)
 
-`nix run .#e2e -- --cloud eks|aks|gke|civo|nebius|vultr|existing` installs that
+`nix run .#e2e -- --cloud eks|aks|gke|civo|nebius|upcloud|vultr|existing` installs that
 cloud's serving stack — the AICR-generated component lists for EKS/AKS/GKE, or
-the hand-written halves for Civo, Nebius, Vultr and Existing — onto the same
+the hand-written halves for Civo, Nebius, UpCloud, Vultr and Existing — onto the same
 workload kind cluster, with no cloud credentials. The trick is
 [KWOK](https://kwok.sigs.k8s.io): bring-up applies its pinned `kwok.yaml` and
 `stage-fast.yaml` manifests and two fake Nodes per device pool, labelled and

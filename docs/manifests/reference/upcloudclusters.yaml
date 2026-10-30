@@ -1,0 +1,22 @@
+apiVersion: infrastructure.modelplane.ai/v1alpha1
+kind: UpCloudCluster
+metadata:
+  name: inference-fi-hel2
+  namespace: platform
+spec:
+  zone: fi-hel2
+  autoscaler:
+    secretRef:
+      name: upcloud-autoscaler
+  nodePools:
+    - name: workers
+      role: System
+      plan: PREMIUM-4xCPU-16GB
+      nodeCount: 2
+    - name: gpu-l40s
+      role: GPU
+      plan: GPU-8xCPU-64GB-1xL40S
+      nodeCount: 1
+      maxNodeCount: 8
+      gpu:
+        acceleratorType: nvidia-l40s

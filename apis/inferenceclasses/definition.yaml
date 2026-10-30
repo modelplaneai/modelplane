@@ -117,6 +117,20 @@ spec:
               message: >-
                 spec.provisioning.civo.accelerator must be omitted when no
                 device claims a DRA driver other than dra.cpu.
+            - rule: >-
+                !has(self.provisioning) || !has(self.provisioning.upcloud) ||
+                has(self.provisioning.upcloud.accelerator) ||
+                !(has(self.devices) && self.devices.exists(d, (!has(d.claim) || d.claim == 'DRA') && d.driver != 'dra.cpu'))
+              message: >-
+                spec.provisioning.upcloud.accelerator is required when a device
+                claims a DRA driver other than dra.cpu.
+            - rule: >-
+                !has(self.provisioning) || !has(self.provisioning.upcloud) ||
+                !has(self.provisioning.upcloud.accelerator) ||
+                (has(self.devices) && self.devices.exists(d, (!has(d.claim) || d.claim == 'DRA') && d.driver != 'dra.cpu'))
+              message: >-
+                spec.provisioning.upcloud.accelerator must be omitted when no
+                device claims a DRA driver other than dra.cpu.
             # dra-driver-cpu runs only on CPU pools, so a provisioned GPU
             # pool never publishes dra.cpu devices for a claim to allocate.
             - rule: >-
@@ -151,10 +165,12 @@ spec:
                   message: spec.provisioning.vultr is required when spec.provisioning.provider is Vultr.
                 - rule: "self.provider != 'Civo' || has(self.civo)"
                   message: spec.provisioning.civo is required when spec.provisioning.provider is Civo.
+                - rule: "self.provider != 'UpCloud' || has(self.upcloud)"
+                  message: spec.provisioning.upcloud is required when spec.provisioning.provider is UpCloud.
                 properties:
                   provider:
                     type: string
-                    enum: [GKE, EKS, AKS, Nebius, Vultr, Civo]
+                    enum: [GKE, EKS, AKS, Nebius, Vultr, Civo, UpCloud]
                   gke:
                     type: object
                     required: [machineType]
@@ -416,6 +432,50 @@ spec:
                             description: >-
                               GPU accelerator type (e.g. nvidia-l40s,
                               nvidia-a100). Informational - reported on
+                              the consuming InferenceCluster's status.
+                            minLength: 1
+                            maxLength: 63
+                          count:
+                            type: integer
+                            minimum: 1
+                            maximum: 16
+                  upcloud:
+                    type: object
+                    required: [plan]
+                    properties:
+                      plan:
+                        type: string
+                        description: >-
+                          UpCloud server plan (e.g. GPU-8xCPU-64GB-1xL40S,
+                          PREMIUM-8xCPU-32GB). The plan determines the GPU
+                          model and count, if any. The accelerator block
+                          below doesn't change the hardware, but whether
+                          it's set decides whether the pool is provisioned
+                          as a GPU or a CPU pool.
+                        minLength: 1
+                        maxLength: 63
+                      diskSizeGb:
+                        type: integer
+                        default: 100
+                        minimum: 10
+                      accelerator:
+                        type: object
+                        description: >-
+                          GPU accelerator to attach when provisioning the node
+                          pool. Provisioning input only: the scheduler matches
+                          against spec.devices, not this block. Set this when
+                          and only when a device claims a DRA driver other
+                          than dra.cpu; the API rejects a mismatch.
+                          Omitted, Modelplane provisions a CPU pool: a standard
+                          node image, the modelplane.ai/cpu label and taint,
+                          and no GPU stack.
+                        required: [type, count]
+                        properties:
+                          type:
+                            type: string
+                            description: >-
+                              GPU accelerator type (e.g. nvidia-l40s,
+                              nvidia-h100). Informational - reported on
                               the consuming InferenceCluster's status.
                             minLength: 1
                             maxLength: 63
