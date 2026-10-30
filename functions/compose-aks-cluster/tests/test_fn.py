@@ -39,6 +39,25 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
+@dataclasses.dataclass
+class Derived:
+    """What derive_conditions reports: each node pool's state, and the conditions it sets."""
+
+    node_pools: list[dict]
+    conditions: list[fnv1.Condition]
+
+
+@dataclasses.dataclass
+class DeriveConditionsCase:
+    """A test case for Composer.derive_conditions."""
+
+    name: str
+    reason: str
+    req: fnv1.RunFunctionRequest
+    desired: fnv1.State
+    want: Derived
+
+
 def _xr(*, credentials: v1alpha1.Credentials | None, node_pools: list[v1alpha1.NodePool]) -> fnv1.Resource:
     """The observed AKSCluster XR, with the given credentials and node pools."""
     xr = v1alpha1.AKSCluster(
@@ -52,12 +71,13 @@ def _xr(*, credentials: v1alpha1.Credentials | None, node_pools: list[v1alpha1.N
     return fnv1.Resource(resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json", by_alias=True)))
 
 
-def _desired_xr() -> fnv1.Resource:
-    """The desired XR, publishing its kubeconfig Secret and cache StorageClass."""
+def _desired_xr(*, node_pools: list[dict]) -> fnv1.Resource:
+    """The desired XR, publishing node_pools' states, its kubeconfig Secret and cache StorageClass."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
                 "status": {
+                    "nodePools": node_pools,
                     "secrets": [
                         {
                             "type": "Kubeconfig",
@@ -271,6 +291,27 @@ def _provider_config(*, api_version: str) -> fnv1.Resource:
     )
 
 
+def _observed_failed(*, message: str) -> fnv1.Resource:
+    """An observed managed resource whose provider reports its last operation failed with message."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "LastAsyncOperation",
+                            "status": "False",
+                            "reason": "AsyncCreateFailure",
+                            "message": message,
+                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                        },
+                    ],
+                },
+            }
+        ),
+    )
+
+
 def _to_dict(msg: message.Message) -> dict:
     """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
     return json.loads(json_format.MessageToJson(msg, sort_keys=True))
@@ -304,7 +345,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpuh100", "state": "Provisioning"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -326,6 +367,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 6 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -351,7 +406,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "cpupool", "state": "Provisioning"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -371,6 +426,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 6 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -399,7 +468,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpuh100", "state": "Provisioning"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -424,6 +493,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 6 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -452,7 +535,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpuh100", "state": "Provisioning"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -474,6 +557,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 6 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -554,7 +651,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpuh100", "state": "Provisioning"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -655,6 +752,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="4 of 8 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     # The ProviderConfigs reach the cluster through its kubeconfig, not the
@@ -684,7 +795,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpuh100", "state": "Provisioning"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ProviderConfig", cred_name="my-azure-account", ready=fnv1.READY_UNSPECIFIED
@@ -709,6 +820,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 6 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -905,7 +1030,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpuh100", "state": "Ready"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
@@ -963,6 +1088,18 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
         ),
     ),
 ]
@@ -1030,3 +1167,283 @@ def test_dns_prefix_wired() -> None:
     got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
     cluster = resource.struct_to_dict(got.desired.resources["cluster"].resource)
     assert cluster["spec"]["forProvider"]["dnsPrefix"] == "modelplane-system-mpiiiiiiiiiiiiiiiiiiiiiiiii-ak-0d844"
+
+
+# Each case's XR has two pools, each built by its node pool: gpua10, and
+# gpuh100, an InfiniBand pool whose network operator release counts toward the
+# cluster. desired is what the function composed, with the readiness
+# mark_readiness set.
+DERIVE_CONDITIONS_CASES = [
+    DeriveConditionsCase(
+        name="ClusterProvisioning",
+        reason="With cluster resources unready, ClusterReady counts how many are ready and NodePoolsReady waits on it while each pool provisions.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(name="gpua10", role="GPU", vmSize="Standard_NV36ads_A10_v5", nodeCount=1),
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            nodeCount=1,
+                            fabric="InfiniBand",
+                        ),
+                    ],
+                ),
+            ),
+        ),
+        desired=fnv1.State(
+            resources={
+                "resource-group": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "virtual-network": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "subnet": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "cluster": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "release-network-operator": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "provider-config-kubernetes": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "provider-config-helm": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "nodepool-gpua10": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "nodepool-gpuh100": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+            },
+        ),
+        want=Derived(
+            node_pools=[{"name": "gpua10", "state": "Provisioning"}, {"name": "gpuh100", "state": "Provisioning"}],
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="3 of 7 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+        ),
+    ),
+    DeriveConditionsCase(
+        name="PoolsProvisioning",
+        reason="With every cluster resource ready and the gpuh100 pool's node pool unready, only gpua10 is Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(name="gpua10", role="GPU", vmSize="Standard_NV36ads_A10_v5", nodeCount=1),
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            nodeCount=1,
+                            fabric="InfiniBand",
+                        ),
+                    ],
+                ),
+            ),
+        ),
+        desired=fnv1.State(
+            resources={
+                "resource-group": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "virtual-network": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "subnet": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "cluster": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "release-network-operator": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "provider-config-kubernetes": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "provider-config-helm": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "storage-class-rwx-fs": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "nodepool-gpua10": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "nodepool-gpuh100": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+            },
+        ),
+        want=Derived(
+            node_pools=[{"name": "gpua10", "state": "Ready"}, {"name": "gpuh100", "state": "Provisioning"}],
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 2 node pools ready",
+                ),
+            ],
+        ),
+    ),
+    DeriveConditionsCase(
+        name="AllReady",
+        reason="With every resource ready, ClusterReady and NodePoolsReady are True and every pool is Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(name="gpua10", role="GPU", vmSize="Standard_NV36ads_A10_v5", nodeCount=1),
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            nodeCount=1,
+                            fabric="InfiniBand",
+                        ),
+                    ],
+                ),
+            ),
+        ),
+        desired=fnv1.State(
+            resources={
+                "resource-group": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "virtual-network": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "subnet": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "cluster": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "release-network-operator": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "provider-config-kubernetes": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "provider-config-helm": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "storage-class-rwx-fs": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "nodepool-gpua10": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "nodepool-gpuh100": fnv1.Resource(ready=fnv1.READY_TRUE),
+            },
+        ),
+        want=Derived(
+            node_pools=[{"name": "gpua10", "state": "Ready"}, {"name": "gpuh100", "state": "Ready"}],
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
+        ),
+    ),
+    DeriveConditionsCase(
+        name="PoolFailed",
+        reason="With the provider reporting a pool's node pool create failed, the pool is Failed with the provider's error, even while the cluster provisions.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(name="gpua10", role="GPU", vmSize="Standard_NV36ads_A10_v5", nodeCount=1),
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            nodeCount=1,
+                            fabric="InfiniBand",
+                        ),
+                    ],
+                ),
+                resources={
+                    "nodepool-gpuh100": _observed_failed(message="async create failed: SkuNotAvailable"),
+                },
+            ),
+        ),
+        desired=fnv1.State(
+            resources={
+                "resource-group": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "cluster": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "nodepool-gpua10": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "nodepool-gpuh100": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+            },
+        ),
+        want=Derived(
+            node_pools=[
+                {"name": "gpua10", "state": "Provisioning"},
+                {
+                    "name": "gpuh100",
+                    "state": "Failed",
+                    "message": "nodepool-gpuh100: async create failed: SkuNotAvailable",
+                },
+            ],
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 2 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Failed",
+                    message="1 of 2 node pools failed: gpuh100",
+                ),
+            ],
+        ),
+    ),
+    DeriveConditionsCase(
+        name="ClusterFailed",
+        reason="With the provider reporting two cluster resources failed, ClusterReady is Failed with the first one's error.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(name="gpua10", role="GPU", vmSize="Standard_NV36ads_A10_v5", nodeCount=1),
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            nodeCount=1,
+                            fabric="InfiniBand",
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_failed(message="async create failed: K8sVersionNotSupported"),
+                    "subnet": _observed_failed(message="async create failed: NetcfgInvalidSubnet"),
+                },
+            ),
+        ),
+        desired=fnv1.State(
+            resources={
+                "resource-group": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "subnet": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "cluster": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "nodepool-gpua10": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "nodepool-gpuh100": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+            },
+        ),
+        want=Derived(
+            node_pools=[{"name": "gpua10", "state": "Provisioning"}, {"name": "gpuh100", "state": "Provisioning"}],
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Failed",
+                    message="cluster: async create failed: K8sVersionNotSupported (and 1 more)",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize("case", DERIVE_CONDITIONS_CASES, ids=lambda case: case.name)
+def test_derive_conditions(case: DeriveConditionsCase) -> None:
+    """derive_conditions reports which provisioning stage the cluster is in, and each node pool's state."""
+    rsp = fnv1.RunFunctionResponse(desired=case.desired)
+    node_pools = fn.Composer(case.req, rsp).derive_conditions()
+    got = {
+        "nodePools": [p.model_dump(exclude_none=True) for p in node_pools],
+        "conditions": [_to_dict(c) for c in rsp.conditions],
+    }
+    want = {"nodePools": case.want.node_pools, "conditions": [_to_dict(c) for c in case.want.conditions]}
+    assert got == want, case.reason
