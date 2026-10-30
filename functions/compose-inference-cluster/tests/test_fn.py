@@ -5885,6 +5885,128 @@ COMPOSE_CASES = [
             ],
         ),
     ),
+    # Like UnsupportedDriverHolds: the fatal result keeps Crossplane from
+    # collecting the running cluster's GKECluster, ServingStack and Usages, and
+    # the condition still lands.
+    ComposeCase(
+        name="InvalidNodePoolHolds",
+        reason="A running GKE cluster whose pools' classes have no GKE provisioning block gets a fatal result naming each class.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_inference_cluster(
+                    cluster=v1alpha1.Cluster(source="GKE", gke=v1alpha1.Gke(region="us-central1")),
+                    node_pools=[
+                        v1alpha1.NodePool(name="l4-pool", className="gpu-l4-eks", nodeCount=2, maxNodeCount=4),
+                        v1alpha1.NodePool(name="h100-pool", className="gpu-h100-aks", nodeCount=1),
+                    ],
+                ),
+                resources={
+                    "gke-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "GKECluster",
+                                "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2026-06-08T00:00:00Z",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
+            required_resources={
+                "class-gpu-l4-eks": fnv1.Resources(
+                    items=[
+                        _inference_class(
+                            name="gpu-l4-eks",
+                            count=1,
+                            memory="24Gi",
+                            provisioning={
+                                "provider": "EKS",
+                                "eks": {
+                                    "instanceType": "g6.xlarge",
+                                    "diskSizeGb": 100,
+                                    "accelerator": {"type": "nvidia-l4", "count": 1},
+                                },
+                            },
+                        ),
+                    ],
+                ),
+                "class-gpu-h100-aks": fnv1.Resources(
+                    items=[
+                        _inference_class(
+                            name="gpu-h100-aks",
+                            count=1,
+                            memory="80Gi",
+                            provisioning={
+                                "provider": "AKS",
+                                "aks": {
+                                    "vmSize": "Standard_NC40ads_H100_v5",
+                                    "diskSizeGb": 256,
+                                    "accelerator": {"type": "nvidia-h100", "count": 1},
+                                },
+                            },
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_FATAL,
+                    message=(
+                        "InferenceClass gpu-h100-aks has no GKE provisioning block; "
+                        "InferenceClass gpu-l4-eks has no GKE provisioning block"
+                    ),
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "model-replicas": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelReplica",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-routes": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelRoute",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-caches": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache"),
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "class-gpu-l4-eks": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-l4-eks"
+                    ),
+                    "class-gpu-h100-aks": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-h100-aks"
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="InvalidNodePool",
+                    message=(
+                        "InferenceClass gpu-h100-aks has no GKE provisioning block; "
+                        "InferenceClass gpu-l4-eks has no GKE provisioning block"
+                    ),
+                ),
+            ],
+        ),
+    ),
     # The hostname gate, which is what keeps a cluster off the schedule until
     # traffic to it is mutually authenticated in both directions. These cases
     # observe an existing cluster's ServingStack ready, with whatever it and the

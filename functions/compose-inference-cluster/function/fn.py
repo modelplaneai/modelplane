@@ -358,6 +358,8 @@ class Composer:
         source = cluster.source
         if not self.check_devices_supported(source):
             return
+        if not self.check_pools_provisionable(source):
+            return
 
         if source == CLUSTER_SOURCE_GKE:
             self.compose_gke(cluster.gke)
@@ -776,6 +778,37 @@ class Composer:
         # starts claiming an unsupported driver. Crossplane stops before
         # applying desired state or collecting anything on a fatal result,
         # and still applies the condition above.
+        response.fatal(self.rsp, msg)
+        return False
+
+    def check_pools_provisionable(self, source: Cloud) -> bool:
+        """Gate on a node pool whose class has no provisioning block for the cloud.
+
+        The cloud cluster XR can't build a pool without one. Gating is a fatal
+        result for the same reason as check_devices_supported: a running
+        cluster whose shared class loses its block holds its resources rather
+        than having Crossplane collect them. Every offending class is named.
+        Existing never gates, because it provisions nothing.
+        """
+        if source == CLUSTER_SOURCE_EXISTING:
+            return True
+        offending = [
+            f"InferenceClass {name} has no {source} provisioning block"
+            for name in sorted({p.className for p in self.xr.spec.nodePools or []})
+            if getattr(self.classes[name].spec.provisioning, source.lower(), None) is None
+        ]
+        if not offending:
+            return True
+        msg = "; ".join(offending)
+        response.set_conditions(
+            self.rsp,
+            resource.Condition(
+                typ=CONDITION_TYPE_CLUSTER_READY,
+                status="False",
+                reason=CONDITION_REASON_INVALID_NODE_POOL,
+                message=msg,
+            ),
+        )
         response.fatal(self.rsp, msg)
         return False
 
@@ -1248,21 +1281,12 @@ class Composer:
         gke_node_pools: list[gkev1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.gke:
-                msg = f"InferenceClass {pool.className} has no GKE provisioning block"
-                response.set_conditions(
-                    self.rsp,
-                    resource.Condition(
-                        typ=CONDITION_TYPE_CLUSTER_READY,
-                        status="False",
-                        reason=CONDITION_REASON_INVALID_NODE_POOL,
-                        message=msg,
-                    ),
-                )
-                response.warning(self.rsp, msg)
-                return
-            prov = cls.spec.provisioning.gke
+            provisioning = self.classes[pool.className].spec.provisioning
+            # Unreachable: check_pools_provisionable gates on every pool's
+            # class having this block.
+            if not provisioning or not provisioning.gke:
+                continue
+            prov = provisioning.gke
             # A class with no accelerator describes a CPU pool: a standard
             # node image, no GPU attachment, and the modelplane.ai/cpu
             # label and taint composed by compose-gke-cluster.
@@ -1319,21 +1343,11 @@ class Composer:
         eks_node_pools: list[eksv1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.eks:
-                msg = f"InferenceClass {pool.className} has no EKS provisioning block"
-                response.set_conditions(
-                    self.rsp,
-                    resource.Condition(
-                        typ=CONDITION_TYPE_CLUSTER_READY,
-                        status="False",
-                        reason=CONDITION_REASON_INVALID_NODE_POOL,
-                        message=msg,
-                    ),
-                )
-                response.warning(self.rsp, msg)
-                return
-            prov = cls.spec.provisioning.eks
+            provisioning = self.classes[pool.className].spec.provisioning
+            # Unreachable (see the GKE builder above).
+            if not provisioning or not provisioning.eks:
+                continue
+            prov = provisioning.eks
             # A class with no accelerator describes a CPU pool (see the GKE
             # builder above).
             node_pool = eksv1alpha1.NodePool(
@@ -1398,21 +1412,11 @@ class Composer:
         aks_node_pools: list[aksv1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.aks:
-                msg = f"InferenceClass {pool.className} has no AKS provisioning block"
-                response.set_conditions(
-                    self.rsp,
-                    resource.Condition(
-                        typ=CONDITION_TYPE_CLUSTER_READY,
-                        status="False",
-                        reason=CONDITION_REASON_INVALID_NODE_POOL,
-                        message=msg,
-                    ),
-                )
-                response.warning(self.rsp, msg)
-                return
-            prov = cls.spec.provisioning.aks
+            provisioning = self.classes[pool.className].spec.provisioning
+            # Unreachable (see the GKE builder above).
+            if not provisioning or not provisioning.aks:
+                continue
+            prov = provisioning.aks
             # A class with no accelerator describes a CPU pool (see the GKE
             # builder above).
             node_pool = aksv1alpha1.NodePool(
@@ -1472,21 +1476,11 @@ class Composer:
         nebius_node_pools: list[nebiusv1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.nebius:
-                msg = f"InferenceClass {pool.className} has no Nebius provisioning block"
-                response.set_conditions(
-                    self.rsp,
-                    resource.Condition(
-                        typ=CONDITION_TYPE_CLUSTER_READY,
-                        status="False",
-                        reason=CONDITION_REASON_INVALID_NODE_POOL,
-                        message=msg,
-                    ),
-                )
-                response.warning(self.rsp, msg)
-                return
-            prov = cls.spec.provisioning.nebius
+            provisioning = self.classes[pool.className].spec.provisioning
+            # Unreachable (see the GKE builder above).
+            if not provisioning or not provisioning.nebius:
+                continue
+            prov = provisioning.nebius
             # A class with no accelerator describes a CPU pool (see the GKE
             # builder above). driversPreset rides the gpu block: a CPU
             # platform preinstalls no NVIDIA stack.
@@ -1633,21 +1627,11 @@ class Composer:
         vultr_node_pools: list[vultrv1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.vultr:
-                msg = f"InferenceClass {pool.className} has no Vultr provisioning block"
-                response.set_conditions(
-                    self.rsp,
-                    resource.Condition(
-                        typ=CONDITION_TYPE_CLUSTER_READY,
-                        status="False",
-                        reason=CONDITION_REASON_INVALID_NODE_POOL,
-                        message=msg,
-                    ),
-                )
-                response.warning(self.rsp, msg)
-                return
-            prov = cls.spec.provisioning.vultr
+            provisioning = self.classes[pool.className].spec.provisioning
+            # Unreachable (see the GKE builder above).
+            if not provisioning or not provisioning.vultr:
+                continue
+            prov = provisioning.vultr
             # A class with no accelerator describes a CPU pool (see the GKE
             # builder above).
             node_pool = vultrv1alpha1.NodePool(
@@ -1762,7 +1746,7 @@ class Composer:
         setting to each listed pool through a dedicated NVIDIADriver, so
         multi-GPU pools in the same cluster keep NVLink between their
         GPUs. Pools whose class lacks a Civo provisioning block are
-        skipped here and reported by compose_civo_cluster."""
+        skipped here; check_pools_provisionable gates on them."""
         pools: list[str] = []
         for pool in self.xr.spec.nodePools or []:
             cls = self.classes.get(pool.className)
@@ -1783,21 +1767,11 @@ class Composer:
         civo_node_pools: list[civov1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.civo:
-                msg = f"InferenceClass {pool.className} has no Civo provisioning block"
-                response.set_conditions(
-                    self.rsp,
-                    resource.Condition(
-                        typ=CONDITION_TYPE_CLUSTER_READY,
-                        status="False",
-                        reason=CONDITION_REASON_INVALID_NODE_POOL,
-                        message=msg,
-                    ),
-                )
-                response.warning(self.rsp, msg)
-                return
-            prov = cls.spec.provisioning.civo
+            provisioning = self.classes[pool.className].spec.provisioning
+            # Unreachable (see the GKE builder above).
+            if not provisioning or not provisioning.civo:
+                continue
+            prov = provisioning.civo
             # A class with no accelerator describes a CPU pool (see the GKE
             # builder above).
             node_pool = civov1alpha1.NodePool(
