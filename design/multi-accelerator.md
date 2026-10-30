@@ -168,15 +168,14 @@ what is genuinely CPU-specific: the driver's reserved cores, the
 CPU is also why there is no opt-in path: a CPU class can run on any cloud, so
 every cloud filters and `spec.draDrivers` flows everywhere from the start.
 
-One floor is CPU's alone: the driver's grouped mode publishes each NUMA
-node's cores as one device whose CPUs are consumable capacity
-(KEP-5075), which Kubernetes enables by default from 1.36 and managed
-control planes can't enable earlier - on 1.34/1.35 the scheduler
-allocates the device but strips the capacity accounting, and the engine
-pod fails at NodePrepareResources. So a CPU pool needs Kubernetes 1.36
-on a managed cloud, while GPU pools keep the 1.34/1.35 floors; cluster
-manifests for CPU pools pin the version rather than taking the cloud's
-default.
+One floor is CPU's alone: the driver's grouped mode publishes each NUMA node's
+cores as one device whose CPUs are consumable capacity (KEP-5075), which
+Kubernetes enables by default from 1.36 and managed control planes can't enable
+earlier — on 1.34/1.35 the scheduler allocates the device but strips the
+capacity accounting, and the engine pod fails at NodePrepareResources. So a CPU
+pool needs Kubernetes 1.36 on a managed cloud, while GPU pools keep the
+1.34/1.35 floors; cluster manifests for CPU pools pin the version rather than
+taking the cloud's default.
 
 **Supported drivers per cloud.** A cloud supports the drivers its component
 list is tagged with, so in the stacks package the per-cloud table is derived
@@ -192,20 +191,19 @@ supported, and the filter installs nothing for it.
 Existing (BYO) is the open-ended case: the user owns the cluster and may have
 installed any driver on it, which Modelplane can't enumerate, so on Existing
 every driver the list doesn't carry is treated as externally installed. Its
-list still pins stacks like on any cloud — the NVIDIA DRA driver today,
-dra-driver-cpu with #509 — but a claimed driver beyond them installs nothing
-and is not rejected. The cost is deferred failure: a typo'd driver on a BYO
-cluster surfaces when its ResourceClaim can't allocate, not as a condition.
+list still pins stacks like on any cloud — NVIDIA's DRA driver and the AMD GPU
+operator, beside the dra-driver-cpu every cloud pins — but a claimed driver
+beyond them installs nothing and is not rejected. The cost is deferred
+failure: a typo'd driver on a BYO cluster surfaces when its ResourceClaim
+can't allocate, not as a condition.
 e2e runs on exactly this path, registering the kind cluster as Existing and
 claiming `gpu.example.com` from a driver the harness installs itself.
 
 The composition function that validates ahead of the join
-(`compose-inference-cluster`) mirrors the derived table by hand with a
-kept-in-sync comment pointing at the stacks package's copy; functions are
-self-contained by design, so a shared library isn't on the table. A stale
-mirror fails closed: it rejects a newly supported driver until someone
-updates it, and never admits an unsupported one, because the join's raise
-backstops that direction.
+(`compose-inference-cluster`) mirrors the derived table by hand; functions are
+self-contained by design, so a shared library isn't on the table. A flake
+check reads the mirror from source and fails when it disagrees with the
+stacks package's derived copy.
 
 **Device stacks follow classes.** Today the NVIDIA stack installs
 unconditionally; under the filter it installs when a class claims
@@ -262,7 +260,7 @@ status:
   - type: ClusterReady
     status: "False"
     reason: UnsupportedDevices
-    message: "class amd-mi355x-8x claims gpu.amd.com; the Vultr serving stack installs gpu.nvidia.com, dra.cpu"
+    message: "class amd-mi355x-8x claims gpu.amd.com; Vultr clusters support dra.cpu, gpu.nvidia.com"
 ```
 
 Accepting it is a data change, not a design change: pin the AMD operator and
@@ -282,9 +280,9 @@ hand-written clouds' values and classified fail-closed in `generate.py`'s
 
 ## Future improvements
 
-- **AMD on a first cloud**: pin the AMD operator and kernel-module manager on
-  its list, tagged `gpu.amd.com`. Vultr is the likely first: it already sells
-  AMD Instinct alongside NVIDIA.
+- **AMD on a first provisioned cloud**: pin the AMD operator and kernel-module
+  manager on its list, tagged `gpu.amd.com`, as Existing's list already does.
+  Vultr is the likely first: it already sells AMD Instinct alongside NVIDIA.
 - **AMD on the generated clouds** (EKS, AKS, GKE): classify the AMD components
   in `ALLOW` and add `gpu.amd.com` to NFD's entry once one of them offers AMD
   shapes; the mechanism is already in place.
@@ -293,7 +291,7 @@ hand-written clouds' values and classified fail-closed in `generate.py`'s
   from the class.
 - **Mirror generation**: if the per-cloud tables grow past a handful of
   drivers and clouds, generate `compose-inference-cluster`'s mirror from the
-  stacks package's derived copy instead of keeping it in sync by comment.
+  stacks package's derived copy instead of keeping it in sync by hand.
 
 ## Alternatives considered
 

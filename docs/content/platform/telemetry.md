@@ -11,8 +11,8 @@ description: Collect normalized metrics across the fleet and send them to any ba
 Modelplane runs an OpenTelemetry collector on every inference cluster. It
 collects from every component Modelplane installs. This includes the inference
 server engine, inference gateway and Envoy proxy, router, and the cluster's
-GPU exporter - on a provisioned cluster Modelplane or the cloud installs one,
-and on an existing cluster you provide it, as
+GPU exporter. On a provisioned cluster Modelplane or the cloud installs one. On
+an existing cluster the AMD stack brings AMD's and you provide NVIDIA's, as
 [Requirements for an existing cluster]({{< ref "/platform/inference-cluster.md#requirements-for-an-existing-cluster" >}})
 describes. It renames each component's series to a common
 `modelplane_*` vocabulary and exports them to wherever you say - any backend the
@@ -407,6 +407,10 @@ claims, and Modelplane converts to the base one. Skipping this is the expensive 
 a series named `_seconds` that holds milliseconds reads a thousand times fast, and nothing
 downstream can tell.
 
+Say `fromType: Gauge` when the engine reports a running total, such as accumulated
+energy, as a gauge where the name claims a counter. Modelplane converts it to a counter,
+so `to` must end in `_total`.
+
 Rename only where the measurements agree. If two engines' histograms share a name and
 their buckets disagree, a quantile over them is wrong rather than approximate.
 
@@ -474,11 +478,13 @@ Where the exporter comes from depends on the cluster:
 
 - **A cluster Modelplane provisions** runs one already: the serving stack
   installs an exporter wherever the cloud doesn't provide its own.
-- **An existing cluster provides its own**, as [Requirements for an existing
+- **An existing cluster provides its own DCGM exporter**, as
+  [Requirements for an existing
   cluster]({{< ref "/platform/inference-cluster.md#requirements-for-an-existing-cluster" >}})
-  describes. A GPU Operator install runs one by default; a cluster without
-  one needs NVIDIA's dcgm-exporter chart, tolerating your GPU taint. The
-  chart's pod already has the label and port the collector matches on.
+  describes. The AMD stack still brings AMD's. A GPU Operator install runs a
+  DCGM exporter by default; a cluster without one needs NVIDIA's dcgm-exporter
+  chart, tolerating your GPU taint. The chart's pod already has the label and
+  port the collector matches on.
 
 Don't run two exporters: the collector scrapes every matching pod and would
 collect each GPU twice.
@@ -509,8 +515,8 @@ curl -s localhost:9400/metrics | grep -c -E \
 ```
 
 On an AMD pool the same `modelplane_*` names come from the
-device-metrics-exporter's fields instead. A dashboard built on them needs no
-change when a deployment moves between vendors' pools.
+device-metrics-exporter's fields instead, in the same units. Per-card labels
+differ: AMD's exporter identifies a card by `gpu_id`, DCGM by `gpu` and `UUID`.
 
 | AMD field | Becomes | Unit |
 | --- | --- | --- |

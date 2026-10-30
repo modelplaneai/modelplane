@@ -185,7 +185,7 @@ against. The control-plane cluster needs no DRA.
 nix run .#e2e                  # bring up both clusters + deploy the mock model
 nix run .#e2e -- --verify      # same, then run the tests
 nix run .#e2e -- --test        # run the tests against clusters already up
-nix run .#e2e -- --cloud eks   # one cloud's serving stack on KWOK-faked GPU pools (see below)
+nix run .#e2e -- --cloud eks   # one cloud's serving stack on KWOK-faked device pools (see below)
 nix run .#e2e -- --clean       # tear both clusters down
 ```
 
@@ -269,7 +269,7 @@ e2e/
     test_metering.py         # it logs a usage record per request
     test_cluster_gateway.py  # the cluster gateway requires a client certificate
     test_telemetry.py        # the engine's series reach the collector's sink
-  clouds/                    # --cloud mode: cloud stacks on KWOK-faked GPU pools
+  clouds/                    # --cloud mode: cloud stacks on KWOK-faked device pools
     __init__.py              # the matrix: per-cloud node shape, taint, expected DaemonSets
     conftest.py              # fixtures: the clusters, the ServingStack Ready wait
     test_placement.py        # DaemonSet fan-out + placement/toleration audits

@@ -1,12 +1,12 @@
 ---
 title: Define Hardware Classes
 weight: 20
-description: Hardware recipe defining GPU type, count, and provisioning for a node pool.
+description: Hardware recipe defining devices and provisioning for a node pool.
 ---
 **API:** [`modelplane.ai/v1alpha1` · InferenceClass]({{< ref "/reference/inferenceclasses" >}})
 
 <!-- vale write-good.Passive = NO -->
-An `InferenceClass` is a tested recipe for a GPU node pool. It bundles:
+An `InferenceClass` is a tested recipe for a GPU or CPU node pool. It bundles:
 
 
 - **Devices**: the node's hardware as a list of Dynamic Resource Allocation (DRA)
@@ -39,8 +39,9 @@ architecture, and compute capability, and use the same keys the driver reports.
 
 Each device sets a `claim` discriminator:
 
-- **`DRA`** (the default) is hardware a real DRA driver exposes, today GPUs.
-  Modelplane both schedules against it and binds it to pods.
+- **`DRA`** (the default) is hardware a real DRA driver exposes, such as
+  NVIDIA GPUs (`gpu.nvidia.com`), AMD GPUs (`gpu.amd.com`), or CPU cores
+  (`dra.cpu`). Modelplane both schedules against it and binds it to pods.
 - **`Synthetic`** is described for scheduling only, never claimed. Use it for
   hardware that matters for placement but has no DRA driver yet, like an
   InfiniBand fabric.

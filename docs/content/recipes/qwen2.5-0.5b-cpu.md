@@ -33,11 +33,11 @@ The claim pins the engine to its NUMA node's cpuset, and the engine's CPU
 request is the one number that sizes everything: Kubernetes accounts the pod
 by it, and Modelplane stamps it into the claim as the share of the device to
 take. Five of the six claimable cores, because the driver refuses a claim
-that would take them all - the node's shared containers keep the last one. The engine is vLLM's CPU
-build, whose image serves the same OpenAI API as the CUDA one. The same class
-without its provisioning block describes a bring-your-own CPU pool, on any
-conformant cluster: label its nodes `modelplane.ai/pool=cpu-pool` and
-`modelplane.ai/cpu=true` instead.
+that would take them all - the node's shared containers keep the last one.
+The engine is vLLM's CPU build, whose image serves the same OpenAI API as the
+CUDA one. The same class without its provisioning block describes a
+bring-your-own CPU pool, on any conformant cluster: label its nodes
+`modelplane.ai/pool=cpu-pool` and `modelplane.ai/cpu=true` instead.
 
 ## Validated deployments
 

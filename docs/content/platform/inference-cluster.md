@@ -53,25 +53,43 @@ The `cluster.source` discriminator picks one of two models:
 
 ## Requirements for an existing cluster
 
-An existing cluster must meet what Modelplane would otherwise set up for you:
+Modelplane installs a device stack for each DRA driver a pool's
+`InferenceClass` claims: NVIDIA's DRA driver for `gpu.nvidia.com`, the AMD GPU
+operator in DRA mode for `gpu.amd.com`, and `dra-driver-cpu` for `dra.cpu`. The
+AMD stack installs only on an existing cluster. Beyond that, an existing cluster
+must meet what Modelplane would otherwise set up for you:
 
-- **Kubernetes 1.34.2 or newer.** Modelplane binds GPUs with the generally
-  available Dynamic Resource Allocation API (`resource.k8s.io/v1`), first served
-  in Kubernetes 1.34, and the DRA driver it installs wants 1.34.2. Prefer a
-  [maintained release](https://kubernetes.io/releases/).
-- **GPU nodes that already run the NVIDIA driver.** Modelplane installs NVIDIA's
-  DRA driver, but not the GPU driver itself. Its
+- **Kubernetes 1.34.2 or newer, or 1.36 for a CPU pool.** Modelplane binds
+  devices with the generally available Dynamic Resource Allocation API
+  (`resource.k8s.io/v1`), first served in Kubernetes 1.34, and NVIDIA's DRA
+  driver wants 1.34.2. A CPU pool's cores are claimed as consumable capacity,
+  which Kubernetes enables by default from 1.36. Prefer a [maintained
+  release](https://kubernetes.io/releases/).
+- **NVIDIA GPU nodes that already run the NVIDIA driver.** Modelplane installs
+  NVIDIA's DRA driver, but not the GPU driver itself. Its
   [prerequisites](https://dra-driver-nvidia-gpu.sigs.k8s.io/docs/prerequisites/)
   call for NVIDIA GPU driver v565 or newer and NVIDIA Container Toolkit v1.18.0
   or newer, which provides the CDI the driver uses to expose GPUs to the
   container runtime. A provisioned cluster's node image includes this.
+- **AMD GPU nodes that already run the amdgpu kernel driver.** The AMD GPU
+  operator Modelplane installs has its driver management turned off.
+- **A `modelplane.ai/cpu=true` label on CPU pool nodes.** `dra-driver-cpu` runs
+  only on nodes with that label, so without it a CPU pool doesn't publish its
+  cores.
 - **A `modelplane.ai/pool=<pool-name>` label on each pool's nodes**, matching the
   pool's `name`. Modelplane provisions no nodes here, so you apply the label
   yourself. The [scheduler pins each pool's pods to
   it]({{< ref "/architecture/scheduling.md#pinning-placement-to-a-pool" >}}), so
   worker pods stay Pending without it.
-- **The `nvidia.com/gpu` taint key, if you taint GPU nodes.** Modelplane's GPU
-  workloads tolerate that key. A different taint keeps them off the nodes.
+- **The `nvidia.com/gpu`, `amd.com/gpu` or `modelplane.ai/cpu` taint key, if you
+  taint pool nodes.** Modelplane's engine pods tolerate those keys, and a
+  different taint keeps them off the nodes. The AMD operator's per-node
+  components tolerate only `amd.com/gpu` and `dra-driver-cpu` only
+  `modelplane.ai/cpu`, so taint AMD and CPU nodes with their own key or not at
+  all.
+- **No AMD GPU operator or `dra-driver-cpu` of your own** for a driver a class
+  claims. Modelplane installs its own, which would run a second copy beside
+  yours.
 - **A load balancer.** Modelplane exposes the cluster's serving gateway through a
   `LoadBalancer` Service. The cluster needs a load balancer that assigns the
   Service an external address.
@@ -82,11 +100,11 @@ An existing cluster must meet what Modelplane would otherwise set up for you:
 - **Any multi-node fabric you need.** For multi-node serving you provide and
   configure the RDMA or InfiniBand fabric and its drivers. Modelplane installs
   those only on the clouds it provisions.
-- **A DCGM exporter, if you want GPU metrics.** Modelplane doesn't install
-  one here because your cluster may already run one - a GPU Operator install
-  does by default - and a second exporter would collect every GPU twice.
-  Without one, engine and gateway series arrive and every `modelplane_gpu_*`
-  series is empty. [GPUs]({{< ref "/platform/telemetry.md#gpus" >}})
+- **A DCGM exporter, if you want NVIDIA GPU metrics.** Modelplane doesn't
+  install one here because your cluster may already run one, as a GPU Operator
+  install does by default, and a second exporter would collect every GPU twice.
+  Without one, NVIDIA pools' `modelplane_gpu_*` series are empty. The AMD stack
+  brings its own exporter. [GPUs]({{< ref "/platform/telemetry.md#gpus" >}})
   describes how the collector discovers the exporter, the DCGM fields it
   needs, and how to check what yours publishes.
 

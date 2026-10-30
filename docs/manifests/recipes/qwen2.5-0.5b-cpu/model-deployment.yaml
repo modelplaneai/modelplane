@@ -1,7 +1,8 @@
 # A small model served on CPUs alone. The device selector matches against
-# the claimable cores the cpu-8vcpu class declares, so >= 4 lands it on the
-# CPU pool; the claim takes the whole NUMA-node device and pins the engine
-# container to its cpuset. The engine is vLLM's CPU build - the default
+# the claimable cores the civo-cpu-8vcpu class declares, so >= 4 lands it on
+# the CPU pool; the claim takes the engine's CPU request, five cores, as
+# capacity from the NUMA-node device and pins the engine container to a
+# cpuset. The engine is vLLM's CPU build - the default
 # vllm/vllm-openai image is CUDA-only. --block-size=32 is the smallest
 # block its CPU attention backend accepts (multiples of 32); Modelplane
 # reads the flag and chunks the endpoint picker's prefix cache the same

@@ -127,8 +127,9 @@ twice.
 
 The scheduler counts a pool in whole nodes when the agent hasn't reported on it
 or can't observe it. The agent doesn't observe CPU or AMD GPU pools yet, so
-they're always counted in whole nodes. Such a pool publishes no `observedNodes`, and every node it
-can have starts empty. A pod that claims any device takes a whole one.
+they're always counted in whole nodes. Such a pool publishes no
+`observedNodes`, and every node it can have starts empty. A pod that claims any
+device takes a whole one.
 
 ## Pinning placement to a pool
 
