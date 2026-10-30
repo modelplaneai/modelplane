@@ -79,6 +79,23 @@ in
       touch $out/.e2e-legs-passed
     '';
 
+  # compose-inference-cluster keeps a copy of the DRA drivers each cloud's
+  # serving stack supports, to reject an unsupported class before composing a
+  # ServingStack. The checker reads the copy from source and compares it with
+  # compose-serving-stack's, which it imports from that function's venv.
+  supported-drivers-mirror =
+    let
+      venv = pythonSet.mkVirtualEnv "supported-drivers-mirror-env" {
+        compose-serving-stack = [ ];
+      };
+    in
+    pkgs.runCommand "modelplane-supported-drivers-mirror" { } ''
+      cd ${self}
+      ${venv}/bin/python hack/check_supported_drivers.py
+      mkdir -p $out
+      touch $out/.supported-drivers-mirror-checked
+    '';
+
   # Check the function unit tests against the rules in CONTRIBUTING.md's Tests
   # section that an AST can decide, such as how a table and its test are laid
   # out and what a case's name and reason look like. The checker uses only the
@@ -101,8 +118,9 @@ in
   # against a venv that provides the function's dependencies, pytest, which the
   # tests import, and the protobuf type stubs ty needs to resolve the SDK's
   # generated Struct and Duration. It then runs on e2e/, against the packages
-  # the e2e app runs the tests with (see apps.nix), and on hack/, whose checker
-  # uses only the standard library and so needs no venv.
+  # the e2e app runs the tests with (see apps.nix), and on hack/ with no venv:
+  # its checkers use the standard library, apart from the supported drivers
+  # checker's import of compose-serving-stack, which ty can't resolve there.
   #
   # Unlike mkFunctionTest, which runs the function module from the venv, ty
   # checks the source, so we copy it from the tree: each function's function/

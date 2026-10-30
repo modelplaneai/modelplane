@@ -91,6 +91,8 @@ allow-star-arg-any = true
 "docs/utils/validate/**" = ["T201"]
 # The function unit test checker is a CLI script; print is its output.
 "hack/check_function_tests.py" = ["T201"]
+# The supported drivers checker is a CLI script; print is its output.
+"hack/check_supported_drivers.py" = ["T201"]
 # Generated serving stack lists carry upstream chart values verbatim; long
 # string literals and unicode arrive from the recipes.
 "functions/*/function/stacks/clouds/generated/**" = ["E501", "RUF001", "RUF002", "RUF003"]

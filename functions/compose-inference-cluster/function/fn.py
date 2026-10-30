@@ -86,19 +86,16 @@ CONDITION_REASON_INSTALLING = "Installing"
 CONDITION_REASON_INVALID_NODE_POOL = "InvalidNodePool"
 CONDITION_REASON_UNSUPPORTED_DEVICES = "UnsupportedDevices"
 
-# The DRA drivers each cloud's serving stack supports. A hand-kept
-# mirror of supported_drivers() in compose-serving-stack's stacks
-# package - functions are self-contained by design, so keep the two in
-# sync by hand. A stale mirror fails closed: it rejects a newly
-# supported driver until someone updates it, and never admits an
-# unsupported one, because the serving stack join's raise backstops
-# that direction. EKS's dra.net arrives outside the serving stack
-# (compose_eks_cluster installs the EFA DRA driver when a pool asks for
-# the fabric). Existing is deliberately absent and never gates: a
-# claimed driver beyond the stack's own installs nothing and is never
-# rejected - the rule, and why, is stated on the stacks package's
-# join() in compose-serving-stack.
-_SUPPORTED_DRA_DRIVERS: dict[str, frozenset[str]] = {
+# The DRA drivers each cloud supports. A hand-kept mirror of
+# supported_drivers() in compose-serving-stack's stacks package -
+# functions are self-contained by design - which the
+# supported-drivers-mirror flake check holds in sync. EKS's dra.net
+# arrives outside the serving stack (compose_eks_cluster installs the
+# EFA DRA driver when a pool asks for the fabric). Existing has no entry
+# because it never gates: a claimed driver beyond the stack's own
+# installs nothing and is never rejected - the rule, and why, is stated
+# on the stacks package's join() in compose-serving-stack.
+_SUPPORTED_DRA_DRIVERS: dict[Cloud, frozenset[str]] = {
     CLUSTER_SOURCE_GKE: frozenset({"gpu.nvidia.com", "dra.cpu"}),
     CLUSTER_SOURCE_EKS: frozenset({"gpu.nvidia.com", "dra.cpu", "dra.net"}),
     CLUSTER_SOURCE_AKS: frozenset({"gpu.nvidia.com", "dra.cpu"}),

@@ -96,10 +96,11 @@ def supported_drivers(cloud: Cloud) -> frozenset[str]:
     (_EXTERNAL_DRIVERS), so the table can't drift from what the lists
     record. compose-inference-cluster mirrors this by hand in its
     _SUPPORTED_DRA_DRIVERS to reject unsupported pairings with a
-    condition before a ServingStack is ever composed - keep the two in
-    sync. Existing's tags are returned like any cloud's, but a driver
-    beyond them is not unsupported there: the user owns the cluster, so
-    join() never rejects on Existing.
+    condition before a ServingStack is ever composed, and the
+    supported-drivers-mirror flake check holds the two in sync.
+    Existing's tags are returned like any cloud's, but a driver beyond
+    them is not unsupported there: the user owns the cluster, so join()
+    never rejects on Existing.
     """
     halves = [_CLOUDS[cloud], common.COMPONENTS, *_STACKS.values()]
     tagged = {driver for half in halves for c in half for driver in c.dra_drivers}
