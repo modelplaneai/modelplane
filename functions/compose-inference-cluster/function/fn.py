@@ -114,6 +114,9 @@ _CLAIM_DRA = "DRA"
 # Composed resource key for the backend XR.
 BACKEND_RESOURCE_KEY = "serving-stack"
 
+# Composed resource key for the ClusterProviderConfig that reaches the cluster.
+CLUSTER_PROVIDER_CONFIG_RESOURCE_KEY = "cluster-provider-config-kubernetes"
+
 # Composed resource key for the ClusterUsage that blocks the InferenceCluster's
 # deletion while anything composes objects onto it.
 #
@@ -830,7 +833,7 @@ class Composer:
         sa_key = self.observed_gke_secret(_IDENTITY_TYPE_GCP)
         backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
 
-        if gke_ready and kubeconfig_secret:
+        if kubeconfig_secret and self.keep_cluster_provider_config(cluster_ready=gke_ready):
             self.compose_cluster_provider_config(
                 kubeconfig_secret.name,
                 kubeconfig_secret.key,
@@ -876,7 +879,7 @@ class Composer:
         kubeconfig = self.observed_eks_secret(_SECRET_TYPE_KUBECONFIG)
         backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
 
-        if eks_ready and kubeconfig:
+        if kubeconfig and self.keep_cluster_provider_config(cluster_ready=eks_ready):
             self.compose_cluster_provider_config(kubeconfig.name, kubeconfig.key)
 
         backend_secrets = self.resolve_eks_backend_secrets(eks_ready=eks_ready, backend_exists=backend_exists)
@@ -915,7 +918,7 @@ class Composer:
         kubeconfig = self.observed_aks_secret(_SECRET_TYPE_KUBECONFIG)
         backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
 
-        if aks_ready and kubeconfig:
+        if kubeconfig and self.keep_cluster_provider_config(cluster_ready=aks_ready):
             self.compose_cluster_provider_config(kubeconfig.name, kubeconfig.key)
 
         backend_secrets = self.resolve_aks_backend_secrets(aks_ready=aks_ready, backend_exists=backend_exists)
@@ -959,7 +962,7 @@ class Composer:
         credentials = self.observed_nebius_secret(_IDENTITY_TYPE_NEBIUS)
         backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
 
-        if nebius_ready and kubeconfig:
+        if kubeconfig and self.keep_cluster_provider_config(cluster_ready=nebius_ready):
             self.compose_cluster_provider_config(
                 kubeconfig.name,
                 kubeconfig.key,
@@ -1003,7 +1006,7 @@ class Composer:
         kubeconfig = self.observed_vultr_secret(_SECRET_TYPE_KUBECONFIG)
         backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
 
-        if vultr_ready and kubeconfig:
+        if kubeconfig and self.keep_cluster_provider_config(cluster_ready=vultr_ready):
             self.compose_cluster_provider_config(kubeconfig.name, kubeconfig.key)
 
         backend_secrets = self.resolve_vultr_backend_secrets(vultr_ready=vultr_ready, backend_exists=backend_exists)
@@ -1042,7 +1045,7 @@ class Composer:
         kubeconfig = self.observed_civo_secret(_SECRET_TYPE_KUBECONFIG)
         backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
 
-        if civo_ready and kubeconfig:
+        if kubeconfig and self.keep_cluster_provider_config(cluster_ready=civo_ready):
             self.compose_cluster_provider_config(kubeconfig.name, kubeconfig.key)
 
         backend_secrets = self.resolve_civo_backend_secrets(civo_ready=civo_ready, backend_exists=backend_exists)
@@ -1142,6 +1145,18 @@ class Composer:
             ),
         )
 
+    def keep_cluster_provider_config(self, *, cluster_ready: bool) -> bool:
+        """Whether to compose the ClusterProviderConfig reaching a provisioned cluster.
+
+        It's first composed once the cloud cluster XR is Ready, then kept while
+        it's observed. The cloud cluster XR goes unready whenever any resource it
+        composes does, and every Object on the cluster - its namespaces,
+        PoolObservations, and every ModelReplica's and ModelRoute's - reaches it
+        through this ProviderConfig, so dropping it then would have Crossplane
+        delete a ProviderConfig they all still use.
+        """
+        return cluster_ready or CLUSTER_PROVIDER_CONFIG_RESOURCE_KEY in self.req.observed.resources
+
     def compose_cluster_provider_config(
         self,
         kubeconfig_name: str,
@@ -1184,10 +1199,10 @@ class Composer:
                 ),
             )
         resource.update(
-            self.rsp.desired.resources["cluster-provider-config-kubernetes"],
+            self.rsp.desired.resources[CLUSTER_PROVIDER_CONFIG_RESOURCE_KEY],
             cpc,
         )
-        self.rsp.desired.resources["cluster-provider-config-kubernetes"].ready = fnv1.READY_TRUE
+        self.rsp.desired.resources[CLUSTER_PROVIDER_CONFIG_RESOURCE_KEY].ready = fnv1.READY_TRUE
 
     def write_status(self, schedulable_pools: list[v1alpha1.SchedulablePool]) -> None:
         """Write the InferenceCluster status."""
