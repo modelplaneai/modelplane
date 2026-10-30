@@ -62,9 +62,10 @@ select = [
     "PT",     # flake8-pytest-style (pytest idioms, no unittest assertions)
     "RUF",    # ruff-specific rules (incl. unused/malformed noqa)
 ]
-# The function unit test checker (hack/check_function_tests.py) takes its
-# escapes as noqa codes, which ruff would otherwise reject as unknown.
-external = ["MPT"]
+# The function unit test checker (hack/check_function_tests.py) and the list
+# selector checker (hack/check_list_selectors.py) take their escapes as noqa
+# codes, which ruff would otherwise reject as unknown.
+external = ["MPT", "MPF"]
 
 [tool.ruff.lint.pylint]
 # Builder functions like helm_release use named parameters for clarity.

@@ -79,12 +79,18 @@ def selector_field(node: ast.AST, up: dict[ast.AST, ast.AST]) -> str | None:
 
 
 def in_list(node: ast.AST, up: dict[ast.AST, ast.AST]) -> bool:
-    """Whether node is written inside a list literal."""
-    parent = up.get(node)
-    while parent is not None:
-        if isinstance(parent, ast.List):
-            return True
-        parent = up.get(parent)
+    """Whether node is written inside a list field.
+
+    The nearest enclosing list - a literal or a comprehension's element - must
+    be the value of a keyword argument or a dict key: that makes it a field of
+    the resource, so a Kubernetes list. A bare list, [Release(spec=...)], just
+    collects resources in Python, and a selector inside one is at no risk."""
+    child = node
+    while (parent := up.get(child)) is not None:
+        if isinstance(parent, ast.List) or (isinstance(parent, ast.ListComp) and child is parent.elt):
+            field = up.get(parent)
+            return isinstance(field, ast.keyword) or (isinstance(field, ast.Dict) and parent in field.values)
+        child = parent
     return False
 
 
