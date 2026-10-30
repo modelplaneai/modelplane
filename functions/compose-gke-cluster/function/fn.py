@@ -72,6 +72,9 @@ _LABEL_POOL = "modelplane.ai/pool"
 # with nvidia.com/gpu but knows nothing of CPU inference pools, so the
 # taint is set explicitly here.
 _LABEL_CPU = "modelplane.ai/cpu"
+_CPU_TAINT_KEY = "modelplane.ai/cpu"
+_CPU_TAINT_VALUE = "true"
+_CPU_TAINT_EFFECT = "NO_SCHEDULE"
 
 # GKE's cluster autoscaler uses this label to recognise a node pool as one whose
 # nodes run the NVIDIA GPU DRA driver, and so models the DRA ResourceSlices such
@@ -404,7 +407,7 @@ class Composer:
                     _LABEL_CPU: "true",
                 }
                 node_config.taint = [
-                    nodepoolv1beta1.TaintItem(key=_LABEL_CPU, value="true", effect="NO_SCHEDULE"),
+                    nodepoolv1beta1.TaintItem(key=_CPU_TAINT_KEY, value=_CPU_TAINT_VALUE, effect=_CPU_TAINT_EFFECT),
                 ]
             else:
                 node_config.labels = {

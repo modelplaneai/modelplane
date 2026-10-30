@@ -90,6 +90,9 @@ _GPU_TAINT_EFFECT = "NoSchedule"
 # workloads off the pool as the GPU taint does on GPU pools, and engine
 # pods tolerate it (compose-model-replica).
 _LABEL_CPU = "modelplane.ai/cpu"
+_CPU_TAINT_KEY = "modelplane.ai/cpu"
+_CPU_TAINT_VALUE = "true"
+_CPU_TAINT_EFFECT = "NoSchedule"
 
 # Vultr pre-installs the NVIDIA GPU Operator on every VKE GPU cluster. The
 # operator's validator DaemonSet runs a four-stage init sequence (driver →
@@ -325,9 +328,9 @@ class Composer:
         elif pool.role == "CPU":
             fp.taints = [
                 vkenodepoolv1beta1.Taint(
-                    key=_LABEL_CPU,
-                    value="true",
-                    effect=_GPU_TAINT_EFFECT,
+                    key=_CPU_TAINT_KEY,
+                    value=_CPU_TAINT_VALUE,
+                    effect=_CPU_TAINT_EFFECT,
                 ),
             ]
 

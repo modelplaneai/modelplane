@@ -101,6 +101,9 @@ _GPU_TAINT_EFFECT = "NoSchedule"
 # workloads off the pool as the GPU taint does on GPU pools, and engine
 # pods tolerate it (compose-model-replica).
 _LABEL_CPU = "modelplane.ai/cpu"
+_CPU_TAINT_KEY = "modelplane.ai/cpu"
+_CPU_TAINT_VALUE = "true"
+_CPU_TAINT_EFFECT = "NoSchedule"
 
 # Civo's default marketplace applications include the Traefik ingress
 # controller, which would compete with the serving stack's Envoy Gateway
@@ -462,9 +465,9 @@ class Composer:
         elif pool.role == "CPU":
             fp.taint = [
                 nodepoolv1beta1.TaintItem(
-                    key=_LABEL_CPU,
-                    value="true",
-                    effect=_GPU_TAINT_EFFECT,
+                    key=_CPU_TAINT_KEY,
+                    value=_CPU_TAINT_VALUE,
+                    effect=_CPU_TAINT_EFFECT,
                 ),
             ]
 

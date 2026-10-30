@@ -107,6 +107,9 @@ _GPU_TAINT_EFFECT = "NO_SCHEDULE"
 # workloads off the group as the GPU taint does on GPU groups, and
 # engine pods tolerate it (compose-model-replica).
 _LABEL_CPU = "modelplane.ai/cpu"
+_CPU_TAINT_KEY = "modelplane.ai/cpu"
+_CPU_TAINT_VALUE = "true"
+_CPU_TAINT_EFFECT = "NO_SCHEDULE"
 
 # Management policies that exclude Delete, used for resources installed on the
 # workload cluster (the RWX StorageClass Object and the CSI driver Helm
@@ -596,9 +599,9 @@ class Composer:
             elif pool.role == "CPU":
                 template.taints = [
                     nodegroupv1beta1.Taint(
-                        key=_LABEL_CPU,
-                        value="true",
-                        effect=_GPU_TAINT_EFFECT,
+                        key=_CPU_TAINT_KEY,
+                        value=_CPU_TAINT_VALUE,
+                        effect=_CPU_TAINT_EFFECT,
                     ),
                 ]
 
