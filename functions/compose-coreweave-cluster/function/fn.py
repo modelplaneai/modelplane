@@ -91,9 +91,8 @@ _CPU_TAINT_VALUE = "true"
 _CPU_TAINT_EFFECT = "NoSchedule"
 
 # A NodePool is Ready once CKS validates it. Readiness ignores AtTarget,
-# which changes with every autoscaler step and node replacement, because
-# the InferenceCluster stops composing the serving stack's ProviderConfig
-# while this XR isn't Ready.
+# which changes with every autoscaler step and node replacement, so this XR
+# doesn't go unready each time.
 _NODE_POOL_READY_CEL = (
     "has(object.status) && has(object.status.conditions)"
     " && object.status.conditions.exists(c, c.type == 'Validated' && c.status == 'True')"
