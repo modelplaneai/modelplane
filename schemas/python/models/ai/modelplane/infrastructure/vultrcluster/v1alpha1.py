@@ -118,6 +118,21 @@ class Condition(BaseModel):
     type: str
 
 
+class NodePoolModel(BaseModel):
+    message: str | None = None
+    """
+    The provider's error, prefixed with the name of the composed resource it's about. Set only when state is Failed.
+    """
+    name: constr(max_length=40)
+    """
+    Name of the node pool in spec.nodePools.
+    """
+    state: Literal['Pending', 'Provisioning', 'Ready', 'Failed']
+    """
+    Pending until Modelplane composes the pool's cloud resources, Provisioning until their provider reports them all Ready, then Ready. Failed while the provider reports that its last create, update or delete of one of them failed.
+    """
+
+
 class Secret(BaseModel):
     key: constr(max_length=253)
     """
@@ -137,6 +152,10 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    nodePools: list[NodePoolModel] | None = Field(None, max_length=8)
+    """
+    The provisioning state of each node pool in spec.nodePools. The system node pool Modelplane adds belongs to the cluster itself, so its state is part of the ClusterReady condition.
     """
     secrets: list[Secret] | None = None
     """

@@ -108,6 +108,39 @@ must meet what Modelplane would otherwise set up for you:
   describes how the collector discovers the exporter, the DCGM fields it
   needs, and how to check what yours publishes.
 
+## Provisioning status
+
+An `InferenceCluster` reports how far provisioning has got through four
+conditions. Each is `True` only once every condition before it is, so the first
+one that's `False` names the stage the cluster is in:
+
+| Condition | Covers |
+|---|---|
+| `Accepted` | The node pools' classes and capacity reservations exist and suit the cloud, and the classes claim devices the cloud supports. |
+| `ClusterReady` | The network, control plane, system nodes and cluster add-ons. |
+| `NodePoolsReady` | The node pools in `spec.nodePools`. |
+| `BackendReady` | The serving stack. |
+
+A stage that's `False` has the reason `Pending` while it waits on an earlier
+stage, `Provisioning` while Modelplane creates it, and `Failed` while the cloud
+provider reports an error creating one of its resources. Its message is the
+provider's error, prefixed with the name of the resource it's about.
+`status.nodePools` reports each pool's state the same way.
+
+An `Existing` cluster reports `ClusterReady` and `NodePoolsReady` with the
+reason `Existing`, because Modelplane doesn't provision it.
+
+`kubectl get` shows each stage's reason:
+
+```bash
+kubectl get ic eks-us-east
+```
+
+```text
+NAME          SOURCE   CLUSTER     POOLS          BACKEND   GATEWAY   SYNCED   READY   COMPOSITION                          AGE
+eks-us-east   EKS      Available   Provisioning   Pending             True     False   inferenceclusters.modelplane.ai      24m
+```
+
 ## Serving stack
 
 `spec.stack` selects the serving layer the cluster runs: `Standard` (the default)

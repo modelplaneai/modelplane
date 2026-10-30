@@ -258,6 +258,11 @@ kubectl wait --for=condition=Ready ic/civo-nyc1 --timeout=20m
 {{< /tab >}}
 {{< /tabs >}}
 
+To see which stage provisioning is in, run `kubectl get ic`. The `CLUSTER`,
+`POOLS` and `BACKEND` columns show each stage's progress, and a stage whose
+cloud resources fail to create reads `Failed`. See
+[provisioning status]({{< ref "platform/inference-cluster.md#provisioning-status" >}}).
+
 {{< hint "note" >}}
 Modelplane is reconciling the infrastructure against the source of truth, the
 manifest you just applied.
