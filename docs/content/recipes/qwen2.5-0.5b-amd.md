@@ -35,13 +35,13 @@ the ML side.
 
 ## Platform
 
-{{< manifests "recipes/qwen2.5-0.5b/inference-class.yaml" >}}
+{{< manifests "recipes/qwen2.5-0.5b-amd/inference-class.yaml" >}}
 
-{{< manifests "recipes/qwen2.5-0.5b/inference-cluster.yaml" >}}
+{{< manifests "recipes/qwen2.5-0.5b-amd/inference-cluster.yaml" >}}
 
 ## Deployment
 
-{{< manifests "recipes/qwen2.5-0.5b/model-deployment.yaml" >}}
+{{< manifests "recipes/qwen2.5-0.5b-amd/model-deployment.yaml" >}}
 
-{{< manifests "recipes/qwen2.5-0.5b/model-service.yaml" >}}
+{{< manifests "recipes/qwen2.5-0.5b-amd/model-service.yaml" >}}
 <!-- vale write-good.Passive = YES -->
