@@ -229,7 +229,7 @@ its own and would protect every cloud, not just this filter's uninstall.
 its cloud can't serve would provision devices nothing can drive, so two
 layers reject the mismatch:
 
-1. `compose-inference-cluster` gates with `ClusterReady=False` (reason
+1. `compose-inference-cluster` gates with `Accepted=False` (reason
    `UnsupportedDevices`) when a referenced class claims a driver the
    cluster's cloud neither tags components with nor declares external. A
    typo'd or not-yet-supported driver lands here too; unknown and unsupported
@@ -257,7 +257,7 @@ provisions:
 ```yaml
 status:
   conditions:
-  - type: ClusterReady
+  - type: Accepted
     status: "False"
     reason: UnsupportedDevices
     message: "class amd-mi355x-8x claims gpu.amd.com; Vultr clusters support dra.cpu, gpu.nvidia.com"
