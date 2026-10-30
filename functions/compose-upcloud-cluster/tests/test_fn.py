@@ -244,6 +244,39 @@ def _node_pool_gpu(
     )
 
 
+def _node_pool_cpu(*, node_count: int, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed KubernetesNodeGroup for the cpu-pool pool, with the CPU label and taint and no GPU labels.
+
+    The Premium plan bundles a fixed disk, so no gpuPlan or
+    cloudNativePlan block carries diskSizeGb.
+    """
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "uks.m.upcloud.com/v1alpha1",
+                "kind": "KubernetesNodeGroup",
+                "metadata": {
+                    "annotations": {"crossplane.io/external-name": "cpu-pool"},
+                },
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                    "forProvider": {
+                        "plan": "PREMIUM-8xCPU-32GB",
+                        "nodeCount": node_count,
+                        "labels": {
+                            "modelplane.ai/pool": "cpu-pool",
+                            "modelplane.ai/cpu": "true",
+                        },
+                        "clusterSelector": {"matchControllerRef": True},
+                        "taint": [{"key": "modelplane.ai/cpu", "value": "true", "effect": "NoSchedule"}],
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
 def _provider_config_helm() -> fnv1.Resource:
     """The composed provider-helm ProviderConfig for the cluster, which is always ready."""
     return fnv1.Resource(
@@ -646,6 +679,48 @@ COMPOSE_CASES = [
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         management_policies=None,
                         init_node_count=None,
+                        node_count=2,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    Case(
+        name="ClusterReadyCPUPool",
+        reason=(
+            "A CPU-role pool composes with the modelplane.ai/pool and modelplane.ai/cpu labels and the CPU taint, "
+            "no GPU label, and no plan storage block - Premium plans bundle a fixed disk."
+        ),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    autoscaler=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="cpu-pool",
+                            role="CPU",
+                            plan="PREMIUM-8xCPU-32GB",
+                            nodeCount=2,
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=True),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "node-pool-system": _node_pool_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "node-pool-cpu-pool": _node_pool_cpu(
                         node_count=2,
                         ready=fnv1.READY_UNSPECIFIED,
                     ),

@@ -74,6 +74,7 @@ _EXTERNAL_DRIVERS: dict[Cloud, frozenset[str]] = {
     "Nebius": frozenset(nebius.EXTERNAL_DRIVERS),
     "Vultr": frozenset(vultr.EXTERNAL_DRIVERS),
     "Civo": frozenset(civo.EXTERNAL_DRIVERS),
+    "UpCloud": frozenset(upcloud.EXTERNAL_DRIVERS),
     "Existing": frozenset(existing.EXTERNAL_DRIVERS),
 }
 

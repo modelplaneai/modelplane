@@ -98,9 +98,9 @@ class NodePool(BaseModel):
     """
     UpCloud server plan for the pool's nodes (e.g. GPU-8xCPU-64GB-1xL40S, PREMIUM-4xCPU-16GB). This is the instance type used by other clouds; list plans with upctl server plans.
     """
-    role: Literal['System', 'GPU']
+    role: Literal['System', 'GPU', 'CPU']
     """
-    Determines what workloads this pool runs. System pools host controllers, gateways, and infrastructure. GPU pools host inference workloads and are tainted to exclude non-GPU pods.
+    Determines what workloads this pool runs. System pools host controllers, gateways, and infrastructure. GPU pools host inference workloads and are tainted to exclude non-GPU pods. CPU pools host CPU inference workloads: a non-GPU plan and the modelplane.ai/cpu label and taint.
     """
 
 
@@ -119,7 +119,7 @@ class Spec(BaseModel):
     """
     kubernetesVersion: constr(min_length=1, max_length=16) | None = '1.36'
     """
-    UKS Kubernetes version as major.minor (e.g. 1.36); list current versions with upctl kubernetes versions. Defaults to the newest UKS version. Choose 1.34 or newer so Dynamic Resource Allocation (how GPUs bind to pods) is generally available.
+    UKS Kubernetes version as major.minor (e.g. 1.36); list current versions with upctl kubernetes versions. Defaults to the newest UKS version. Choose 1.34 or newer so Dynamic Resource Allocation (how devices bind to pods) is generally available, and 1.36 or newer for a CPU pool: its cores are claimed as consumable capacity, which Kubernetes enables by default from 1.36 (DRAConsumableCapacity).
     """
     nodePools: list[NodePool] = Field(..., max_length=8, min_length=1)
     """

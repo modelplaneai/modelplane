@@ -243,6 +243,12 @@ SUPPORTED_DRIVERS_CASES = [
         want=frozenset({"gpu.nvidia.com", "dra.cpu"}),
     ),
     SupportedDriversCase(
+        name="UpCloud",
+        reason="UpCloud tags the NVIDIA and CPU stacks.",
+        cloud="UpCloud",
+        want=frozenset({"gpu.nvidia.com", "dra.cpu"}),
+    ),
+    SupportedDriversCase(
         name="Existing",
         reason="Existing is the one cloud that tags the AMD stack, beside NVIDIA and CPU.",
         cloud="Existing",

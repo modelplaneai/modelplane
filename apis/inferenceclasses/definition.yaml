@@ -117,6 +117,20 @@ spec:
               message: >-
                 spec.provisioning.civo.accelerator must be omitted when no
                 device claims a DRA driver other than dra.cpu.
+            - rule: >-
+                !has(self.provisioning) || !has(self.provisioning.upcloud) ||
+                has(self.provisioning.upcloud.accelerator) ||
+                !(has(self.devices) && self.devices.exists(d, (!has(d.claim) || d.claim == 'DRA') && d.driver != 'dra.cpu'))
+              message: >-
+                spec.provisioning.upcloud.accelerator is required when a device
+                claims a DRA driver other than dra.cpu.
+            - rule: >-
+                !has(self.provisioning) || !has(self.provisioning.upcloud) ||
+                !has(self.provisioning.upcloud.accelerator) ||
+                (has(self.devices) && self.devices.exists(d, (!has(d.claim) || d.claim == 'DRA') && d.driver != 'dra.cpu'))
+              message: >-
+                spec.provisioning.upcloud.accelerator must be omitted when no
+                device claims a DRA driver other than dra.cpu.
             # dra-driver-cpu runs only on CPU pools, so a provisioned GPU
             # pool never publishes dra.cpu devices for a claim to allocate.
             - rule: >-
@@ -427,15 +441,17 @@ spec:
                             maximum: 16
                   upcloud:
                     type: object
-                    required: [plan, accelerator]
+                    required: [plan]
                     properties:
                       plan:
                         type: string
                         description: >-
-                          UpCloud GPU server plan (e.g.
-                          GPU-8xCPU-64GB-1xL40S). The plan determines the
-                          GPU model and count; the accelerator block below
-                          is informational.
+                          UpCloud server plan (e.g. GPU-8xCPU-64GB-1xL40S,
+                          PREMIUM-8xCPU-32GB). The plan determines the GPU
+                          model and count, if any. The accelerator block
+                          below doesn't change the hardware, but whether
+                          it's set decides whether the pool is provisioned
+                          as a GPU or a CPU pool.
                         minLength: 1
                         maxLength: 63
                       diskSizeGb:
@@ -447,7 +463,12 @@ spec:
                         description: >-
                           GPU accelerator to attach when provisioning the node
                           pool. Provisioning input only: the scheduler matches
-                          against spec.devices, not this block.
+                          against spec.devices, not this block. Set this when
+                          and only when a device claims a DRA driver other
+                          than dra.cpu; the API rejects a mismatch.
+                          Omitted, Modelplane provisions a CPU pool: a standard
+                          node image, the modelplane.ai/cpu label and taint,
+                          and no GPU stack.
                         required: [type, count]
                         properties:
                           type:

@@ -6451,6 +6451,182 @@ COMPOSE_CASES = [
             ],
         ),
     ),
+    ComposeCase(
+        name="UpCloudCPUPool",
+        reason="Once its UpCloudCluster is Ready, an UpCloud cluster whose pool's class names no accelerator composes a CPU-role pool, a ServingStack claiming dra.cpu and the Usage.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_inference_cluster(
+                    cluster=v1alpha1.Cluster(
+                        source="UpCloud",
+                        upcloud=v1alpha1.Upcloud(zone="fi-hel2"),
+                    ),
+                    node_pools=[
+                        v1alpha1.NodePool(name="cpu-pool", className="cpu-upcloud", nodeCount=2),
+                    ],
+                ),
+                resources={
+                    "upcloud-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "UpCloudCluster",
+                                "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                                "spec": {
+                                    "zone": "fi-hel2",
+                                    "nodePools": [
+                                        {
+                                            "name": "cpu-pool",
+                                            "role": "CPU",
+                                            "plan": "PREMIUM-8xCPU-32GB",
+                                            "nodeCount": 2,
+                                        },
+                                    ],
+                                },
+                                "status": {
+                                    "clusterId": "11111111-2222-3333-4444-555555555555",
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                        },
+                                    ],
+                                    "secrets": [
+                                        {
+                                            "type": "Kubeconfig",
+                                            "name": "test-cluster-kubeconfig-abcde",
+                                            "key": "kubeconfig",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                    "activation": _observed_activation_policy(
+                        activated=[
+                            "kubernetesclusters.uks.m.upcloud.com",
+                            "kubernetesnodegroups.uks.m.upcloud.com",
+                            "networks.network.m.upcloud.com",
+                        ]
+                    ),
+                },
+            ),
+            required_resources={
+                "class-cpu-upcloud": fnv1.Resources(
+                    items=[
+                        _cpu_inference_class(
+                            name="cpu-upcloud",
+                            cpus="6",
+                            provisioning={
+                                "provider": "UpCloud",
+                                "upcloud": {"plan": "PREMIUM-8xCPU-32GB"},
+                            },
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_inference_cluster(
+                    schedulable_pools=[
+                        {
+                            "name": "cpu-pool",
+                            "nodes": 2,
+                            "devices": [
+                                {
+                                    "name": "cpu",
+                                    "claim": "DRA",
+                                    "driver": "dra.cpu",
+                                    "deviceClassName": "dra.cpu",
+                                    "count": 1,
+                                    "capacity": {"cpu": {"value": "6"}},
+                                },
+                            ],
+                        },
+                    ],
+                    cache=None,
+                    gateway={
+                        "serviceAnnotations": {
+                            "service.beta.kubernetes.io/upcloud-load-balancer-config": (
+                                '{"name": "11111111-2222-3333-4444-555555555555-{gateway}", "frontends": [{"mode": "tcp"}]}'
+                            ),
+                        },
+                    },
+                ),
+                resources={
+                    "usage-inferenceclass-cpu-upcloud": _input_usage(kind="InferenceClass", name="cpu-upcloud"),
+                    "activation": _activation_policy(
+                        activate=[
+                            "kubernetesclusters.uks.m.upcloud.com",
+                            "kubernetesnodegroups.uks.m.upcloud.com",
+                            "networks.network.m.upcloud.com",
+                        ],
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "upcloud-cluster": _upcloud_cluster(
+                        node_pools=[
+                            {
+                                "name": "cpu-pool",
+                                "role": "CPU",
+                                "plan": "PREMIUM-8xCPU-32GB",
+                                "diskSizeGb": 100,
+                                "nodeCount": 2,
+                            },
+                        ],
+                        credentials=None,
+                        autoscaler=None,
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "cluster-provider-config-kubernetes": _cluster_provider_config(
+                        kubeconfig="test-cluster-kubeconfig-abcde", identity=None
+                    ),
+                    "serving-stack": _serving_stack(
+                        cloud="UpCloud",
+                        secrets=[{"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"}],
+                        client_cas=None,
+                        gpu=None,
+                        service_annotations={
+                            "service.beta.kubernetes.io/upcloud-load-balancer-config": (
+                                '{"name": "11111111-2222-3333-4444-555555555555-{gateway}", "frontends": [{"mode": "tcp"}]}'
+                            ),
+                        },
+                        dra_drivers=("dra.cpu",),
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "usage-upcloud-by-backend": _backend_usage(cluster_kind="UpCloudCluster"),
+                },
+            ),
+            results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="UpCloud cluster ready, composing backend")],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "model-replicas": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelReplica",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-routes": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelRoute",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-caches": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache"),
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "class-cpu-upcloud": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="cpu-upcloud"
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClusterReady", status=fnv1.STATUS_CONDITION_TRUE, reason="ClusterRunning"),
+                fnv1.Condition(type="BackendReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Installing"),
+            ],
+        ),
+    ),
     # The deletion guard cases, ReplicasRoutesAndCaches through ClassUnresolved,
     # observe an existing cluster along with whatever uses it.
     #

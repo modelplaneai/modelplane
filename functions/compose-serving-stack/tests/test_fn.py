@@ -7739,6 +7739,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="UpCloud",
                     stack="Standard",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -7776,6 +7777,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -7789,6 +7791,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -7821,6 +7824,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -7834,6 +7838,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written UpCloud half.
@@ -7857,6 +7862,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                 composite=_serving_stack(
                     cloud="UpCloud",
                     stack="Dynamo",
+                    dra_drivers=["gpu.nvidia.com"],
                     secrets=[
                         v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                         v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -7894,6 +7900,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-envoy-gateway-by-gateway-class": _observed_ready(),
                     "ai-gateway": _observed_ready(),
                     "ai-gateway-crds": _observed_ready(),
+                    "cluster-agent": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "envoy-gateway": _observed_ready(),
                     "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io": _observed_ready(),
@@ -7907,6 +7914,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-cert-manager-by-envoy-gateway": _observed_ready(),
                     "usage-cert-manager-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-proxy": _observed_ready(),
+                    "usage-gateway-namespace-by-cluster-agent": _observed_ready(),
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
@@ -7953,6 +7961,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The common components.
             "ai-gateway",
             "ai-gateway-crds",
+            "cluster-agent",
             "dra-driver-critical-pods-quota",
             "envoy-gateway",
             "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
@@ -7966,6 +7975,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-envoy-gateway",
             "usage-cert-manager-by-gateway-selfsigned-issuer",
             "usage-gateway-namespace-by-gateway-proxy",
+            "usage-gateway-namespace-by-cluster-agent",
             "usage-gateway-namespace-by-gateway-selfsigned-issuer",
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written UpCloud half.

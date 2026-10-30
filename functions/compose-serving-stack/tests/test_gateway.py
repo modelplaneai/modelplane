@@ -21,39 +21,45 @@ import pytest
 from function import gateway
 from models.ai.modelplane.infrastructure.servingstack import v1alpha1
 
-_GATEWAY_CLASS = {
-    "apiVersion": "gateway.networking.k8s.io/v1",
-    "kind": "GatewayClass",
-    "metadata": {"name": "envoy"},
-    "spec": {
-        "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
-        "parametersRef": {
-            "group": "gateway.envoyproxy.io",
-            "kind": "EnvoyProxy",
-            "name": "cluster-gateway",
-            "namespace": "modelplane-system",
-        },
-    },
-}
 
-_LISTENERS = [
-    {
-        "name": "https",
-        "protocol": "HTTPS",
-        "port": 443,
-        "hostname": "test-backend.gateways.example.com",
-        "tls": {
-            "mode": "Terminate",
-            "certificateRefs": [{"name": "cluster-gateway-serving"}],
-        },
-        "allowedRoutes": {
-            "namespaces": {
-                "from": "Selector",
-                "selector": {"matchExpressions": [{"key": "modelplane.ai/namespace", "operator": "Exists"}]},
-            }
+def _gateway_class() -> dict:
+    """The GatewayClass every case composes, pointing at the cluster-gateway EnvoyProxy."""
+    return {
+        "apiVersion": "gateway.networking.k8s.io/v1",
+        "kind": "GatewayClass",
+        "metadata": {"name": "envoy"},
+        "spec": {
+            "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+            "parametersRef": {
+                "group": "gateway.envoyproxy.io",
+                "kind": "EnvoyProxy",
+                "name": "cluster-gateway",
+                "namespace": "modelplane-system",
+            },
         },
     }
-]
+
+
+def _listeners() -> list[dict]:
+    """The HTTPS listener every case's Gateway carries."""
+    return [
+        {
+            "name": "https",
+            "protocol": "HTTPS",
+            "port": 443,
+            "hostname": "test-backend.gateways.example.com",
+            "tls": {
+                "mode": "Terminate",
+                "certificateRefs": [{"name": "cluster-gateway-serving"}],
+            },
+            "allowedRoutes": {
+                "namespaces": {
+                    "from": "Selector",
+                    "selector": {"matchExpressions": [{"key": "modelplane.ai/namespace", "operator": "Exists"}]},
+                }
+            },
+        }
+    ]
 
 
 @dataclasses.dataclass
@@ -72,7 +78,7 @@ OBJECTS_CASES = [
         reason="Without service annotations, the pair is the GatewayClass and the Gateway, which uses the GatewayClass-level EnvoyProxy.",
         gw=v1alpha1.Gateway(hostname="test-backend.gateways.example.com"),
         want=[
-            ("gateway-class", _GATEWAY_CLASS, None),
+            ("gateway-class", _gateway_class(), None),
             (
                 "gateway",
                 {
@@ -81,7 +87,7 @@ OBJECTS_CASES = [
                     "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
                     "spec": {
                         "gatewayClassName": "envoy",
-                        "listeners": _LISTENERS,
+                        "listeners": _listeners(),
                     },
                 },
                 gateway.READY_CEL,
@@ -100,7 +106,7 @@ OBJECTS_CASES = [
             },
         ),
         want=[
-            ("gateway-class", _GATEWAY_CLASS, None),
+            ("gateway-class", _gateway_class(), None),
             (
                 "gateway-lb-proxy",
                 {
@@ -140,7 +146,7 @@ OBJECTS_CASES = [
                                 "name": "cluster-gateway-lb",
                             },
                         },
-                        "listeners": _LISTENERS,
+                        "listeners": _listeners(),
                     },
                 },
                 gateway.READY_CEL,

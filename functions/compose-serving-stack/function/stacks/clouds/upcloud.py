@@ -34,6 +34,11 @@ modelplane-gpu job scrapes.
 from function.stacks.clouds.generated.aicr.dcgm import DCGM_METRICS_CSV
 from function.stacks.components import Chart, Component
 
+# DRA drivers this cloud supports that arrive outside the serving
+# stack; the stacks package folds them into its derived
+# supported-drivers table.
+EXTERNAL_DRIVERS: list[str] = []
+
 COMPONENTS: list[Component] = [
     Chart(
         key="cert-manager",
@@ -100,19 +105,21 @@ COMPONENTS: list[Component] = [
                     ],
                 },
             },
-            # Disable components we don't need for observability.
-            "grafana": {"enabled": False},
-            "alertmanager": {"enabled": False},
             # The node-exporter chart's default toleration is keyless - it
-            # tolerates every taint, landing the pod on tainted GPU nodes by
-            # accident rather than by intent. Scope it to the GPU taint,
-            # mirroring the generated clouds (TOLERATIONS in generate.py); as
-            # a DaemonSet it still reaches every untainted node.
+            # tolerates every taint, landing the pod on tainted nodes by
+            # accident rather than by intent. Scope it to the GPU and CPU pool
+            # taints, mirroring the generated clouds (TOLERATIONS in
+            # generate.py); as a DaemonSet it still reaches every untainted
+            # node.
             "prometheus-node-exporter": {
                 "tolerations": [
                     {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                    {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
                 ],
             },
+            # Disable components we don't need for observability.
+            "grafana": {"enabled": False},
+            "alertmanager": {"enabled": False},
         },
     ),
     Chart(
@@ -122,6 +129,10 @@ COMPONENTS: list[Component] = [
         chart="node-feature-discovery",
         repository="https://kubernetes-sigs.github.io/node-feature-discovery/charts",
         version="0.19.0",
+        # NFD exists here to label GPU nodes for the DRA driver, so it
+        # carries the GPU stack's driver and stays off clusters whose
+        # classes claim no GPUs.
+        dra_drivers=["gpu.nvidia.com"],
         # The worker must run on the very nodes it is supposed to label:
         # the DRA driver's kubelet plugin schedules only onto nodes
         # carrying an NFD GPU label (feature.node.kubernetes.io/pci-10de
@@ -157,6 +168,7 @@ COMPONENTS: list[Component] = [
         chart="dra-driver-nvidia-gpu",
         repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
         version="0.5.0",
+        dra_drivers=["gpu.nvidia.com"],
         values={
             "gpuResourcesEnabledOverride": True,
             "resources": {"computeDomains": {"enabled": False}},
@@ -177,6 +189,9 @@ COMPONENTS: list[Component] = [
         chart="dcgm-exporter",
         repository="https://nvidia.github.io/dcgm-exporter/helm-charts",
         version="4.8.4",
+        # Exports NVIDIA GPU telemetry, so it follows the GPU stack's
+        # driver and stays off clusters whose classes claim no GPUs.
+        dra_drivers=["gpu.nvidia.com"],
         values={
             "serviceMonitor": {"enabled": False},
             "customMetrics": DCGM_METRICS_CSV,

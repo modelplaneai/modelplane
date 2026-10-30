@@ -307,10 +307,17 @@ CLOUDS: dict[str, Cloud] = {
             "feature.node.kubernetes.io/system-os_release.VERSION_ID": "13",
         },
         taint_value="true",
+        cpu_labels={
+            "node.kubernetes.io/instance-type": "PREMIUM-8xCPU-32GB",
+            "modelplane.ai/pool": "cpu-fake",
+            "modelplane.ai/cpu": "true",
+        },
+        dra_drivers=("dra.cpu", "gpu.nvidia.com"),
         expected_daemonsets={
             "nvidia-dra-driver/dra-driver-nvidia-gpu-kubelet-plugin": 2,
+            "dra-driver-cpu/mp-dra-driver-cpu": 2,
             "node-feature-discovery/mp-node-feature-discovery-worker": 3,
-            "monitoring/mp-kube-prometheus-stack-prometheus-node-exporter": 3,
+            "monitoring/mp-kube-prometheus-stack-prometheus-node-exporter": 5,
             "dcgm-exporter/mp-dcgm-exporter": 2,
         },
     ),

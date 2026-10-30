@@ -107,6 +107,7 @@ _SUPPORTED_DRA_DRIVERS: dict[Cloud, frozenset[str]] = {
     CLUSTER_SOURCE_NEBIUS: frozenset({"gpu.nvidia.com", "dra.cpu"}),
     CLUSTER_SOURCE_VULTR: frozenset({"gpu.nvidia.com", "dra.cpu"}),
     CLUSTER_SOURCE_CIVO: frozenset({"gpu.nvidia.com", "dra.cpu"}),
+    CLUSTER_SOURCE_UPCLOUD: frozenset({"gpu.nvidia.com", "dra.cpu"}),
 }
 
 # InferenceClass device claim values. An unset claim means DRA.
@@ -1158,7 +1159,7 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "UpCloud cluster ready, composing backend")
 
-        self.write_status(self.gpu_pools())
+        self.write_status(self.schedulable_pools())
         self.derive_conditions(cluster_ready=upcloud_ready)
 
     def compose_existing(self, existing: v1alpha1.Existing | None) -> None:
@@ -2065,16 +2066,19 @@ class Composer:
                 response.warning(self.rsp, msg)
                 return
             prov = cls.spec.provisioning.upcloud
+            # A class with no accelerator describes a CPU pool (see the GKE
+            # builder above).
             node_pool = upcloudv1alpha1.NodePool(
                 name=pool.name,
-                role="GPU",
+                role="GPU" if prov.accelerator else "CPU",
                 plan=prov.plan,
                 diskSizeGb=prov.diskSizeGb,
                 nodeCount=pool.nodeCount,
-                gpu=upcloudv1alpha1.Gpu(
-                    acceleratorType=prov.accelerator.type,
-                ),
             )
+            if prov.accelerator:
+                node_pool.gpu = upcloudv1alpha1.Gpu(
+                    acceleratorType=prov.accelerator.type,
+                )
             # Only set the autoscaling bounds when the pool opts in, so
             # fixed-size pools stay fixed (resource.update serializes with
             # exclude_unset, keeping unset bounds out of the UpCloudCluster
