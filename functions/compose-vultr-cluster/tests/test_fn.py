@@ -40,6 +40,25 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
+@dataclasses.dataclass
+class Derived:
+    """What derive_conditions reports: each node pool's state, and the conditions it sets."""
+
+    node_pools: list[dict]
+    conditions: list[fnv1.Condition]
+
+
+@dataclasses.dataclass
+class DeriveConditionsCase:
+    """A test case for Composer.derive_conditions."""
+
+    name: str
+    reason: str
+    req: fnv1.RunFunctionRequest
+    desired: fnv1.State
+    want: Derived
+
+
 def _xr(*, node_pools: list[v1alpha1.NodePool]) -> fnv1.Resource:
     """The observed VultrCluster XR, with the given node pools."""
     xr = v1alpha1.VultrCluster(
@@ -55,12 +74,13 @@ def _xr(*, node_pools: list[v1alpha1.NodePool]) -> fnv1.Resource:
     return fnv1.Resource(resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json", by_alias=True)))
 
 
-def _desired_xr() -> fnv1.Resource:
-    """The desired XR, publishing the cluster's kubeconfig Secret."""
+def _desired_xr(*, node_pools: list[dict]) -> fnv1.Resource:
+    """The desired XR, publishing node_pools' states and the cluster's kubeconfig Secret."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
                 "status": {
+                    "nodePools": node_pools,
                     "secrets": [
                         {
                             "type": "Kubeconfig",
@@ -275,6 +295,27 @@ def _gpu_observer(*, ready: fnv1.Ready) -> fnv1.Resource:
     )
 
 
+def _observed_failed(*, message: str) -> fnv1.Resource:
+    """An observed managed resource whose provider reports its last operation failed with message."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "LastAsyncOperation",
+                            "status": "False",
+                            "reason": "AsyncCreateFailure",
+                            "message": message,
+                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                        },
+                    ],
+                },
+            }
+        ),
+    )
+
+
 def _to_dict(msg: message.Message) -> dict:
     """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
     return json.loads(json_format.MessageToJson(msg, sort_keys=True))
@@ -302,12 +343,26 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-l40s", "state": "Pending"}]),
                 resources={
                     "cluster": _cluster(ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="0 of 1 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -334,7 +389,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-l40s", "state": "Provisioning"}]),
                 resources={
                     "cluster": _cluster(ready=fnv1.READY_TRUE),
                     "node-pool-gpu-l40s": _node_pool_gpu(
@@ -347,6 +402,19 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="0 of 1 node pools ready",
+                ),
+            ],
         ),
     ),
     Case(
@@ -376,7 +444,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "cpu-pool", "state": "Provisioning"}]),
                 resources={
                     "cluster": _cluster(ready=fnv1.READY_TRUE),
                     "node-pool-cpu-pool": _node_pool_cpu(
@@ -388,6 +456,19 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="0 of 1 node pools ready",
+                ),
+            ],
         ),
     ),
     Case(
@@ -446,7 +527,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-l40s", "state": "Provisioning"}]),
                 resources={
                     "cluster": _cluster(ready=fnv1.READY_UNSPECIFIED),
                     "node-pool-gpu-l40s": _node_pool_gpu(
@@ -459,6 +540,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 2 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -521,7 +616,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-l40s", "state": "Provisioning"}]),
                 resources={
                     "cluster": _cluster(ready=fnv1.READY_UNSPECIFIED),
                     "node-pool-gpu-l40s": _node_pool_gpu(
@@ -534,6 +629,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 2 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -560,7 +669,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-l40s", "state": "Provisioning"}]),
                 resources={
                     "cluster": _cluster(ready=fnv1.READY_TRUE),
                     "node-pool-gpu-l40s": _node_pool_gpu(
@@ -573,6 +682,19 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="0 of 1 node pools ready",
+                ),
+            ],
         ),
     ),
     # The pool's nodeCount and minNodeCount are both 2, so this case can't tell
@@ -605,7 +727,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "workers", "state": "Provisioning"}]),
                 resources={
                     "cluster": _cluster(ready=fnv1.READY_TRUE),
                     "node-pool-workers": fnv1.Resource(
@@ -633,6 +755,19 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="0 of 1 node pools ready",
+                ),
+            ],
         ),
     ),
     Case(
@@ -739,7 +874,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-l40s", "state": "Ready"}]),
                 resources={
                     "cluster": _cluster(ready=fnv1.READY_TRUE),
                     "node-pool-gpu-l40s": _node_pool_gpu(
@@ -752,6 +887,18 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
         ),
     ),
 ]
@@ -762,3 +909,297 @@ def test_compose(case: Case) -> None:
     """RunFunction composes VKE cluster infrastructure."""
     got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
     assert _to_dict(got) == _to_dict(case.want), case.reason
+
+
+# Each case's XR has two pools: gpu-l40s, built by its KubernetesNodePool and the
+# gpu-observer, and cpu-pool, built by its KubernetesNodePool. desired is what
+# the function composed, with the readiness mark_readiness set.
+DERIVE_CONDITIONS_CASES = [
+    DeriveConditionsCase(
+        name="ClusterProvisioning",
+        reason="With the cluster unready, ClusterReady counts how many cluster resources are ready and NodePoolsReady waits on it while each pool provisions.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(name="cpu-pool", role="CPU", plan="vc2-6c-16gb"),
+                    ],
+                ),
+            ),
+        ),
+        desired=fnv1.State(
+            resources={
+                "cluster": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "provider-config-kubernetes": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "node-pool-gpu-l40s": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "node-pool-cpu-pool": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "gpu-observer": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+            },
+        ),
+        want=Derived(
+            node_pools=[{"name": "gpu-l40s", "state": "Provisioning"}, {"name": "cpu-pool", "state": "Provisioning"}],
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 2 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+        ),
+    ),
+    DeriveConditionsCase(
+        name="PoolsProvisioning",
+        reason="With the cluster and both node pools ready but the gpu-observer unready, the GPU pool is Provisioning and only cpu-pool is Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(name="cpu-pool", role="CPU", plan="vc2-6c-16gb"),
+                    ],
+                ),
+            ),
+        ),
+        desired=fnv1.State(
+            resources={
+                "cluster": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "provider-config-kubernetes": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "node-pool-gpu-l40s": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "node-pool-cpu-pool": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "gpu-observer": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+            },
+        ),
+        want=Derived(
+            node_pools=[{"name": "gpu-l40s", "state": "Provisioning"}, {"name": "cpu-pool", "state": "Ready"}],
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 2 node pools ready",
+                ),
+            ],
+        ),
+    ),
+    DeriveConditionsCase(
+        name="PoolPending",
+        reason="With only the cluster composed, neither pool's resources are, so both pools are Pending.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(name="cpu-pool", role="CPU", plan="vc2-6c-16gb"),
+                    ],
+                ),
+            ),
+        ),
+        desired=fnv1.State(
+            resources={
+                "cluster": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+            },
+        ),
+        want=Derived(
+            node_pools=[{"name": "gpu-l40s", "state": "Pending"}, {"name": "cpu-pool", "state": "Pending"}],
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="0 of 1 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+        ),
+    ),
+    DeriveConditionsCase(
+        name="AllReady",
+        reason="With every resource ready, ClusterReady and NodePoolsReady are True and every pool is Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(name="cpu-pool", role="CPU", plan="vc2-6c-16gb"),
+                    ],
+                ),
+            ),
+        ),
+        desired=fnv1.State(
+            resources={
+                "cluster": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "provider-config-kubernetes": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "node-pool-gpu-l40s": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "node-pool-cpu-pool": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "gpu-observer": fnv1.Resource(ready=fnv1.READY_TRUE),
+            },
+        ),
+        want=Derived(
+            node_pools=[{"name": "gpu-l40s", "state": "Ready"}, {"name": "cpu-pool", "state": "Ready"}],
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
+        ),
+    ),
+    DeriveConditionsCase(
+        name="PoolFailed",
+        reason="With the provider reporting a pool's KubernetesNodePool create failed, the pool is Failed with the provider's error, even while the cluster provisions.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(name="cpu-pool", role="CPU", plan="vc2-6c-16gb"),
+                    ],
+                ),
+                resources={
+                    "node-pool-cpu-pool": _observed_failed(
+                        message="async create failed: Plan is not available in the selected region"
+                    ),
+                },
+            ),
+        ),
+        desired=fnv1.State(
+            resources={
+                "cluster": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "provider-config-kubernetes": fnv1.Resource(ready=fnv1.READY_TRUE),
+                "node-pool-gpu-l40s": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "node-pool-cpu-pool": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+                "gpu-observer": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+            },
+        ),
+        want=Derived(
+            node_pools=[
+                {"name": "gpu-l40s", "state": "Provisioning"},
+                {
+                    "name": "cpu-pool",
+                    "state": "Failed",
+                    "message": "node-pool-cpu-pool: async create failed: Plan is not available in the selected region",
+                },
+            ],
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 2 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Failed",
+                    message="1 of 2 node pools failed: cpu-pool",
+                ),
+            ],
+        ),
+    ),
+    DeriveConditionsCase(
+        name="ClusterFailed",
+        reason="With the provider reporting the cluster's create failed, ClusterReady is Failed with its error and NodePoolsReady waits on it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(name="cpu-pool", role="CPU", plan="vc2-6c-16gb"),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_failed(message="async create failed: Region is not available"),
+                },
+            ),
+        ),
+        desired=fnv1.State(
+            resources={
+                "cluster": fnv1.Resource(ready=fnv1.READY_UNSPECIFIED),
+            },
+        ),
+        want=Derived(
+            node_pools=[{"name": "gpu-l40s", "state": "Pending"}, {"name": "cpu-pool", "state": "Pending"}],
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Failed",
+                    message="cluster: async create failed: Region is not available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize("case", DERIVE_CONDITIONS_CASES, ids=lambda case: case.name)
+def test_derive_conditions(case: DeriveConditionsCase) -> None:
+    """derive_conditions reports which provisioning stage the cluster is in, and each node pool's state."""
+    rsp = fnv1.RunFunctionResponse(desired=case.desired)
+    node_pools = fn.Composer(case.req, rsp).derive_conditions()
+    got = {
+        "nodePools": [p.model_dump(exclude_none=True) for p in node_pools],
+        "conditions": [_to_dict(c) for c in rsp.conditions],
+    }
+    want = {"nodePools": case.want.node_pools, "conditions": [_to_dict(c) for c in case.want.conditions]}
+    assert got == want, case.reason

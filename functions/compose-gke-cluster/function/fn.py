@@ -123,6 +123,38 @@ _ORPHAN_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update"]
 _GKE_IMAGE_TYPE = "COS_CONTAINERD"
 _GKE_OAUTH_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 
+# Conditions reporting which provisioning stage the cluster is in. The cluster
+# is everything this XR composes except the user's node pools: network, Filestore
+# API, service account and IAM, control plane, system node pool, ProviderConfigs
+# and the RWX StorageClass. compose-inference-cluster relays both conditions
+# onto the InferenceCluster.
+CONDITION_TYPE_CLUSTER_READY = "ClusterReady"
+CONDITION_TYPE_NODE_POOLS_READY = "NodePoolsReady"
+
+CONDITION_REASON_AVAILABLE = "Available"
+CONDITION_REASON_PENDING = "Pending"
+CONDITION_REASON_PROVISIONING = "Provisioning"
+CONDITION_REASON_FAILED = "Failed"
+
+# status.nodePools[].state values.
+_POOL_STATE_PENDING = "Pending"
+_POOL_STATE_PROVISIONING = "Provisioning"
+_POOL_STATE_READY = "Ready"
+_POOL_STATE_FAILED = "Failed"
+
+# upjet sets this condition False, with the provider's error as its message,
+# when its last create, update or delete of the external resource failed. It's
+# the only failure signal read: a managed resource is also Synced=False while it
+# waits for a reference to resolve, which is routine during provisioning.
+_CONDITION_LAST_ASYNC_OPERATION = "LastAsyncOperation"
+
+
+def _first(failures: list[str]) -> str:
+    """The first failure, noting how many more there are."""
+    if len(failures) == 1:
+        return failures[0]
+    return f"{failures[0]} (and {len(failures) - 1} more)"
+
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
     """The object's name, always set on resources read from the API server."""
@@ -216,6 +248,21 @@ class Composer:
                 )
                 return project
             response.normal(self.rsp, f"Waiting for GCP {cred_kind} {cred_name}")
+            response.set_conditions(
+                self.rsp,
+                resource.Condition(
+                    typ=CONDITION_TYPE_CLUSTER_READY,
+                    status="False",
+                    reason=CONDITION_REASON_PROVISIONING,
+                    message=f"Waiting for GCP {cred_kind} {cred_name}",
+                ),
+                resource.Condition(
+                    typ=CONDITION_TYPE_NODE_POOLS_READY,
+                    status="False",
+                    reason=CONDITION_REASON_PENDING,
+                    message=f"Waiting for {CONDITION_TYPE_CLUSTER_READY}",
+                ),
+            )
             # Nothing is composed while waiting for the project, and an XR with
             # no composed resources would otherwise be trivially ready.
             self.rsp.desired.composite.ready = fnv1.READY_FALSE
@@ -256,8 +303,8 @@ class Composer:
         self.compose_iam_binding()
         self.compose_provider_configs()
         self.compose_storage_class()
-        self.write_status()
         self.mark_readiness()
+        self.write_status(self.derive_conditions())
 
     def compose_network(self) -> None:
         resource.update(
@@ -631,8 +678,9 @@ class Composer:
         )
         self.rsp.desired.resources["storage-class-rwx"].ready = fnv1.READY_TRUE
 
-    def write_status(self) -> None:
+    def write_status(self, node_pools: list[v1alpha1.NodePoolModel]) -> None:
         status = v1alpha1.Status(
+            nodePools=node_pools,
             secrets=[
                 v1alpha1.Secret(
                     type=_SECRET_TYPE_KUBECONFIG,
@@ -685,6 +733,106 @@ class Composer:
 
         self.rsp.desired.resources["provider-config-kubernetes"].ready = fnv1.READY_TRUE
         self.rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
+
+    def pool_resources(self, pool: v1alpha1.NodePool) -> list[str]:
+        """The composed resources that build pool."""
+        return [f"nodepool-{pool.name}"]
+
+    def _failures(self, resources: list[str]) -> list[str]:
+        """Each composed resource whose provider reports its last operation
+        failed, as its name and the provider's error."""
+        failures = []
+        for r in resources:
+            c = resource.get_condition(self.req.observed.resources.get(r), _CONDITION_LAST_ASYNC_OPERATION)
+            if c.status == "False":
+                failures.append(f"{r}: {c.message}")
+        return failures
+
+    def _unready(self, resources: list[str]) -> list[str]:
+        """Each of resources that isn't composed and marked ready."""
+        desired = self.rsp.desired.resources
+        return [r for r in resources if r not in desired or desired[r].ready != fnv1.READY_TRUE]
+
+    def _node_pool_statuses(self) -> list[v1alpha1.NodePoolModel]:
+        """The provisioning state of each user node pool, from its resources."""
+        statuses = []
+        for pool in self.xr.spec.nodePools:
+            resources = self.pool_resources(pool)
+            failures = self._failures(resources)
+            if failures:
+                statuses.append(
+                    v1alpha1.NodePoolModel(name=pool.name, state=_POOL_STATE_FAILED, message=_first(failures))
+                )
+            elif not any(r in self.rsp.desired.resources for r in resources):
+                statuses.append(v1alpha1.NodePoolModel(name=pool.name, state=_POOL_STATE_PENDING))
+            elif self._unready(resources):
+                statuses.append(v1alpha1.NodePoolModel(name=pool.name, state=_POOL_STATE_PROVISIONING))
+            else:
+                statuses.append(v1alpha1.NodePoolModel(name=pool.name, state=_POOL_STATE_READY))
+        return statuses
+
+    def derive_conditions(self) -> list[v1alpha1.NodePoolModel]:
+        """Derive ClusterReady and NodePoolsReady from the readiness
+        mark_readiness set, and return each node pool's state for
+        status.nodePools.
+
+        NodePoolsReady is True only once ClusterReady is, so the first False
+        condition names the stage provisioning is in. A failed pool is reported
+        Failed even while the cluster is still provisioning.
+        """
+        node_pools = self._node_pool_statuses()
+        in_pools = {r for pool in self.xr.spec.nodePools for r in self.pool_resources(pool)}
+        cluster = sorted(r for r in self.rsp.desired.resources if r not in in_pools)
+        failures = self._failures(cluster)
+        unready = self._unready(cluster)
+        if failures:
+            cluster_ready = resource.Condition(
+                typ=CONDITION_TYPE_CLUSTER_READY,
+                status="False",
+                reason=CONDITION_REASON_FAILED,
+                message=_first(failures),
+            )
+        elif unready:
+            cluster_ready = resource.Condition(
+                typ=CONDITION_TYPE_CLUSTER_READY,
+                status="False",
+                reason=CONDITION_REASON_PROVISIONING,
+                message=f"{len(cluster) - len(unready)} of {len(cluster)} resources ready",
+            )
+        else:
+            cluster_ready = resource.Condition(
+                typ=CONDITION_TYPE_CLUSTER_READY, status="True", reason=CONDITION_REASON_AVAILABLE
+            )
+
+        failed = [p.name for p in node_pools if p.state == _POOL_STATE_FAILED]
+        ready = [p.name for p in node_pools if p.state == _POOL_STATE_READY]
+        if failed:
+            pools_ready = resource.Condition(
+                typ=CONDITION_TYPE_NODE_POOLS_READY,
+                status="False",
+                reason=CONDITION_REASON_FAILED,
+                message=f"{len(failed)} of {len(node_pools)} node pools failed: {', '.join(failed)}",
+            )
+        elif cluster_ready.status != "True":
+            pools_ready = resource.Condition(
+                typ=CONDITION_TYPE_NODE_POOLS_READY,
+                status="False",
+                reason=CONDITION_REASON_PENDING,
+                message=f"Waiting for {CONDITION_TYPE_CLUSTER_READY}",
+            )
+        elif len(ready) < len(node_pools):
+            pools_ready = resource.Condition(
+                typ=CONDITION_TYPE_NODE_POOLS_READY,
+                status="False",
+                reason=CONDITION_REASON_PROVISIONING,
+                message=f"{len(ready)} of {len(node_pools)} node pools ready",
+            )
+        else:
+            pools_ready = resource.Condition(
+                typ=CONDITION_TYPE_NODE_POOLS_READY, status="True", reason=CONDITION_REASON_AVAILABLE
+            )
+        response.set_conditions(self.rsp, cluster_ready, pools_ready)
+        return node_pools
 
     def observed_sa_email(self) -> str | None:
         """Read the service account email from observed state."""
