@@ -5852,7 +5852,7 @@ COMPOSE_CASES = [
             results=[
                 fnv1.Result(
                     severity=fnv1.SEVERITY_FATAL,
-                    message="class gpu-l4 claims gpu.amd.com; the GKE serving stack installs dra.cpu, gpu.nvidia.com",
+                    message="class gpu-l4 claims gpu.amd.com; GKE clusters support dra.cpu, gpu.nvidia.com",
                 ),
             ],
             context=structpb.Struct(),
@@ -5880,7 +5880,7 @@ COMPOSE_CASES = [
                     type="ClusterReady",
                     status=fnv1.STATUS_CONDITION_FALSE,
                     reason="UnsupportedDevices",
-                    message="class gpu-l4 claims gpu.amd.com; the GKE serving stack installs dra.cpu, gpu.nvidia.com",
+                    message="class gpu-l4 claims gpu.amd.com; GKE clusters support dra.cpu, gpu.nvidia.com",
                 ),
             ],
         ),
@@ -6369,15 +6369,21 @@ def test_dra_drivers_synthetic() -> None:
 
 
 def test_unsupported_devices() -> None:
-    """A class claiming a driver its cloud can't serve gates ClusterReady
-    with UnsupportedDevices and the design's message, and stops with a
-    fatal result so a running cluster holds its existing resources
+    """Classes claiming drivers their cloud can't serve gate ClusterReady
+    with UnsupportedDevices, naming every offending class, and stop with
+    a fatal result so a running cluster holds its existing resources
     rather than being garbage-collected."""
     composer = _composer(
         source="Vultr",
         devices_by_class={
             "amd-mi355x-8x": [
                 {"name": "gpu", "claim": "DRA", "driver": "gpu.amd.com", "deviceClassName": "gpu.amd.com"},
+            ],
+            "nvidia-l40s": [
+                {"name": "gpu", "claim": "DRA", "driver": "gpu.nvidia.com", "deviceClassName": "gpu.nvidia.com"},
+            ],
+            "efa": [
+                {"name": "efa", "claim": "DRA", "driver": "dra.net", "deviceClassName": "efa.networking.k8s.aws"},
             ],
         },
     )
@@ -6386,12 +6392,14 @@ def test_unsupported_devices() -> None:
     assert conditions["ClusterReady"].status == fnv1.STATUS_CONDITION_FALSE
     assert conditions["ClusterReady"].reason == "UnsupportedDevices"
     assert conditions["ClusterReady"].message == (
-        "class amd-mi355x-8x claims gpu.amd.com; the Vultr serving stack installs dra.cpu, gpu.nvidia.com"
+        "class amd-mi355x-8x claims gpu.amd.com; class efa claims dra.net; "
+        "Vultr clusters support dra.cpu, gpu.nvidia.com"
     )
     assert [(r.severity, r.message) for r in composer.rsp.results] == [
         (
             fnv1.SEVERITY_FATAL,
-            "class amd-mi355x-8x claims gpu.amd.com; the Vultr serving stack installs dra.cpu, gpu.nvidia.com",
+            "class amd-mi355x-8x claims gpu.amd.com; class efa claims dra.net; "
+            "Vultr clusters support dra.cpu, gpu.nvidia.com",
         ),
     ]
 

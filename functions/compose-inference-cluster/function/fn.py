@@ -108,6 +108,9 @@ _SUPPORTED_DRA_DRIVERS: dict[Cloud, frozenset[str]] = {
 # compose_pool_observations).
 _NVIDIA_GPU_DRIVER = "gpu.nvidia.com"
 
+# InferenceClass device claim values. An unset claim means DRA.
+_CLAIM_DRA = "DRA"
+
 # Composed resource key for the backend XR.
 BACKEND_RESOURCE_KEY = "serving-stack"
 
@@ -266,7 +269,7 @@ def _agent_observable(cls: iclv1alpha1.InferenceClass) -> bool:
     having no free devices and the scheduler would never place a replica
     there. Unobserved, they get whole-node accounting.
     """
-    return any(d.driver == _NVIDIA_GPU_DRIVER and (d.claim or "DRA") == "DRA" for d in cls.spec.devices or [])
+    return any(d.driver == _NVIDIA_GPU_DRIVER and (d.claim or _CLAIM_DRA) == _CLAIM_DRA for d in cls.spec.devices or [])
 
 
 def _gateway_hostname(cluster_name: str) -> str:
@@ -728,7 +731,7 @@ class Composer:
         drivers: set[str] = set()
         for cls in self.classes.values():
             for device in cls.spec.devices or []:
-                if (device.claim or "DRA") == "DRA":
+                if (device.claim or _CLAIM_DRA) == _CLAIM_DRA:
                     drivers.add(device.driver)
         return sorted(drivers)
 
@@ -740,40 +743,41 @@ class Composer:
         not-yet-supported driver lands here too; unknown and unsupported are
         the same failure. Existing never gates (see _SUPPORTED_DRA_DRIVERS).
         Gating is a fatal result, so a cluster already running when a class
-        turns unsupported holds its existing resources.
+        turns unsupported holds its existing resources. Every offending class
+        is named, so fixing one doesn't just surface the next.
         """
-        supported = _SUPPORTED_DRA_DRIVERS.get(source)
-        if supported is None:
+        if source == CLUSTER_SOURCE_EXISTING:
             return True
+        supported = _SUPPORTED_DRA_DRIVERS[source]
+        offending = []
         for name in sorted(self.classes):
-            cls = self.classes[name]
-            claimed = {d.driver for d in (cls.spec.devices or []) if (d.claim or "DRA") == "DRA"}
+            claimed = {
+                d.driver for d in (self.classes[name].spec.devices or []) if (d.claim or _CLAIM_DRA) == _CLAIM_DRA
+            }
             unsupported = claimed - supported
-            if not unsupported:
-                continue
-            msg = (
-                f"class {name} claims {', '.join(sorted(unsupported))}; "
-                f"the {source} serving stack installs {', '.join(sorted(supported))}"
-            )
-            response.set_conditions(
-                self.rsp,
-                resource.Condition(
-                    typ=CONDITION_TYPE_CLUSTER_READY,
-                    status="False",
-                    reason=CONDITION_REASON_UNSUPPORTED_DEVICES,
-                    message=msg,
-                ),
-            )
-            # A fatal result, not a bare return: everything after this gate
-            # composes the cluster, so returning an empty desired state would
-            # have Crossplane garbage-collect a running cluster - the cloud
-            # cluster XR, ServingStack and Usages - the moment a shared class
-            # starts claiming an unsupported driver. Crossplane stops before
-            # applying desired state or collecting anything on a fatal result,
-            # and still applies the condition above.
-            response.fatal(self.rsp, msg)
-            return False
-        return True
+            if unsupported:
+                offending.append(f"class {name} claims {', '.join(sorted(unsupported))}")
+        if not offending:
+            return True
+        msg = f"{'; '.join(offending)}; {source} clusters support {', '.join(sorted(supported))}"
+        response.set_conditions(
+            self.rsp,
+            resource.Condition(
+                typ=CONDITION_TYPE_CLUSTER_READY,
+                status="False",
+                reason=CONDITION_REASON_UNSUPPORTED_DEVICES,
+                message=msg,
+            ),
+        )
+        # A fatal result, not a bare return: everything after this gate
+        # composes the cluster, so returning an empty desired state would
+        # have Crossplane garbage-collect a running cluster - the cloud
+        # cluster XR, ServingStack and Usages - the moment a shared class
+        # starts claiming an unsupported driver. Crossplane stops before
+        # applying desired state or collecting anything on a fatal result,
+        # and still applies the condition above.
+        response.fatal(self.rsp, msg)
+        return False
 
     def compose_gke(self, gke: v1alpha1.Gke | None) -> None:
         """Compose an InferenceCluster backed by a Modelplane-provisioned
