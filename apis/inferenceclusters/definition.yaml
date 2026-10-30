@@ -141,6 +141,13 @@ spec:
                       kubernetesVersion:
                         type: string
                         default: "1.35"
+                        description: >-
+                          GKE cluster Kubernetes version. Defaults to a
+                          version where Dynamic Resource Allocation (how GPUs
+                          bind to pods) is generally available. A CPU pool
+                          needs 1.36 or newer: its cores are claimed as
+                          consumable capacity, which Kubernetes enables by
+                          default from 1.36 (DRAConsumableCapacity).
                       credentials:
                         type: object
                         description: >-
@@ -215,7 +222,10 @@ spec:
                         description: >-
                           AKS cluster Kubernetes version. Defaults to a
                           version where Dynamic Resource Allocation (how GPUs
-                          bind to pods) is generally available.
+                          bind to pods) is generally available. A CPU pool
+                          needs 1.36 or newer: its cores are claimed as
+                          consumable capacity, which Kubernetes enables by
+                          default from 1.36 (DRAConsumableCapacity).
                       credentials:
                         type: object
                         description: >-
@@ -250,7 +260,10 @@ spec:
                         description: >-
                           mk8s cluster Kubernetes version. Defaults to a
                           version where Dynamic Resource Allocation (DRA)
-                          is generally available.
+                          is generally available. A CPU pool needs 1.36 or
+                          newer: its cores are claimed as consumable
+                          capacity, which Kubernetes enables by default from
+                          1.36 (DRAConsumableCapacity).
                       credentials:
                         type: object
                         description: >-
