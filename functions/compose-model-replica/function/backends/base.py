@@ -807,34 +807,47 @@ def engine_resources(container: v1alpha1.Container, *, claim: bool) -> dict:
     return resources
 
 
-def cpu_claim_without_request(replica: v1alpha1.ModelReplica) -> str | None:
-    """Name the first engine/member claiming dra.cpu whose engine sets no cpu request.
-
-    The claim's capacity is sized from that request (see
-    resource_claim_template), so its absence is a user error the function
-    stops on, rather than composing a whole-device claim the driver
-    refuses at pod start - every claimable core taken leaves the node's
-    shared containers nowhere to run.
-    """
-    for engine in replica.spec.engines:
-        for member in engine.members:
-            if not any(r.deviceClassName == CPU_DEVICE_CLASS for r in (member.deviceRequests or [])):
-                continue
-            container = engine_container(member)
-            requests = (container.resources.requests if container.resources else None) or {}
-            if "cpu" not in requests:
-                return f"{engine.name}/{member_role(member)}"
-    return None
-
-
 # The DeviceClass dra-driver-cpu registers, and the qualified name its
 # grouped devices hold their cores under. A member claiming through this
 # class sizes its claim from the engine's cpu request (see
 # resource_claim_template); the names are the driver's contract, kept in
 # sync with the dra-driver-cpu pin in compose-serving-stack's
 # stacks/common.py.
-CPU_DEVICE_CLASS = "dra.cpu"
-CPU_CAPACITY = "dra.cpu/cpu"
+_CPU_DEVICE_CLASS = "dra.cpu"
+_CPU_CAPACITY = "dra.cpu/cpu"
+
+
+def invalid_cpu_claim(replica: v1alpha1.ModelReplica) -> str | None:
+    """Explain why a member's dra.cpu claim can't be sized, or None if every one can.
+
+    A CPU claim takes the engine container's cpu request from one device
+    (see resource_claim_template), so the function stops on a claim it
+    can't size that way rather than compose one the driver refuses or
+    that over-claims. Without a request the claim would take the whole
+    device, which leaves the node's shared containers nowhere to run.
+    Across more than one device, each would take the full request.
+    """
+    for engine in replica.spec.engines:
+        for member in engine.members:
+            cpu = [r for r in (member.deviceRequests or []) if r.deviceClassName == _CPU_DEVICE_CLASS]
+            if not cpu:
+                continue
+            name = f"{engine.name}/{member_role(member)}"
+            if sum(int(r.count or 1) for r in cpu) > 1:
+                return (
+                    f"{name} claims more than one dra.cpu device, but a dra.cpu claim takes the engine "
+                    "container's cpu request from a single device: claim one"
+                )
+            container = engine_container(member)
+            requests = (container.resources.requests if container.resources else None) or {}
+            if "cpu" not in requests:
+                return (
+                    f"a dra.cpu claim is sized from the engine container's cpu request, and {name} sets none: "
+                    "set resources requests and limits cpu to the cores the claim should take, below the "
+                    "device's total so the node's shared containers keep a core"
+                )
+    return None
+
 
 # Taints inference node pools carry so unrelated pods don't land on them, one
 # per device stack: the cluster compositions taint NVIDIA GPU pools
@@ -916,7 +929,7 @@ def resource_claim_template(
         selectors = [{"cel": {"expression": s.cel}} for s in (r.selectors or []) if s.cel]
         if selectors:
             exactly["selectors"] = selectors
-        if r.deviceClassName == CPU_DEVICE_CLASS:
+        if r.deviceClassName == _CPU_DEVICE_CLASS:
             # dra-driver-cpu's grouped device holds its cores as consumable
             # capacity, and a claim with no capacity request consumes the
             # whole device - which the driver refuses while the node's
@@ -926,10 +939,10 @@ def resource_claim_template(
             # contract already requires there (the kubelet accounts CPUs
             # only from requests until KEP-5517). One number, stated
             # once, sizes the cgroup accounting and the cpuset alike;
-            # cpu_claim_without_request gates on it being present.
+            # invalid_cpu_claim gates on it being present.
             container = engine_container(member)
             assert container.resources is not None and container.resources.requests is not None
-            exactly["capacity"] = {"requests": {CPU_CAPACITY: str(container.resources.requests["cpu"])}}
+            exactly["capacity"] = {"requests": {_CPU_CAPACITY: str(container.resources.requests["cpu"])}}
         device_requests.append({"name": r.name, "exactly": exactly})
 
     return wrap_object(

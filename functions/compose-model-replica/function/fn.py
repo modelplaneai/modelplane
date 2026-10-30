@@ -183,19 +183,10 @@ class Composer:
                 "PrefillDecode serving requires serving.router: EndpointPicker and serving.endpointPicker",
             )
             return
-        if missing := base.cpu_claim_without_request(self.xr):
-            # Stop rather than compose a whole-device claim: a CPU claim is
-            # sized from the engine's cpu request (see
-            # resource_claim_template), and without one it would consume
-            # every claimable core, which dra-driver-cpu refuses to prepare
-            # while the node's shared containers are running. Fatal for the
-            # same reason as above: existing resources hold.
-            response.fatal(
-                self.rsp,
-                f"a dra.cpu claim is sized from the engine container's cpu request, and {missing} sets none: "
-                "set resources requests and limits cpu to the cores the claim should take, below the device's "
-                "total so the node's shared containers keep a core",
-            )
+        if invalid := base.invalid_cpu_claim(self.xr):
+            # Stop rather than compose a CPU claim that can't be sized. Fatal
+            # for the same reason as above: existing resources hold.
+            response.fatal(self.rsp, invalid)
             return
         if routing.decode_without_sidecar(self.xr):
             response.warning(

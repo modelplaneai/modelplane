@@ -62,6 +62,16 @@ class SelectBackendCase:
 
 
 @dataclasses.dataclass
+class InvalidCpuClaimCase:
+    """A test case for base.invalid_cpu_claim."""
+
+    name: str
+    reason: str
+    replica: v1alpha1.ModelReplica
+    want: str | None
+
+
+@dataclasses.dataclass
 class CacheMountsCase:
     """A test case for base.cache_mounts."""
 
@@ -5425,8 +5435,8 @@ def test_build(case: BuildCase) -> None:
     assert _sorted(objects=_to_dicts(objects=got)) == _sorted(objects=case.want), case.reason
 
 
-def _cpu_member(*, cpu_request: str | None) -> v1alpha1.Member:
-    """A Standalone member claiming one dra.cpu device, its engine requesting cpu_request CPUs (None for none)."""
+def _cpu_member(*, cpu_request: str | None, count: int) -> v1alpha1.Member:
+    """A Standalone member claiming count dra.cpu devices, its engine requesting cpu_request CPUs (None for none)."""
     resources = None
     if cpu_request is not None:
         resources = v1alpha1.Resources(requests={"cpu": cpu_request}, limits={"cpu": cpu_request})
@@ -5437,7 +5447,7 @@ def _cpu_member(*, cpu_request: str | None) -> v1alpha1.Member:
             v1alpha1.DeviceRequest(
                 name="cpu",
                 deviceClassName="dra.cpu",
-                count=1,
+                count=count,
                 selectors=[v1alpha1.Selector(cel='device.capacity["dra.cpu"].cpu.compareTo(quantity("4")) >= 0')],
             )
         ],
@@ -5455,7 +5465,7 @@ def _cpu_member(*, cpu_request: str | None) -> v1alpha1.Member:
     )
 
 
-def _cpu_replica(*, cpu_request: str | None) -> v1alpha1.ModelReplica:
+def _cpu_replica(*, cpu_request: str | None, count: int) -> v1alpha1.ModelReplica:
     """A one-engine replica of one _cpu_member."""
     return _replica(
         name="r",
@@ -5464,7 +5474,7 @@ def _cpu_replica(*, cpu_request: str | None) -> v1alpha1.ModelReplica:
         labels=None,
         model_cache_ref=None,
         serving=None,
-        engines=[v1alpha1.Engine(name="main", copies=1, members=[_cpu_member(cpu_request=cpu_request)])],
+        engines=[v1alpha1.Engine(name="main", copies=1, members=[_cpu_member(cpu_request=cpu_request, count=count)])],
     )
 
 
@@ -5520,7 +5530,7 @@ def test_cpu_claim_capacity() -> None:
     not the whole device: dra-driver-cpu refuses a claim that would exhaust
     the shared CPU pool, so the number the driver's contract already puts
     on the container sizes the claim too."""
-    replica = _cpu_replica(cpu_request="5")
+    replica = _cpu_replica(cpu_request="5", count=1)
     engine = replica.spec.engines[0]
     obj = base.resource_claim_template(replica, engine, engine.members[0], "cluster-a-pc")
     got = obj.model_dump(exclude_unset=True, by_alias=True)
@@ -5539,13 +5549,45 @@ def test_gpu_claim_uncapped() -> None:
     assert "capacity" not in requests[0]["exactly"]
 
 
-def test_cpu_request_missing() -> None:
-    """cpu_claim_without_request names the member whose dra.cpu claim has no
-    cpu request to size itself from, and stays quiet when it has one or
-    when nothing claims CPUs."""
-    assert base.cpu_claim_without_request(_cpu_replica(cpu_request=None)) == "main/standalone"
-    assert base.cpu_claim_without_request(_cpu_replica(cpu_request="5")) is None
-    assert base.cpu_claim_without_request(_gpu_replica()) is None
+INVALID_CPU_CLAIM_CASES = [
+    InvalidCpuClaimCase(
+        name="CpuRequestSet",
+        reason="A dra.cpu claim on one device whose engine requests cpu can be sized.",
+        replica=_cpu_replica(cpu_request="5", count=1),
+        want=None,
+    ),
+    InvalidCpuClaimCase(
+        name="CpuRequestMissing",
+        reason="A dra.cpu claim whose engine requests no cpu has nothing to size itself from.",
+        replica=_cpu_replica(cpu_request=None, count=1),
+        want=(
+            "a dra.cpu claim is sized from the engine container's cpu request, and main/standalone sets none: "
+            "set resources requests and limits cpu to the cores the claim should take, below the device's "
+            "total so the node's shared containers keep a core"
+        ),
+    ),
+    InvalidCpuClaimCase(
+        name="MoreThanOneDevice",
+        reason="A dra.cpu claim on two devices would take the engine's whole cpu request from each.",
+        replica=_cpu_replica(cpu_request="5", count=2),
+        want=(
+            "main/standalone claims more than one dra.cpu device, but a dra.cpu claim takes the engine "
+            "container's cpu request from a single device: claim one"
+        ),
+    ),
+    InvalidCpuClaimCase(
+        name="NoCpuClaim",
+        reason="A replica that claims no CPUs has no CPU claim to size.",
+        replica=_gpu_replica(),
+        want=None,
+    ),
+]
+
+
+@pytest.mark.parametrize("case", INVALID_CPU_CLAIM_CASES, ids=lambda case: case.name)
+def test_invalid_cpu_claim(case: InvalidCpuClaimCase) -> None:
+    """invalid_cpu_claim explains why a member's dra.cpu claim can't be sized."""
+    assert base.invalid_cpu_claim(case.replica) == case.want, case.reason
 
 
 SELECT_BACKEND_CASES = [
