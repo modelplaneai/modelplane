@@ -101,12 +101,12 @@ class Accelerator(BaseModel):
 class Aks(BaseModel):
     accelerator: Accelerator | None = None
     """
-    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, the pool has no GPU: Modelplane provisions it with a standard node image and the modelplane.ai/cpu label and taint.
+    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU pool: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
     """
     diskSizeGb: conint(ge=10) | None = 100
     vmSize: constr(min_length=1)
     """
-    Azure VM size (e.g. Standard_NC24ads_A100_v4, Standard_ND96isr_H100_v5). The VM size determines the GPU model and count; the accelerator block below is informational.
+    Azure VM size (e.g. Standard_NC24ads_A100_v4, Standard_ND96isr_H100_v5). The VM size determines the GPU model and count, if any. The accelerator block below doesn't change the hardware, but whether it's set decides whether the pool is provisioned as a GPU or a CPU pool.
     """
 
 
@@ -121,11 +121,11 @@ class AcceleratorModel(BaseModel):
 class Civo(BaseModel):
     accelerator: AcceleratorModel | None = None
     """
-    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, the pool has no GPU: Modelplane provisions it with a standard node image and the modelplane.ai/cpu label and taint.
+    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU pool: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
     """
     size: constr(min_length=1, max_length=63)
     """
-    Civo Kubernetes size ID (e.g. an.g1.l40s.kube.x1). The size determines the GPU model and count; the accelerator block below is informational.
+    Civo Kubernetes size ID (e.g. an.g1.l40s.kube.x1). The size determines the GPU model and count, if any. The accelerator block below doesn't change the hardware, but whether it's set decides whether the pool is provisioned as a GPU or a CPU pool.
     """
 
 
@@ -140,12 +140,12 @@ class AcceleratorModel1(BaseModel):
 class Eks(BaseModel):
     accelerator: AcceleratorModel1 | None = None
     """
-    GPU accelerator to attach when provisioning the node group. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, the group has no GPU: Modelplane provisions it with a standard node image and the modelplane.ai/cpu label and taint.
+    GPU accelerator to attach when provisioning the node group. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU group: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
     """
     diskSizeGb: conint(ge=10) | None = 100
     instanceType: constr(min_length=1)
     """
-    EC2 instance type (e.g. g6.xlarge, p4d.24xlarge). The instance family determines the GPU model; the accelerator block below is informational.
+    EC2 instance type (e.g. g6.xlarge, p4d.24xlarge). The instance family determines the GPU model, if any. The accelerator block below doesn't change the hardware, but whether it's set decides whether the group is provisioned as a GPU or a CPU pool.
     """
 
 
@@ -160,7 +160,7 @@ class AcceleratorModel2(BaseModel):
 class Gke(BaseModel):
     accelerator: AcceleratorModel2 | None = None
     """
-    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block, so count here is the GCP machine's GPU count and need not be restated in devices. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, the pool has no GPU: Modelplane provisions it with a standard node image and the modelplane.ai/cpu label and taint.
+    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block, so count here is the GCP machine's GPU count and need not be restated in devices. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU pool: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
     """
     diskSizeGb: conint(ge=10) | None = 100
     machineType: constr(min_length=1)
@@ -177,7 +177,7 @@ class AcceleratorModel3(BaseModel):
 class Nebius(BaseModel):
     accelerator: AcceleratorModel3 | None = None
     """
-    GPU accelerator to attach when provisioning the node group. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, the group has no GPU: Modelplane provisions it with a standard node image and the modelplane.ai/cpu label and taint.
+    GPU accelerator to attach when provisioning the node group. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU group: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
     """
     diskSizeGb: conint(ge=10) | None = 100
     driversPreset: constr(min_length=1, max_length=63) | None = 'cuda13.0'
@@ -186,7 +186,7 @@ class Nebius(BaseModel):
     """
     platform: constr(min_length=1, max_length=63)
     """
-    Nebius compute platform (e.g. gpu-h100-sxm, gpu-l40s-a). Together with preset this determines the GPU model and count; the accelerator block below is informational.
+    Nebius compute platform (e.g. gpu-h100-sxm, gpu-l40s-a). Together with preset this determines the GPU model and count, if any. The accelerator block below doesn't change the hardware, but whether it's set decides whether the group is provisioned as a GPU or a CPU pool.
     """
     preset: constr(min_length=1, max_length=63)
     """
@@ -205,11 +205,11 @@ class AcceleratorModel4(BaseModel):
 class Vultr(BaseModel):
     accelerator: AcceleratorModel4 | None = None
     """
-    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, the pool has no GPU: Modelplane provisions it with a standard node image and the modelplane.ai/cpu label and taint.
+    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU pool: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
     """
     plan: constr(min_length=1, max_length=63)
     """
-    Vultr plan ID (e.g. vcg-l40s-16c-180g-48vram). The plan determines the GPU model and count; the accelerator block below is informational.
+    Vultr plan ID (e.g. vcg-l40s-16c-180g-48vram). The plan determines the GPU model and count, if any. The accelerator block below doesn't change the hardware, but whether it's set decides whether the pool is provisioned as a GPU or a CPU pool.
     """
 
 

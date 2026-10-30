@@ -257,7 +257,7 @@ class NodePool(BaseModel):
     minNodeCount: conint(ge=0) | None = None
     name: constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', max_length=40)
     """
-    Name of the pool. Its nodes carry it as the value of the modelplane.ai/pool label, and the cluster agent observes the pool through an object of this name.
+    Name of the pool. Its nodes carry it as the value of the modelplane.ai/pool label, and the cluster agent observes an NVIDIA GPU pool through an object of this name.
     """
     nodeCount: conint(ge=0) | None = 1
     zones: list[str] | None = None
@@ -295,7 +295,7 @@ class Spec(BaseModel):
     """
     nodePools: list[NodePool] | None = Field(None, max_length=8, min_length=1)
     """
-    GPU node pools available on this cluster. Each pool references an InferenceClass that describes the hardware shape and (for provisioned clusters) how to create the pool. System pools for control-plane components are provisioned automatically.
+    Inference node pools available on this cluster. Each pool references an InferenceClass that describes the hardware shape and (for provisioned clusters) how to create the pool. System pools for control-plane components are provisioned automatically.
     """
     placement: Placement | None = None
     """
