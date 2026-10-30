@@ -3390,6 +3390,235 @@ COMPOSE_CASES = [
             ],
         ),
     ),
+    # An EKSCluster that was Ready goes unready whenever one of its resources
+    # does. Every Object on the cluster still reaches it through the
+    # ClusterProviderConfig, so dropping it would have Crossplane delete it from
+    # under them.
+    ComposeCase(
+        name="EKSUnreadyKeepsCPC",
+        reason="With its EKSCluster gone unready after composing the ClusterProviderConfig and ServingStack, an EKS cluster keeps both.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_inference_cluster(
+                    cluster=v1alpha1.Cluster(source="EKS", eks=v1alpha1.Eks(region="us-west-2")),
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="l4-pool",
+                            className="gpu-l4-eks",
+                            nodeCount=2,
+                            maxNodeCount=4,
+                            zones=["us-west-2a", "us-west-2b"],
+                        ),
+                    ],
+                ),
+                resources={
+                    "eks-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "EKSCluster",
+                                "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                                "spec": {
+                                    "region": "us-west-2",
+                                    "nodePools": [
+                                        {"name": "l4-pool", "role": "GPU", "instanceType": "g6.xlarge", "nodeCount": 2},
+                                    ],
+                                },
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "False",
+                                            "reason": "Creating",
+                                            "message": "Unready resources: nodegroup-l4-pool",
+                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                        },
+                                    ],
+                                    "secrets": [
+                                        {
+                                            "type": "Kubeconfig",
+                                            "name": "test-cluster-kubeconfig-abcde",
+                                            "key": "kubeconfig",
+                                        },
+                                    ],
+                                    "cache": {"storageClassName": "modelplane-rwx-efs"},
+                                },
+                            }
+                        ),
+                    ),
+                    "cluster-provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "ClusterProviderConfig",
+                                "metadata": {"name": "test-cluster-cluster-kubeconfig-d0f89"},
+                            }
+                        ),
+                    ),
+                    "serving-stack": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "ServingStack",
+                                "metadata": {"name": "test-cluster-serving-stack-fd00b"},
+                                "spec": {
+                                    "secrets": [
+                                        {
+                                            "type": "Kubeconfig",
+                                            "name": "test-cluster-kubeconfig-abcde",
+                                            "key": "kubeconfig",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                    "activation": _observed_activation_policy(
+                        activated=[
+                            "eips.ec2.aws.m.upbound.io",
+                            "internetgateways.ec2.aws.m.upbound.io",
+                            "launchtemplates.ec2.aws.m.upbound.io",
+                            "natgateways.ec2.aws.m.upbound.io",
+                            "routes.ec2.aws.m.upbound.io",
+                            "routetables.ec2.aws.m.upbound.io",
+                            "routetableassociations.ec2.aws.m.upbound.io",
+                            "securitygroups.ec2.aws.m.upbound.io",
+                            "securitygroupegressrules.ec2.aws.m.upbound.io",
+                            "securitygroupingressrules.ec2.aws.m.upbound.io",
+                            "subnets.ec2.aws.m.upbound.io",
+                            "vpcs.ec2.aws.m.upbound.io",
+                            "filesystems.efs.aws.m.upbound.io",
+                            "mounttargets.efs.aws.m.upbound.io",
+                            "addons.eks.aws.m.upbound.io",
+                            "clusters.eks.aws.m.upbound.io",
+                            "clusterauths.eks.aws.m.upbound.io",
+                            "nodegroups.eks.aws.m.upbound.io",
+                            "podidentityassociations.eks.aws.m.upbound.io",
+                            "policies.iam.aws.m.upbound.io",
+                            "roles.iam.aws.m.upbound.io",
+                            "rolepolicyattachments.iam.aws.m.upbound.io",
+                        ]
+                    ),
+                },
+            ),
+            required_resources={
+                "class-gpu-l4-eks": fnv1.Resources(
+                    items=[
+                        _inference_class(
+                            name="gpu-l4-eks",
+                            count=1,
+                            memory="24Gi",
+                            provisioning={
+                                "provider": "EKS",
+                                "eks": {
+                                    "instanceType": "g6.xlarge",
+                                    "diskSizeGb": 100,
+                                    "accelerator": {"type": "nvidia-l4", "count": 1},
+                                },
+                            },
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_inference_cluster(
+                    schedulable_pools=[
+                        {
+                            "name": "l4-pool",
+                            "nodes": 4,
+                            "devices": [
+                                {
+                                    "name": "gpu",
+                                    "claim": "DRA",
+                                    "driver": "gpu.nvidia.com",
+                                    "deviceClassName": "gpu.nvidia.com",
+                                    "count": 1,
+                                    "capacity": {"memory": {"value": "24Gi"}},
+                                },
+                            ],
+                        },
+                    ],
+                    cache={"storageClassName": "modelplane-rwx-efs"},
+                    gateway=None,
+                ),
+                resources={
+                    "usage-inferenceclass-gpu-l4-eks": _input_usage(kind="InferenceClass", name="gpu-l4-eks"),
+                    "activation": _activation_policy(
+                        activate=[
+                            "eips.ec2.aws.m.upbound.io",
+                            "internetgateways.ec2.aws.m.upbound.io",
+                            "launchtemplates.ec2.aws.m.upbound.io",
+                            "natgateways.ec2.aws.m.upbound.io",
+                            "routes.ec2.aws.m.upbound.io",
+                            "routetables.ec2.aws.m.upbound.io",
+                            "routetableassociations.ec2.aws.m.upbound.io",
+                            "securitygroups.ec2.aws.m.upbound.io",
+                            "securitygroupegressrules.ec2.aws.m.upbound.io",
+                            "securitygroupingressrules.ec2.aws.m.upbound.io",
+                            "subnets.ec2.aws.m.upbound.io",
+                            "vpcs.ec2.aws.m.upbound.io",
+                            "filesystems.efs.aws.m.upbound.io",
+                            "mounttargets.efs.aws.m.upbound.io",
+                            "addons.eks.aws.m.upbound.io",
+                            "clusters.eks.aws.m.upbound.io",
+                            "clusterauths.eks.aws.m.upbound.io",
+                            "nodegroups.eks.aws.m.upbound.io",
+                            "podidentityassociations.eks.aws.m.upbound.io",
+                            "policies.iam.aws.m.upbound.io",
+                            "roles.iam.aws.m.upbound.io",
+                            "rolepolicyattachments.iam.aws.m.upbound.io",
+                        ],
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "eks-cluster": _eks_cluster(
+                        zones=["us-west-2a", "us-west-2b"],
+                        capacity_reservation=None,
+                        fabric=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "cluster-provider-config-kubernetes": _cluster_provider_config(
+                        kubeconfig="test-cluster-kubeconfig-abcde", identity=None
+                    ),
+                    "serving-stack": _serving_stack(
+                        cloud="EKS",
+                        dra_drivers=("gpu.nvidia.com",),
+                        secrets=[{"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"}],
+                        client_cas=None,
+                        gpu=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "usage-eks-by-backend": _backend_usage(cluster_kind="EKSCluster"),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "model-replicas": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelReplica",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-routes": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelRoute",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-caches": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache"),
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "class-gpu-l4-eks": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-l4-eks"
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClusterReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Provisioning"),
+                fnv1.Condition(type="BackendReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForCluster"),
+            ],
+        ),
+    ),
     # compose-eks-cluster turns the pool's capacityReservation into a
     # CAPACITY_BLOCK node group.
     ComposeCase(
