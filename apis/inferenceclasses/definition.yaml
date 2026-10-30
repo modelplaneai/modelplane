@@ -23,8 +23,9 @@ spec:
             type: object
             required: [devices]
             x-kubernetes-validations:
-            # The pool's role follows accelerator - compose-<cloud>-cluster
-            # composes a GPU pool when it's set and a CPU pool when it isn't -
+            # The pool's role follows accelerator - compose-inference-cluster
+            # gives a pool the GPU role when it's set and the CPU role when
+            # it isn't -
             # while the scheduler and ServingStack spec.draDrivers follow
             # spec.devices. These rules keep the two in step, one pair per
             # cloud because CEL can't address the provider's block
@@ -116,6 +117,16 @@ spec:
               message: >-
                 spec.provisioning.civo.accelerator must be omitted when no
                 device claims a DRA driver other than dra.cpu.
+            # dra-driver-cpu runs only on CPU pools, so a provisioned GPU
+            # pool never publishes dra.cpu devices for a claim to allocate.
+            - rule: >-
+                !has(self.provisioning) ||
+                !self.devices.exists(d, (!has(d.claim) || d.claim == 'DRA') && d.driver == 'dra.cpu') ||
+                !self.devices.exists(d, (!has(d.claim) || d.claim == 'DRA') && d.driver != 'dra.cpu')
+              message: >-
+                A class with spec.provisioning can't claim dra.cpu alongside
+                another DRA driver: Modelplane runs dra-driver-cpu only on
+                CPU pools.
             properties:
               description:
                 type: string
@@ -164,9 +175,10 @@ spec:
                           the GCP machine's GPU count and need not be restated in
                           devices. Set this when and only when a device
                           claims a DRA driver other than dra.cpu; the API
-                          rejects a mismatch. Omitted, the pool has no GPU:
-                          Modelplane provisions it with a standard node image
-                          and the modelplane.ai/cpu label and taint.
+                          rejects a mismatch.
+                          Omitted, Modelplane provisions a CPU pool: a standard
+                          node image, the modelplane.ai/cpu label and taint,
+                          and no GPU stack.
                         required: [type, count]
                         properties:
                           type:
@@ -189,8 +201,10 @@ spec:
                         description: >-
                           EC2 instance type (e.g. g6.xlarge,
                           p4d.24xlarge). The instance family determines
-                          the GPU model; the accelerator block below is
-                          informational.
+                          the GPU model, if any. The accelerator block
+                          below doesn't change the hardware, but whether
+                          it's set decides whether the group is provisioned
+                          as a GPU or a CPU pool.
                         minLength: 1
                       diskSizeGb:
                         type: integer
@@ -203,10 +217,10 @@ spec:
                           group. Provisioning input only: the scheduler matches
                           against spec.devices, not this block. Set this when
                           and only when a device claims a DRA driver other
-                          than dra.cpu; the API rejects a mismatch. Omitted,
-                          the group has no GPU: Modelplane provisions it with
-                          a standard node image and the modelplane.ai/cpu
-                          label and taint.
+                          than dra.cpu; the API rejects a mismatch.
+                          Omitted, Modelplane provisions a CPU group: a standard
+                          node image, the modelplane.ai/cpu label and taint,
+                          and no GPU stack.
                         required: [type, count]
                         properties:
                           type:
@@ -230,8 +244,10 @@ spec:
                         description: >-
                           Azure VM size (e.g. Standard_NC24ads_A100_v4,
                           Standard_ND96isr_H100_v5). The VM size determines
-                          the GPU model and count; the accelerator block
-                          below is informational.
+                          the GPU model and count, if any. The accelerator
+                          block below doesn't change the hardware, but
+                          whether it's set decides whether the pool is
+                          provisioned as a GPU or a CPU pool.
                         minLength: 1
                       diskSizeGb:
                         type: integer
@@ -244,10 +260,10 @@ spec:
                           pool. Provisioning input only: the scheduler matches
                           against spec.devices, not this block. Set this when
                           and only when a device claims a DRA driver other
-                          than dra.cpu; the API rejects a mismatch. Omitted,
-                          the pool has no GPU: Modelplane provisions it with a
-                          standard node image and the modelplane.ai/cpu label
-                          and taint.
+                          than dra.cpu; the API rejects a mismatch.
+                          Omitted, Modelplane provisions a CPU pool: a standard
+                          node image, the modelplane.ai/cpu label and taint,
+                          and no GPU stack.
                         required: [type, count]
                         properties:
                           type:
@@ -271,8 +287,10 @@ spec:
                         description: >-
                           Nebius compute platform (e.g. gpu-h100-sxm,
                           gpu-l40s-a). Together with preset this determines
-                          the GPU model and count; the accelerator block
-                          below is informational.
+                          the GPU model and count, if any. The accelerator
+                          block below doesn't change the hardware, but
+                          whether it's set decides whether the group is
+                          provisioned as a GPU or a CPU pool.
                         minLength: 1
                         maxLength: 63
                       preset:
@@ -307,10 +325,10 @@ spec:
                           group. Provisioning input only: the scheduler matches
                           against spec.devices, not this block. Set this when
                           and only when a device claims a DRA driver other
-                          than dra.cpu; the API rejects a mismatch. Omitted,
-                          the group has no GPU: Modelplane provisions it with
-                          a standard node image and the modelplane.ai/cpu
-                          label and taint.
+                          than dra.cpu; the API rejects a mismatch.
+                          Omitted, Modelplane provisions a CPU group: a standard
+                          node image, the modelplane.ai/cpu label and taint,
+                          and no GPU stack.
                         required: [type, count]
                         properties:
                           type:
@@ -333,8 +351,11 @@ spec:
                         type: string
                         description: >-
                           Vultr plan ID (e.g. vcg-l40s-16c-180g-48vram).
-                          The plan determines the GPU model and count; the
-                          accelerator block below is informational.
+                          The plan determines the GPU model and count, if
+                          any. The accelerator block below doesn't change
+                          the hardware, but whether it's set decides
+                          whether the pool is provisioned as a GPU or a CPU
+                          pool.
                         minLength: 1
                         maxLength: 63
                       accelerator:
@@ -344,10 +365,10 @@ spec:
                           pool. Provisioning input only: the scheduler matches
                           against spec.devices, not this block. Set this when
                           and only when a device claims a DRA driver other
-                          than dra.cpu; the API rejects a mismatch. Omitted,
-                          the pool has no GPU: Modelplane provisions it with a
-                          standard node image and the modelplane.ai/cpu label
-                          and taint.
+                          than dra.cpu; the API rejects a mismatch.
+                          Omitted, Modelplane provisions a CPU pool: a standard
+                          node image, the modelplane.ai/cpu label and taint,
+                          and no GPU stack.
                         required: [type, count]
                         properties:
                           type:
@@ -370,8 +391,11 @@ spec:
                         type: string
                         description: >-
                           Civo Kubernetes size ID (e.g. an.g1.l40s.kube.x1).
-                          The size determines the GPU model and count; the
-                          accelerator block below is informational.
+                          The size determines the GPU model and count, if
+                          any. The accelerator block below doesn't change
+                          the hardware, but whether it's set decides
+                          whether the pool is provisioned as a GPU or a CPU
+                          pool.
                         minLength: 1
                         maxLength: 63
                       accelerator:
@@ -381,10 +405,10 @@ spec:
                           pool. Provisioning input only: the scheduler matches
                           against spec.devices, not this block. Set this when
                           and only when a device claims a DRA driver other
-                          than dra.cpu; the API rejects a mismatch. Omitted,
-                          the pool has no GPU: Modelplane provisions it with a
-                          standard node image and the modelplane.ai/cpu label
-                          and taint.
+                          than dra.cpu; the API rejects a mismatch.
+                          Omitted, Modelplane provisions a CPU pool: a standard
+                          node image, the modelplane.ai/cpu label and taint,
+                          and no GPU stack.
                         required: [type, count]
                         properties:
                           type:

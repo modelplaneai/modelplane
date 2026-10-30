@@ -447,7 +447,7 @@ spec:
               nodePools:
                 type: array
                 description: >-
-                  GPU node pools available on this cluster. Each pool
+                  Inference node pools available on this cluster. Each pool
                   references an InferenceClass that describes the
                   hardware shape and (for provisioned clusters) how to
                   create the pool. System pools for control-plane
@@ -467,7 +467,8 @@ spec:
                       description: >-
                         Name of the pool. Its nodes carry it as the value of
                         the modelplane.ai/pool label, and the cluster agent
-                        observes the pool through an object of this name.
+                        observes an NVIDIA GPU pool through an object of
+                        this name.
                     className:
                       type: string
                       description: >-
