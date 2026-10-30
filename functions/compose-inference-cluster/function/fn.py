@@ -78,19 +78,39 @@ CLUSTER_SOURCE_COREWEAVE: Final = "CoreWeave"
 CLUSTER_SOURCE_UPCLOUD: Final = "UpCloud"
 CLUSTER_SOURCE_EXISTING: Final = "Existing"
 
-# Condition types and reasons for the InferenceCluster XR.
-CONDITION_TYPE_CLUSTER_READY = "ClusterReady"
-CONDITION_TYPE_BACKEND_READY = "BackendReady"
+# Composed resource key of the cloud cluster XR for each source Modelplane provisions.
+_CLUSTER_RESOURCE_KEYS: Final[dict[str, str]] = {
+    CLUSTER_SOURCE_GKE: "gke-cluster",
+    CLUSTER_SOURCE_EKS: "eks-cluster",
+    CLUSTER_SOURCE_AKS: "aks-cluster",
+    CLUSTER_SOURCE_NEBIUS: "nebius-cluster",
+    CLUSTER_SOURCE_VULTR: "vultr-cluster",
+    CLUSTER_SOURCE_CIVO: "civo-cluster",
+    CLUSTER_SOURCE_COREWEAVE: "coreweave-cluster",
+    CLUSTER_SOURCE_UPCLOUD: "upcloud-cluster",
+}
 
-CONDITION_REASON_CLUSTER_RUNNING = "ClusterRunning"
+# Conditions reporting which provisioning stage the cluster is in: Accepted,
+# then ClusterReady and NodePoolsReady, relayed from the cloud cluster XR, then
+# ServingStackReady. A stage is Pending on an earlier one only until it's
+# composed. After that it reports its own state, so a running cluster's
+# ServingStackReady stays True while a new node pool provisions.
+CONDITION_TYPE_ACCEPTED = "Accepted"
+CONDITION_TYPE_CLUSTER_READY = "ClusterReady"
+CONDITION_TYPE_NODE_POOLS_READY = "NodePoolsReady"
+CONDITION_TYPE_SERVING_STACK_READY = "ServingStackReady"
+
+CONDITION_REASON_AVAILABLE = "Available"
+CONDITION_REASON_PENDING = "Pending"
 CONDITION_REASON_PROVISIONING = "Provisioning"
-CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
+CONDITION_REASON_EXISTING = "Existing"
 CONDITION_REASON_WAITING_FOR_CLASSES = "WaitingForClasses"
 CONDITION_REASON_WAITING_FOR_RESERVATIONS = "WaitingForReservations"
-CONDITION_REASON_BACKEND_HEALTHY = "BackendHealthy"
-CONDITION_REASON_INSTALLING = "Installing"
 CONDITION_REASON_INVALID_NODE_POOL = "InvalidNodePool"
 CONDITION_REASON_UNSUPPORTED_DEVICES = "UnsupportedDevices"
+
+# status.nodePools[].state of a pool the cloud cluster XR doesn't report.
+_POOL_STATE_PENDING = "Pending"
 
 # The DRA drivers each cloud supports. A hand-kept mirror of
 # supported_drivers() in compose-serving-stack's stacks package -
@@ -275,6 +295,26 @@ def _namespace(meta: metav1.ObjectMeta | None) -> str:
     if meta is None or meta.namespace is None:
         raise ValueError("metadata.namespace is unexpectedly absent")
     return meta.namespace
+
+
+def _pending(typ: str, *, after: str) -> resource.Condition:
+    """Condition typ False and Pending, waiting on the earlier stage after."""
+    return resource.Condition(typ=typ, status="False", reason=CONDITION_REASON_PENDING, message=f"Waiting for {after}")
+
+
+def _relay(observed: fnv1.Resource | None, typ: str, *, after: resource.Condition) -> resource.Condition:
+    """The cloud cluster XR's condition of type typ, including an Unknown one
+    Crossplane sets when the cloud cluster XR's function fails.
+
+    A condition the cloud cluster XR doesn't report yet is Pending while the
+    stage before it, after, isn't True, and Provisioning once it is.
+    """
+    c = resource.get_condition(observed, typ)
+    if c.reason is not None:
+        return resource.Condition(typ=typ, status=c.status, reason=c.reason, message=c.message)
+    if after.status != "True":
+        return _pending(typ, after=after.typ)
+    return resource.Condition(typ=typ, status="False", reason=CONDITION_REASON_PROVISIONING)
 
 
 def _gateway_hostname(cluster_name: str) -> str:
@@ -843,17 +883,23 @@ class Composer:
         return False
 
     def fail(self, reason: str, msg: str) -> None:
-        """Stop composing the cluster, reporting why on its ClusterReady condition.
+        """Stop composing the cluster, reporting why on its Accepted condition.
 
         The result is fatal, so Crossplane applies none of this reconcile's
         desired state. Its caller returns before composing the cluster XR, and
         Crossplane would otherwise delete an existing cluster XR that's missing
         from desired state, for example because someone deleted an
         InferenceClass or edited a node pool.
+
+        Stages that are already composed keep reporting their own state, so a
+        running cluster's ServingStackReady stays True while Accepted is False.
         """
+        accepted = resource.Condition(typ=CONDITION_TYPE_ACCEPTED, status="False", reason=reason, message=msg)
+        source = self.xr.spec.cluster.source if self.xr.spec.cluster else CLUSTER_SOURCE_EXISTING
         response.set_conditions(
             self.rsp,
-            resource.Condition(typ=CONDITION_TYPE_CLUSTER_READY, status="False", reason=reason, message=msg),
+            accepted,
+            *self.stage_conditions(accepted, cluster=_CLUSTER_RESOURCE_KEYS.get(source)),
         )
         response.fatal(self.rsp, msg)
 
@@ -895,8 +941,8 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "GKE cluster ready, composing backend")
 
-        self.write_status(self.schedulable_pools())
-        self.derive_conditions(cluster_ready=gke_ready)
+        self.write_status(self.schedulable_pools(), self.relayed_node_pools("gke-cluster"))
+        self.derive_conditions(cluster="gke-cluster")
 
     def compose_eks(self, eks: v1alpha1.Eks | None) -> None:
         """Compose an InferenceCluster backed by a Modelplane-provisioned
@@ -937,8 +983,8 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "EKS cluster ready, composing backend")
 
-        self.write_status(self.schedulable_pools())
-        self.derive_conditions(cluster_ready=eks_ready)
+        self.write_status(self.schedulable_pools(), self.relayed_node_pools("eks-cluster"))
+        self.derive_conditions(cluster="eks-cluster")
 
     def compose_aks(self, aks: v1alpha1.Aks | None) -> None:
         """Compose an InferenceCluster backed by a Modelplane-provisioned
@@ -977,8 +1023,8 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "AKS cluster ready, composing backend")
 
-        self.write_status(self.schedulable_pools())
-        self.derive_conditions(cluster_ready=aks_ready)
+        self.write_status(self.schedulable_pools(), self.relayed_node_pools("aks-cluster"))
+        self.derive_conditions(cluster="aks-cluster")
 
     def compose_nebius(self, nebius: v1alpha1.Nebius | None) -> None:
         """Compose an InferenceCluster backed by a Modelplane-provisioned
@@ -1027,8 +1073,8 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "Nebius cluster ready, composing backend")
 
-        self.write_status(self.schedulable_pools())
-        self.derive_conditions(cluster_ready=nebius_ready)
+        self.write_status(self.schedulable_pools(), self.relayed_node_pools("nebius-cluster"))
+        self.derive_conditions(cluster="nebius-cluster")
 
     def compose_vultr(self, vultr: v1alpha1.Vultr | None) -> None:
         """Compose an InferenceCluster backed by a Modelplane-provisioned
@@ -1067,8 +1113,8 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "Vultr cluster ready, composing backend")
 
-        self.write_status(self.schedulable_pools())
-        self.derive_conditions(cluster_ready=vultr_ready)
+        self.write_status(self.schedulable_pools(), self.relayed_node_pools("vultr-cluster"))
+        self.derive_conditions(cluster="vultr-cluster")
 
     def compose_civo(self, civo: v1alpha1.Civo | None) -> None:
         """Compose an InferenceCluster backed by a Modelplane-provisioned
@@ -1113,8 +1159,8 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "Civo cluster ready, composing backend")
 
-        self.write_status(self.schedulable_pools())
-        self.derive_conditions(cluster_ready=civo_ready)
+        self.write_status(self.schedulable_pools(), self.relayed_node_pools("civo-cluster"))
+        self.derive_conditions(cluster="civo-cluster")
 
     def compose_coreweave(self, coreweave: v1alpha1.Coreweave | None) -> None:
         """Compose an InferenceCluster backed by a Modelplane-provisioned
@@ -1154,8 +1200,8 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "CoreWeave cluster ready, composing backend")
 
-        self.write_status(self.schedulable_pools())
-        self.derive_conditions(cluster_ready=coreweave_ready)
+        self.write_status(self.schedulable_pools(), self.relayed_node_pools("coreweave-cluster"))
+        self.derive_conditions(cluster="coreweave-cluster")
 
     def compose_upcloud(self, upcloud: v1alpha1.Upcloud | None) -> None:
         """Compose an InferenceCluster backed by a Modelplane-provisioned
@@ -1198,8 +1244,8 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "UpCloud cluster ready, composing backend")
 
-        self.write_status(self.schedulable_pools())
-        self.derive_conditions(cluster_ready=upcloud_ready)
+        self.write_status(self.schedulable_pools(), self.relayed_node_pools("upcloud-cluster"))
+        self.derive_conditions(cluster="upcloud-cluster")
 
     def compose_existing(self, existing: v1alpha1.Existing | None) -> None:
         """Compose an InferenceCluster backed by a user-supplied cluster.
@@ -1227,8 +1273,8 @@ class Composer:
             )
         self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_EXISTING)
 
-        self.write_status(self.schedulable_pools())
-        self.derive_conditions(cluster_ready=True)
+        self.write_status(self.schedulable_pools(), None)
+        self.derive_conditions(cluster=None)
 
     def compose_serving_stack(
         self,
@@ -1337,8 +1383,12 @@ class Composer:
         )
         self.rsp.desired.resources[CLUSTER_PROVIDER_CONFIG_RESOURCE_KEY].ready = fnv1.READY_TRUE
 
-    def write_status(self, schedulable_pools: list[v1alpha1.SchedulablePool]) -> None:
-        """Write the InferenceCluster status."""
+    def write_status(
+        self,
+        schedulable_pools: list[v1alpha1.SchedulablePool],
+        node_pools: list[v1alpha1.NodePoolModel] | None,
+    ) -> None:
+        """Write the InferenceCluster status, with status.nodePools unless node_pools is None."""
         status = v1alpha1.Status(
             providerConfigRef=v1alpha1.ProviderConfigRef(
                 name=resource.child_name(_name(self.xr.metadata), "cluster-kubeconfig"),
@@ -1346,6 +1396,8 @@ class Composer:
             namespace=_NAMESPACE_SYSTEM,
             schedulablePools=schedulable_pools,
         )
+        if node_pools is not None:
+            status.nodePools = node_pools
         cache_storage_class = self.observed_cache_storage_class()
         if cache_storage_class:
             status.cache = v1alpha1.CacheModel(storageClassName=cache_storage_class)
@@ -1385,38 +1437,68 @@ class Composer:
             status.model_dump(mode="json", exclude_unset=True, by_alias=True, warnings=False),
         )
 
-    def derive_conditions(self, *, cluster_ready: bool) -> None:
-        """Derive ClusterReady and BackendReady conditions."""
-        backend_ready = (
-            resource.get_condition(self.req.observed.resources.get(BACKEND_RESOURCE_KEY), "Ready").status == "True"
-        )
-        if BACKEND_RESOURCE_KEY in self.rsp.desired.resources and backend_ready:
+    def relayed_node_pools(self, cluster: str) -> list[v1alpha1.NodePoolModel]:
+        """Each node pool's state, as the cloud cluster XR composed as cluster reports it.
+
+        A pool the cloud cluster XR doesn't report is Pending, as every pool is
+        before the cloud cluster XR exists.
+        """
+        observed = self.req.observed.resources.get(cluster)
+        status = (resource.struct_to_dict(observed.resource).get("status") or {}) if observed else {}
+        reported = {p["name"]: p for p in status.get("nodePools") or []}
+        return [
+            v1alpha1.NodePoolModel.model_validate(reported[pool.name])
+            if pool.name in reported
+            else v1alpha1.NodePoolModel(name=pool.name, state=_POOL_STATE_PENDING)
+            for pool in self.xr.spec.nodePools or []
+        ]
+
+    def derive_conditions(self, *, cluster: str | None) -> None:
+        """Derive the stage conditions of a cluster Accepted for composing."""
+        if (
+            BACKEND_RESOURCE_KEY in self.rsp.desired.resources
+            and resource.get_condition(self.req.observed.resources.get(BACKEND_RESOURCE_KEY), "Ready").status == "True"
+        ):
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY].ready = fnv1.READY_TRUE
 
-        response.set_conditions(
-            self.rsp,
-            resource.Condition(
-                typ=CONDITION_TYPE_CLUSTER_READY,
-                status="True" if cluster_ready else "False",
-                reason=CONDITION_REASON_CLUSTER_RUNNING if cluster_ready else CONDITION_REASON_PROVISIONING,
-            ),
-        )
+        accepted = resource.Condition(typ=CONDITION_TYPE_ACCEPTED, status="True", reason=CONDITION_REASON_AVAILABLE)
+        response.set_conditions(self.rsp, accepted, *self.stage_conditions(accepted, cluster=cluster))
 
-        if not cluster_ready:
-            backend_reason = CONDITION_REASON_WAITING_FOR_CLUSTER
-        elif backend_ready:
-            backend_reason = CONDITION_REASON_BACKEND_HEALTHY
+    def stage_conditions(
+        self, accepted: resource.Condition, *, cluster: str | None
+    ) -> tuple[resource.Condition, resource.Condition, resource.Condition]:
+        """ClusterReady, NodePoolsReady and ServingStackReady, relaying the first
+        two from the cloud cluster XR composed as cluster. cluster is None for an
+        Existing cluster, which Modelplane doesn't provision.
+
+        A stage whose resources aren't observed yet is Pending on the stage
+        before it, Accepted included.
+        """
+        if cluster is None:
+            cluster_ready = resource.Condition(
+                typ=CONDITION_TYPE_CLUSTER_READY, status="True", reason=CONDITION_REASON_EXISTING
+            )
+            pools_ready = resource.Condition(
+                typ=CONDITION_TYPE_NODE_POOLS_READY, status="True", reason=CONDITION_REASON_EXISTING
+            )
         else:
-            backend_reason = CONDITION_REASON_INSTALLING
+            observed = self.req.observed.resources.get(cluster)
+            cluster_ready = _relay(observed, CONDITION_TYPE_CLUSTER_READY, after=accepted)
+            pools_ready = _relay(observed, CONDITION_TYPE_NODE_POOLS_READY, after=cluster_ready)
 
-        response.set_conditions(
-            self.rsp,
-            resource.Condition(
-                typ=CONDITION_TYPE_BACKEND_READY,
-                status="True" if backend_ready else "False",
-                reason=backend_reason,
-            ),
-        )
+        backend = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
+        waiting_on = next((c.typ for c in (pools_ready, accepted) if c.status != "True"), None)
+        if resource.get_condition(backend, "Ready").status == "True":
+            serving_stack = resource.Condition(
+                typ=CONDITION_TYPE_SERVING_STACK_READY, status="True", reason=CONDITION_REASON_AVAILABLE
+            )
+        elif backend is None and waiting_on is not None:
+            serving_stack = _pending(CONDITION_TYPE_SERVING_STACK_READY, after=waiting_on)
+        else:
+            serving_stack = resource.Condition(
+                typ=CONDITION_TYPE_SERVING_STACK_READY, status="False", reason=CONDITION_REASON_PROVISIONING
+            )
+        return cluster_ready, pools_ready, serving_stack
 
     def compose_gke_cluster(self, gke: v1alpha1.Gke) -> bool:
         """Compose a GKECluster XR.
