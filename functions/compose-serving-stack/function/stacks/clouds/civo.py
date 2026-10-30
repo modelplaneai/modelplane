@@ -228,9 +228,9 @@ COMPONENTS: list[Component] = [
             # The node-exporter chart's default toleration is keyless - it
             # tolerates every taint, landing the pod on tainted nodes by
             # accident rather than by intent. Scope it to the GPU and CPU pool
-            # taints,
-            # mirroring the generated clouds (TOLERATIONS in generate.py); as
-            # a DaemonSet it still reaches every untainted node.
+            # taints, mirroring the generated clouds (TOLERATIONS in
+            # generate.py); as a DaemonSet it still reaches every untainted
+            # node.
             "prometheus-node-exporter": {
                 "tolerations": [
                     {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},

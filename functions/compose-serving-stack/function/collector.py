@@ -332,17 +332,13 @@ def _scrape_configs() -> list[dict[str, Any]]:
             "scrape_interval": _SCRAPE_INTERVAL,
             "kubernetes_sd_configs": [{"role": "pod"}],
             "relabel_configs": [
-                # A job of its own because nobody annotates DCGM for scraping
-                # and Modelplane doesn't install it: GKE runs a managed one in
-                # gke-managed-system, the NVIDIA GPU operator installs its own
-                # elsewhere, and the substrate job sees neither. Without this
-                # every modelplane_gpu_* series is empty on a cloud that
-                # provides its own - which is every cloud.
-                #
-                # Matched on the name rather than an exact label, because the
-                # two spell it differently: gke-managed-dcgm-exporter and
-                # dcgm-exporter. Both labels are read, since which one carries
-                # the name depends on who packaged it.
+                # A job of its own because nobody annotates a GPU exporter
+                # for scraping: GKE runs a managed DCGM in
+                # gke-managed-system, the NVIDIA GPU operator installs its
+                # own elsewhere, the AMD GPU operator Modelplane installs on
+                # Existing runs AMD's device-metrics-exporter, and the
+                # substrate job sees none of them. Without this every
+                # modelplane_gpu_* series is empty.
                 _gpu_exporter_selector("keep"),
                 # The exporters name their metrics port differently: DCGM's
                 # is metrics, the AMD operator's is exporter-port.

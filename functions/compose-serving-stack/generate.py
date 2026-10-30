@@ -476,10 +476,11 @@ BUNDLE_EXTRA = {
 # wildcard the bundle ships, per the table below: node-scoped workloads
 # that must reach GPU nodes tolerate exactly the GPU taint (GPU,
 # matching the hand-written stacks' NFD worker and the EKS
-# composition's EFA driver), everything else tolerates nothing (SYSTEM)
-# and schedules on the untainted system pool. A toleration the bundle
-# already scoped (AKS's --accelerated-node-toleration form above)
-# passes through untouched. The wildcard doesn't only arrive under keys
+# composition's EFA driver), node-scoped workloads that must observe
+# every inference node tolerate every inference pool taint (NODE), and
+# everything else tolerates nothing (SYSTEM) and schedules on the
+# untainted system pool. A toleration the bundle already scoped (AKS's
+# --accelerated-node-toleration form above) passes through untouched. The wildcard doesn't only arrive under keys
 # named tolerations: nvsentinel's bundle puts one under
 # global.systemNodeTolerations, so the walkers match any *Tolerations
 # key too.

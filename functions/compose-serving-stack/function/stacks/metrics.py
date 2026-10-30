@@ -149,12 +149,11 @@ _GPU_UNITS = {
 # activity) is a GPU_PROF_* field the exporter ships disabled; the stack's
 # exporter config turns ProfilerMetrics on to publish it (see the AMD
 # chart pin in clouds/existing.py) at the cost of the single profiler
-# instance the hardware allows. The
-# exporter reports
-# its accumulated energy as a gauge where DCGM's is a counter, and
-# modelplane_energy_joules_total is a counter, so the energy series is marked
-# fromType Gauge and the collector converts it to a monotonic sum - one name,
-# one type, whichever vendor feeds it.
+# instance the hardware allows. The exporter reports its accumulated energy
+# as a gauge where DCGM's is a counter, and modelplane_energy_joules_total is
+# a counter, so the energy series is marked fromType Gauge and the collector
+# converts it to a monotonic sum - one name, one type, whichever vendor feeds
+# it.
 _AMD_GPU = {
     "gpu_used_vram": "modelplane_gpu_memory_used_bytes",
     "gpu_free_vram": "modelplane_gpu_memory_free_bytes",

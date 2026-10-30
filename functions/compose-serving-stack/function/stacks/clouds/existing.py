@@ -23,8 +23,8 @@ regenerate, then mirror the shared pins here.
 
 Existing is also the open-ended cloud for devices: a claimed driver
 this list doesn't tag installs nothing and rejects nothing - join()'s
-docstring states that rule. The list still pins device
-stacks like any cloud's, each tagged with its driver so it installs
+docstring states that rule. The list still pins device stacks like
+any cloud's, each tagged with its driver so it installs
 only when a class claims it: NVIDIA's today, and AMD's - Existing is
 the one cloud that installs it, for BYO nodes whose images already
 carry the amdgpu kernel driver.
@@ -106,9 +106,9 @@ COMPONENTS: list[Component] = [
             # The node-exporter chart's default toleration is keyless - it
             # tolerates every taint, landing the pod on tainted nodes by
             # accident rather than by intent. Scope it to the inference pool
-            # taints - a BYO pool may carry any of the three -
-            # mirroring the generated clouds (TOLERATIONS in generate.py); as
-            # a DaemonSet it still reaches every untainted node.
+            # taints - a BYO pool may carry any of the three - mirroring the
+            # generated clouds (TOLERATIONS in generate.py); as a DaemonSet it
+            # still reaches every untainted node.
             "prometheus-node-exporter": {
                 "tolerations": [
                     {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
@@ -137,12 +137,12 @@ COMPONENTS: list[Component] = [
         # off clusters whose classes claim no GPUs.
         dra_drivers=["gpu.nvidia.com", "gpu.amd.com"],
         # The worker must run on the very nodes it is supposed to label:
-        # the DRA driver's kubelet plugin schedules only onto nodes
+        # each DRA driver's kubelet plugin schedules only onto nodes
         # carrying an NFD GPU label (feature.node.kubernetes.io/pci-10de
-        # and friends). The cluster compositions taint GPU nodes with
+        # and friends for NVIDIA). A BYO GPU node may be tainted
         # nvidia.com/gpu or amd.com/gpu, and the NFD chart's worker
         # tolerates nothing by default. Without these tolerations the
-        # chain breaks silently: no worker on the GPU node, no pci-10de
+        # chain breaks silently: no worker on the GPU node, no GPU
         # label, no kubelet plugin, no ResourceSlices, and every GPU
         # ResourceClaim stays unallocatable with all components looking
         # healthy. Exists matches every taint value.
@@ -209,9 +209,10 @@ COMPONENTS: list[Component] = [
             },
         ],
     ),
-    # The AMD GPU operator, in DRA mode: the chart's default DeviceConfig
-    # (crds.defaultCR) enables the DRA driver and disables the device
-    # plugin - the two are mutually exclusive allocators - so the
+    # The AMD GPU operator, in DRA mode: the default DeviceConfig the
+    # chart renders (crds.defaultCR) is set below to enable the DRA
+    # driver and disable the device plugin, the reverse of the chart's
+    # defaults - the two are mutually exclusive allocators - so the
     # gpu.amd.com DeviceClass the chart registers is the sole path to the
     # GPUs. Existing is the one cloud that installs it today.
     #
