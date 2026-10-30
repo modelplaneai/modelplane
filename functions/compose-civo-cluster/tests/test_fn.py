@@ -56,12 +56,13 @@ def _xr(*, credentials: v1alpha1.Credentials | None, node_pools: list[v1alpha1.N
     return fnv1.Resource(resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json", by_alias=True)))
 
 
-def _desired_xr() -> fnv1.Resource:
-    """The desired XR, publishing the cluster's kubeconfig Secret."""
+def _desired_xr(*, node_pools: list[dict]) -> fnv1.Resource:
+    """The desired XR, publishing node_pools' states and the cluster's kubeconfig Secret."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
                 "status": {
+                    "nodePools": node_pools,
                     "secrets": [
                         {
                             "type": "Kubeconfig",
@@ -75,7 +76,7 @@ def _desired_xr() -> fnv1.Resource:
     )
 
 
-def _network(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
+def _network(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resource:
     """The composed Network."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -91,10 +92,11 @@ def _network(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
                 },
             }
         ),
+        ready=ready,
     )
 
 
-def _firewall(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
+def _firewall(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resource:
     """The composed Firewall, with Civo's default rules."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -112,6 +114,7 @@ def _firewall(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
                 },
             }
         ),
+        ready=ready,
     )
 
 
@@ -306,7 +309,7 @@ def _provider_config() -> fnv1.Resource:
     )
 
 
-def _autoscaler_release(*, autoscaling_groups: list[dict]) -> fnv1.Resource:
+def _autoscaler_release(*, autoscaling_groups: list[dict], ready: fnv1.Ready) -> fnv1.Resource:
     """The composed cluster autoscaler Release, scaling the given node groups."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -336,7 +339,32 @@ def _autoscaler_release(*, autoscaling_groups: list[dict]) -> fnv1.Resource:
                 },
             }
         ),
+        ready=ready,
     )
+
+
+def _observed_managed_resource(*, ready: bool, failure: str | None) -> fnv1.Resource:
+    """An observed managed resource whose Ready condition is True if ready and False if not, and whose
+    LastAsyncOperation condition is False with failure as its message unless failure is None."""
+    conditions = [
+        {
+            "type": "Ready",
+            "status": "True" if ready else "False",
+            "reason": "Available" if ready else "Creating",
+            "lastTransitionTime": "2024-01-01T00:00:00Z",
+        },
+    ]
+    if failure is not None:
+        conditions.append(
+            {
+                "type": "LastAsyncOperation",
+                "status": "False",
+                "reason": "AsyncCreateFailure",
+                "message": failure,
+                "lastTransitionTime": "2024-01-01T00:00:00Z",
+            }
+        )
+    return fnv1.Resource(resource=resource.dict_to_struct({"status": {"conditions": conditions}}))
 
 
 def _to_dict(msg: message.Message) -> dict:
@@ -367,16 +395,34 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-l40s", "state": "Pending"}]),
                 resources={
-                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "network": _network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "firewall": _firewall(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "cluster": _cluster(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="0 of 3 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -404,10 +450,14 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-l40s", "state": "Provisioning"}]),
                 resources={
-                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "network": _network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "firewall": _firewall(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         management_policies=["Observe", "Create", "Update", "Delete"],
@@ -416,10 +466,26 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "provider-config-helm": _provider_config(),
-                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[]),
+                    "release-cluster-autoscaler": _autoscaler_release(
+                        autoscaling_groups=[], ready=fnv1.READY_UNSPECIFIED
+                    ),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 5 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -446,10 +512,14 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "cpu-pool", "state": "Provisioning"}]),
                 resources={
-                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "network": _network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "firewall": _firewall(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
                     "node-pool-cpu-pool": _node_pool_cpu(
                         management_policies=["Observe", "Create", "Update", "Delete"],
@@ -458,10 +528,26 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "provider-config-helm": _provider_config(),
-                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[]),
+                    "release-cluster-autoscaler": _autoscaler_release(
+                        autoscaling_groups=[], ready=fnv1.READY_UNSPECIFIED
+                    ),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 5 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     # The autoscaler addresses node groups by the pool ID the provider writes
@@ -470,7 +556,7 @@ COMPOSE_CASES = [
     # taken from nodeCount from one fixed at 1.
     Case(
         name="PoolIDObserved",
-        reason="With the GPU pool observed Ready under its Civo ID, a CivoCluster marks the pool ready and has the autoscaler scale that ID from one node to its maxNodeCount.",
+        reason="With the GPU pool observed Ready under its Civo ID, a CivoCluster marks the pool ready, reports NodePoolsReady True from it while ClusterReady is Provisioning, and has the autoscaler scale that ID from one node to its maxNodeCount.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_xr(
@@ -532,10 +618,14 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-l40s", "state": "Ready"}]),
                 resources={
-                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "network": _network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "firewall": _firewall(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         management_policies=["Observe", "Create", "Update", "Delete"],
@@ -548,10 +638,24 @@ COMPOSE_CASES = [
                         autoscaling_groups=[
                             {"name": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "minSize": 1, "maxSize": 4}
                         ],
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 5 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
         ),
     ),
     # The observed ProviderConfig shows the dependents were composed before.
@@ -613,10 +717,14 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-l40s", "state": "Provisioning"}]),
                 resources={
-                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "network": _network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "firewall": _firewall(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "cluster": _cluster(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
@@ -627,10 +735,26 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "provider-config-helm": _provider_config(),
-                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[]),
+                    "release-cluster-autoscaler": _autoscaler_release(
+                        autoscaling_groups=[], ready=fnv1.READY_UNSPECIFIED
+                    ),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 5 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -658,10 +782,14 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-l40s", "state": "Provisioning"}]),
                 resources={
-                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "firewall": _firewall(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "network": _network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "firewall": _firewall(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         management_policies=None,
@@ -670,17 +798,33 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "provider-config-helm": _provider_config(),
-                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[]),
+                    "release-cluster-autoscaler": _autoscaler_release(
+                        autoscaling_groups=[], ready=fnv1.READY_UNSPECIFIED
+                    ),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 5 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     # The helm ProviderConfig and the Release reach the cluster through its
     # kubeconfig, so they don't carry the Civo credentials.
     Case(
         name="CustomCredentials",
-        reason="A CivoCluster naming its own ProviderConfig gets it on every Civo resource, and its System-role pool gets no GPU label or taint.",
+        reason="A CivoCluster naming its own ProviderConfig gets it on every Civo resource, and its System-role pool gets no GPU label or taint, counts under ClusterReady, and is left out of status.nodePools.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_xr(
@@ -702,10 +846,10 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[]),
                 resources={
-                    "network": _network(cred_kind="ProviderConfig", cred_name="team-a"),
-                    "firewall": _firewall(cred_kind="ProviderConfig", cred_name="team-a"),
+                    "network": _network(cred_kind="ProviderConfig", cred_name="team-a", ready=fnv1.READY_UNSPECIFIED),
+                    "firewall": _firewall(cred_kind="ProviderConfig", cred_name="team-a", ready=fnv1.READY_UNSPECIFIED),
                     "cluster": _cluster(cred_kind="ProviderConfig", cred_name="team-a", ready=fnv1.READY_TRUE),
                     "node-pool-workers": fnv1.Resource(
                         resource=resource.dict_to_struct(
@@ -727,10 +871,448 @@ COMPOSE_CASES = [
                         ),
                     ),
                     "provider-config-helm": _provider_config(),
-                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[]),
+                    "release-cluster-autoscaler": _autoscaler_release(
+                        autoscaling_groups=[], ready=fnv1.READY_UNSPECIFIED
+                    ),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 6 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="ClusterProvisioning",
+        reason="With the firewall and cluster observed unready, ClusterReady counts the 1 of 3 resources ready, NodePoolsReady is Pending on it, and each pool is Pending because its NodePool isn't composed.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            size="an.g1.l40s.kube.x1",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(name="cpu-pool", role="CPU", size="g4s.kube.large", nodeCount=1),
+                    ],
+                ),
+                resources={
+                    "network": _observed_managed_resource(ready=True, failure=None),
+                    "firewall": _observed_managed_resource(ready=False, failure=None),
+                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=False),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[{"name": "gpu-l40s", "state": "Pending"}, {"name": "cpu-pool", "state": "Pending"}]
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "firewall": _firewall(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 3 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="PoolsProvisioning",
+        reason="With every cluster resource observed Ready and the cpu-pool NodePool unready, ClusterReady is True, NodePoolsReady is Provisioning, and only gpu-l40s is Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            size="an.g1.l40s.kube.x1",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(name="cpu-pool", role="CPU", size="g4s.kube.large", nodeCount=1),
+                    ],
+                ),
+                resources={
+                    "network": _observed_managed_resource(ready=True, failure=None),
+                    "firewall": _observed_managed_resource(ready=True, failure=None),
+                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=True),
+                    "provider-config-helm": _observed_managed_resource(ready=True, failure=None),
+                    "release-cluster-autoscaler": _observed_managed_resource(ready=True, failure=None),
+                    "node-pool-gpu-l40s": _observed_managed_resource(ready=True, failure=None),
+                    "node-pool-cpu-pool": _observed_managed_resource(ready=False, failure=None),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[{"name": "gpu-l40s", "state": "Ready"}, {"name": "cpu-pool", "state": "Provisioning"}]
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "firewall": _firewall(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "node-pool-gpu-l40s": _node_pool_gpu(
+                        management_policies=["Observe", "Create", "Update", "Delete"],
+                        init_node_count=1,
+                        node_count=None,
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "node-pool-cpu-pool": _node_pool_cpu(
+                        management_policies=None,
+                        init_node_count=None,
+                        node_count=1,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "provider-config-helm": _provider_config(),
+                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[], ready=fnv1.READY_TRUE),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 2 node pools ready",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="AllReady",
+        reason="With every resource observed Ready, ClusterReady and NodePoolsReady are True and every pool is Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            size="an.g1.l40s.kube.x1",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(name="cpu-pool", role="CPU", size="g4s.kube.large", nodeCount=1),
+                    ],
+                ),
+                resources={
+                    "network": _observed_managed_resource(ready=True, failure=None),
+                    "firewall": _observed_managed_resource(ready=True, failure=None),
+                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=True),
+                    "provider-config-helm": _observed_managed_resource(ready=True, failure=None),
+                    "release-cluster-autoscaler": _observed_managed_resource(ready=True, failure=None),
+                    "node-pool-gpu-l40s": _observed_managed_resource(ready=True, failure=None),
+                    "node-pool-cpu-pool": _observed_managed_resource(ready=True, failure=None),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[{"name": "gpu-l40s", "state": "Ready"}, {"name": "cpu-pool", "state": "Ready"}]
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "firewall": _firewall(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "node-pool-gpu-l40s": _node_pool_gpu(
+                        management_policies=["Observe", "Create", "Update", "Delete"],
+                        init_node_count=1,
+                        node_count=None,
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "node-pool-cpu-pool": _node_pool_cpu(
+                        management_policies=None,
+                        init_node_count=None,
+                        node_count=1,
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-helm": _provider_config(),
+                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[], ready=fnv1.READY_TRUE),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="PoolFailed",
+        reason="With the provider reporting the gpu-l40s NodePool's LastAsyncOperation False, that pool is Failed with the provider's error prefixed by the resource name, and NodePoolsReady is Failed naming it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            size="an.g1.l40s.kube.x1",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(name="cpu-pool", role="CPU", size="g4s.kube.large", nodeCount=1),
+                    ],
+                ),
+                resources={
+                    "network": _observed_managed_resource(ready=True, failure=None),
+                    "firewall": _observed_managed_resource(ready=True, failure=None),
+                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=True),
+                    "provider-config-helm": _observed_managed_resource(ready=True, failure=None),
+                    "release-cluster-autoscaler": _observed_managed_resource(ready=True, failure=None),
+                    "node-pool-gpu-l40s": _observed_managed_resource(
+                        ready=False, failure="async create failed: insufficient an.g1.l40s.kube.x1 capacity in LON1"
+                    ),
+                    "node-pool-cpu-pool": _observed_managed_resource(ready=True, failure=None),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[
+                        {
+                            "name": "gpu-l40s",
+                            "state": "Failed",
+                            "message": "node-pool-gpu-l40s: async create failed: insufficient an.g1.l40s.kube.x1 capacity in LON1",
+                        },
+                        {"name": "cpu-pool", "state": "Ready"},
+                    ]
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "firewall": _firewall(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "node-pool-gpu-l40s": _node_pool_gpu(
+                        management_policies=["Observe", "Create", "Update", "Delete"],
+                        init_node_count=1,
+                        node_count=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "node-pool-cpu-pool": _node_pool_cpu(
+                        management_policies=None,
+                        init_node_count=None,
+                        node_count=1,
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-helm": _provider_config(),
+                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[], ready=fnv1.READY_TRUE),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Failed",
+                    message="1 of 2 node pools failed: gpu-l40s",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="ClusterFailed",
+        reason="With the provider reporting the firewall's and cluster's LastAsyncOperation False, ClusterReady is Failed with the first failed resource's error and a count of the rest, and NodePoolsReady is Pending on it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            size="an.g1.l40s.kube.x1",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(name="cpu-pool", role="CPU", size="g4s.kube.large", nodeCount=1),
+                    ],
+                ),
+                resources={
+                    "network": _observed_managed_resource(ready=True, failure=None),
+                    "firewall": _observed_managed_resource(
+                        ready=False, failure="async create failed: firewall name test-cluster is already in use"
+                    ),
+                    "cluster": _observed_managed_resource(
+                        ready=False, failure="async create failed: kubernetes version 1.20.0-k3s1 is not supported"
+                    ),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[{"name": "gpu-l40s", "state": "Pending"}, {"name": "cpu-pool", "state": "Pending"}]
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "firewall": _firewall(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Failed",
+                    message="cluster: async create failed: kubernetes version 1.20.0-k3s1 is not supported (and 1 more)",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="ClusterRegressedPoolsReady",
+        reason="With the cluster observed unready after its pools came up, ClusterReady is Provisioning and NodePoolsReady reports the pools' own state, True, rather than Pending on ClusterReady.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            size="an.g1.l40s.kube.x1",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(name="cpu-pool", role="CPU", size="g4s.kube.large", nodeCount=1),
+                    ],
+                ),
+                resources={
+                    "network": _observed_managed_resource(ready=True, failure=None),
+                    "firewall": _observed_managed_resource(ready=True, failure=None),
+                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=False),
+                    "provider-config-helm": _observed_managed_resource(ready=True, failure=None),
+                    "release-cluster-autoscaler": _observed_managed_resource(ready=True, failure=None),
+                    "node-pool-gpu-l40s": _observed_managed_resource(ready=True, failure=None),
+                    "node-pool-cpu-pool": _observed_managed_resource(ready=True, failure=None),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[{"name": "gpu-l40s", "state": "Ready"}, {"name": "cpu-pool", "state": "Ready"}]
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "firewall": _firewall(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "node-pool-gpu-l40s": _node_pool_gpu(
+                        management_policies=["Observe", "Create", "Update", "Delete"],
+                        init_node_count=1,
+                        node_count=None,
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "node-pool-cpu-pool": _node_pool_cpu(
+                        management_policies=None,
+                        init_node_count=None,
+                        node_count=1,
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-helm": _provider_config(),
+                    "release-cluster-autoscaler": _autoscaler_release(autoscaling_groups=[], ready=fnv1.READY_TRUE),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="4 of 5 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
         ),
     ),
 ]

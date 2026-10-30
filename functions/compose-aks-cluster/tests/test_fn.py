@@ -52,12 +52,13 @@ def _xr(*, credentials: v1alpha1.Credentials | None, node_pools: list[v1alpha1.N
     return fnv1.Resource(resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json", by_alias=True)))
 
 
-def _desired_xr() -> fnv1.Resource:
-    """The desired XR, publishing its kubeconfig Secret and cache StorageClass."""
+def _desired_xr(*, node_pools: list[dict]) -> fnv1.Resource:
+    """The desired XR, publishing node_pools' states, its kubeconfig Secret and cache StorageClass."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
                 "status": {
+                    "nodePools": node_pools,
                     "secrets": [
                         {
                             "type": "Kubeconfig",
@@ -212,7 +213,7 @@ def _nodepool_gpu(*, cred_kind: str, cred_name: str, zones: list[str] | None, re
     return fnv1.Resource(resource=resource.dict_to_struct(nodepool), ready=ready)
 
 
-def _nodepool_cpu(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
+def _nodepool_cpu(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resource:
     """The composed cpupool node pool, with the CPU label and taint and no GPU driver."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -244,6 +245,7 @@ def _nodepool_cpu(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
                 },
             }
         ),
+        ready=ready,
     )
 
 
@@ -269,6 +271,74 @@ def _provider_config(*, api_version: str) -> fnv1.Resource:
         ),
         ready=fnv1.READY_TRUE,
     )
+
+
+def _storage_class() -> fnv1.Resource:
+    """The composed Object holding the RWX StorageClass, ready once created."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "metadata": {"namespace": "modelplane-system"},
+                "spec": {
+                    "managementPolicies": ["Observe", "Create", "Update"],
+                    "providerConfigRef": {
+                        "kind": "ProviderConfig",
+                        "name": "test-cluster-kubeconfig-55b57",
+                    },
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "storage.k8s.io/v1",
+                            "kind": "StorageClass",
+                            "metadata": {"name": "modelplane-rwx-fs"},
+                            "provisioner": "file.csi.azure.com",
+                            "parameters": {"skuName": "Premium_LRS"},
+                            "mountOptions": [
+                                "dir_mode=0777",
+                                "file_mode=0777",
+                                "uid=0",
+                                "gid=0",
+                                "mfsymlinks",
+                                "cache=strict",
+                                "actimeo=30",
+                                "nosharesock",
+                            ],
+                            "reclaimPolicy": "Delete",
+                            "allowVolumeExpansion": True,
+                            "volumeBindingMode": "WaitForFirstConsumer",
+                        },
+                    },
+                },
+            }
+        ),
+        ready=fnv1.READY_TRUE,
+    )
+
+
+def _observed_managed_resource(*, ready: bool, failure: str | None) -> fnv1.Resource:
+    """An observed managed resource with the given Ready status, whose provider
+    reports its last operation failed with failure unless it's None."""
+    conditions = [
+        {
+            "type": "Ready",
+            "status": "True" if ready else "False",
+            "reason": "Available" if ready else "Creating",
+            "lastTransitionTime": "2024-01-01T00:00:00Z",
+        },
+    ]
+    if failure is not None:
+        conditions.append(
+            {
+                "type": "LastAsyncOperation",
+                "status": "False",
+                "reason": "AsyncCreateFailure",
+                "message": failure,
+                "lastTransitionTime": "2024-01-01T00:00:00Z",
+            }
+        )
+    return fnv1.Resource(resource=resource.dict_to_struct({"status": {"conditions": conditions}}))
 
 
 def _to_dict(msg: message.Message) -> dict:
@@ -304,7 +374,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpuh100", "state": "Provisioning"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -326,6 +396,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 6 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -351,7 +435,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "cpupool", "state": "Provisioning"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -365,12 +449,28 @@ COMPOSE_CASES = [
                     "cluster": _cluster(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
-                    "nodepool-cpupool": _nodepool_cpu(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "nodepool-cpupool": _nodepool_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
                     "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 6 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -399,7 +499,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpuh100", "state": "Provisioning"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -424,6 +524,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 6 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -452,7 +566,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpuh100", "state": "Provisioning"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -474,6 +588,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 6 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -554,7 +682,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpuh100", "state": "Provisioning"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -610,51 +738,26 @@ COMPOSE_CASES = [
                             }
                         ),
                     ),
-                    "storage-class-rwx-fs": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                                "kind": "Object",
-                                "metadata": {"namespace": "modelplane-system"},
-                                "spec": {
-                                    "managementPolicies": ["Observe", "Create", "Update"],
-                                    "providerConfigRef": {
-                                        "kind": "ProviderConfig",
-                                        "name": "test-cluster-kubeconfig-55b57",
-                                    },
-                                    "readiness": {"policy": "SuccessfulCreate"},
-                                    "forProvider": {
-                                        "manifest": {
-                                            "apiVersion": "storage.k8s.io/v1",
-                                            "kind": "StorageClass",
-                                            "metadata": {"name": "modelplane-rwx-fs"},
-                                            "provisioner": "file.csi.azure.com",
-                                            "parameters": {"skuName": "Premium_LRS"},
-                                            "mountOptions": [
-                                                "dir_mode=0777",
-                                                "file_mode=0777",
-                                                "uid=0",
-                                                "gid=0",
-                                                "mfsymlinks",
-                                                "cache=strict",
-                                                "actimeo=30",
-                                                "nosharesock",
-                                            ],
-                                            "reclaimPolicy": "Delete",
-                                            "allowVolumeExpansion": True,
-                                            "volumeBindingMode": "WaitForFirstConsumer",
-                                        },
-                                    },
-                                },
-                            }
-                        ),
-                        ready=fnv1.READY_TRUE,
-                    ),
+                    "storage-class-rwx-fs": _storage_class(),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
                     "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="4 of 8 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     # The ProviderConfigs reach the cluster through its kubeconfig, not the
@@ -684,7 +787,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpuh100", "state": "Provisioning"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ProviderConfig", cred_name="my-azure-account", ready=fnv1.READY_UNSPECIFIED
@@ -709,6 +812,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 6 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
         ),
     ),
     Case(
@@ -905,7 +1022,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpuh100", "state": "Ready"}]),
                 resources={
                     "resource-group": _resource_group(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
@@ -915,46 +1032,7 @@ COMPOSE_CASES = [
                     ),
                     "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
-                    "storage-class-rwx-fs": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                                "kind": "Object",
-                                "metadata": {"namespace": "modelplane-system"},
-                                "spec": {
-                                    "managementPolicies": ["Observe", "Create", "Update"],
-                                    "providerConfigRef": {
-                                        "kind": "ProviderConfig",
-                                        "name": "test-cluster-kubeconfig-55b57",
-                                    },
-                                    "readiness": {"policy": "SuccessfulCreate"},
-                                    "forProvider": {
-                                        "manifest": {
-                                            "apiVersion": "storage.k8s.io/v1",
-                                            "kind": "StorageClass",
-                                            "metadata": {"name": "modelplane-rwx-fs"},
-                                            "provisioner": "file.csi.azure.com",
-                                            "parameters": {"skuName": "Premium_LRS"},
-                                            "mountOptions": [
-                                                "dir_mode=0777",
-                                                "file_mode=0777",
-                                                "uid=0",
-                                                "gid=0",
-                                                "mfsymlinks",
-                                                "cache=strict",
-                                                "actimeo=30",
-                                                "nosharesock",
-                                            ],
-                                            "reclaimPolicy": "Delete",
-                                            "allowVolumeExpansion": True,
-                                            "volumeBindingMode": "WaitForFirstConsumer",
-                                        },
-                                    },
-                                },
-                            }
-                        ),
-                        ready=fnv1.READY_TRUE,
-                    ),
+                    "storage-class-rwx-fs": _storage_class(),
                     "nodepool-gpuh100": _nodepool_gpu(
                         cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_TRUE
                     ),
@@ -963,6 +1041,523 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="StagesClusterProvisioning",
+        reason="With the KubernetesCluster unready, ClusterReady is Provisioning with a count of its ready resources, and NodePoolsReady is Pending on it while no pool is Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            diskSizeGb=200,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpupool",
+                            role="CPU",
+                            vmSize="Standard_D8s_v5",
+                            nodeCount=1,
+                            minNodeCount=0,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "resource-group": _observed_managed_resource(ready=True, failure=None),
+                    "cluster": _observed_managed_resource(ready=False, failure=None),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[
+                        {"name": "gpuh100", "state": "Provisioning"},
+                        {"name": "cpupool", "state": "Provisioning"},
+                    ]
+                ),
+                resources={
+                    "resource-group": _resource_group(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "virtual-network": _virtual_network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-gpuh100": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-cpupool": _nodepool_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "storage-class-rwx-fs": _storage_class(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="4 of 7 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="StagesPoolsProvisioning",
+        reason="With every cluster resource Ready and the cpupool node pool unready, ClusterReady is True, gpuh100 is Ready, cpupool is Provisioning, and NodePoolsReady counts the Ready pools.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            diskSizeGb=200,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpupool",
+                            role="CPU",
+                            vmSize="Standard_D8s_v5",
+                            nodeCount=1,
+                            minNodeCount=0,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "resource-group": _observed_managed_resource(ready=True, failure=None),
+                    "virtual-network": _observed_managed_resource(ready=True, failure=None),
+                    "subnet": _observed_managed_resource(ready=True, failure=None),
+                    "cluster": _observed_managed_resource(ready=True, failure=None),
+                    "nodepool-gpuh100": _observed_managed_resource(ready=True, failure=None),
+                    "nodepool-cpupool": _observed_managed_resource(ready=False, failure=None),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[{"name": "gpuh100", "state": "Ready"}, {"name": "cpupool", "state": "Provisioning"}]
+                ),
+                resources={
+                    "resource-group": _resource_group(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "virtual-network": _virtual_network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "nodepool-gpuh100": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_TRUE
+                    ),
+                    "nodepool-cpupool": _nodepool_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "storage-class-rwx-fs": _storage_class(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 2 node pools ready",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="StagesAllReady",
+        reason="With every resource Ready, ClusterReady and NodePoolsReady are True and both pools are Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            diskSizeGb=200,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpupool",
+                            role="CPU",
+                            vmSize="Standard_D8s_v5",
+                            nodeCount=1,
+                            minNodeCount=0,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "resource-group": _observed_managed_resource(ready=True, failure=None),
+                    "virtual-network": _observed_managed_resource(ready=True, failure=None),
+                    "subnet": _observed_managed_resource(ready=True, failure=None),
+                    "cluster": _observed_managed_resource(ready=True, failure=None),
+                    "nodepool-gpuh100": _observed_managed_resource(ready=True, failure=None),
+                    "nodepool-cpupool": _observed_managed_resource(ready=True, failure=None),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[{"name": "gpuh100", "state": "Ready"}, {"name": "cpupool", "state": "Ready"}]
+                ),
+                resources={
+                    "resource-group": _resource_group(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "virtual-network": _virtual_network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "nodepool-gpuh100": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_TRUE
+                    ),
+                    "nodepool-cpupool": _nodepool_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "storage-class-rwx-fs": _storage_class(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="StagesPoolFailed",
+        reason="With the provider reporting the gpuh100 node pool's create failed, gpuh100 is Failed with the provider's error prefixed by nodepool-gpuh100, and NodePoolsReady is Failed while ClusterReady is still Provisioning.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            diskSizeGb=200,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpupool",
+                            role="CPU",
+                            vmSize="Standard_D8s_v5",
+                            nodeCount=1,
+                            minNodeCount=0,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "resource-group": _observed_managed_resource(ready=True, failure=None),
+                    "cluster": _observed_managed_resource(ready=False, failure=None),
+                    "nodepool-gpuh100": _observed_managed_resource(
+                        ready=False, failure="async create failed: SkuNotAvailable"
+                    ),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[
+                        {
+                            "name": "gpuh100",
+                            "state": "Failed",
+                            "message": "nodepool-gpuh100: async create failed: SkuNotAvailable",
+                        },
+                        {"name": "cpupool", "state": "Provisioning"},
+                    ]
+                ),
+                resources={
+                    "resource-group": _resource_group(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "virtual-network": _virtual_network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-gpuh100": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-cpupool": _nodepool_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "storage-class-rwx-fs": _storage_class(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="4 of 7 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Failed",
+                    message="1 of 2 node pools failed: gpuh100",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="StagesClusterFailed",
+        reason="With the provider reporting the cluster and subnet creates failed, ClusterReady is Failed with the cluster's error and a count of the other failure, and NodePoolsReady is Pending on it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            diskSizeGb=200,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpupool",
+                            role="CPU",
+                            vmSize="Standard_D8s_v5",
+                            nodeCount=1,
+                            minNodeCount=0,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "resource-group": _observed_managed_resource(ready=True, failure=None),
+                    "subnet": _observed_managed_resource(
+                        ready=False, failure="async create failed: NetcfgInvalidSubnet"
+                    ),
+                    "cluster": _observed_managed_resource(
+                        ready=False, failure="async create failed: K8sVersionNotSupported"
+                    ),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[
+                        {"name": "gpuh100", "state": "Provisioning"},
+                        {"name": "cpupool", "state": "Provisioning"},
+                    ]
+                ),
+                resources={
+                    "resource-group": _resource_group(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "virtual-network": _virtual_network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-gpuh100": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-cpupool": _nodepool_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "storage-class-rwx-fs": _storage_class(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Failed",
+                    message="cluster: async create failed: K8sVersionNotSupported (and 1 more)",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="ClusterUnreadyPoolsReady",
+        reason="With the KubernetesCluster gone unready while both node pools are Ready, ClusterReady is Provisioning and NodePoolsReady reports the pools' own state, True, not Pending.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpuh100",
+                            role="GPU",
+                            vmSize="Standard_ND96isr_H100_v5",
+                            diskSizeGb=200,
+                            nodeCount=1,
+                            minNodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpupool",
+                            role="CPU",
+                            vmSize="Standard_D8s_v5",
+                            nodeCount=1,
+                            minNodeCount=0,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "resource-group": _observed_managed_resource(ready=True, failure=None),
+                    "virtual-network": _observed_managed_resource(ready=True, failure=None),
+                    "subnet": _observed_managed_resource(ready=True, failure=None),
+                    "cluster": _observed_managed_resource(ready=False, failure=None),
+                    "nodepool-gpuh100": _observed_managed_resource(ready=True, failure=None),
+                    "nodepool-cpupool": _observed_managed_resource(ready=True, failure=None),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[{"name": "gpuh100", "state": "Ready"}, {"name": "cpupool", "state": "Ready"}]
+                ),
+                resources={
+                    "resource-group": _resource_group(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "virtual-network": _virtual_network(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-gpuh100": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", zones=None, ready=fnv1.READY_TRUE
+                    ),
+                    "nodepool-cpupool": _nodepool_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "storage-class-rwx-fs": _storage_class(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="6 of 7 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
         ),
     ),
 ]
