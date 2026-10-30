@@ -371,13 +371,13 @@ def _nodegroup_cpu(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1
                             "resources": {"platform": "cpu-d3", "preset": "8vcpu-32gb"},
                             "bootDisk": {"sizeGibibytes": 100, "type": "NETWORK_SSD"},
                             "networkInterfaces": [
-                                {"subnetIdSelector": {"matchControllerRef": True}},
+                                {"subnetId": "vpcsubnet-e00test"},
                             ],
                             "filesystems": [
                                 {
                                     "attachMode": "READ_WRITE",
                                     "mountTag": "modelplane-cache",
-                                    "existingFilesystem": {"idSelector": {"matchControllerRef": True}},
+                                    "existingFilesystem": {"id": "computefilesystem-e00test"},
                                 },
                             ],
                             "cloudInitUserDataSecretRef": {
@@ -522,7 +522,7 @@ COMPOSE_CASES = [
     # fixed at 1. The node groups' templates carry the ids the observed Subnet
     # and Filesystem report.
     Case(
-        name="FirstPassCPUPool",
+        name="CPUPool",
         reason="A CPU-role node group composes with the modelplane.ai/pool and modelplane.ai/cpu labels and the CPU taint, and no GPU settings.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
@@ -539,6 +539,16 @@ COMPOSE_CASES = [
                         ),
                     ],
                 ),
+                resources={
+                    "subnet": _subnet_observed(
+                        cred_kind="ClusterProviderConfig", cred_name="default", subnet_id="vpcsubnet-e00test"
+                    ),
+                    "filesystem": _filesystem_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        filesystem_id="computefilesystem-e00test",
+                    ),
+                },
             ),
             required_resources={
                 "nebius-provider-config": fnv1.Resources(
