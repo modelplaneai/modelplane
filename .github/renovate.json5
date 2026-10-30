@@ -3,8 +3,11 @@
   extends: [
     'config:recommended',
     'helpers:pinGitHubActionDigests',
-    ':semanticCommits',
   ],
+  // CONTRIBUTING forbids typed commit prefixes like chore(deps):. Disable
+  // explicitly rather than relying on the 'auto' default, which sniffs
+  // recent history and could flip on from Dependabot's build(deps): commits.
+  semanticCommits: 'disabled',
   rebaseWhen: 'auto',
   rebaseLabel: 'rebase',
   prConcurrentLimit: 5,
