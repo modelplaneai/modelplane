@@ -222,10 +222,12 @@ COMPONENTS: list[Component] = [
     # and leave the live DeviceConfig at its install-time spec.
     #
     # The chart pin pins the operator's own images but not the
-    # DeviceConfig's, whose DRA driver, node labeller and utility images
-    # default to floating tags - so each is pinned here. The DRA driver
-    # is the component the claims go through; on a floating tag any pod
-    # reschedule could change it under a running cluster.
+    # DeviceConfig's, whose DRA driver, node labeller, metrics exporter
+    # and utility images default to floating tags - so each is pinned
+    # here. The DRA driver is the component the claims go through; on a
+    # floating tag any pod reschedule could change it under a running
+    # cluster. The exporter's field names are what the modelplane-gpu-amd
+    # MetricMapping reads, so it is pinned to the operator's release.
     #
     # Driver management is off: a BYO node's image must already carry
     # the amdgpu kernel driver, and the chart's in-cluster driver build
@@ -272,6 +274,7 @@ COMPONENTS: list[Component] = [
                         ],
                     },
                     "metricsExporter": {
+                        "image": "docker.io/rocm/device-metrics-exporter:v1.5.1",
                         # The ConfigMap above: profiler metrics on, for
                         # the tensor-activity mapping.
                         "config": {"name": "mp-metrics-exporter-config"},
