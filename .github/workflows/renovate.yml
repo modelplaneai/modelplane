@@ -1,0 +1,55 @@
+name: Renovate
+on:
+  # Allows manual/automated trigger for debugging purposes
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: "Renovate's log level"
+        required: true
+        default: "info"
+        type: string
+  schedule:
+    - cron: '0 8 * * *'
+
+permissions:
+  contents: read
+
+env:
+  LOG_LEVEL: "info"
+  RENOVATE_VERSION: "44.171.1"
+
+jobs:
+  renovate:
+    runs-on: ubuntu-24.04
+    if: |
+      !github.event.repository.fork &&
+      !github.event.pull_request.head.repo.fork
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # Don't waste time starting Renovate if JSON is invalid
+      - name: Validate Renovate JSON
+        run: npx --yes --package renovate@${RENOVATE_VERSION} -- renovate-config-validator
+
+      - name: Get token
+        id: get-github-app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RENOVATE_GITHUB_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Self-hosted Renovate
+        uses: renovatebot/github-action@a63d9a7bc606f7336fd20b47f2f32259a35e6213 # v46.3.9
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          # Use GitHub API to create commits
+          RENOVATE_PLATFORM_COMMIT: "true"
+          LOG_LEVEL: ${{ github.event.inputs.logLevel || env.LOG_LEVEL }}
+          RENOVATE_ALLOWED_COMMANDS: '["^modelplane-nix .+"]'
+        with:
+          configurationFile: .github/renovate.json5
+          token: '${{ steps.get-github-app-token.outputs.token }}'
+          mount-docker-socket: true
+          docker-user: root
+          docker-cmd-file: .github/renovate-entrypoint.sh

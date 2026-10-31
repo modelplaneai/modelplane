@@ -12,7 +12,13 @@ jobs:
     # Draft PRs are still in progress, so don't require a completed checklist
     # until they're marked ready for review. The ready_for_review trigger above
     # re-runs this job when that happens.
-    if: github.event.pull_request.draft == false
+    #
+    # The checklist is a human attestation, so skip it for bot PRs (Renovate,
+    # Dependabot) whose bodies don't carry the template. GitHub counts a
+    # skipped required check as passed, keeping those PRs mergeable.
+    if: |
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.user.type != 'Bot'
     permissions:
       # The action reads the PR body through the issues API, so it needs issues
       # access on top of pull-requests. The repo's default workflow token is

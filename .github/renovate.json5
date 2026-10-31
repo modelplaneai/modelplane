@@ -1,0 +1,84 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    'helpers:pinGitHubActionDigests',
+  ],
+  // CONTRIBUTING forbids typed commit prefixes like chore(deps):. Disable
+  // explicitly rather than relying on the 'auto' default, which sniffs
+  // recent history and could flip on from Dependabot's build(deps): commits.
+  semanticCommits: 'disabled',
+  rebaseWhen: 'auto',
+  rebaseLabel: 'rebase',
+  prConcurrentLimit: 5,
+  baseBranches: [
+    'main',
+  ],
+  labels: [
+    'automated',
+  ],
+  packageRules: [
+    {
+      matchFileNames: [
+        '.github/**',
+      ],
+      groupName: 'github-actions dependencies',
+    },
+    {
+      // One PR for every package dependency in crossplane-project.yaml.
+      // Family providers (aws-*, gcp-*, azure-*) release in lockstep and
+      // must move together; grouping keeps them on one version.
+      //
+      // A dependency bump changes the generated Pydantic models, so the
+      // build regenerates schemas/python/ into the same PR and CI judges
+      // the complete change. Runs once per branch, after all grouped
+      // updates are applied. modelplane-nix is the pinned Nix launcher
+      // from renovate-entrypoint.sh; it must match the workflow's
+      // RENOVATE_ALLOWED_COMMANDS.
+      matchFileNames: [
+        'crossplane-project.yaml',
+      ],
+      groupName: 'crossplane dependencies',
+      postUpgradeTasks: {
+        commands: [
+          'modelplane-nix run .#build',
+        ],
+        fileFilters: [
+          'schemas/**',
+        ],
+        executionMode: 'branch',
+      },
+    },
+  ],
+  customManagers: [
+    {
+      customType: 'regex',
+      description: 'Bump xpkg dependencies (providers/functions/configurations) in crossplane-project.yaml',
+      managerFilePatterns: [
+        '/^crossplane-project\\.yaml$/',
+      ],
+      // Matches the Project schema's two-line form:
+      //   package: xpkg.upbound.io/upbound/provider-helm
+      //   version: v1.5.1
+      // The registry serves anonymous pulls for public packages, so the
+      // docker datasource needs no credentials.
+      matchStrings: [
+        'package:\\s*(?<depName>xpkg\\.upbound\\.io/[^\\s]+)\\s*\\n\\s*version:\\s*(?<currentValue>v[0-9][^\\s]*)',
+      ],
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'semver-coerced',
+    },
+    {
+      customType: 'regex',
+      description: 'Bump the crossplane/crossplane CRD git ref in crossplane-project.yaml',
+      managerFilePatterns: [
+        '/^crossplane-project\\.yaml$/',
+      ],
+      matchStrings: [
+        'repository:\\s*https://github\\.com/(?<depName>[^\\s]+?)\\s*\\n\\s*ref:\\s*(?<currentValue>v[0-9][^\\s]*)',
+      ],
+      datasourceTemplate: 'github-tags',
+      versioningTemplate: 'semver-coerced',
+    },
+  ],
+}
