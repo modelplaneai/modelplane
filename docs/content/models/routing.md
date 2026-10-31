@@ -85,8 +85,9 @@ serves on 8000, so it doesn't declare a port. For a multi-node decode engine,
 the sidecar goes in the `Leader` member's template.
 
 Modelplane composes the InferencePool, the HTTPRoute, and the picker's
-Deployment, Service, and RBAC. It gives each engine container a `/dev/shm` in
-memory. It doesn't add the sidecar or any KV transfer environment.
+Deployment, Service, disruption budget, and RBAC. It gives each engine
+container a `/dev/shm` in memory. It doesn't add the sidecar or any KV transfer
+environment.
 
 ## The endpoint picker
 
@@ -131,6 +132,14 @@ set `env` and `resources`, and the template can set `imagePullSecrets`.
 `EndpointPickerConfig`. Modelplane mounts it without checking it, and it
 replaces the default configuration rather than merging with it. Leave it out
 for a picker that takes no configuration.
+
+Modelplane runs two copies of the picker, spread across nodes where it can,
+and both route requests. A drain evicts one copy at a time. The other copy
+keeps routing while its peer moves. Don't turn on the picker's leader
+election, because only the leader reports ready and a drain could never evict
+it. The copies don't share routing state, such as llm-d's approximate prefix
+cache. Each learns only from the requests it routes. That costs some prefix
+cache hits when a replica runs more than one copy of an engine.
 
 Under `Unified`, leave out `router` and `endpointPicker` to get Modelplane's
 llm-d picker and [default configuration](#picker-configurations). Under
