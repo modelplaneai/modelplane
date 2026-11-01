@@ -45,6 +45,9 @@ let
       '';
 in
 {
+  # The synced style packages, for other checks that lint with Vale.
+  inherit valeStyles;
+
   # Lint docs prose with Vale. Merges the network-synced style packages with the
   # repo's local Modelplane style and vocabulary into one StylesPath, then lints
   # offline.
