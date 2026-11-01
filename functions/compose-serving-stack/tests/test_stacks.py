@@ -597,6 +597,23 @@ def test_dcgm_rbac_absent(cloud: str) -> None:
     assert [c.key for c in joined if isinstance(c, stacks.Manifests) and c.key.startswith("dcgm-exporter-")] == []
 
 
+def test_nebius_pod_labels() -> None:
+    """Nebius's dcgm-exporter attaches the same identity labels as the gpu-operator clouds.
+
+    The standalone chart's kubernetes.enablePodLabels, the counterpart of the
+    gpu-operator's dcgmExporter.enablePodLabels (see MODELPLANE_VALUES in
+    generate.py), with the same allowlist: a GPU series joins its engine's on
+    deployment, replica, role and engine on every cloud alike.
+    """
+    joined = stacks.join("Nebius", "Standard")
+    exporter = next(c for c in joined if isinstance(c, stacks.Chart) and c.key == "dcgm-exporter")
+    assert exporter.values is not None
+    assert exporter.values["kubernetes"] == {
+        "enablePodLabels": True,
+        "podLabelAllowlistRegex": [r"^modelplane\.ai/(deployment|replica|role|engine)$"],
+    }
+
+
 # Each case's input is the real joined Civo stack rather than a literal one.
 # The transform finds the gpu-operator and DRA driver charts by key, and where
 # a key matches nothing it rewrites nothing, without complaint. Only the real
