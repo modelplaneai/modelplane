@@ -328,6 +328,21 @@ def _config(
                                 },
                                 {"source_labels": ["__meta_kubernetes_pod_node_name"], "target_label": "node"},
                             ],
+                            # DCGM attaches the GPU-holding pod's modelplane.ai/*
+                            # labels itself, so the identity carries from the
+                            # exporter's labels - renamed here onto the same
+                            # names the engine jobs use - rather than from
+                            # service discovery, like an engine's.
+                            "metric_relabel_configs": [
+                                {
+                                    "regex": "modelplane_ai_(deployment|replica|role|engine)",
+                                    "action": "labelmap",
+                                },
+                                {
+                                    "regex": "modelplane_ai_(deployment|replica|role|engine)",
+                                    "action": "labeldrop",
+                                },
+                            ],
                         },
                         {
                             "job_name": "modelplane-substrate",
@@ -1225,7 +1240,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="b18edf7fffe8ea06",
+                    config_hash="ed6e1a2446fa88db",
                     volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                     volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                     env_from=None,
@@ -1270,7 +1285,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="c26c998b9d08f9ab",
+                    config_hash="01749001b45477d3",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -1337,7 +1352,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="6069bcd9809fce22",
+                    config_hash="4abf1d7de91ea0e6",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-vendor", "secret": {"secretName": "vendor-token"}},
