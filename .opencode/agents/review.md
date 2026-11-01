@@ -137,9 +137,8 @@ keep composing the PVC once it exists?
 ```
 
 Fix every error the linter reports on these files. When you've written them
-all, run `vale --config .opencode/vale/.vale.ini` over the directory, after
-`vale sync --config .opencode/vale/.vale.ini` if its styles are missing, and fix
-what it reports too.
+all, run `vale` over the directory from the repo root, after `vale sync` if its
+styles are missing, and fix what it reports too.
 
 ## 5. De-slop the review
 

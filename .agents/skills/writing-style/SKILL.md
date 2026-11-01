@@ -351,14 +351,14 @@ Google developer documentation style run alongside them: `Passive`,
 `Semicolons`, `ExcessiveClaims`, and `Anthropomorphism`. The rest of that style
 stays off, since it bans first person and "we", which this skill relies on.
 
-`.opencode/vale/.vale.ini` holds that config. Sync its styles once, then lint:
+The config is `.vale.ini` at the repo root. The docs under `docs/content`
+get a stricter set of styles from the same file. Sync the styles once, then
+lint from the repo root, since the config matches paths relative to it:
 
 ```bash
-vale sync --config .opencode/vale/.vale.ini
-vale --config .opencode/vale/.vale.ini path/to/doc.md
+vale sync
+vale path/to/doc.md
 ```
-
-The docs under `docs/` have their own, stricter config, which CI runs.
 
 **Fix what it reports.** Nic compared 16 linter-driven rewrites against the
 originals across two design docs. He preferred the rewrite in 14 and called the

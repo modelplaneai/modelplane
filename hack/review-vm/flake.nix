@@ -72,7 +72,7 @@
                   command = [ "vale-ls" ];
                   extensions = [ ".md" ];
                   initialization = {
-                    configPath = "/work/pr/.opencode/vale/.vale.ini";
+                    configPath = "/work/pr/.vale.ini";
                     installVale = false;
                     syncOnStartup = false;
                   };
@@ -207,7 +207,7 @@
                   cd /work/pr
                   git config --global --add safe.directory /work/pr
                   mkdir -p _output/review
-                  vale sync --config .opencode/vale/.vale.ini
+                  vale sync
                   # The console, which the workflow's log shows, gets opencode's
                   # own readable output. The transcript is each session's
                   # export, the agent's and every subagent's, with their costs.

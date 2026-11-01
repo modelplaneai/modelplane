@@ -119,12 +119,13 @@ jobs:
           persist-credentials: false
 
       # Everything opencode reads as config or instructions comes from main, as
-      # does CONTRIBUTING.md, which the skills defer to. That stops a PR
+      # do the Vale config the agent lints its review with, and CONTRIBUTING.md,
+      # which the skills defer to. That stops a PR
       # editing its own review instructions. PR code the agent runs can still
       # rewrite them mid-review, which the design accepts.
       - name: Install the reviewer's config from main
         run: |
-          for f in .opencode .agents .claude opencode.json opencode.jsonc AGENTS.md CLAUDE.md CONTRIBUTING.md; do
+          for f in .opencode .agents .claude .vale .vale.ini opencode.json opencode.jsonc AGENTS.md CLAUDE.md CONTRIBUTING.md; do
             rm -rf "pr/$f"
             if [ -e "reviewer/$f" ]; then cp -r "reviewer/$f" "pr/$f"; fi
           done
