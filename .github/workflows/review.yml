@@ -1,0 +1,344 @@
+name: Review
+
+# An agent reviews pull requests from org members when they're opened or marked
+# ready for review. A maintainer can review any other PR, or re-review one after
+# new pushes, by commenting /review (see commands.yml).
+#
+# pull_request_target runs with secrets even for PRs from forks, which every PR
+# is. So the agent runs the PR's code in a Firecracker microVM that holds no
+# credential that can do harm: a read-only GitHub token, and no model API key.
+# A proxy on the runner adds the key to the agent's model requests. The VM writes its review to a disk as
+# a tar, and a separate job with no model in it validates and posts the review.
+on:
+  pull_request_target:
+    types: [opened, ready_for_review]
+  workflow_call:
+    inputs:
+      pr:
+        description: The number of the PR to review.
+        type: string
+        required: true
+      sha:
+        description: >-
+          The head commit to review. A /review comment pins the PR's head
+          commit when its job starts.
+        type: string
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: review-${{ inputs.pr || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  PR: ${{ inputs.pr || github.event.pull_request.number }}
+  SHA: ${{ inputs.sha || github.event.pull_request.head.sha }}
+
+  CADDY_IMAGE: caddy@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
+
+jobs:
+  # Review automatically only PRs that org members open. The event's
+  # author_association reports a private member as a CONTRIBUTOR, so ask the
+  # org instead.
+  #
+  # Every job needs the reviewer's GitHub App, so a repo without one, such as
+  # a contributor's fork, never runs them.
+  author:
+    if: >-
+      vars.REVIEW_APP_ID != '' &&
+      github.event_name == 'pull_request_target' &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-24.04
+    permissions: {}
+    outputs:
+      member: ${{ steps.member.outputs.member }}
+    steps:
+      - name: Mint a token to read org membership
+        if: github.event.repository.owner.type == 'Organization'
+        id: token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ vars.REVIEW_APP_ID }}
+          private-key: ${{ secrets.REVIEW_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-members: read
+
+      - name: Check the author is an org member
+        id: member
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          OWNER_TYPE: ${{ github.event.repository.owner.type }}
+        run: |
+          # A repo a person owns, such as a maintainer's fork used to try the
+          # reviewer, has no members. There the owner counts as one.
+          if [ "$OWNER_TYPE" = User ]; then
+            if [ "$AUTHOR" = "$GITHUB_REPOSITORY_OWNER" ]; then member=true; else member=false; fi
+            echo "member=$member" >> "$GITHUB_OUTPUT"
+          elif gh api --silent "orgs/$GITHUB_REPOSITORY_OWNER/members/$AUTHOR"; then
+            echo "member=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "member=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  review:
+    # A /review comment skips the author job, having already checked that the
+    # commenter can write.
+    needs: author
+    if: >-
+      !cancelled() &&
+      vars.REVIEW_APP_ID != '' && (
+        github.event_name == 'issue_comment' ||
+        needs.author.outputs.member == 'true'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      last: ${{ steps.context.outputs.last }}
+    permissions:
+      # The runner uses these to fetch the PR's context, and the agent to read
+      # issues and other PRs with gh. All are read-only.
+      contents: read
+      pull-requests: read
+      issues: read
+
+    steps:
+      - name: Checkout the reviewer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: reviewer
+          persist-credentials: false
+
+      - name: Checkout the PR
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.SHA }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Everything opencode reads as config or instructions comes from main, as
+      # does CONTRIBUTING.md, which the skills defer to. That stops a PR
+      # editing its own review instructions. PR code the agent runs can still
+      # rewrite them mid-review, which the design accepts.
+      - name: Install the reviewer's config from main
+        run: |
+          for f in .opencode .agents .claude opencode.json opencode.jsonc AGENTS.md CLAUDE.md CONTRIBUTING.md; do
+            rm -rf "pr/$f"
+            if [ -e "reviewer/$f" ]; then cp -r "reviewer/$f" "pr/$f"; fi
+          done
+
+      - name: Fetch the PR's context
+        id: context
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir context
+          gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
+            --json number,title,body,author,baseRefName,headRefOid,commits,closingIssuesReferences,files \
+            > context/pr.json
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" > context/reviews.json
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/comments" > context/review-comments.json
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" > context/issue-comments.json
+
+          # The last commit a bot review covered, from the marker post_review.py puts
+          # in each review it posts.
+          last=$(jq -rs 'add | map(select(.user.type == "Bot")) | map(.body | capture("<!-- modelplane-review sha=(?<sha>[0-9a-f]{40}) -->").sha) | last // ""' context/reviews.json)
+          echo "LAST=$last" >> "$GITHUB_ENV"
+          echo "last=$last" >> "$GITHUB_OUTPUT"
+
+          # A re-review compares the PR with the version it last reviewed,
+          # which is usually gone from the branch after a force-push. GitHub
+          # still serves it by its hash. Without it there's no telling what
+          # changed, and reviewing the whole PR again would reopen what the
+          # last review covered, so stop.
+          if [ -n "$last" ] && ! git -C pr fetch -q origin "$last"; then
+            echo "::error::Can't fetch $last, the commit the last review covered, so can't tell what changed since."
+            exit 1
+          fi
+
+      - name: Allow the runner user to use KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          # GitHub's x86 runners expose KVM in practice, but don't guarantee
+          # it, and a runner without it can't start the VM.
+          if ! test -w /dev/kvm; then
+            ls -l /dev/kvm || true
+            echo "::error::This runner has no usable /dev/kvm, so it can't run the review VM. The Review Retry workflow re-runs the job, up to twice."
+            exit 1
+          fi
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      # The VM reaches the runner only on the proxy's port, and reaches the
+      # internet through NAT. Private, link-local and Azure platform addresses
+      # stay out of reach, including the runner's own.
+      - name: Create the VM's network
+        run: |
+          sudo ip tuntap add vm0 mode tap user "$USER"
+          sudo ip addr add 192.168.100.1/30 dev vm0
+          sudo ip link set vm0 up
+          sudo sysctl -qw net.ipv4.ip_forward=1
+          uplink=$(ip route show default | awk '{print $5; exit}')
+          sudo iptables -t nat -A POSTROUTING -s 192.168.100.0/30 -o "$uplink" -j MASQUERADE
+          sudo iptables -I FORWARD 1 -i vm0 -o "$uplink" -j ACCEPT
+          sudo iptables -I FORWARD 1 -o vm0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+          for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 168.63.129.16/32; do
+            sudo iptables -I FORWARD 1 -i vm0 -d "$net" -j DROP
+          done
+          sudo iptables -I INPUT 1 -i vm0 -j DROP
+          sudo iptables -I INPUT 1 -i vm0 -p tcp --dport 8787 -j ACCEPT
+          # The VM runs as root, so it can turn IPv6 back on. Drop all of it.
+          sudo sysctl -qw net.ipv6.conf.vm0.disable_ipv6=1
+          sudo ip6tables -I INPUT 1 -i vm0 -j DROP
+          sudo ip6tables -I FORWARD 1 -i vm0 -j DROP
+
+      # The model comes from repo variables. REVIEW_MODEL_API is anthropic (the
+      # default) or openai, for an OpenAI-compatible chat completions API.
+      # REVIEW_MODEL_URL is the API's base URL, and REVIEW_MODEL the model. The
+      # proxy forwards only the one endpoint the agent needs, so the agent can't
+      # use the key for anything else the key can reach.
+      - name: Start the model proxy
+        env:
+          MODEL_API_KEY: ${{ secrets.REVIEW_MODEL_API_KEY }}
+          MODEL_API: ${{ vars.REVIEW_MODEL_API || 'anthropic' }}
+          MODEL_URL: ${{ vars.REVIEW_MODEL_URL || 'https://api.anthropic.com/v1' }}
+        run: |
+          case "$MODEL_API" in
+            anthropic)
+              endpoint=/v1/messages
+              auth='x-api-key {env.MODEL_API_KEY}'
+              ;;
+            openai)
+              endpoint=/v1/chat/completions
+              auth='Authorization "Bearer {env.MODEL_API_KEY}"'
+              ;;
+            *)
+              echo "::error::REVIEW_MODEL_API must be anthropic or openai, not $MODEL_API."
+              exit 1
+              ;;
+          esac
+          # The agent calls the proxy at /v1. The proxy swaps that for the
+          # path of the API's base URL, such as /openai/v1.
+          origin=$(printf '%s' "$MODEL_URL" | sed -E 's#^(https?://[^/]+).*#\1#')
+          host=${origin#*://}
+          prefix=${MODEL_URL#"$origin"}
+          prefix=${prefix%/}
+          cat > Caddyfile <<EOF
+          {
+            admin off
+          }
+          http://192.168.100.1:8787 {
+            bind 192.168.100.1
+            @model {
+              method POST
+              path $endpoint
+            }
+            route @model {
+              uri strip_prefix /v1
+              rewrite * $prefix{uri}
+              reverse_proxy $origin {
+                header_up Host $host
+                header_up $auth
+                flush_interval -1
+              }
+            }
+            respond 403
+          }
+          EOF
+          docker run -d --name proxy --network host \
+            -e MODEL_API_KEY \
+            -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            "$CADDY_IMAGE"
+
+      # The VM comes from main's flake, never the PR's.
+      - name: Build the VM
+        run: nix build ./reviewer/hack/review-vm#nixosConfigurations.agent.config.microvm.declaredRunner -o vm
+
+      # The VM gets the job's token, so the agent can read issues and other
+      # PRs with gh. The job grants it read access to contents, pull requests
+      # and issues only, all public in this repo, and it expires with the job.
+      - name: Prepare the VM's disks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODEL_API: ${{ vars.REVIEW_MODEL_API || 'anthropic' }}
+          MODEL: ${{ vars.REVIEW_MODEL || 'claude-opus-5-5' }}
+        run: |
+          prompt="Review PR #$PR in $GITHUB_REPOSITORY at commit $SHA. The PR's context is in /work/context. Write the review to the directory _output/review."
+          if [ -n "$LAST" ]; then
+            prompt="$prompt You last reviewed this PR at commit $LAST."
+          fi
+          printf '%s' "$prompt" > prompt
+          printf '%s' "$GH_TOKEN" > gh-token
+          jq -n --arg api "$MODEL_API" --arg model "$MODEL" '{api: $api, model: $model}' > model.json
+
+          sudo mkdir -p /mnt/vm
+          sudo chown "$USER" /mnt/vm
+          tar -cf /mnt/vm/in.tar pr context prompt gh-token model.json
+          rm gh-token
+          truncate -s 1G /mnt/vm/out.tar
+
+      - name: Review
+        working-directory: /mnt/vm
+        run: timeout 50m "$GITHUB_WORKSPACE/vm/bin/microvm-run" < /dev/null
+
+      # The output disk is a tar the VM wrote. Upload it as it is: nothing
+      # extracts or mounts it on a runner.
+      - name: Upload the VM's output
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: review
+          path: /mnt/vm/out.tar
+          if-no-files-found: ignore
+
+  # A /review skips the author job. Without an explicit condition, GitHub
+  # would skip this job too, since it depends on a job that depends on one
+  # that was skipped.
+  post:
+    needs: review
+    if: ${{ !cancelled() && needs.review.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions: {}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Download the review
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: review
+
+      # A re-review may only comment on lines that changed since the last
+      # review, which post_review.py works out by diffing the two commits.
+      - name: Fetch the commits a re-review compares
+        if: needs.review.outputs.last != ''
+        env:
+          LAST: ${{ needs.review.outputs.last }}
+        run: git fetch -q --depth 1 origin "$LAST" "$SHA"
+
+      # A GitHub App posts reviews, so they come from the reviewer rather than
+      # github-actions. Its token can write pull requests in this repo only.
+      - name: Mint a token for the reviewer
+        id: token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ vars.REVIEW_APP_ID }}
+          private-key: ${{ secrets.REVIEW_APP_KEY }}
+          permission-pull-requests: write
+          permission-contents: read
+
+      - name: Post the review
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          LAST: ${{ needs.review.outputs.last }}
+        run: |
+          python3 hack/post_review.py --repo "$GITHUB_REPOSITORY" --pr "$PR" --sha "$SHA" \
+            ${LAST:+--since "$LAST" --git-dir .git} out.tar
