@@ -38,9 +38,9 @@ in
   # docs-site repo, which builds and link-checks it where it deploys.
   docs-vale = docs.vale;
 
-  # Lint the skills under .agents with the ai-tells rules and a few Google
-  # ones, using the Vale config in .opencode/vale. Reuses the docs check's
-  # synced style packages.
+  # Lint the skills and agent prompts under .agents and .opencode with the
+  # Vale config the review agent lints its own output with: the ai-tells rules
+  # and a few Google ones. Reuses the docs check's synced style packages.
   agents-vale =
     pkgs.runCommand "modelplane-agents-vale"
       {
@@ -54,7 +54,7 @@ in
         cp ${self}/.opencode/vale/.vale.ini .vale.ini
         mkdir styles
         cp -r --no-preserve=mode ${docs.valeStyles}/* styles/
-        find ${self}/.agents -name '*.md' -print0 | \
+        find ${self}/.agents ${self}/.opencode/agents -name '*.md' -print0 | \
           xargs -0 --no-run-if-empty \
             vale --config="$PWD/.vale.ini"
         mkdir -p $out
