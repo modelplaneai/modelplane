@@ -701,6 +701,25 @@ MANAGED = {
 # metrics guide's PodMonitors and the envoy proxy scrape config work
 # the same on a generated cloud as on a hand-written one.
 MODELPLANE_VALUES = {
+    # The device plugin is off (see MANAGED), so the exporter maps
+    # pods only in DRA mode; the allowlist limits label cardinality.
+    "gpu-operator": [
+        (
+            ("dcgmExporter", "enablePodLabels"),
+            True,
+            "attach the GPU-holding pod's labels to each GPU series",
+        ),
+        (
+            ("dcgmExporter", "podLabelAllowlistRegex"),
+            [r"^modelplane\.ai/(deployment|replica|role|engine)$"],
+            "only Modelplane's identity labels, not the pod's every label",
+        ),
+        (
+            ("dcgmExporter", "env"),
+            [{"name": "KUBERNETES_ENABLE_DRA", "value": "true"}],
+            "map DRA ResourceClaim allocations to pods",
+        ),
+    ],
     "kube-prometheus-stack": [
         (
             ("prometheus", "prometheusSpec", "podMonitorSelectorNilUsesHelmValues"),
@@ -1143,6 +1162,66 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
         if values:
             entry["values"] = values
         components.append(entry)
+
+        # The operator's exporter ClusterRole grants pods only
+        # (assets/state-dcgm-exporter/0210_clusterrole.yaml in v26.7.x),
+        # so the stack composes the slice RBAC the exporter's DRA mode
+        # needs until the operator ships it. Where the exporter is off
+        # (GKE, via MANAGED_CLOUD_EXTRA) the RBAC would bind a
+        # ServiceAccount that never exists.
+        if name == "gpu-operator" and lookup(values, ("dcgmExporter", "enabled")) is not False:
+            # One entry per object: the two docs share a metadata.name,
+            # which a multi-doc entry keys its Objects by.
+            for kind, extra in (
+                (
+                    "ClusterRole",
+                    {
+                        "rules": [
+                            {
+                                "apiGroups": ["resource.k8s.io"],
+                                "resources": ["resourceslices"],
+                                "verbs": ["get", "list", "watch"],
+                            },
+                        ],
+                    },
+                ),
+                (
+                    "ClusterRoleBinding",
+                    {
+                        "roleRef": {
+                            "apiGroup": "rbac.authorization.k8s.io",
+                            "kind": "ClusterRole",
+                            "name": "nvidia-dcgm-exporter-read-resourceslices",
+                        },
+                        "subjects": [
+                            {
+                                "kind": "ServiceAccount",
+                                "name": "nvidia-dcgm-exporter",
+                                "namespace": namespace,
+                            },
+                        ],
+                    },
+                ),
+            ):
+                doc = {
+                    "apiVersion": "rbac.authorization.k8s.io/v1",
+                    "kind": kind,
+                    "metadata": {"name": "nvidia-dcgm-exporter-read-resourceslices"},
+                }
+                doc.update(extra)
+                entry = {
+                    "type": "Manifests",
+                    "key": f"dcgm-exporter-{kind.lower()}",
+                    "depends_on": [key],
+                    "manifests": [doc],
+                }
+                if dra_drivers:
+                    entry["dra_drivers"] = dra_drivers
+                components.append(entry)
+            findings.append(
+                "manifests: composed nvidia-dcgm-exporter-read-resourceslices "
+                "(the gpu-operator's exporter ClusterRole grants no resourceslices)"
+            )
 
         # Components are not always just charts: on AKS the
         # gpu-operator carries a toolkit-hardening manifest. The bundle

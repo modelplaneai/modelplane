@@ -446,6 +446,77 @@ def _nvidia_dra_driver_gpu(*, ready: fnv1.Ready) -> fnv1.Resource:
     )
 
 
+def _dcgm_exporter_clusterrole(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed ClusterRole the exporter's DRA mode reads resourceslices through.
+
+    The gpu-operator's exporter ClusterRole grants pods only (v26.7.x), so the
+    stack composes this beside it on every cloud that runs the operator.
+    """
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "metadata": {"labels": {"modelplane.ai/resource": "dcgm-exporter-clusterrole"}},
+                "spec": {
+                    "providerConfigRef": {"kind": "ProviderConfig", "name": "test-backend-cluster-63fde"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "rbac.authorization.k8s.io/v1",
+                            "kind": "ClusterRole",
+                            "metadata": {"name": "nvidia-dcgm-exporter-read-resourceslices"},
+                            "rules": [
+                                {
+                                    "apiGroups": ["resource.k8s.io"],
+                                    "resources": ["resourceslices"],
+                                    "verbs": ["get", "list", "watch"],
+                                },
+                            ],
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _dcgm_exporter_clusterrolebinding(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed ClusterRoleBinding binding the exporter's ClusterRole to its service account."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "metadata": {"labels": {"modelplane.ai/resource": "dcgm-exporter-clusterrolebinding"}},
+                "spec": {
+                    "providerConfigRef": {"kind": "ProviderConfig", "name": "test-backend-cluster-63fde"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "rbac.authorization.k8s.io/v1",
+                            "kind": "ClusterRoleBinding",
+                            "metadata": {"name": "nvidia-dcgm-exporter-read-resourceslices"},
+                            "roleRef": {
+                                "apiGroup": "rbac.authorization.k8s.io",
+                                "kind": "ClusterRole",
+                                "name": "nvidia-dcgm-exporter-read-resourceslices",
+                            },
+                            "subjects": [
+                                {
+                                    "kind": "ServiceAccount",
+                                    "name": "nvidia-dcgm-exporter",
+                                    "namespace": "gpu-operator",
+                                },
+                            ],
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
 def _ai_gateway_crds(*, ready: fnv1.Ready) -> fnv1.Resource:
     """The composed Envoy AI Gateway CRDs Release."""
     return fnv1.Resource(
@@ -4008,6 +4079,11 @@ COMPOSE_CASES = [
                                                     "name": "dcgm-exporter",
                                                 },
                                                 "serviceMonitor": {"enabled": False},
+                                                "enablePodLabels": True,
+                                                "podLabelAllowlistRegex": [
+                                                    r"^modelplane\.ai/(deployment|replica|role|engine)$"
+                                                ],
+                                                "env": [{"name": "KUBERNETES_ENABLE_DRA", "value": "true"}],
                                             },
                                             "devicePlugin": {"enabled": False},
                                             "driver": {
@@ -4043,6 +4119,8 @@ COMPOSE_CASES = [
                         ),
                         ready=fnv1.READY_TRUE,
                     ),
+                    "dcgm-exporter-clusterrole": _dcgm_exporter_clusterrole(ready=fnv1.READY_UNSPECIFIED),
+                    "dcgm-exporter-clusterrolebinding": _dcgm_exporter_clusterrolebinding(ready=fnv1.READY_UNSPECIFIED),
                     "envoy-gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -4232,6 +4310,22 @@ COMPOSE_CASES = [
                         by_api_version="helm.m.crossplane.io/v1beta1",
                         by_kind="Release",
                         by_key="gpu-operator",
+                    ),
+                    "usage-gpu-operator-by-dcgm-exporter-clusterrole": _usage(
+                        of_api_version="helm.m.crossplane.io/v1beta1",
+                        of_kind="Release",
+                        of_key="gpu-operator",
+                        by_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        by_kind="Object",
+                        by_key="dcgm-exporter-clusterrole",
+                    ),
+                    "usage-gpu-operator-by-dcgm-exporter-clusterrolebinding": _usage(
+                        of_api_version="helm.m.crossplane.io/v1beta1",
+                        of_kind="Release",
+                        of_key="gpu-operator",
+                        by_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        by_kind="Object",
+                        by_key="dcgm-exporter-clusterrolebinding",
                     ),
                     "usage-gpu-operator-by-nvidia-dra-driver-gpu": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
@@ -4445,6 +4539,11 @@ COMPOSE_CASES = [
                                                     "name": "dcgm-exporter",
                                                 },
                                                 "serviceMonitor": {"enabled": False},
+                                                "enablePodLabels": True,
+                                                "podLabelAllowlistRegex": [
+                                                    r"^modelplane\.ai/(deployment|replica|role|engine)$"
+                                                ],
+                                                "env": [{"name": "KUBERNETES_ENABLE_DRA", "value": "true"}],
                                             },
                                             "devicePlugin": {"enabled": False},
                                             "driver": {
@@ -4482,6 +4581,8 @@ COMPOSE_CASES = [
                     # Not _nvidia_dra_driver_gpu: Civo's DRA driver points
                     # nvidiaDriverRoot at the gpu-operator's driver, and this is
                     # the only case that writes it out.
+                    "dcgm-exporter-clusterrole": _dcgm_exporter_clusterrole(ready=fnv1.READY_UNSPECIFIED),
+                    "dcgm-exporter-clusterrolebinding": _dcgm_exporter_clusterrolebinding(ready=fnv1.READY_UNSPECIFIED),
                     "nvidia-dra-driver-gpu": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -4552,6 +4653,22 @@ COMPOSE_CASES = [
                         by_api_version="helm.m.crossplane.io/v1beta1",
                         by_kind="Release",
                         by_key="gpu-operator",
+                    ),
+                    "usage-gpu-operator-by-dcgm-exporter-clusterrole": _usage(
+                        of_api_version="helm.m.crossplane.io/v1beta1",
+                        of_kind="Release",
+                        of_key="gpu-operator",
+                        by_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        by_kind="Object",
+                        by_key="dcgm-exporter-clusterrole",
+                    ),
+                    "usage-gpu-operator-by-dcgm-exporter-clusterrolebinding": _usage(
+                        of_api_version="helm.m.crossplane.io/v1beta1",
+                        of_kind="Release",
+                        of_key="gpu-operator",
+                        by_api_version="kubernetes.m.crossplane.io/v1alpha1",
+                        by_kind="Object",
+                        by_key="dcgm-exporter-clusterrolebinding",
                     ),
                     "usage-gpu-operator-by-nvidia-dra-driver-gpu": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
@@ -6456,6 +6573,8 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The EKS half, generated from aicr.
             "cert-manager",
             "gpu-operator",
+            "dcgm-exporter-clusterrole",
+            "dcgm-exporter-clusterrolebinding",
             "k8s-ephemeral-storage-metrics",
             "kube-prometheus-stack",
             "node-feature-discovery",
@@ -6468,6 +6587,8 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-nvsentinel",
             "usage-gpu-operator-by-nvidia-dra-driver-gpu",
             "usage-gpu-operator-by-nvsentinel",
+            "usage-gpu-operator-by-dcgm-exporter-clusterrole",
+            "usage-gpu-operator-by-dcgm-exporter-clusterrolebinding",
             "usage-kube-prometheus-stack-by-gpu-operator",
             "usage-kube-prometheus-stack-by-k8s-ephemeral-storage-metrics",
             "usage-kube-prometheus-stack-by-prometheus-adapter",
@@ -6616,6 +6737,8 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The EKS half, generated from aicr.
             "cert-manager",
             "gpu-operator",
+            "dcgm-exporter-clusterrole",
+            "dcgm-exporter-clusterrolebinding",
             "k8s-ephemeral-storage-metrics",
             "kube-prometheus-stack",
             "node-feature-discovery",
@@ -6628,6 +6751,8 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-nvsentinel",
             "usage-gpu-operator-by-nvidia-dra-driver-gpu",
             "usage-gpu-operator-by-nvsentinel",
+            "usage-gpu-operator-by-dcgm-exporter-clusterrole",
+            "usage-gpu-operator-by-dcgm-exporter-clusterrolebinding",
             "usage-kube-prometheus-stack-by-gpu-operator",
             "usage-kube-prometheus-stack-by-k8s-ephemeral-storage-metrics",
             "usage-kube-prometheus-stack-by-prometheus-adapter",
@@ -6778,6 +6903,8 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The AKS half, generated from aicr.
             "cert-manager",
             "gpu-operator",
+            "dcgm-exporter-clusterrole",
+            "dcgm-exporter-clusterrolebinding",
             "k8s-ephemeral-storage-metrics",
             "kube-prometheus-stack",
             "node-feature-discovery",
@@ -6790,6 +6917,8 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-nvsentinel",
             "usage-gpu-operator-by-nvidia-dra-driver-gpu",
             "usage-gpu-operator-by-nvsentinel",
+            "usage-gpu-operator-by-dcgm-exporter-clusterrole",
+            "usage-gpu-operator-by-dcgm-exporter-clusterrolebinding",
             "usage-kube-prometheus-stack-by-gpu-operator",
             "usage-kube-prometheus-stack-by-k8s-ephemeral-storage-metrics",
             "usage-kube-prometheus-stack-by-prometheus-adapter",
@@ -6943,6 +7072,8 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The AKS half, generated from aicr.
             "cert-manager",
             "gpu-operator",
+            "dcgm-exporter-clusterrole",
+            "dcgm-exporter-clusterrolebinding",
             "k8s-ephemeral-storage-metrics",
             "kube-prometheus-stack",
             "node-feature-discovery",
@@ -6955,6 +7086,8 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-cert-manager-by-nvsentinel",
             "usage-gpu-operator-by-nvidia-dra-driver-gpu",
             "usage-gpu-operator-by-nvsentinel",
+            "usage-gpu-operator-by-dcgm-exporter-clusterrole",
+            "usage-gpu-operator-by-dcgm-exporter-clusterrolebinding",
             "usage-kube-prometheus-stack-by-gpu-operator",
             "usage-kube-prometheus-stack-by-k8s-ephemeral-storage-metrics",
             "usage-kube-prometheus-stack-by-prometheus-adapter",
@@ -7947,8 +8080,12 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
             "gpu-operator",
+            "dcgm-exporter-clusterrole",
+            "dcgm-exporter-clusterrolebinding",
             "usage-cert-manager-by-gpu-operator",
             "usage-node-feature-discovery-by-gpu-operator",
+            "usage-gpu-operator-by-dcgm-exporter-clusterrole",
+            "usage-gpu-operator-by-dcgm-exporter-clusterrolebinding",
             "usage-gpu-operator-by-nvidia-dra-driver-gpu",
             # The Standard stack.
             "leader-worker-set",
@@ -8084,8 +8221,12 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
             "gpu-operator",
+            "dcgm-exporter-clusterrole",
+            "dcgm-exporter-clusterrolebinding",
             "usage-cert-manager-by-gpu-operator",
             "usage-node-feature-discovery-by-gpu-operator",
+            "usage-gpu-operator-by-dcgm-exporter-clusterrole",
+            "usage-gpu-operator-by-dcgm-exporter-clusterrolebinding",
             "usage-gpu-operator-by-nvidia-dra-driver-gpu",
             # The Dynamo stack.
             "grove",
