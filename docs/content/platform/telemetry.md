@@ -483,9 +483,13 @@ spec:
 ## GPUs
 
 The GPU series come from a vendor's GPU exporter, not from the engine: a GPU
-belongs to a node, and its series have a `node` label rather than a
-deployment. On NVIDIA pools that's a [DCGM
-exporter](https://github.com/NVIDIA/dcgm-exporter); on AMD pools it's the AMD
+belongs to a node, and its series have a `node` label. On EKS, AKS, Civo and
+Nebius a GPU series also has the `deployment`, `replica`, `role` and `engine`
+labels of the pod using the GPU, so it joins that deployment's engine series
+on those labels. GKE serves GPU telemetry with Google's managed exporter,
+which Modelplane doesn't configure, so its GPU series don't carry these
+labels. On an existing cluster it depends on your exporter. On NVIDIA pools the exporter is a [DCGM
+exporter](https://github.com/NVIDIA/dcgm-exporter). On AMD pools it's the AMD
 GPU operator's
 [device-metrics-exporter](https://github.com/ROCm/device-metrics-exporter),
 which the serving stack installs with the AMD stack. The collector discovers
