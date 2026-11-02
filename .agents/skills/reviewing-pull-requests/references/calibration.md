@@ -6,8 +6,8 @@ about as often as they accept them, and for consistent reasons.
 
 ## Posted and accepted
 
-Dennis on #556, which added an early return that skipped composing the cloud
-cluster:
+A maintainer on #556, which added an early return that skipped composing the
+cloud cluster:
 
 <!-- vale off -->
 > **Blocking: when this gate fires on a running cluster, Crossplane deletes the
@@ -19,10 +19,10 @@ cluster:
 <!-- vale on -->
 
 The comment gives the consequence and the code path that causes it, then
-shows it happening in a test run. Nic raised the same problem independently on
-the same PR.
+shows it happening in a test run. Another maintainer raised the same
+problem independently on the same PR.
 
-Nic on #346:
+A maintainer on #346:
 
 <!-- vale off -->
 > I don't think this comment is true - notably nothing seems to read the

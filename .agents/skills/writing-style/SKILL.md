@@ -5,10 +5,8 @@ description: Write and review prose in Modelplane's style. Use when drafting or 
 
 # Writing Style
 
-Modelplane's prose follows the style of Nic Cope, its lead maintainer. The
-maintainers read every word and delete whatever the reader doesn't need, so aim
-for a draft they'd leave as it is. The quotes below are Nic's corrections to
-agents, kept as evidence for each rule.
+Modelplane's maintainers read every word and delete whatever the reader doesn't
+need, so aim for a draft they'd leave as it is.
 
 Most of this skill covers what goes wrong. An LLM's instinct for prose is
 roughly right about voice, and badly wrong about length, honesty about
@@ -70,19 +68,10 @@ background section. If you can't find a real reason, say so and ask.
 
 Your first draft runs about 40% longer than it should. That's predictable enough
 to treat as a step in the process. Draft, cut 30%, then read it again and remove
-the 10-20% still there. Nic's calibration, verbatim:
-
-<!-- vale off -->
-> Even when I ask you to cut 30% of what you write I can easily find another
-> 10-20% that can be cut with zero loss.
-<!-- vale on -->
+the 10-20% still there.
 
 Do both passes before anyone reads it. A draft the reader has to cut costs them
-the time the document should have saved, and Nic has said plainly that
-repairing LLM prose is expensive:
-
-> Generally when you write a document it costs me a lot of time spent getting it
-> to an actually good state.
+the time the document should have saved.
 
 Delete first:
 
@@ -111,20 +100,11 @@ answer succinctly" is a coherent instruction.
 
 ### Write for the Reader, Not Against the Conversation
 
-Nic makes this correction more sharply than any other, and you won't infer it,
-because from inside the session the reactive version feels responsive.
-
-<!-- vale off -->
-> You're once again doing the thing where: A) you write a doc, B) I criticize a
-> point, C) you edit the doc to specifically react to that point, explicitly
-> naming the point (without reason) throughout. For example your doc now
-> litigates what requirements are due to fleet and what aren't, when the reader
-> doesn't actually care.
-
-> This is garbage writing. You're writing this section in reaction to the
-> discussion we just had. Think about the audience. Think about the flow of the
-> document. Rewrite the section from first principles.
-<!-- vale on -->
+Maintainers make this correction more sharply than any other, and you won't
+infer it, because from inside the session the reactive version feels
+responsive. A reviewer criticises a point, and the next draft reacts to it,
+naming the point throughout. The document now litigates something its reader
+doesn't care about.
 
 It appears two ways. The document argues with a reviewer's objection, or it
 argues with its own earlier draft. Phrasings like "this replaces an earlier
@@ -151,8 +131,7 @@ rename without saying why. A plausible reason invented to fill the gap is worse
 than no reason, because the reader can't tell it apart from a real one and it
 becomes part of the permanent record.
 
-If you don't know why, ask, or leave the reason out. When Nic catches an
-invented reason, the response is blunt: "You just made that all up."
+If you don't know why, ask, or leave the reason out.
 
 This extends past rationale:
 
@@ -189,8 +168,8 @@ and them, and rhetorical absolutes rarely survive scrutiny.
 ### Space Signals Importance
 
 The room a topic gets is how a reader judges its importance, so proportion
-is a property to check. Nic checks it by eye and by line count: "Your new
-section takes up more space than any other in the doc. Should it?"
+is a property to check, by eye and by line count. If a new section takes up
+more space than any other in the document, should it?
 
 - Sections stay proportional to their importance to the whole document, never to
   how recently they came up. Recency bias is a defect. A commit message follows
@@ -276,13 +255,7 @@ Grammar gets its own pass. Run-on sentences are the recurring offender.
 
 ## The Pass Before You Hand It Back
 
-Nobody should spend reading time on an un-de-slopped draft. Nic, to an agent:
-
-<!-- vale off -->
-> I want you to tackle the prose cuts and AI tells edits before I spend time
-> reading. This should be a tight design that reads like I wrote it. No slop, no
-> filler.
-<!-- vale on -->
+Nobody should spend reading time on an un-de-slopped draft.
 
 Getting there takes two passes, which catch different things.
 
@@ -303,10 +276,10 @@ vale sync
 vale path/to/doc.md
 ```
 
-**Fix what it reports.** Nic compared 16 linter-driven rewrites against the
-originals across two design docs. He preferred the rewrite in 14 and called the
-other two a tie. He never preferred the original. His summary: the edits drive
-toward more succinct and direct phrasing, and that's the project style.
+**Fix what it reports.** A maintainer compared 16 linter-driven rewrites against
+the originals across two design docs, and preferred the rewrite in 14, called
+the other two a tie, and never preferred the original. The edits drive toward
+more succinct and direct phrasing, which is the project style.
 
 So comply by default, and override only when you can state the specific reason
 the alert is wrong.
@@ -316,8 +289,7 @@ one direction: you will defend phrasing you wrote. Every alert in that
 comparison that an agent had confidently called a false positive turned out to
 be a real catch. The most confident defence was `StackedAnaphora` on "one
 engine, one member, one pod", argued as deliberate repetition mapping onto the
-API. Nic's verdict was that it "reads very AI", and the repetition was the
-reason.
+API. It read as AI-written, and the repetition was the reason.
 
 The exceptions are mechanical rather than matters of taste:
 

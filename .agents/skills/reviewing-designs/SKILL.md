@@ -10,9 +10,7 @@ description: >-
 
 # Reviewing Designs
 
-This covers whether a proposal is good, not whether it's well written. It's
-distilled from how Nic Cope questions designs, and from the design concerns
-Modelplane's maintainers raised on design PRs and what came of them.
+This covers whether a proposal is good, not whether it's well written.
 
 Maintainers own design decisions. As a reviewer, ask the questions a
 maintainer would ask and leave the answers to them, since you're better at

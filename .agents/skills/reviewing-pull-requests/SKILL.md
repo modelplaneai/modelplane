@@ -10,8 +10,7 @@ description: >-
 # Reviewing Pull Requests
 
 This covers what Modelplane's maintainers look for in a PR and how they phrase
-it. It's distilled from about 4,500 of Nic Cope's review comments on
-Crossplane and Modelplane, and from the findings he declined.
+it.
 
 CONTRIBUTING.md wins wherever it disagrees with this skill. Don't spend
 comments on anything CI already enforces: ruff, ty, Vale on the docs site, the

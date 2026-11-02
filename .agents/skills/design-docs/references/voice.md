@@ -1,7 +1,6 @@
 # Voice and Structure
 
-What the target looks like, drawn from ~30 of Nic Cope's documents spanning
-2019-2025. Read this when drafting from scratch. The failure modes in SKILL.md
+What the target looks like. Read this when drafting from scratch. The failure modes in SKILL.md
 matter more, because they describe where drafts actually go wrong. This file
 describes where they should end up.
 
@@ -48,20 +47,19 @@ a bit like a Makefile backed by a snapshot of nixpkgs."
 ### Release verbs point forward
 
 <!-- vale off -->
-Nic uses "ship" for the act of releasing, as intent or as something still ahead.
+Use "ship" for the act of releasing, as intent or as something still ahead.
 "We need to ship X." "Should v0.1 ship with something simpler?" "Biasing toward
 shipping rather than another review round."
 
-He never uses it to describe what a product has or does. "Modelplane ships a
+Don't use it to describe what a product has or does. "Modelplane ships a
 Traefik gateway" and "nobody ships this layer today" are LLM phrasings. The fix
 is the specific verb: Modelplane *installs* a Traefik gateway, *includes* the
 connector runtime, *composes* the HTTPRoute. Naming the real action is more
 precise anyway, which is what the linter asks for when it flags the word.
 <!-- vale on -->
 
-Frequency isn't the problem, so don't overcorrect into avoiding the word. Nic
-uses it about as often as an LLM does. The difference is the direction it
-points.
+Frequency isn't the problem, so don't overcorrect into avoiding the word. The
+difference is the direction it points.
 
 The same test applies to any verb of delivery or provision with a product as its
 subject. Say what the software does, and reserve the release verb for releases.

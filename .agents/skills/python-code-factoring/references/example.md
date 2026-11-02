@@ -1,8 +1,8 @@
 # Worked Examples
 
-Real before and after pairs from composition function code, taken from the
-sessions where these rules got made. The "before" in each case is what an agent
-wrote and Nic corrected, so treat the left column as the thing to avoid.
+Real before and after pairs from composition function code. The "before" in
+each case is what an agent wrote and a maintainer corrected, so treat the left
+column as the thing to avoid.
 
 Identifiers are as they appeared, minus anything environment-specific.
 
