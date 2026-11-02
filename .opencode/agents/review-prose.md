@@ -37,5 +37,7 @@ Don't review code structure or correctness. Other reviewers cover them.
 
 Report each finding with its file, its line in the PR's head commit, a severity
 (blocking, issue or nit), what's wrong, and the evidence: the quoted text, and
-the code that contradicts it where there is some. Leave out weak findings, even
-if that leaves none. Don't edit any files.
+the code that contradicts it where there is some. Report every finding,
+including ones you're unsure of, and give each a confidence: high, medium or
+low. The review agent chooses what to post. Rather than holding back a finding
+that seems minor or uncertain, say so in its confidence. Don't edit any files.

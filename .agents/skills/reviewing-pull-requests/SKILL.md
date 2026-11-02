@@ -80,21 +80,28 @@ Offering options matters for the same reason. An agent handed one fix applies
 it as written. Handed a few, or told the reviewer doesn't mind how the problem
 gets solved, it has to weigh them, and may find a better fix than any of yours.
 
-> Does an absent `draDrivers` need to mean "install everything"? It looks like
-> compose-inference-cluster always sets the list, so this path only serves
-> ServingStacks created before the field existed, and Modelplane has none to
-> migrate. What if we required the field, or defaulted it to `[]`? That would
-> remove the `None` branch in `join`, the `ExistingStandardUnfiltered` case and
-> the comments in both functions that explain it.
+These are real comments that follow the pattern. Phrase your own for the PR in
+front of you rather than reusing their wording.
 
-> Won't returning here delete a running cluster? I think Crossplane garbage
-> collects composed resources that drop out of the desired state. Could the
-> gate keep composing what already exists?
+> Won't `ready != len(refs)` always be true if `renderFail` is true? Or are
+> there cases where we need both?
 
-> Is the list below still right for AMD pools? It says an existing cluster
-> provides its own exporter and needs NVIDIA's dcgm-exporter chart, but this
-> paragraph says the serving stack installs the AMD exporter. Should it say
-> that only applies to NVIDIA pools?
+> Does using kwargs here weaken the type checking we'd get from using
+> `ModelReplica`? Could we instead form the ModelReplica model outside of
+> `resource.update` and set `replica.spec.modelCacheRef` only if the
+> ModelDeployment has one?
+
+> Do we need to hold composition until the gateway is Ready? With the anchor
+> in place, I'd expect a route created during a rollout to be harmless. If so,
+> always composing and gating only `RoutingReady` would let us drop this
+> special case.
+
+> Won't this leave a stored prefill/decode replica's `ModelAccepted` and
+> `ModelReady` as `Unknown`? On a fatal result Crossplane keeps the conditions
+> a function sets, and marks every custom condition it didn't set as
+> `Unknown`
+> ([reconciler.go](https://github.com/crossplane/crossplane/blob/v2.4.0/internal/controller/apiextensions/composite/reconciler.go#L792-L803)).
+> So a pair that's still serving would show `ModelReady=Unknown`.
 
 Phrase a correctness finding in the review summary this way too.
 
@@ -258,15 +265,12 @@ The python-code-factoring and engineering-principles skills hold the rest.
 ## The Review Summary
 
 The summary opens with one hedged sentence on how close the PR looks to
-mergeable, without repeating any inline comment:
-
-- "This looks ready to me."
-- "This looks close. I have a few questions."
-- "I think a couple of things need another look before this merges."
-- "I think we should step back and talk about the approach."
-
-The design reviewer's verdict weighs most in choosing it. Don't grade the PR
-beyond that: leave out verdicts like "well tested" or "reads well".
+mergeable, without repeating any inline comment. It places the PR on a scale
+from ready, through close with a few questions and needing another look at
+specific things, to needing a step back on the approach. Say it in your own
+words for this PR, naming what stands between it and merging where that's one
+thing. The design reviewer's level weighs most in choosing it. Don't grade the
+PR beyond that: leave out verdicts like "well tested" or "reads well".
 
 The rest of the summary explains that verdict, in a short paragraph at most,
 and the whole summary stays under 1,000 characters. Findings go inline, each

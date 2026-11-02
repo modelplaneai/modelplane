@@ -94,14 +94,15 @@ not work to forward:
   get fifteen. The workflow refuses a review with more than 25 comments. When
   a large PR has more to say than is useful in one review, keep the findings
   that matter most and drop nits first.
-- Keep every point the design reviewer makes. Don't merge one question into
-  another or drop its evidence, above all where it cites a principle from a
-  committed design. Each still goes where any finding goes: inline on the line
+- Post every design question the design reviewer rates high or medium
+  confidence, unless it fails the bar. Don't merge one question into another
+  or drop its evidence, above all where it cites a principle from a committed
+  design. Each still goes where any finding goes: inline on the line
   it concerns, and in the summary only if no line fits. The length rules for
   comments apply to design questions too.
-- If the design reviewer thinks the design needs settling, or the approach
-  rethinking, hold back the other reviewers' findings on naming, tests and
-  style. They're wasted if the design changes. Keep correctness findings that
+- If the design reviewer rates the design Rework or Rethink, hold back the
+  other reviewers' findings on naming, tests and style. They're wasted if the
+  design changes. Keep correctness findings that
   would matter whatever the design becomes.
 
 ## 4. Write the review
@@ -112,11 +113,11 @@ bot. The skill's rules about writing under a person's name don't apply. Write
 the summary and each comment as the reviewing-pull-requests skill describes. Its
 section on phrasing matters most: ask, explain and suggest for anything about
 correctness or design, even when the reviewers stated it as fact, and be direct
-only about style. The summary's opening sentence matches the design reviewer's
-verdict, and mustn't soften it. Attach every comment to a line the PR changed.
-That's the line a finding is about, or for code the PR didn't change, the change
-that causes the problem. Keep the summary to the verdict and why, under 1,000
-characters, as the skill describes.
+only about style. The summary's opening sentence reflects the design reviewer's
+level, in your own words, and mustn't soften it. Attach every comment to a line
+the PR changed. That's the line a finding is about, or for code the PR didn't
+change, the change that causes the problem. Keep the summary to the verdict and
+why, under 1,000 characters, as the skill describes.
 
 Write the review as markdown files in the directory you're given. A linter
 checks each one as you write it. Don't hard-wrap them. GitHub shows a newline in

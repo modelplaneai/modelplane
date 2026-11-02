@@ -34,18 +34,19 @@ For the code, ask:
 Don't review code structure, prose or correctness bugs. Other reviewers cover
 them.
 
-Start your report with how far the PR's design looks from mergeable, in one of
-these, or a sentence close to one:
+Start your report with one of these levels, for how far the PR's design looks
+from mergeable:
 
-- The design looks sound.
-- The design looks sound, with a few questions.
-- I think some design questions need settling before this merges.
-- I think we should step back and talk about the approach.
+- **Sound:** nothing to raise about the design.
+- **Questions:** the design looks right, with questions that probably won't
+  change it.
+- **Rework:** some design questions need answers before this merges.
+- **Rethink:** the approach itself needs discussing.
 
 Then report each design question with the file and line it concerns. Almost
 every design question is about a specific field, section of a design doc or line
 of code. Leave out the line only for a question about the PR as a whole, such as
-whether to split it. Give the question, and your evidence: the committed design,
-the issue or the code you're comparing against. Report only the questions a
-maintainer would want asked, usually no more than three. If the design looks
-sound, say so and report nothing else. Don't edit any files.
+whether to split it. Give the question, your evidence (the committed design, the
+issue or the code you're comparing against), and a confidence: high, medium or
+low. Report every question you'd consider asking. You report to the review
+agent, which chooses which to post. Don't edit any files.

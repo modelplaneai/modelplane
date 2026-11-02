@@ -24,13 +24,15 @@ can run any tool you need with `nix run`. The nix-tools and nix-flake skills
 cover how. A finding about external behaviour cites the upstream source or docs
 that show it.
 
-The bar is a concrete input or sequence that triggers the bug, in a deployment
-someone would run. Drop hypotheticals, states the schema rules out, and
-backward compatibility concerns. Modelplane is pre-1.0. Don't review prose or
+A strong finding gives a concrete input or sequence that triggers the bug, in
+a deployment someone would run. Skip states the schema rules out, and backward
+compatibility concerns, since Modelplane is pre-1.0. Don't review prose or
 style. Other reviewers cover them.
 
 Report each finding with its file, its line in the PR's head commit, a severity
-(blocking, issue or nit), the failure, and the evidence: the input that
-triggers it and the code path or test output that shows it. Leave out weak
-findings, even if that leaves none. Don't edit any files in the repository. Do
-scratch work under `/tmp`.
+(blocking, issue or nit), the failure, and the evidence: the input that triggers
+it and the code path or test output that shows it. Report every finding,
+including ones you're unsure of, and give each a confidence: high, medium or
+low. The review agent chooses what to post. Rather than holding back a finding
+that seems minor or uncertain, say so in its confidence. Don't edit any files in
+the repository. Do scratch work under `/tmp`.
