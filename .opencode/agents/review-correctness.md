@@ -2,6 +2,7 @@
 description: >-
   Review a pull request for correctness bugs, verified by tracing code paths,
   running tests and reading upstream source.
+steps: 220
 mode: subagent
 ---
 

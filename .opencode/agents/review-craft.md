@@ -2,6 +2,7 @@
 description: >-
   Review a pull request's code for craft: whether each addition needs to
   exist, consistency with the repo, naming, tests and project style.
+steps: 140
 mode: subagent
 ---
 

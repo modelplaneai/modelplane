@@ -2,6 +2,7 @@
 description: >-
   Review a pull request's prose: comments, docstrings, XRD field descriptions,
   docs, design docs, the PR description and commit messages.
+steps: 130
 mode: subagent
 ---
 

@@ -3,6 +3,7 @@ description: >-
   Review a Modelplane pull request. Runs the design, prose, craft and
   correctness reviewers in parallel, then posts only the findings that hold
   up.
+steps: 120
 mode: primary
 ---
 

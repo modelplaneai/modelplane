@@ -67,6 +67,11 @@
                 # The review script adds the model and its provider, which the
                 # workflow passes in model.json.
                 autoupdate = false;
+                # The review agents cap their own steps. This caps the de-slop
+                # pass, which runs as the built-in general agent. Every cap is
+                # about three times the most steps a review has needed, to stop
+                # a runaway without cutting a long review short.
+                agent.general.steps = 50;
                 plugins = [ "${lspPlugin}" ];
                 lsp.vale = {
                   command = [ "vale-ls" ];

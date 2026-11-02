@@ -2,6 +2,7 @@
 description: >-
   Review a pull request's premise and design, including any design doc it
   adds, against its issue and the committed designs.
+steps: 90
 mode: subagent
 ---
 
