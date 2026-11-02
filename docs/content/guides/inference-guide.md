@@ -2,6 +2,8 @@
 title: An Open Field Guide to Inference Engineering
 weight: 40
 description: A field guide to inference concepts, production operations, tooling, and career development for platform engineers.
+aliases:
+  - /guides/inference_guide/
 ---
 
 {{< hint "note" >}}
