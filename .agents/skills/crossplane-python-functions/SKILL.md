@@ -34,6 +34,22 @@ from models.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
 The rest of this skill covers how Crossplane behaves, which is what most bugs
 in a function get wrong.
 
+## Gotchas
+
+These come up repeatedly in review, and are easy to miss:
+
+- **Dropping desired state deletes things.** A function that returns early, or
+  skips composing a resource it composed before, causes Crossplane to garbage
+  collect that resource. A gate on a dependency must keep composing a resource
+  once it exists. See Gating Resources on Dependencies below.
+- **Composed resource names.** Use the SDK's naming helpers, and check names
+  stay within Kubernetes length limits and can't collide across replicas or
+  clusters.
+- **Readiness** reflects the condition the real resource sets, never a
+  hardcoded value.
+- **Selectors inside lists** need the referenced resource's id instead. See the
+  composition function section of CONTRIBUTING.md.
+
 ## Composing Resources
 
 Use Pydantic models for everything with a generated model. They catch field

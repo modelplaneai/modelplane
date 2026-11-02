@@ -10,14 +10,11 @@ maintainers read every word and delete whatever the reader doesn't need, so aim
 for a draft they'd leave as it is. The quotes below are Nic's corrections to
 agents, kept as evidence for each rule.
 
-Most of this skill covers what goes wrong. An LLM's instinct for a good design
-doc is roughly right about voice and section structure, and badly wrong about
-length, honesty about rationale, and who the document addresses. So the failure
-modes come first.
+Most of this skill covers what goes wrong. An LLM's instinct for prose is
+roughly right about voice, and badly wrong about length, honesty about
+rationale, and who the document addresses. So the failure modes come first.
 
-For voice, the section-by-section skeleton, and worked examples of the target,
-read [references/voice.md](references/voice.md). Read it when drafting from
-scratch. Skip it when tightening prose that already exists.
+
 
 ## When to Use This (vs Other Skills)
 
@@ -27,7 +24,8 @@ comments. CONTRIBUTING.md sets the conventions specific to commits, PRs and
 issues, and "Cut Hard, Twice", "Never Invent Rationale", and "Substantiate or
 Delete" below apply to them unchanged.
 
-Use **design-docs** for the structure of a design doc.
+Use **design-docs** for everything specific to a design doc, including its
+structure, examples and voice.
 
 Use **reviewing-pull-requests** for what to raise in a review, and this skill
 for how to word it.
@@ -46,7 +44,7 @@ phrasing in one comment.
 
 ## Before You Draft
 
-Establish three things, and ask rather than guess:
+Establish three things. Ask rather than guess when someone's there to answer:
 
 1. **Audience.** Who reads this? Maintainers, contributors, users, a partner's
    engineers? "High level but deeply technical" produces a different document
@@ -153,12 +151,8 @@ rename without saying why. A plausible reason invented to fill the gap is worse
 than no reason, because the reader can't tell it apart from a real one and it
 becomes part of the permanent record.
 
-If you don't know why, ask. Nic has said so outright:
-
-> DO NOT invent justification unless you know for sure why something is like it
-> is. You can ask me if you don't know.
-
-When he catches it the response is blunt: "You just made that all up."
+If you don't know why, ask, or leave the reason out. When Nic catches an
+invented reason, the response is blunt: "You just made that all up."
 
 This extends past rationale:
 
@@ -212,64 +206,13 @@ section takes up more space than any other in the doc. Should it?"
 - One concept per list entry. Don't bundle rate limiting and authentication
   under "identity", and don't drop an item while reorganising.
 
-### Write the Design as If It Preceded the Code
-
-A design records direction. It concentrates on APIs and UX with broad-strokes
-mechanics. It doesn't mirror the code, and it isn't a recipe to build it. It
-must not actively mislead, though it may show things not yet built.
-
-So write in the present tense, describing the current position as though it were
-the first and only one:
-
-- No changelog framing, since the reader doesn't care how a previous
-  unreleased iteration worked.
-- Discarded thinking belongs in Alternatives Considered, gathered there rather
-  than scattered inline.
-- No links to issues or PRs in the same repo. They expose the document's real
-  chronology, and a design should read as the first artifact in the repo. Link
-  generously outward to upstream issues, specs, talks, and prior art.
-- A superseded document isn't rewritten. It gets a one or two sentence preface
-  saying it remains for historical context.
-- Don't link a durable document to a scratch file you'll delete.
-
-At some point a design stops absorbing revisions and gets extended by
-supplementary designs. Prefer minimal surgery to a rewrite, because it's cheaper
-to review.
-
-A proposal proposes the intended end state, and leaves out the limitations
-currently blocking it. Goals appear positively, as what gets delivered, and at
-project level rather than scoped to a release. Don't confess open unknowns in
-passing. Stay deliberately vague where the mechanism remains unsettled, and
-state the requirement instead.
-
-Leave out an Open Questions section. A design takes a position. Opinions belong
-inline beside the thing they concern, rather than in a trailing "positions" or
-"recommendations" section.
-
 ### Examples Are Real
 
 An example does more work than the prose around it, so give it the same
-scrutiny.
-
-- **Reuse validated artifacts from the repo.** Copy the tested manifest instead
-  of composing one from memory, and use the same example throughout the
-  document, including the executive summary.
-- **Show whole objects.** A full ModelDeployment, and not a `spec:` fragment.
-- **If you can't verify it, say so.** "I couldn't build a credible example here"
-  is better than a plausible fabrication.
-- **Calibrate realistically.** Selectors should ask for what a model actually
-  needs, and examples should reflect the scale users really run.
-- **Cut examples that don't do any work.** One that only shows an off-the-shelf
-  resource doesn't add anything a reader lacks. Merge a pair that make the same
-  point. A contrived example damages credibility more than an absent one, so
-  omit rather than force.
-- **Annotate lightly.** Brief YAML comments where semantics aren't obvious, and
-  `# Omitted for brevity` where you trim.
-- **Cover the awkward case.** Worked examples are how a proposal proves it
-  handles the topologies it claims to, so include the pathological one.
-
-Long verified artifacts belong in collapsed blocks, so they illustrate without
-bloating the document.
+scrutiny. Copy a tested artifact from the repo rather than composing one from
+memory, and show whole objects. If you can't build a credible example, say so,
+because a contrived one damages credibility more than an absent one. The
+design-docs skill covers examples in designs in more depth.
 
 ## Naming
 
@@ -401,9 +344,9 @@ over.
 whether a section argues with a reviewer or invents a reason, or whether it
 gives four paragraphs to something that deserves one. Dispatch a subagent
 briefed with [references/de-slop-review.md](references/de-slop-review.md), plus
-the audience, the purpose, and one or two existing designs under `design/` for
-the project's style. Fix what it finds and repeat until a reviewer comes back
-clean, because one pass rarely suffices.
+the audience, the purpose, and one or two existing documents of the same kind
+for the project's style. Fix what it finds and repeat until a reviewer comes
+back clean, because one pass rarely suffices.
 
 Use a subagent rather than reviewing inline. Fresh context matters because the
 drafting agent can't see its own reactive framing.
@@ -414,8 +357,8 @@ are orthogonal.
 
 ## Do Not
 
-- Don't add AI attribution. Text published under a person's name reads as
-  theirs, so write first person or drop the pronoun, and never refer to the
+- Don't add AI attribution. Text under a person's name reads as theirs.
+  Write it in the first person or drop the pronoun, and never refer to the
   author in the third person.
 - Don't lose a person's edits. Where someone copy edits alongside you, their
   edits win, and any later rewrite keeps them. Re-read the file before
@@ -426,13 +369,12 @@ are orthogonal.
 
 1. Cut 30%, then cut another 10-20%, before anyone reads it.
 2. Write for the reader, never against the last draft or the last comment.
-3. Never invent rationale. Ask instead.
+3. Never invent rationale. Ask, or leave it out.
 4. Support every claim with a mechanism and a baseline, or delete it.
 5. Space signals importance, so keep sections and list entries proportional.
-6. A design reads as though it preceded the code.
-7. Examples are real, whole, verified, and doing work.
-8. Name things deliberately, with established terms that don't mislead in the
+6. Examples are real, whole, verified, and doing work.
+7. Name things deliberately, with established terms that don't mislead in the
    edge case, and one term per concept.
-9. Reasoning belongs in prose. Structure is for structured content.
-10. Run Vale, then a fresh-context subagent, and loop until both come back
-    clean.
+8. Reasoning belongs in prose. Structure is for structured content.
+9. Run Vale, then a fresh-context subagent, and loop until both come back
+   clean.

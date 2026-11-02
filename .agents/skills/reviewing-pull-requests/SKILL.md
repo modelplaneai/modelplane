@@ -44,9 +44,9 @@ Don't raise these at all:
   XRD schema or a CEL rule enforces puts one invariant in two places.
 - **A second enforcement point.** If an invariant could be a CEL rule, ask for
   the CEL rule rather than a check in the function.
-- **Alternative architectures or new features.** Design and API direction
-  belong to the maintainers. Where a change has real design weight, ask about
-  it once in the summary. Don't spread it across inline comments.
+- **Requests to do more.** Don't ask a PR to add features or take a different
+  architecture than it sets out to. Design questions about what it does are
+  the design reviewer's, and the reviewing-designs skill covers them.
 - **Settled questions.** Read the existing review threads first. Don't re-raise
   something already discussed, resolved, or declined.
 - **Missing E2E coverage.** E2E runs in a separate, label-gated workflow.
@@ -103,7 +103,10 @@ front of you rather than reusing their wording.
 > ([reconciler.go](https://github.com/crossplane/crossplane/blob/v2.4.0/internal/controller/apiextensions/composite/reconciler.go#L792-L803)).
 > So a pair that's still serving would show `ModelReady=Unknown`.
 
-Phrase a correctness finding in the review summary this way too.
+A design question especially needs the hedge, because the author has context
+you don't. State your assumption and invite correction ("I assume the main cost
+here is X, right?"). Give the cost of your suggestion, not only its benefit, and
+say whether the gap is in the design or only in how the doc explains it.
 
 **Be direct about style, readability and maintainability.** "Please use the
 established pattern here, because..." is fine, as long as the comment gives the
@@ -119,8 +122,7 @@ fixed line. Mark minor points with `Nit:`.
 
 Write short comments. Most run two to four sentences, ending with the
 suggestion.
-Make one point per comment, attached to the line it's about, or for code the
-PR didn't change, to the change that causes the problem. If the same issue
+Make one point per comment. If the same issue
 recurs, comment once and add "(here and elsewhere)" rather than repeating the
 comment.
 
@@ -141,126 +143,15 @@ Don't use GitHub suggestion blocks. Applying one creates a commit without a
 Write plainly, as a maintainer would. The writing-style skill applies to review
 comments as much as to docs.
 
-## What to Look For
+## Where Comments Go
 
-These are in rough order of how often maintainers raise them, which isn't the
-same as how much each matters.
+Attach every comment to a line the PR changed, in the most relevant place:
 
-### Comments and docs that don't match the code
-
-This is the most common category, and authors accept it nearly every time.
-Look for:
-
-- Comments, docstrings, field descriptions and docs that describe old
-  behaviour, or that an agent copied from elsewhere and that still name the
-  wrong type, cloud or verb.
-- Claims that aren't true. A label nothing reads, the wrong component
-  reading a field, or a stale pinned version.
-- Invented rationale: a plausible reason for a decision that nothing in the
-  code, the issue or the design supports.
-- Overclaiming. Docs describe what the project does today, not what it aims to
-  do.
-- Comments that narrate history, such as "we used to", "this replaces", "now"
-  or replies to an earlier review round. History belongs in the commit
-  message.
-- Commentary that costs the reader more than it gives them: comments three
-  times as long as they need to be, or that restate the code.
-
-### Missing "why" comments and contracts
-
-Where a reader would have to dig to understand something, ask for a comment
-that explains why. Examples are a surprising choice, a foot-gun, a magic
-number, an ignored error, or an external constraint the code works around.
-
-### Speculative complexity
-
-Push back on fields, options, knobs, helpers, abstractions and shared modules
-added before anything needs them. Ask "does this need to exist?" about each
-new one. Also ask whether the PR needs:
-
-- Guards for states that can't happen.
-- Fallbacks that can't matter in practice.
-- Status fields that duplicate what other state already implies.
-- A special case where one code path would serve everyone.
-- A helper called once, or one that does almost nothing.
-- Tests that can't fail, that duplicate another case, or that only detect
-  change.
-
-### Consistency with what's already there
-
-New code follows the established pattern for what it's doing: test style,
-naming, label keys, how a function waits on a dependency, how each cloud's
-composition does the same job. When a PR adds a helper, check whether the SDK,
-a dependency or the repo already has one. When a PR fixes something in one
-cloud's function, check the others.
-
-An agent may have written an existing pattern with nobody reviewing it
-closely. Say when a finding
-rests on precedent alone, and don't hold a PR to a pattern that's plainly
-wrong. The fix for a wrong pattern is an issue to change it everywhere.
-
-### Names
-
-A name says exactly what the thing is or does. Look for a name that drifted
-when the behaviour changed, a loaded term reused for something else (Ready,
-Synced, "managed"), a name that doesn't match its siblings, and grab-bag module
-names like `util` or `common`.
-
-### Crossplane correctness
-
-These come up repeatedly and are easy to miss:
-
-- **Dropping desired state deletes things.** A composition function that
-  returns early, or skips composing a resource it composed before, causes
-  Crossplane to garbage collect that resource. A gate on a dependency must
-  keep composing a resource once it exists.
-- **Composed resource names.** Use the SDK's naming helpers, and check names
-  stay within Kubernetes length limits and can't collide across replicas or
-  clusters.
-- **Readiness.** Readiness reflects the condition the real resource sets,
-  never a hardcoded value.
-- **Selectors inside lists** need the referenced resource's id instead. See
-  the composition function section of CONTRIBUTING.md.
-
-The crossplane-python-functions skill covers the rest of the function
-contract.
-
-### API design
-
-The maintainers own API design, so raise these as questions rather than
-verdicts. For XRDs, follow the krm-api-design skill:
-
-- Question bool fields that might need a third state.
-- Mutually exclusive options want a discriminator field.
-- Spec holds desired state and status holds observed state.
-- Each field description reads well in `kubectl explain`.
-- Enforce constraints in the schema, with CEL, rather than in code.
-
-### Tests
-
-New behaviour gets a new case in the existing table, following the Tests
-section of CONTRIBUTING.md. Ask for a test where new behaviour or an error
-path has none. Question a new test where the cases above it already cover
-the behaviour.
-
-### Scope
-
-Unrelated changes, such as dependency bumps, drive-by refactors, new test
-frameworks or new tools, belong in their own PR, and a new tool or framework
-needs a decision first.
-
-## Language Notes
-
-Python, which is nearly all of Modelplane:
-
-- Deserialize observed resources into the generated Pydantic models rather
-  than chaining `.get()` calls on dicts.
-- Import modules, not names from inside them.
-- Fix types rather than adding `ty: ignore`. A `cast`, a `Literal` alias or
-  `Final` constants usually let the checker prove the value.
-- Never hand-edit generated code under `schemas/python/`.
-
-The python-code-factoring and engineering-principles skills hold the rest.
+- A finding about a line the PR changed goes on that line.
+- A finding about code or docs the PR didn't change goes on the change that
+  causes it. If a comment or docs page elsewhere is now untrue, comment on the
+  change that made it untrue, and say which comment or link the page.
+- A design question goes on the field, design doc section or code it's about.
 
 ## The Review Summary
 
@@ -272,16 +163,10 @@ words for this PR, naming what stands between it and merging where that's one
 thing. The design reviewer's level weighs most in choosing it. Don't grade the
 PR beyond that: leave out verdicts like "well tested" or "reads well".
 
-The rest of the summary explains that verdict, in a short paragraph at most,
-and the whole summary stays under 1,000 characters. Findings go inline, each
-in the most relevant place:
-
-- A finding about code the PR didn't change goes on the change that causes it.
-  If a comment elsewhere is now stale, comment on the change that made it
-  stale, and say which comment.
-- For docs the PR doesn't touch, comment on the change that makes them wrong,
-  and link the page.
-- A design question goes on the field, design doc section or code it's about.
+The rest of the summary explains that verdict in two or three sentences, and
+the whole summary stays under 1,000 characters. It says what the verdict rests
+on without restating the inline comments about it, which the author reads
+next. Every finding goes inline, as the previous section describes.
 
 A finding about the PR as a whole, such as whether to split it, belongs in the
 summary when it's the reason for the verdict. Findings about the commit messages

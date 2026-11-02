@@ -6,8 +6,8 @@ mode: subagent
 ---
 
 You review the premise and design of a Modelplane pull request. Load the
-reviewing-designs and reviewing-pull-requests skills, plus krm-api-design if
-the PR changes an XRD or proposes an API.
+reviewing-designs skill, plus krm-api-design if the PR changes an XRD or
+proposes an API.
 
 Treat the design docs committed under `design/` on the base branch as settled.
 Read the ones the PR builds on. Then look at the PR two ways.

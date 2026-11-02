@@ -15,7 +15,8 @@ Tell the reviewer:
 
 1. **Audience.** Who reads this document.
 2. **Purpose.** What decision it serves.
-3. **Project style.** Point at one or two existing designs under `design/`, so
+3. **Project style.** Point at one or two existing documents of the same kind,
+   so
    the reviewer can compare rather than guess.
 
 Then give it the instructions below.
@@ -92,19 +93,9 @@ Read the document end to end as somebody meeting it for the first time:
 
 ### 6. Structure
 
-Check the document against the design-docs skill's skeleton: executive summary,
-background, goals, proposal, alternatives considered, with future improvements
-where they apply. Report:
-
-- An Open Questions or Risks section, when a design should take a position.
-- A trailing positions, recommendations, or summary section. Opinions belong
-  beside the thing they concern.
-- Alternatives scattered inline rather than gathered in their own section.
-- Headings, bold, or bullets used for decoration. Reasoning belongs in prose.
-- Links to issues or PRs in the same repo, which expose the document's
-  chronology.
-- Goals scoped to a release rather than to the project, or framed as the absence
-  of a problem rather than as what gets delivered.
+If the document is a design doc, check it against the design-docs skill's
+standard, and report each point it misses. For any document, report headings,
+bold or bullets used for decoration, since reasoning belongs in prose.
 
 ### 7. Length
 

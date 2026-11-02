@@ -137,6 +137,42 @@ reconstruct, then again for what remains. Trade paragraphs of prose for a worked
 example wherever one carries the point. Run vale over the whole doc and a
 fresh-context de-slop review, and fix both until they come back clean.
 
+For voice, the section-by-section skeleton in more depth, and worked examples of
+the target, read [references/voice.md](references/voice.md) when drafting from
+scratch.
+
+### Writing the End State
+
+A design records direction. It must not actively mislead, though it may show
+things not yet built (standard 4).
+
+- Don't link issues or PRs in the same repo. They expose the doc's real
+  chronology, and a design should read as the first artifact in the repo. Link
+  generously outward to upstream issues, specs, talks and prior art.
+- Don't link a durable doc to a scratch file you'll delete.
+- A superseded doc isn't rewritten. It gets a one or two sentence preface
+  saying it remains for historical context. At some point a design stops
+  absorbing revisions and gets extended by supplementary designs.
+- Goals appear positively, as what gets delivered, and at project level rather
+  than scoped to a release.
+- Leave out the limitations currently blocking the end state. Where the
+  mechanism isn't decided, stay deliberately vague and state the requirement.
+- Opinions belong inline beside the thing they concern.
+
+### Examples
+
+Beyond standard 9:
+
+- **Calibrate realistically.** Selectors ask for what a model actually needs,
+  and examples reflect the scale users really run.
+- **Cut examples that don't do any work.** One that only shows an off-the-shelf
+  resource doesn't add anything. Merge a pair that make the same point.
+- **Annotate lightly.** Brief YAML comments where semantics aren't obvious, and
+  `# Omitted for brevity` where you trim.
+- **Cover the awkward case.** Worked examples are how a proposal proves it
+  handles the topologies it claims to, so include the pathological one.
+- **Collapse long artifacts,** so they illustrate without bloating the doc.
+
 ## Refactoring
 
 Refactoring a poor doc, often an AI-written one, is surgery on the document's

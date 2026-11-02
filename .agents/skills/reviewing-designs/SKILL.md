@@ -157,18 +157,9 @@ someone builds the deferred part properly.
 
 ## How to Raise It
 
-Phrase design questions as reviewing-pull-requests asks for any correctness
-question: ask, explain, suggest. A design question especially wants a hedge,
-because you're missing context the author has.
-
-- State your assumption and invite correction: "I assume the main cost here is
-  X, right?"
-- Sketch an alternative in YAML where it helps, and say you haven't thought it
-  through: "please poke holes in this rather than taking it as-is".
-- Give the cost of your suggestion, not only its benefit.
-- Separate a gap in the design from a gap in how the doc explains it.
-- Offer more than one option where they come naturally, and say when you don't
-  mind which.
+Phrase design questions as reviewing-pull-requests describes: ask, explain,
+suggest. Where it helps, sketch an alternative in YAML and say you haven't
+thought it through: "please poke holes in this rather than taking it as-is".
 
 Getting a fact wrong costs the whole review its credibility. Check a claim
 about how Crossplane, Kubernetes or an upstream project behaves against its

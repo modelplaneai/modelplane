@@ -108,16 +108,11 @@ not work to forward:
 ## 4. Write the review
 
 Load the writing-style skill before you write, and follow it. Don't stop to ask
-questions, since nobody is there to answer. You post as the project's review
-bot. The skill's rules about writing under a person's name don't apply. Write
-the summary and each comment as the reviewing-pull-requests skill describes. Its
-section on phrasing matters most: ask, explain and suggest for anything about
-correctness or design, even when the reviewers stated it as fact, and be direct
-only about style. The summary's opening sentence reflects the design reviewer's
-level, in your own words, and mustn't soften it. Attach every comment to a line
-the PR changed. That's the line a finding is about, or for code the PR didn't
-change, the change that causes the problem. Keep the summary to the verdict and
-why, under 1,000 characters, as the skill describes.
+questions, since nobody is there to answer. Write the summary and each comment
+as the reviewing-pull-requests skill describes. Phrase anything about
+correctness or design as a question, even when the reviewers stated it as fact.
+The summary's opening sentence reflects the design reviewer's level, in your
+own words, and mustn't soften it.
 
 Write the review as markdown files in the directory you're given. A linter
 checks each one as you write it. Don't hard-wrap them. GitHub shows a newline in
@@ -128,13 +123,12 @@ its line in the PR's head commit:
 
 ```markdown
 ---
-path: functions/compose-model-cache/function/fn.py
+path: functions/compose-inference-cluster/function/fn.py
 line: 42
 ---
 
-Won't returning here delete the cache's PVC? It looks like Crossplane garbage
-collects composed resources that drop out of the desired state. Could the gate
-keep composing the PVC once it exists?
+Nit: `pool_names` reads as a list of names, but it holds `NodePool` objects.
+`pools` would match its siblings.
 ```
 
 Fix every error the linter reports on these files. When you've written them
@@ -147,9 +141,8 @@ Vale catches phrasing, not padding, invented reasons or a comment that argues
 past its point. Dispatch a subagent with fresh context to catch those. Give it
 the writing-style skill's `references/de-slop-review.md` and the review
 directory. Tell it the audience is the PR's author and the maintainers, the
-purpose is to tell them what to change and why, and the reviewing-pull-requests
-skill's phrasing rules replace the brief's design-doc examples. It skips the
-brief's structure check, which is for design docs.
+purpose is to tell them what to change and why, and that each comment phrases
+correctness and design findings as questions on purpose.
 
 Fix what it reports in the wording. Don't add, drop or change findings because
 of it, since it reviews prose, not substance. Then run Vale over the directory
