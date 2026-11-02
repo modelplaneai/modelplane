@@ -167,6 +167,7 @@ Aggregate
 # AI assistants and agent tooling
 MCP
 Claude
+claude\.ai
 Cursor
 ChatGPT
 VS
@@ -791,6 +792,7 @@ Aggregate
 # AI assistants and agent tooling
 MCP
 Claude
+claude\.ai
 Cursor
 ChatGPT
 VS

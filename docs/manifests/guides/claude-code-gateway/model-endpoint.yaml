@@ -1,0 +1,68 @@
+# One ModelEndpoint per Claude model: the endpoint has a single model field,
+# and the gateway rewrites each request's model to it on the way out. Each
+# endpoint points at the same host and the same API key and carries a label of
+# its own, so its ModelService selects it alone.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelEndpoint
+metadata:
+  name: anthropic-claude-opus-5-5
+  namespace: anthropic
+  labels:
+    modelplane.ai/external-provider: anthropic
+    modelplane.ai/claude-model: claude-opus-5-5
+spec:
+  # Anthropic serves the Messages API at /v1 on api.anthropic.com.
+  origin: https://api.anthropic.com
+  api:
+    # schema Anthropic means the gateway serves only Anthropic clients on
+    # this backend: it translates an Anthropic request for an OpenAI
+    # backend, but not the reverse, so an OpenAI request never reaches
+    # Anthropic through it.
+    schema: Anthropic
+    prefix: /v1
+  model: claude-opus-5-5
+  credential:
+    method: APIKey
+    apiKey:
+      secretRef:
+        name: anthropic-api-key
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelEndpoint
+metadata:
+  name: anthropic-claude-sonnet-5-5
+  namespace: anthropic
+  labels:
+    modelplane.ai/external-provider: anthropic
+    modelplane.ai/claude-model: claude-sonnet-5-5
+spec:
+  origin: https://api.anthropic.com
+  api:
+    schema: Anthropic
+    prefix: /v1
+  model: claude-sonnet-5-5
+  credential:
+    method: APIKey
+    apiKey:
+      secretRef:
+        name: anthropic-api-key
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelEndpoint
+metadata:
+  name: anthropic-claude-haiku-5-5
+  namespace: anthropic
+  labels:
+    modelplane.ai/external-provider: anthropic
+    modelplane.ai/claude-model: claude-haiku-5-5
+spec:
+  origin: https://api.anthropic.com
+  api:
+    schema: Anthropic
+    prefix: /v1
+  model: claude-haiku-5-5
+  credential:
+    method: APIKey
+    apiKey:
+      secretRef:
+        name: anthropic-api-key

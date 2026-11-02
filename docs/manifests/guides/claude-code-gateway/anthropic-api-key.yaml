@@ -1,0 +1,12 @@
+# The organization's Anthropic API key. The ModelEndpoint references it by
+# name, and it must sit in the endpoint's namespace. This is not the gateway's
+# caller auth: that one selects Secrets from modelplane-system on the control
+# plane, and its keys are what the people's Claude Codes send.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: anthropic-api-key
+  namespace: anthropic
+type: Opaque
+stringData:
+  apiKey: sk-ant-...

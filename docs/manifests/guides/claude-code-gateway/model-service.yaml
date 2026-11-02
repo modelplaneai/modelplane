@@ -1,0 +1,50 @@
+# One ModelService per Claude model, each selecting its endpoint. Name the
+# service after the Claude ID, as anthropic/claude-opus-5-5: Claude Code reads
+# the model ID out of every response to decide its context window, thinking
+# and request fields, and names it does not recognize make it fall back to
+# generic defaults.
+#
+# spec.timeouts.request defaults to 300s, which a long Opus turn with thinking
+# can run past. These services set it to 1800s; set it from the longest
+# response you expect.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: claude-opus-5-5
+  namespace: anthropic
+spec:
+  endpoints:
+  - name: anthropic
+    selector:
+      matchLabels:
+        modelplane.ai/claude-model: claude-opus-5-5
+  timeouts:
+    request: 1800s
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: claude-sonnet-5-5
+  namespace: anthropic
+spec:
+  endpoints:
+  - name: anthropic
+    selector:
+      matchLabels:
+        modelplane.ai/claude-model: claude-sonnet-5-5
+  timeouts:
+    request: 1800s
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: claude-haiku-5-5
+  namespace: anthropic
+spec:
+  endpoints:
+  - name: anthropic
+    selector:
+      matchLabels:
+        modelplane.ai/claude-model: claude-haiku-5-5
+  timeouts:
+    request: 1800s

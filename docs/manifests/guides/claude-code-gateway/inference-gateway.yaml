@@ -1,0 +1,23 @@
+# The front door the people's Claude Codes reach. It authenticates each
+# person with their own Modelplane key: each entry in a selected Secret is
+# one caller, the entry's name is the identity and its value is the key. The
+# gateway stamps the identity onto every usage record and never forwards the
+# key to Anthropic. Point your DNS at status.address once the gateway reports
+# one, and put the certificate for the name in the referenced Secret.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceGateway
+metadata:
+  name: public
+spec:
+  # The InferenceCluster this gateway runs on. It decides the gateway's
+  # region and its address, and needs no GPU pools.
+  clusterName: gw-gcp-us
+  tls:
+    certificateRefs:
+      - name: llm-example-com-tls
+  auth:
+    method: APIKey
+    apiKey:
+      secretSelector:
+        matchLabels:
+          modelplane.ai/inference-keys: "true"
