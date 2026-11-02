@@ -55,9 +55,10 @@ MAX_SUMMARY_PROSE = 1_000
 # marker.
 MAX_BODY = 65_000
 
-# The skill limits a comment's prose, outside any code block, to this many
-# characters. A sketch of an alternative can run longer.
-MAX_PROSE = 600
+# The skill aims for a comment's prose, outside any code block, to stay under
+# this many characters. A comment over it is posted anyway, since a long
+# comment beats a lost finding, but logged so the skill can be tuned.
+TARGET_PROSE = 600
 
 # The review's last line is a marker recording the commit it covered, and the
 # next review reads it to scope itself. So the agent can't write one, the
@@ -130,8 +131,8 @@ def parse_comment(raw: str) -> Comment:
         raise ValueError(f"comment needs a path, a line and a body: {match['meta']!r}")
     if len(body) > MAX_COMMENT:
         raise ValueError(f"comment on {path}:{line} is longer than {MAX_COMMENT} characters")
-    if len(CODE_BLOCK.sub("", body).strip()) > MAX_PROSE:
-        raise ValueError(f"comment on {path}:{line} has more than {MAX_PROSE} characters of prose")
+    if (n := len(CODE_BLOCK.sub("", body).strip())) > TARGET_PROSE:
+        sys.stderr.write(f"comment on {path}:{line} has {n} characters of prose, over the {TARGET_PROSE} target\n")
     return Comment(path, int(line), body)
 
 

@@ -135,6 +135,17 @@ Fix every error the linter reports on these files. When you've written them
 all, run `vale` over the directory from the repo root, after `vale sync` if its
 styles are missing, and fix what it reports too.
 
+Then measure each file's prose, leaving out front matter and code blocks:
+
+```bash
+cd _output/review && for f in summary.md comments/*.md; do
+  echo "$(awk 'NR==1 && /^---$/ {fm=1; next} fm && /^---$/ {fm=0; next} fm {next} /^```/ {cb=!cb; next} !cb' "$f" | tr -s ' \n' ' ' | wc -c) $f"
+done
+```
+
+Trim the summary to under 1,000 characters and each comment to under about 600
+by cutting words. Never drop a finding to meet a target.
+
 ## 5. De-slop the review
 
 Vale catches phrasing, not padding, invented reasons or a comment that argues

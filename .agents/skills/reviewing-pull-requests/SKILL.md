@@ -129,9 +129,9 @@ comment.
 A comment that proposes an alternative may also sketch it, as a short YAML or
 code block with a sentence or two on what it buys. Show only the parts
 that differ, not a full implementation. Proposing an alternative is the only
-reason a comment runs longer. Importance isn't one. The prose of a comment,
-outside any code block, has a hard limit of 600 characters. The workflow drops
-a comment that goes over.
+reason a comment runs longer. Importance isn't one. Keep a comment's prose,
+outside any code block, under about 600 characters. Get there by cutting
+words, never by dropping a finding.
 
 Don't prescribe a fix in detail. Sketch it, or link to an example, and let the
 author work it out. Authors feed comments to their own agents, and a
