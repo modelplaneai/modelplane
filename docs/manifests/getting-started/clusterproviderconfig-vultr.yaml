@@ -13,4 +13,4 @@ spec:
     secretRef:
       namespace: crossplane-system
       name: vultr-credentials
-      key: api-key
+      key: creds

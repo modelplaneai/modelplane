@@ -30,9 +30,9 @@ graph LR
 ## Add a second deployment
 
 The new deployment targets a larger-GPU cluster you added in the last step. On
-EKS, GKE, and AKS it pins to a second region with a `clusterSelector`. On Nebius,
-which runs one region per project, the capacity selector alone routes it to the
-`H100` tier:
+EKS, GKE, AKS, Vultr, and Civo it pins to a second region with a
+`clusterSelector`. On Nebius, which runs one region per project, the capacity
+selector alone routes it to the `H100` tier:
 
 {{< tabs >}}
 {{< tab "EKS" >}}
@@ -46,6 +46,12 @@ which runs one region per project, the capacity selector alone routes it to the
 {{< /tab >}}
 {{< tab "Nebius" >}}
 {{< manifests "getting-started/nebius/model-deployment-scale.yaml" >}}
+{{< /tab >}}
+{{< tab "Vultr" >}}
+{{< manifests "getting-started/vultr/model-deployment-west.yaml" >}}
+{{< /tab >}}
+{{< tab "Civo" >}}
+{{< manifests "getting-started/civo/model-deployment-west.yaml" >}}
 {{< /tab >}}
 {{< /tabs >}}
 

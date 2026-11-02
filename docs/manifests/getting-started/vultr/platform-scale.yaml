@@ -1,0 +1,47 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: a40-1x
+spec:
+  description: "Vultr vcg-a40-24c-120g-48vram, 1x NVIDIA A40 48GB"
+  provisioning:
+    provider: Vultr
+    vultr:
+      plan: vcg-a40-24c-120g-48vram
+      accelerator:
+        type: nvidia-a40
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ampere }
+      cudaComputeCapability: { version: "8.6.0" }
+    capacity:
+      memory: { value: "46068Mi" }   # The A40's real reported VRAM (not the nominal 48GB)
+---
+# Vultr GPU plans are region-gated: the A40 plan is offered in lax and syd,
+# while the A16 regions carry only A16 plans.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: vultr-lax
+  labels:
+    modelplane.ai/region: lax
+spec:
+  cluster:
+    source: Vultr
+    vultr:
+      region: lax
+      # VKE accepts only the exact versions it currently offers; list them
+      # with vultr-cli kubernetes versions.
+      kubernetesVersion: "v1.36.5+2"
+  nodePools:
+  - name: gpu-a40
+    className: a40-1x
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1

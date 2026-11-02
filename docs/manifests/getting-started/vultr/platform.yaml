@@ -1,18 +1,18 @@
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
 metadata:
-  name: l40s-1x
+  name: a16-1x
 spec:
-  # The largest GPU plan available in ewr. Vultr GPU plans are region-gated;
-  # list what a region offers with the /v2/regions/<region>/availability API
-  # before picking another plan.
-  description: "Vultr vcg-l40s-16c-180g-48vram, 1x NVIDIA L40S 48GB"
+  # Vultr GPU plans are region-gated and the catalog changes; list what a
+  # region offers with the /v2/regions/<region>/availability API before
+  # picking another plan.
+  description: "Vultr vcg-a16-6c-60g-16vram, 1x NVIDIA A16 16GB"
   provisioning:
     provider: Vultr
     vultr:
-      plan: vcg-l40s-16c-180g-48vram
+      plan: vcg-a16-6c-60g-16vram
       accelerator:
-        type: nvidia-l40s
+        type: nvidia-a16
         count: 1
   devices:
   - name: gpu
@@ -21,10 +21,10 @@ spec:
     deviceClassName: gpu.nvidia.com
     count: 1
     attributes:
-      architecture: { string: Ada Lovelace }
-      cudaComputeCapability: { version: "8.9.0" }
+      architecture: { string: Ampere }
+      cudaComputeCapability: { version: "8.6.0" }
     capacity:
-      memory: { value: "46068Mi" }   # L40S's real reported VRAM (not the nominal 48GB)
+      memory: { value: "16384Mi" }
 ---
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
@@ -37,9 +37,12 @@ spec:
     source: Vultr
     vultr:
       region: ewr
+      # VKE accepts only the exact versions it currently offers; list them
+      # with vultr-cli kubernetes versions.
+      kubernetesVersion: "v1.36.5+2"
   nodePools:
-  - name: gpu-l40s
-    className: l40s-1x
+  - name: gpu-a16
+    className: a16-1x
     nodeCount: 1
     minNodeCount: 1
     maxNodeCount: 1

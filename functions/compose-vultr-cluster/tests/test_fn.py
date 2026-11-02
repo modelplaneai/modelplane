@@ -91,7 +91,7 @@ def _cluster(*, ready: fnv1.Ready) -> fnv1.Resource:
                         # The system node pool the function adds inline to every cluster.
                         "nodePools": {
                             "label": "system",
-                            "plan": "vc2-6c-16gb",
+                            "plan": "vhp-8c-16gb-intel",
                             "nodeQuantity": 1,
                             "autoScaler": True,
                             "minNodes": 1,
@@ -123,7 +123,7 @@ def _observed_cluster(*, ready: bool) -> fnv1.Resource:
                         "haControlplanes": True,
                         "nodePools": {
                             "label": "system",
-                            "plan": "vc2-6c-16gb",
+                            "plan": "vhp-8c-16gb-intel",
                             "nodeQuantity": 1,
                             "autoScaler": True,
                             "minNodes": 1,

@@ -1,0 +1,38 @@
+# A second ModelDeployment, pinned to a different region with clusterSelector.
+# It carries its own deployment name, so the ModelService can front it alongside
+# qwen-demo and serve both from one endpoint.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-west
+  namespace: ml-team
+spec:
+  replicas: 1
+  # clusterSelector filters which InferenceClusters this deployment can land on.
+  # This pins the replica to the LON1 cluster you added in "Scale the fleet".
+  template:
+    spec:
+      clusterSelector:
+        matchLabels:
+          modelplane.ai/region: lon1
+      engines:
+      - name: qwen
+        members:
+        - role: Standalone
+          nodeSelector:
+            devices:
+            - name: gpu
+              count: 1
+              selectors:
+          # A100 (81920Mi) qualifies; L40S (46068Mi) does not.
+              - cel: |
+                  device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("60Gi")) >= 0
+          template:
+            spec:
+              containers:
+              - name: engine
+                image: vllm/vllm-openai:v0.23.0
+                args:
+                - --model=Qwen/Qwen2.5-0.5B-Instruct
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
+                - --dtype=half
