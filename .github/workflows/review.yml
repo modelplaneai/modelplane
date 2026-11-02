@@ -342,4 +342,5 @@ jobs:
           LAST: ${{ needs.review.outputs.last }}
         run: |
           python3 hack/post_review.py --repo "$GITHUB_REPOSITORY" --pr "$PR" --sha "$SHA" \
+            --reviewer "$(git rev-parse HEAD)" \
             ${LAST:+--since "$LAST" --git-dir .git} out.tar

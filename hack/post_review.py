@@ -26,8 +26,9 @@ comment targets a line outside the diff, so comments on such lines move into
 the summary instead. The summary ends with a marker recording the commit the
 review covered, which the next review reads to review only what's new. The
 summary keeps to its 1,000 character limit by dropping later paragraphs. A
-review from an agent that didn't exit cleanly may be incomplete, so it gets no
-marker.
+footnote ahead of the marker names the commit the reviewer's skills and agents
+came from, and asks readers to react to each comment. A review from an agent
+that didn't exit cleanly may be incomplete, so it gets no marker.
 
 A re-review passes --since, the commit the last review covered. Its inline
 comments may then only target lines the PR adds that also changed since that
@@ -216,7 +217,11 @@ def changed(diff: str) -> set[int]:
 
 
 def place(
-    review: Review, diff: dict[str, set[int]], sha: str, scope: dict[str, set[int]] | None = None
+    review: Review,
+    diff: dict[str, set[int]],
+    sha: str,
+    scope: dict[str, set[int]] | None = None,
+    footnote: str = "",
 ) -> tuple[str, list[Comment]]:
     """The review body and the comments GitHub accepts inline. Without a scope,
     a comment on a line outside the diff moves into the body. With one, only
@@ -238,6 +243,8 @@ def place(
         body += moved
     for c in outside if scope is not None else []:
         sys.stderr.write(f"dropping a comment on {c.path}:{c.line}, which hasn't changed since the last review\n")
+    if footnote:
+        body += "\n\n" + footnote
     # Without the marker, the next review covers the whole PR rather than
     # skipping work an incomplete run never finished.
     if review.complete:
@@ -261,6 +268,7 @@ def main() -> int:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--pr", required=True)
     parser.add_argument("--sha", required=True)
+    parser.add_argument("--reviewer", required=True, help="the commit the reviewer's skills and agents came from")
     parser.add_argument("--since", help="the commit the last review covered, for a re-review")
     parser.add_argument("--git-dir", type=pathlib.Path, help="a repository holding --sha and --since")
     parser.add_argument("output", type=pathlib.Path, help="the tar the review VM wrote")
@@ -301,7 +309,14 @@ def main() -> int:
             ).stdout
             scope[f["filename"]] = added(f.get("patch", "")) & changed(since)
 
-    body, inline = place(review, diff, args.sha, scope)
+    # Which reviewer wrote a comment tells the reactions to it apart by skill
+    # version, when they're harvested later.
+    footnote = (
+        f"<sub>Reviewed by modelplane-review [`{args.reviewer[:7]}`]"
+        f"(https://github.com/{args.repo}/commit/{args.reviewer}). "
+        "Reply, or react 👍 or 👎, on each comment to help tune it.</sub>"
+    )
+    body, inline = place(review, diff, args.sha, scope, footnote)
     payload = {
         "commit_id": args.sha,
         "event": "COMMENT",
