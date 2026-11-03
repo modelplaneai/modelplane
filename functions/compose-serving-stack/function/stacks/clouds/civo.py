@@ -316,6 +316,10 @@ COMPONENTS: list[Component] = [
             "dcgmExporter": {
                 "config": {"create": True, "data": DCGM_METRICS_CSV, "name": "dcgm-exporter"},
                 "serviceMonitor": {"enabled": False},
+                # The gpu-operator's DRA and pod-label values, as MODELPLANE_VALUES sets them in generate.py.
+                "enablePodLabels": True,
+                "podLabelAllowlistRegex": [r"^modelplane\.ai/(deployment|replica|role|engine)$"],
+                "env": [{"name": "KUBERNETES_ENABLE_DRA", "value": "true"}],
             },
             # The DRA driver is the sole GPU allocator: the device
             # plugin's nvidia.com/gpu ledger would book the same physical
@@ -381,5 +385,49 @@ COMPONENTS: list[Component] = [
             "nvidiaDriverRoot": "/run/nvidia/driver",
             "resources": {"computeDomains": {"enabled": False}},
         },
+    ),
+    # The slice RBAC the exporter's DRA mode needs, as the generator composes it (transform in generate.py).
+    Manifests(
+        key="dcgm-exporter-clusterrole",
+        depends_on=["gpu-operator"],
+        dra_drivers=["gpu.nvidia.com"],
+        manifests=[
+            {
+                "apiVersion": "rbac.authorization.k8s.io/v1",
+                "kind": "ClusterRole",
+                "metadata": {"name": "nvidia-dcgm-exporter-read-resourceslices"},
+                "rules": [
+                    {
+                        "apiGroups": ["resource.k8s.io"],
+                        "resources": ["resourceslices"],
+                        "verbs": ["get", "list", "watch"],
+                    },
+                ],
+            },
+        ],
+    ),
+    Manifests(
+        key="dcgm-exporter-clusterrolebinding",
+        depends_on=["gpu-operator"],
+        dra_drivers=["gpu.nvidia.com"],
+        manifests=[
+            {
+                "apiVersion": "rbac.authorization.k8s.io/v1",
+                "kind": "ClusterRoleBinding",
+                "metadata": {"name": "nvidia-dcgm-exporter-read-resourceslices"},
+                "roleRef": {
+                    "apiGroup": "rbac.authorization.k8s.io",
+                    "kind": "ClusterRole",
+                    "name": "nvidia-dcgm-exporter-read-resourceslices",
+                },
+                "subjects": [
+                    {
+                        "kind": "ServiceAccount",
+                        "name": "nvidia-dcgm-exporter",
+                        "namespace": "gpu-operator",
+                    },
+                ],
+            },
+        ],
     ),
 ]
