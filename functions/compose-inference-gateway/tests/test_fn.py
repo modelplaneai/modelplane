@@ -168,6 +168,28 @@ def _observed_caller_auth() -> fnv1.Resource:
     )
 
 
+def _observed_ai_gateway_anchor(*, ready: bool) -> fnv1.Resource:
+    """The anchor AIGatewayRoute Object, Ready once AI Gateway has accepted the route."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "Ready",
+                            "status": "True" if ready else "False",
+                            "reason": "Available" if ready else "Unavailable",
+                            "lastTransitionTime": "2026-06-08T00:00:00Z",
+                        }
+                    ]
+                },
+            }
+        )
+    )
+
+
 # The helpers below build the resources the function composes. Each is a
 # provider-kubernetes Object that applies one manifest to the gateway's cluster
 # through its ClusterProviderConfig, and every namespaced manifest lands in
@@ -810,6 +832,63 @@ def _healthz_route() -> fnv1.Resource:
     )
 
 
+def _ai_gateway_anchor(*, https: bool, ready: fnv1.Ready) -> fnv1.Resource:
+    """The AIGatewayRoute keeping AI Gateway's ext-proc installed on this Gateway."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "metadata": {"namespace": "modelplane-system"},
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "gw-eu-cluster-kubeconfig"},
+                    "readiness": {
+                        "policy": "DeriveFromCelQuery",
+                        "celQuery": (
+                            "has(object.status) && has(object.status.conditions) && "
+                            "object.status.conditions.exists(c, c.type == 'Accepted' && c.status == 'True')"
+                        ),
+                    },
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "aigateway.envoyproxy.io/v1beta1",
+                            "kind": "AIGatewayRoute",
+                            "metadata": {"name": "inference-gateway-anchor", "namespace": "modelplane-system"},
+                            "spec": {
+                                "parentRefs": [
+                                    {
+                                        "group": "gateway.networking.k8s.io",
+                                        "kind": "Gateway",
+                                        "name": "inference-gateway",
+                                        "namespace": "modelplane-system",
+                                        "sectionName": "https" if https else "http",
+                                    }
+                                ],
+                                "rules": [
+                                    {
+                                        "matches": [
+                                            {
+                                                "headers": [
+                                                    {
+                                                        "type": "Exact",
+                                                        "name": "x-modelplane-gateway-anchor",
+                                                        "value": "true",
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ],
+                            },
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
 def _healthz_auth() -> fnv1.Resource:
     """The composed SecurityPolicy letting /healthz past caller auth, so a health check needs no credential."""
     return fnv1.Resource(
@@ -1122,6 +1201,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             results=[
@@ -1188,6 +1268,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             results=[
@@ -1252,6 +1333,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             results=[
@@ -1319,6 +1401,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             results=[
@@ -1356,6 +1439,7 @@ COMPOSE_CASES = [
                 composite=_xr(name="eu", tls=False, caller_secret_labels=None),
                 resources={
                     "gateway": _observed_gateway(address="gw.example.org", ready=True),
+                    "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
                     "client-ca-configmap": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -1406,6 +1490,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_TRUE),
                 },
             ),
             context=structpb.Struct(),
@@ -1428,7 +1513,10 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_xr(name="eu", tls=False, caller_secret_labels=None),
-                resources={"gateway": _observed_gateway(address="gw.example.org", ready=True)},
+                resources={
+                    "gateway": _observed_gateway(address="gw.example.org", ready=True),
+                    "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
+                },
             ),
             required_resources={
                 "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
@@ -1460,6 +1548,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_TRUE),
                 },
             ),
             context=structpb.Struct(),
@@ -1471,6 +1560,73 @@ COMPOSE_CASES = [
             ),
             conditions=[
                 fnv1.Condition(type="GatewayReady", status=fnv1.STATUS_CONDITION_TRUE, reason="GatewayProgrammed"),
+            ],
+        ),
+    ),
+    Case(
+        name="AnchorRouteNotAccepted",
+        reason="A programmed gateway reports WaitingForAIGatewayRoute until AI Gateway accepts its anchor route.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(name="eu", tls=False, caller_secret_labels=None),
+                resources={
+                    "gateway": _observed_gateway(address="gw.example.org", ready=True),
+                    "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=False),
+                },
+            ),
+            required_resources={
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    status={
+                        "address": "gw.example.org",
+                        "endpoints": {
+                            "openAI": "http://gw.example.org/v1",
+                            "anthropic": "http://gw.example.org/anthropic/v1",
+                        },
+                    },
+                    ready=fnv1.READY_FALSE,
+                ),
+                resources={
+                    "envoy-proxy": _envoy_proxy(),
+                    "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
+                    "client-selfsigned-issuer": _client_selfsigned_issuer(),
+                    "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
+                    "client-ca-issuer": _client_ca_issuer(),
+                    "client-ca-bundle": _client_ca_bundle(),
+                    "client-ca-configmap": _client_ca_configmap(),
+                    "failover-policy": _failover_policy(),
+                    "client-traffic-policy": _client_traffic_policy(),
+                    "healthz-filter": _healthz_filter(),
+                    "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_UNSPECIFIED),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="Waiting for the AI Gateway anchor route on cluster gw-eu to be accepted",
+                )
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="GatewayReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForAIGatewayRoute",
+                    message="Waiting for the AI Gateway anchor route on cluster gw-eu to be accepted",
+                ),
             ],
         ),
     ),
@@ -1797,6 +1953,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             results=[
@@ -1854,6 +2011,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=True, ready=fnv1.READY_UNSPECIFIED),
                     "redirect-route": _redirect_route(),
                 },
             ),
@@ -1897,6 +2055,7 @@ COMPOSE_CASES = [
                 resources={
                     "gateway": _observed_gateway(address="34.56.129.3", ready=True),
                     "caller-auth": _observed_caller_auth(),
+                    "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
                 },
             ),
             required_resources={
@@ -1968,6 +2127,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=True, ready=fnv1.READY_TRUE),
                     "healthz-auth": _healthz_auth(),
                     "redirect-route": _redirect_route(),
                     "redirect-auth": fnv1.Resource(
@@ -2050,7 +2210,10 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"}),
-                resources={"gateway": _observed_gateway(address="34.56.129.3", ready=True)},
+                resources={
+                    "gateway": _observed_gateway(address="34.56.129.3", ready=True),
+                    "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
+                },
             ),
             required_resources={
                 "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
@@ -2089,6 +2252,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_TRUE),
                     "healthz-auth": _healthz_auth(),
                 },
             ),
@@ -2134,6 +2298,7 @@ COMPOSE_CASES = [
                 composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"}),
                 resources={
                     "gateway": _observed_gateway(address="34.56.129.3", ready=True),
+                    "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
                     "caller-auth": _observed_caller_auth(),
                 },
             ),
@@ -2179,6 +2344,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_TRUE),
                     "healthz-auth": _healthz_auth(),
                 },
             ),
@@ -2221,6 +2387,7 @@ COMPOSE_CASES = [
                 composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"}),
                 resources={
                     "gateway": _observed_gateway(address="34.56.129.3", ready=True),
+                    "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
                     "caller-auth": _observed_caller_auth(),
                 },
             ),
@@ -2263,6 +2430,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_TRUE),
                     "healthz-auth": _healthz_auth(),
                 },
             ),
@@ -2310,6 +2478,7 @@ COMPOSE_CASES = [
                 composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"}),
                 resources={
                     "gateway": _observed_gateway(address="34.56.129.3", ready=True),
+                    "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
                     "caller-auth": _observed_caller_auth(),
                 },
             ),
@@ -2357,6 +2526,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_TRUE),
                     "healthz-auth": _healthz_auth(),
                 },
             ),
@@ -2401,6 +2571,7 @@ COMPOSE_CASES = [
                 composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"}),
                 resources={
                     "gateway": _observed_gateway(address="34.56.129.3", ready=True),
+                    "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
                     "caller-auth": _observed_caller_auth(),
                 },
             ),
@@ -2448,6 +2619,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_TRUE),
                     "healthz-auth": _healthz_auth(),
                 },
             ),
@@ -2512,6 +2684,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "healthz-auth": _healthz_auth(),
                 },
             ),
@@ -2624,6 +2797,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "healthz-auth": _healthz_auth(),
                 },
             ),
@@ -2730,6 +2904,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "healthz-auth": _healthz_auth(),
                 },
             ),
@@ -2852,6 +3027,7 @@ COMPOSE_CASES = [
                     "client-traffic-policy": _client_traffic_policy(),
                     "healthz-filter": _healthz_filter(),
                     "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=True, ready=fnv1.READY_UNSPECIFIED),
                     "healthz-auth": _healthz_auth(),
                     "redirect-route": _redirect_route(),
                     "redirect-auth": fnv1.Resource(
