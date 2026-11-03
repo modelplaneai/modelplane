@@ -20,8 +20,7 @@ the insight only they have.
 
 An agent reviews a PR when an org member opens it or marks it ready. To review
 anyone else's PR, or to re-review after new pushes, a maintainer comments
-`/review`. A re-review covers only what `git range-diff` shows changed since
-the last one.
+`/review`. A re-review covers only what changed since the last one.
 
 The review agent runs four reviewers with fresh context: design, prose, craft
 and correctness. It checks their findings against the bar in
@@ -56,8 +55,8 @@ us.
 - The VM gets the job's GitHub token, so the agent can read issues and PRs with
   `gh`. It can't write anything, everything it can read is public, and it
   expires with the job.
-- The App's key exists only in a second job with no model in it. That job
-  validates the review and posts it.
+- The App's key exists only in jobs with no model in them. One of those posts
+  the validated review.
 
 **The VM can only connect to the proxy and the internet.** A firewall on the
 runner drops its connections to the runner's other ports and private network,
@@ -66,15 +65,17 @@ with the runner. Its job arrives as a tar on a read-only disk, and it writes the
 review as a tar that the post job reads in memory, never extracting it.
 
 **A PR can't change the reviewer's setup.** The VM image, the workflow, the
-agents, the skills and every other file opencode reads come from `main`. The
-post job escapes any marker the agent writes, so the agent can't set what the
-next re-review covers.
+agents, the skills and every other file opencode starts with come from `main`.
+The post job escapes any marker the agent writes, and a re-review reads the
+marker only from the reviewer's own reviews, so neither the agent nor another
+bot can set what the next re-review covers.
 
 What's left: a malicious PR can spend API budget, and post a misleading comment
 review. The spend limit bounds the first, a maintainer reads the second, and
-non-members get a review only when a maintainer asks for one. PR code running
-in the VM can rewrite the agent's instructions mid-review, so a PR can steer its
-own review. It's still only a comment, so we accept that.
+non-members get a review only when a maintainer asks for one. A PR can steer its
+own review. PR code running in the VM can rewrite the agent's instructions
+mid-review, and opencode loads any `AGENTS.md` the PR adds. It's still only a
+comment, so we accept that.
 
 GitHub doesn't officially support KVM on its runners. About one runner in ten
 during testing had none. A small workflow re-runs a review that failed for that
