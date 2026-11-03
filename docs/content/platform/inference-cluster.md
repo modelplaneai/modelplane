@@ -225,3 +225,19 @@ depends on the source:
 The ML team's `ModelCache` and `ModelDeployment` specs are the same regardless of
 which backing storage a cluster uses.
 <!-- vale write-good.Passive = YES -->
+
+## Local storage
+
+Many GPU machines have local NVMe disks, such as the eight 3.84 TB disks of an
+EC2 `p6-b300.48xlarge`. On `EKS`, Modelplane sets up a node's NVMe instance
+store disks when the node boots. It stripes them into one RAID 0 array and moves
+the node's container images, pod logs, and `emptyDir` volumes onto it. The
+node's `ephemeral-storage` capacity is then the array's size. A pod uses the
+local disks by requesting `ephemeral-storage` and mounting an `emptyDir` volume.
+A node without instance store disks keeps everything on its root volume.
+
+The array lasts only as long as the node. Don't keep anything on it that you
+can't fetch or compute again.
+
+Modelplane doesn't set up local disks on other sources yet. On an `Existing`
+cluster you can set them up yourself.

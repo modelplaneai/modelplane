@@ -39,6 +39,18 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
+# The base64 user data every inference pool's launch template carries. It
+# decodes to a MIME multipart document with one application/node.eks.aws part,
+# a nodeadm NodeConfig setting spec.instance.localStorage.strategy: RAID0.
+_USER_DATA = (
+    "TUlNRS1WZXJzaW9uOiAxLjAKQ29udGVudC1UeXBlOiBtdWx0aXBhcnQvbWl4ZWQ7IGJvdW5k"
+    "YXJ5PSIvLyIKCi0tLy8KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9ub2RlLmVrcy5hd3MK"
+    "CmFwaVZlcnNpb246IG5vZGUuZWtzLmF3cy92MWFscGhhMQpraW5kOiBOb2RlQ29uZmlnCnNw"
+    "ZWM6CiAgaW5zdGFuY2U6CiAgICBsb2NhbFN0b3JhZ2U6CiAgICAgIHN0cmF0ZWd5OiBSQUlE"
+    "MAoKLS0vLy0tCg=="
+)
+
+
 def _xr(*, credentials: v1alpha1.Credentials | None, node_pools: list[v1alpha1.NodePool]) -> fnv1.Resource:
     """The observed EKSCluster XR in us-west-2, with the given credentials and node pools."""
     xr = v1alpha1.EKSCluster(
@@ -587,8 +599,32 @@ def _nodegroup_system(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
     )
 
 
+def _launch_template_gpu(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
+    """The gpu-l4 launch template, which carries only the instance type, disk size, and user data."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+                "kind": "LaunchTemplate",
+                "spec": {
+                    "providerConfigRef": {"kind": cred_kind, "name": cred_name},
+                    "forProvider": {
+                        "region": "us-west-2",
+                        "name": "test-cluster-lt-gpu-l4-573ee",
+                        "instanceType": "g6.xlarge",
+                        "blockDeviceMappings": [
+                            {"deviceName": "/dev/xvda", "ebs": {"volumeSize": 100}},
+                        ],
+                        "userData": _USER_DATA,
+                    },
+                },
+            }
+        ),
+    )
+
+
 def _nodegroup_gpu(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
-    """The composed gpu-l4 node group, which needs no launch template."""
+    """The composed gpu-l4 node group, which takes its instance type from the launch template."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -601,12 +637,14 @@ def _nodegroup_gpu(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
                     "forProvider": {
                         "region": "us-west-2",
                         "amiType": "AL2023_x86_64_NVIDIA",
-                        "instanceTypes": ["g6.xlarge"],
-                        "diskSize": 100,
                         "clusterNameSelector": {"matchControllerRef": True},
                         "nodeRoleArnSelector": {
                             "matchControllerRef": True,
                             "matchLabels": {"modelplane.ai/iam-role": "node"},
+                        },
+                        "launchTemplate": {
+                            "name": "test-cluster-lt-gpu-l4-573ee",
+                            "version": "$Latest",
                         },
                         "subnetIdRefs": [
                             {"name": "test-cluster-private-subnet-us-west-2a-6a89f"},
@@ -645,12 +683,14 @@ def _nodegroup_cpu(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
                     "forProvider": {
                         "region": "us-west-2",
                         "amiType": "AL2023_x86_64_STANDARD",
-                        "instanceTypes": ["m6i.4xlarge"],
-                        "diskSize": 100,
                         "clusterNameSelector": {"matchControllerRef": True},
                         "nodeRoleArnSelector": {
                             "matchControllerRef": True,
                             "matchLabels": {"modelplane.ai/iam-role": "node"},
+                        },
+                        "launchTemplate": {
+                            "name": "test-cluster-lt-cpu-pool-fd9a7",
+                            "version": "$Latest",
                         },
                         "subnetIdSelector": {
                             "matchControllerRef": True,
@@ -713,6 +753,7 @@ def _launch_template_efa(*, security_groups: list[str] | None) -> fnv1.Resource:
                         "blockDeviceMappings": [
                             {"deviceName": "/dev/xvda", "ebs": {"volumeSize": 1024}},
                         ],
+                        "userData": _USER_DATA,
                         "networkInterfaces": interfaces,
                     },
                 },
@@ -1255,6 +1296,9 @@ COMPOSE_CASES = [
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
                     "nodegroup-system": _nodegroup_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "launch-template-gpu-l4": _launch_template_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
                     "nodegroup-gpu-l4": _nodegroup_gpu(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "addon-vpc-cni": _addon(name="vpc-cni", cred_kind="ClusterProviderConfig", cred_name="default"),
                     "addon-kube-proxy": _addon(
@@ -1448,6 +1492,26 @@ COMPOSE_CASES = [
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
                     "nodegroup-system": _nodegroup_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "launch-template-cpu-pool": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+                                "kind": "LaunchTemplate",
+                                "spec": {
+                                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                                    "forProvider": {
+                                        "region": "us-west-2",
+                                        "name": "test-cluster-lt-cpu-pool-fd9a7",
+                                        "instanceType": "m6i.4xlarge",
+                                        "blockDeviceMappings": [
+                                            {"deviceName": "/dev/xvda", "ebs": {"volumeSize": 100}},
+                                        ],
+                                        "userData": _USER_DATA,
+                                    },
+                                },
+                            }
+                        ),
+                    ),
                     "nodegroup-cpu-pool": _nodegroup_cpu(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "addon-vpc-cni": _addon(name="vpc-cni", cred_kind="ClusterProviderConfig", cred_name="default"),
                     "addon-kube-proxy": _addon(
@@ -1704,6 +1768,9 @@ COMPOSE_CASES = [
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
                     ),
                     "nodegroup-system": _nodegroup_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "launch-template-gpu-l4": _launch_template_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
                     "nodegroup-gpu-l4": _nodegroup_gpu(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "addon-vpc-cni": _addon(name="vpc-cni", cred_kind="ClusterProviderConfig", cred_name="default"),
                     "addon-kube-proxy": _addon(
@@ -1953,6 +2020,7 @@ COMPOSE_CASES = [
                                         "blockDeviceMappings": [
                                             {"deviceName": "/dev/xvda", "ebs": {"volumeSize": 1024}},
                                         ],
+                                        "userData": _USER_DATA,
                                         "instanceMarketOptions": {"marketType": "capacity-block"},
                                         "capacityReservationSpecification": {
                                             "capacityReservationPreference": "capacity-reservations-only",
@@ -2219,6 +2287,7 @@ COMPOSE_CASES = [
                                         "blockDeviceMappings": [
                                             {"deviceName": "/dev/xvda", "ebs": {"volumeSize": 1024}},
                                         ],
+                                        "userData": _USER_DATA,
                                         "capacityReservationSpecification": {
                                             "capacityReservationPreference": "capacity-reservations-only",
                                             "capacityReservationTarget": {
@@ -3169,6 +3238,9 @@ COMPOSE_CASES = [
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
                     "nodegroup-system": _nodegroup_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "launch-template-gpu-l4": _launch_template_gpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default"
+                    ),
                     "nodegroup-gpu-l4": _nodegroup_gpu(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "addon-vpc-cni": _addon(name="vpc-cni", cred_kind="ClusterProviderConfig", cred_name="default"),
                     "addon-kube-proxy": _addon(
@@ -3367,6 +3439,9 @@ COMPOSE_CASES = [
                         cred_kind="ProviderConfig", cred_name="my-aws-account", ready=fnv1.READY_UNSPECIFIED
                     ),
                     "nodegroup-system": _nodegroup_system(cred_kind="ProviderConfig", cred_name="my-aws-account"),
+                    "launch-template-gpu-l4": _launch_template_gpu(
+                        cred_kind="ProviderConfig", cred_name="my-aws-account"
+                    ),
                     "nodegroup-gpu-l4": _nodegroup_gpu(cred_kind="ProviderConfig", cred_name="my-aws-account"),
                     "addon-vpc-cni": _addon(name="vpc-cni", cred_kind="ProviderConfig", cred_name="my-aws-account"),
                     "addon-kube-proxy": _addon(

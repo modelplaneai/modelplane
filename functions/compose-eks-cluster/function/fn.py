@@ -28,6 +28,7 @@ authorised on the cluster. Downstream consumers only need the kubeconfig;
 no per-cluster AWS identity has to be wired into provider-kubernetes.
 """
 
+import base64
 from typing import Literal
 
 import grpc
@@ -164,6 +165,33 @@ _AMI_TYPE_GPU = "AL2023_x86_64_NVIDIA"
 # group sizes its root volume through a block device mapping on this device,
 # since EKS won't accept the node group's diskSize when a template is set.
 _ROOT_DEVICE_NAME = "/dev/xvda"
+
+# Node-local storage. Every inference node group's launch template asks nodeadm,
+# the AL2023 AMIs' node bootstrapper, to stripe the instance's NVMe instance
+# store disks into one RAID-0 array mounted under /mnt/k8s-disks, and to move
+# the kubelet and containerd state and pod logs onto it. Container images,
+# emptyDir volumes, and the node's ephemeral-storage capacity then live on the
+# local disks rather than the root EBS volume. nodeadm skips the setup on an
+# instance type with no instance store, so the template is the same for every
+# pool. EKS merges this NodeConfig with the one it generates for the node group,
+# which requires MIME multipart user data; EC2 takes it base64-encoded.
+_NODE_USER_DATA = base64.b64encode(
+    b"""MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="//"
+
+--//
+Content-Type: application/node.eks.aws
+
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  instance:
+    localStorage:
+      strategy: RAID0
+
+--//--
+"""
+).decode()
 
 # Capacity Reservation backing. A node group backed by a Capacity Reservation
 # uses a launch template that launches instances only into the reservation. A
@@ -853,13 +881,10 @@ class Composer:
         for pool in self.xr.spec.nodePools:
             reservation = pool.capacityReservation
             efa = pool.fabric == _FABRIC_EFA
-            # A launch template is needed to carry the capacity reservation, the
-            # EFA interfaces, or both. EKS takes the instance type from the
-            # launch template whenever one is set, so the node group must not
-            # also set instanceTypes in that case.
-            uses_launch_template = bool(reservation) or efa
-            if uses_launch_template:
-                self._compose_launch_template(pool, reservation, efa=efa)
+            # Every inference pool has a launch template, to carry the node
+            # user data that sets up local storage, plus any capacity
+            # reservation and EFA interfaces.
+            self._compose_launch_template(pool, reservation, efa=efa)
             if efa:
                 self._compose_efa_security_group()
 
@@ -882,22 +907,16 @@ class Composer:
                 labels={_LABEL_POOL: pool.name},
             )
 
-            if uses_launch_template:
-                # EKS takes the instance type from the launch template, so the
-                # node group must not also set instanceTypes. The template
-                # carries the instance type, the disk size, any capacity
-                # reservation, and any EFA interfaces. EKS rejects a node
-                # group that sets diskSize alongside a launch template, so the
-                # disk size lives only in the template in this case.
-                fp.launchTemplate = ngv1beta1.LaunchTemplate(
-                    name=self._launch_template_name(pool),
-                    version="$Latest",
-                )
-                if reservation and reservation.type == _RESERVATION_TYPE_CAPACITY_BLOCK:
-                    fp.capacityType = _CAPACITY_TYPE_CAPACITY_BLOCK
-            else:
-                fp.instanceTypes = [pool.instanceType]
-                fp.diskSize = pool.diskSizeGb
+            # EKS takes the instance type from the launch template, so the node
+            # group must not also set instanceTypes. EKS rejects a node group
+            # that sets diskSize alongside a launch template, so the disk size
+            # lives only in the template.
+            fp.launchTemplate = ngv1beta1.LaunchTemplate(
+                name=self._launch_template_name(pool),
+                version="$Latest",
+            )
+            if reservation and reservation.type == _RESERVATION_TYPE_CAPACITY_BLOCK:
+                fp.capacityType = _CAPACITY_TYPE_CAPACITY_BLOCK
 
             zone_refs = self._subnet_refs_for_pool(pool)
             if zone_refs:
@@ -951,7 +970,7 @@ class Composer:
             )
 
     def _launch_template_name(self, pool: v1alpha1.NodePool) -> str:
-        """Derive the EC2 launch template name for a pool that needs one.
+        """Derive the EC2 launch template name for an inference pool.
 
         The EKS NodeGroup references the launch template by name, so it
         must be stable and match the launchTemplate.forProvider.name set
@@ -965,10 +984,11 @@ class Composer:
         """Compose an EC2 launch template for a node group.
 
         EKS launches the node group's instances from this template. It carries
-        the instance type and, depending on the pool, the capacity reservation
-        (so instances come only from the reservation) and/or EFA network
-        interfaces (so nodes get GPUDirect RDMA). The node group references it
-        by name; for a Capacity Block pool it also sets capacityType.
+        the instance type, the user data that sets up local storage and,
+        depending on the pool, the capacity reservation (so instances come only
+        from the reservation) and/or EFA network interfaces (so nodes get
+        GPUDirect RDMA). The node group references it by name; for a Capacity
+        Block pool it also sets capacityType.
 
         The template must not set subnets - EKS rejects a launch template with
         subnet configuration for managed node groups and takes the subnets from
@@ -986,6 +1006,7 @@ class Composer:
                     ebs=ltv1beta1.Ebs(volumeSize=pool.diskSizeGb),
                 ),
             ],
+            userData=_NODE_USER_DATA,
         )
 
         if reservation:
@@ -1757,11 +1778,7 @@ class Composer:
             managed_resources.append(f"private-route-table-association-{i}")
             managed_resources.append(f"efs-mount-target-{i}")
         managed_resources += [f"nodegroup-{p.name}" for p in self.xr.spec.nodePools]
-        managed_resources += [
-            f"launch-template-{p.name}"
-            for p in self.xr.spec.nodePools
-            if p.capacityReservation or p.fabric == _FABRIC_EFA
-        ]
+        managed_resources += [f"launch-template-{p.name}" for p in self.xr.spec.nodePools]
         if any(p.fabric == _FABRIC_EFA for p in self.xr.spec.nodePools):
             managed_resources += [
                 "efa-security-group",
