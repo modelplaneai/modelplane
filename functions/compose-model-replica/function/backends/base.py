@@ -491,18 +491,36 @@ _POD_CLAIM_NAME = "devices"
 # CEL readiness query matching a Deployment's or LeaderWorkerSet's Available=True
 # condition. Both publish this condition but neither publishes a Ready
 # condition, so provider-kubernetes' DeriveFromObject policy (which only checks a
-# Ready condition) can never mark them ready. The has() guard keeps the query
-# false (not erroring) before the workload first writes status.conditions.
+# Ready condition) can never mark them ready. The has() guards keep the query
+# false (not erroring) before the workload first writes its status.
 AVAILABLE_CEL = (
-    'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
+    "has(object.status) && has(object.status.conditions) && "
+    'object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
 )
 
-# CEL readiness query for an engine's Deployment or LeaderWorkerSet with every
-# copy ready. Available alone isn't enough: a Deployment stays Available with up
-# to its maxUnavailable (25% by default) of copies down. So the query also
-# requires a ready pod, or ready group, per copy.
-ALL_COPIES_READY_CEL = (
+# CEL readiness query for an engine's LeaderWorkerSet with every copy ready.
+# lws sets Available only once every group is ready and runs the current
+# template. The readyReplicas clause catches a scale-up lws hasn't processed
+# yet, while Available still describes the old count. lws publishes no
+# observedGeneration, so a status read back before lws processes a template
+# change can still pass for a moment.
+LWS_ALL_COPIES_READY_CEL = (
     AVAILABLE_CEL + " && has(object.status.readyReplicas) && object.status.readyReplicas >= object.spec.replicas"
+)
+
+# CEL readiness query for an engine's Deployment with every copy ready and
+# running the current spec. Available alone isn't enough: a Deployment stays
+# Available with up to its maxUnavailable (25% by default) of copies down. A
+# ready pod per copy isn't enough either, because readyReplicas also counts
+# the previous ReplicaSet's pods while a rollout replaces them. So the query
+# also requires the Deployment controller to have processed the current spec,
+# every copy to be updated, and no pod from an older ReplicaSet to remain.
+DEPLOYMENT_ALL_COPIES_READY_CEL = (
+    AVAILABLE_CEL + " && has(object.status.readyReplicas) && object.status.readyReplicas >= object.spec.replicas"
+    " && has(object.status.observedGeneration)"
+    " && object.status.observedGeneration == object.metadata.generation"
+    " && has(object.status.updatedReplicas) && object.status.updatedReplicas >= object.spec.replicas"
+    " && has(object.status.replicas) && object.status.replicas == object.status.updatedReplicas"
 )
 
 # Grove publishes no Ready or Available condition on a PodCliqueSet, so
@@ -521,13 +539,18 @@ GROVE_AVAILABLE_CEL = (
 )
 
 # CEL readiness query for a Grove PodCliqueScalingGroup with every copy
-# available. Its availableReplicas counts the copies whose cliques are all at or
-# above their minAvailable. Unlike the PodCliqueSet's query it needs no
-# observedGeneration guard: Grove recounts the group from its cliques on every
-# reconcile, and a spec change to the set doesn't bump the group's generation.
+# available and running the current template. Its availableReplicas counts the
+# copies whose cliques are all at or above their minAvailable, whatever template
+# they run, so the old copies keep it full after a spec change until the
+# rolling update deletes one. updatedReplicas counts only the available copies
+# whose cliques run the current template. Unlike the PodCliqueSet's query it
+# needs no observedGeneration guard: Grove recounts the group from its cliques
+# on every reconcile, and a spec change to the set doesn't bump the group's
+# generation.
 GROVE_ALL_COPIES_READY_CEL = (
     "has(object.status) && has(object.status.availableReplicas) && "
-    "object.status.availableReplicas >= object.spec.replicas"
+    "object.status.availableReplicas >= object.spec.replicas && "
+    "has(object.status.updatedReplicas) && object.status.updatedReplicas >= object.spec.replicas"
 )
 
 
@@ -545,7 +568,7 @@ def wrap_object(
     That's right for resources with no meaningful runtime readiness (a Service,
     an HTTPRoute, or a ResourceClaimTemplate that's never reconciled). Pass
     cel_query for a workload whose readiness must reflect its observed status -
-    it selects the DeriveFromCelQuery policy with that query (see ALL_COPIES_READY_CEL).
+    it selects the DeriveFromCelQuery policy with that query (see LWS_ALL_COPIES_READY_CEL).
     Pass watch to have provider-kubernetes update the Object as soon as the
     resource changes, rather than on its next poll or resync. Pass observe_only
     for a resource something else creates, which the Object only reads.
