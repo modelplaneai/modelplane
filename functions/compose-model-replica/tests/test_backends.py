@@ -601,7 +601,8 @@ def _scaling_group(*, pcs_name: str) -> dict:
                 "policy": "DeriveFromCelQuery",
                 "celQuery": (
                     "has(object.status) && has(object.status.availableReplicas) && "
-                    "object.status.availableReplicas >= object.spec.replicas"
+                    "object.status.availableReplicas >= object.spec.replicas && "
+                    "has(object.status.updatedReplicas) && object.status.updatedReplicas >= object.spec.replicas"
                 ),
             },
             "forProvider": {

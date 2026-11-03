@@ -262,9 +262,9 @@ whether the model answers requests.
 | `Ready` | `ReplicasReady` is True and the referenced `ModelCache` exists. |
 
 A deployment with `ReplicasServing=True` and `Ready=False` is degraded, or is
-rolling out an update. It serves from the replicas and copies that are up. `kubectl get` shows
-`ReplicasServing` in the `SERVING` column, and a replica's `ModelServing` in
-its own.
+rolling out an update. It serves from the replicas and copies that are up.
+`kubectl get` shows `ReplicasServing` in the `SERVING` column, and a replica's
+`ModelServing` in its own.
 
 Each `ModelReplica` reports `ModelAccepted`, `ModelServing` and `ModelReady`.
 Each implies the one before it, so the first False one says what the replica is
