@@ -33,6 +33,16 @@ from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
 from function.backends import base
 
+# Stop an old copy before starting its replacement, one copy at a time, as a
+# LeaderWorkerSet's default rollout does. Kubernetes' default surges first: an
+# engine of fewer than four copies starts a new pod and waits for it to be
+# available before it stops an old one. On a pool with no free device the new
+# pod can't schedule until an old pod releases its claim, so the rollout
+# deadlocks, even when the old pod is crash-looping. The cost is that a
+# one-copy engine stops serving while its new pod starts, even where a device
+# is free.
+_ROLLING_UPDATE = {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1}}
+
 
 class NativeBackend:
     def build(
@@ -42,8 +52,6 @@ class NativeBackend:
         provider_config: str,
         serving_label: str,
         stack: str,
-        *,
-        observed: Mapping[str, fnv1.Resource],
     ) -> dict[str, k8sobjv1alpha1.Object]:
         member = base.engine_member(engine, base.ROLE_STANDALONE)
         # select_backend dispatches the native backend only for an engine with a
@@ -105,16 +113,14 @@ class NativeBackend:
         if tmpl.spec.imagePullSecrets:
             pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in tmpl.spec.imagePullSecrets]
 
-        copies = int(engine.copies or 1)
-        key = base.workload_key(engine)
         deployment = {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
             "metadata": {"name": name, "namespace": base.remote_namespace(replica)},
             "spec": {
-                "replicas": copies,
+                "replicas": int(engine.copies or 1),
                 "selector": {"matchLabels": selector},
-                "strategy": base.rolling_update(copies, base.stalled_copies_down(engine, observed, key)),
+                "strategy": _ROLLING_UPDATE,
                 "template": {
                     "metadata": base.pod_metadata(member, pod_labels, replica=replica, engine=engine),
                     "spec": pod_spec,
@@ -123,7 +129,9 @@ class NativeBackend:
         }
 
         composed = {
-            key: base.wrap_object(provider_config, deployment, cel_query=base.ALL_COPIES_READY_CEL, watch=True),
+            base.workload_key(engine): base.wrap_object(
+                provider_config, deployment, cel_query=base.ALL_COPIES_READY_CEL, watch=True
+            ),
         }
         # Gated like the container's resources above, and for the same reason.
         if member.deviceRequests:
