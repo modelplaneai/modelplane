@@ -312,6 +312,9 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
                 },
                 "enabled": False,
                 "serviceMonitor": {"enabled": True, "honorLabels": True, "interval": "30s"},
+                "enablePodLabels": True,
+                "podLabelAllowlistRegex": ["^modelplane\\.ai/(deployment|replica|role|engine)$"],
+                "env": [{"name": "KUBERNETES_ENABLE_DRA", "value": "true"}],
             },
             "devicePlugin": {
                 "enabled": False,

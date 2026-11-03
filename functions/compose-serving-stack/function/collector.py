@@ -352,6 +352,20 @@ def _scrape_configs() -> list[dict[str, Any]]:
                 # than to a deployment. DCGM names the card itself.
                 {"source_labels": ["__meta_kubernetes_pod_node_name"], "target_label": "node"},
             ],
+            # DCGM attaches the GPU-holding pod's modelplane.ai/* labels
+            # itself (see the stacks' dcgmExporter values), sanitized to
+            # modelplane_ai_*. Renamed here so a GPU series joins its
+            # deployment's engine series on the same labels.
+            "metric_relabel_configs": [
+                {
+                    "regex": "modelplane_ai_(deployment|replica|role|engine)",
+                    "action": "labelmap",
+                },
+                {
+                    "regex": "modelplane_ai_(deployment|replica|role|engine)",
+                    "action": "labeldrop",
+                },
+            ],
         },
         {
             "job_name": "modelplane-substrate",
