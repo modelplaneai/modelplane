@@ -31,7 +31,9 @@ endpoint wins. This function owns everything gateway-scoped, and nothing
 per-service.
 """
 
+import copy
 import ipaddress
+import re
 
 import grpc
 from crossplane.function import logging, request, resource, response
@@ -179,11 +181,27 @@ _PROXY_POD_LABELS = {
     "gateway.envoyproxy.io/owning-gateway-namespace": REMOTE_NAMESPACE,
 }
 
-# How long a stopping proxy pod keeps serving requests already in flight. It
-# matches the ModelService default request timeout, so a response started just
-# before a restart can finish unless its service allows longer. Envoy Gateway
-# adds five minutes to it for the pod's termination grace period.
+# How long a stopping proxy pod keeps serving requests already in flight, and
+# the default for spec.proxy.drainTimeout. It matches the ModelService default
+# request timeout, so a response started just before a restart can finish
+# unless its service allows longer. Envoy Gateway adds five minutes to it for
+# the pod's termination grace period; the same margin is applied here, so an
+# explicit drainTimeout moves the grace period with it.
 _DRAIN_TIMEOUT = "300s"
+
+# The margin Envoy Gateway adds to the drain timeout for the pod's termination
+# grace period, past the draining itself.
+_GRACE_MARGIN = 300
+
+
+def _seconds(duration: str) -> int:
+    """A Kubernetes duration string as seconds. Only the units the XRD's
+    drainTimeout pattern admits: hours, minutes, seconds, milliseconds."""
+    total = 0
+    for value, unit in re.findall(r"([0-9]+)(h|m|s|ms)", duration):
+        total += int(value) * {"h": 3600, "m": 60, "s": 1, "ms": 0}[unit]
+    return total
+
 
 # The metadata namespace the AI Gateway's ext-proc writes per-request values to.
 _AI_METADATA = "io.envoy.ai_gateway"
@@ -538,6 +556,15 @@ class Composer:
         is shared with the cluster gateway, whose per-pod routing has nothing to
         log here.
 
+        spec.proxy sets how the pods shut down and roll out. drainTimeout moves
+        with a matching termination grace period, so a long-lived stream never
+        outlives its pod: the API server would kill the pod before Envoy
+        finished draining it, making a raised drainTimeout inert. maxSurge and
+        maxUnavailable go to the Deployment's rollout strategy only when set,
+        since an explicit strategy, even one matching Envoy Gateway's default,
+        changes nothing today and could pin a default that later beats one they
+        improve.
+
         Every token field reads request metadata rather than a header or the
         response body. The AI Gateway's ext-proc writes the counts there, having
         also asked the backend for usage on streamed responses, which otherwise
@@ -546,6 +573,23 @@ class Composer:
         third-party backend, so a log reading the header would drop the caller
         from the records that attribute provider spend.
         """
+        proxy = self.xr.spec.proxy
+        drain = proxy.drainTimeout if proxy else None
+        grace = _seconds(drain) + _GRACE_MARGIN if drain else None
+        patch = copy.deepcopy(_NDOTS_PATCH)
+        if grace is not None:
+            patch["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] = grace
+        deployment: dict = {
+            "replicas": _PROXY_REPLICAS,
+            "patch": {"type": "StrategicMerge", "value": patch},
+        }
+        if proxy and (proxy.maxSurge is not None or proxy.maxUnavailable is not None):
+            strategy: dict = {"type": "RollingUpdate"}
+            if proxy.maxSurge is not None:
+                strategy["maxSurge"] = proxy.maxSurge
+            if proxy.maxUnavailable is not None:
+                strategy["maxUnavailable"] = proxy.maxUnavailable
+            deployment["strategy"] = strategy
         resource.update(
             self.rsp.desired.resources["envoy-proxy"],
             _k8s_object(
@@ -560,8 +604,7 @@ class Composer:
                             "kubernetes": {
                                 "envoyService": {"externalTrafficPolicy": "Cluster"},
                                 "envoyDeployment": {
-                                    "replicas": _PROXY_REPLICAS,
-                                    "patch": {"type": "StrategicMerge", "value": _NDOTS_PATCH},
+                                    **deployment,
                                     "pod": {
                                         "topologySpreadConstraints": [
                                             {
@@ -577,7 +620,7 @@ class Composer:
                                 "envoyPDB": {"maxUnavailable": 1},
                             },
                         },
-                        "shutdown": {"drainTimeout": _DRAIN_TIMEOUT},
+                        "shutdown": {"drainTimeout": drain or _DRAIN_TIMEOUT},
                         "telemetry": {
                             "accessLog": {
                                 "settings": [

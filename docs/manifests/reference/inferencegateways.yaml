@@ -25,3 +25,11 @@ spec:
   serviceSelector:
     matchLabels:
       example.org/region: eu
+  # How the gateway's proxy pods shut down and roll out. Absent, a stopping pod
+  # drains 300s and the Deployment rolls out on Envoy Gateway's own defaults.
+  # Match drainTimeout to the longest request the served ModelServices allow.
+  proxy:
+    drainTimeout: 45m
+    # Bring a new proxy up before an old one drains.
+    maxSurge: 1
+    maxUnavailable: 0

@@ -77,6 +77,21 @@ class CertificateRef(BaseModel):
     name: constr(min_length=1, max_length=253)
 
 
+class Proxy(BaseModel):
+    drainTimeout: constr(pattern=r'^([0-9]{1,5}(h|m|s|ms)){1,4}$') = '300s'
+    """
+    How long a stopping proxy pod keeps serving requests already in flight, as a duration string (300s, 45m, 1h). Envoy Gateway adds five minutes to it for the pod's termination grace period.
+    """
+    maxSurge: constr(pattern=r'^((0|[1-9][0-9]{0,8})|((0|100)|([1-9][0-9]{0,1}))%)$') | None = None
+    """
+    The proxy Deployment's maxSurge, as an IntOrString: 1 or 25%. Defaults to Envoy Gateway's own default (25%).
+    """
+    maxUnavailable: constr(pattern=r'^((0|[1-9][0-9]{0,8})|((0|100)|([1-9][0-9]{0,1}))%)$') | None = None
+    """
+    The proxy Deployment's maxUnavailable, as an IntOrString: 1 or 25%. Defaults to Envoy Gateway's own default (25%).
+    """
+
+
 class Tls(BaseModel):
     certificateRefs: list[CertificateRef] = Field(..., max_length=8, min_length=1)
     """
@@ -100,6 +115,12 @@ class Spec(BaseModel):
     crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
+    """
+    proxy: Proxy | None = None
+    """
+    How the gateway's proxy pods shut down and roll out. The gateway is a long-lived stream proxy: a rollout replaces its pods, and a stopping pod drains rather than closing the connections it still holds.
+    drainTimeout is how long a stopping pod keeps serving requests already in flight, and so is the longest a rollout or a node drain can leave a stream unanswered once its pod gets SIGTERM. Match it to the longest request the ModelServices behind this gateway allow: a stream outliving it is cut and the caller retries the whole turn. Its pod's termination grace period follows at five minutes past it, the margin Envoy Gateway keeps for draining to finish.
+    maxSurge and maxUnavailable are the proxy Deployment's rollout strategy, as the IntOrString a Kubernetes Deployment takes. maxSurge 1 with maxUnavailable 0 brings a new proxy up before an old one drains, so a rollout adds none to a stream's unavailability.
     """
     serviceSelector: ServiceSelector | None = None
     """

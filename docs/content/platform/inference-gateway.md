@@ -70,6 +70,20 @@ for running behind a gateway that already does: the upstream sets the
 gateway trusts it. You have to ensure traffic reaches this gateway only through
 that front, so nothing else can set the header.
 
+## Drain a proxy without cutting streams
+
+The gateway's proxy is a stream proxy. A rollout or node maintenance replaces
+its pods, and a stopping pod drains connections for `spec.proxy.drainTimeout`
+rather than closing them. The default is 300 s, and a stream outliving it is
+cut: the caller sees a reset mid-answer. Set `drainTimeout` to at least the
+longest request the ModelServices this gateway serves allow, and the pod's
+termination grace period follows five minutes past it so the drain can finish.
+
+Set `spec.proxy.maxSurge` and `maxUnavailable` to control the rollout itself.
+`maxSurge: 1` with `maxUnavailable: 0` starts the new proxy before any old one
+drains, so a rollout adds no unavailability. Left unset, the Deployment rolls
+out on Envoy Gateway's own defaults.
+
 ## Example
 
 {{< manifests "concepts/inference-gateway.yaml" >}}

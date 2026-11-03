@@ -39,8 +39,14 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-def _xr(*, name: str, tls: bool, caller_secret_labels: dict[str, str] | None) -> fnv1.Resource:
-    """The XR on gw-eu, with TLS from eu-tls-0 if tls, and API-key auth by Secrets matching caller_secret_labels unless None."""
+def _xr(
+    *,
+    name: str,
+    tls: bool,
+    caller_secret_labels: dict[str, str] | None,
+    proxy: v1alpha1.Proxy | None = None,
+) -> fnv1.Resource:
+    """The XR on gw-eu, with TLS from eu-tls-0 if tls, API-key auth by Secrets matching caller_secret_labels unless None, and proxy shutdown/rollout settings unless None."""
     tls_spec = v1alpha1.Tls(certificateRefs=[v1alpha1.CertificateRef(name="eu-tls-0")]) if tls else None
     auth = None
     if caller_secret_labels is not None:
@@ -54,7 +60,7 @@ def _xr(*, name: str, tls: bool, caller_secret_labels: dict[str, str] | None) ->
                 apiVersion="modelplane.ai/v1alpha1",
                 kind="InferenceGateway",
                 metadata=metav1.ObjectMeta(name=name),
-                spec=v1alpha1.Spec(clusterName="gw-eu", tls=tls_spec, auth=auth),
+                spec=v1alpha1.Spec(clusterName="gw-eu", tls=tls_spec, auth=auth, proxy=proxy),
             ).model_dump(exclude_none=True, mode="json", by_alias=True)
         )
     )
@@ -180,8 +186,28 @@ def _observed_caller_auth() -> fnv1.Resource:
 # composed at all.
 
 
-def _envoy_proxy() -> fnv1.Resource:
+def _envoy_proxy(*, drain_timeout: str, grace_period: int | None, strategy: dict | None) -> fnv1.Resource:
     """The composed EnvoyProxy, configuring the gateway's proxy pods and its usage-record access log."""
+    # The deployment patch carries ndots:1, and the termination grace period
+    # matching a drainTimeout the XR set (which the default XR doesn't: Envoy
+    # Gateway derives the same grace period itself).
+    patch: dict = {
+        "spec": {
+            "template": {
+                "spec": {
+                    "dnsConfig": {"options": [{"name": "ndots", "value": "1"}]},
+                }
+            }
+        }
+    }
+    if grace_period is not None:
+        patch["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] = grace_period
+    deployment: dict = {
+        "replicas": 2,
+        "patch": {"type": "StrategicMerge", "value": patch},
+    }
+    if strategy is not None:
+        deployment["strategy"] = strategy
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -211,21 +237,7 @@ def _envoy_proxy() -> fnv1.Resource:
                                     "kubernetes": {
                                         "envoyService": {"externalTrafficPolicy": "Cluster"},
                                         "envoyDeployment": {
-                                            "replicas": 2,
-                                            "patch": {
-                                                "type": "StrategicMerge",
-                                                "value": {
-                                                    "spec": {
-                                                        "template": {
-                                                            "spec": {
-                                                                "dnsConfig": {
-                                                                    "options": [{"name": "ndots", "value": "1"}]
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                            },
+                                            **deployment,
                                             "pod": {
                                                 "topologySpreadConstraints": [
                                                     {
@@ -259,7 +271,7 @@ def _envoy_proxy() -> fnv1.Resource:
                                 # A stopping pod drains for as long as a request
                                 # may run by default, so a restart doesn't cut
                                 # off streams in flight.
-                                "shutdown": {"drainTimeout": "300s"},
+                                "shutdown": {"drainTimeout": drain_timeout},
                                 "telemetry": {
                                     "accessLog": {
                                         "settings": [
@@ -1111,7 +1123,73 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
+                    "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
+                    "client-selfsigned-issuer": _client_selfsigned_issuer(),
+                    "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
+                    "client-ca-issuer": _client_ca_issuer(),
+                    "client-ca-bundle": _client_ca_bundle(),
+                    "client-ca-configmap": _client_ca_configmap(),
+                    "failover-policy": _failover_policy(),
+                    "client-traffic-policy": _client_traffic_policy(),
+                    "healthz-filter": _healthz_filter(),
+                    "healthz-route": _healthz_route(),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL, message="Waiting for the Gateway on cluster gw-eu to be programmed"
+                )
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="GatewayReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForGateway",
+                    message="Waiting for the Gateway on cluster gw-eu to be programmed",
+                )
+            ],
+        ),
+    ),
+    # A gateway raised to match streams ModelServices allow to run longer.
+    Case(
+        name="ProxyDrainAndRollout",
+        reason=(
+            "A gateway whose proxy is set to drain an hour, with a surge-only rollout, composes the EnvoyProxy "
+            "with that drain timeout, a termination grace period five minutes past it, and the strategy's "
+            "maxSurge, leaving maxUnavailable to Envoy Gateway's default."
+        ),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    name="eu",
+                    tls=False,
+                    caller_secret_labels=None,
+                    proxy=v1alpha1.Proxy(drainTimeout="1h", maxSurge="1", maxUnavailable="0"),
+                )
+            ),
+            required_resources={
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
+                resources={
+                    "envoy-proxy": _envoy_proxy(
+                        drain_timeout="1h",
+                        grace_period=3900,
+                        strategy={"type": "RollingUpdate", "maxSurge": "1", "maxUnavailable": "0"},
+                    ),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -1177,7 +1255,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_FALSE,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -1241,7 +1319,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_FALSE,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -1306,7 +1384,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(
@@ -1395,7 +1473,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_UNSPECIFIED,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -1449,7 +1527,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_UNSPECIFIED,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -1571,7 +1649,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -1843,7 +1921,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=True, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -1954,7 +2032,7 @@ COMPOSE_CASES = [
                             }
                         )
                     ),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=True, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -2075,7 +2153,7 @@ COMPOSE_CASES = [
                 ),
                 resources={
                     "caller-secret-ml-team-keys": _caller_secret(name="callers-ml-team-keys", data={"a": "c2stMQ=="}),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -2164,7 +2242,7 @@ COMPOSE_CASES = [
                 resources={
                     "caller-secret-team-a-keys": _caller_secret(name="callers-team-a-keys", data={"a": "c2stMQ=="}),
                     "caller-secret-team-b-keys": _caller_secret(name="callers-team-b-keys", data={"b": "c2stMQ=="}),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -2249,7 +2327,7 @@ COMPOSE_CASES = [
                     "caller-secret-team-a-keys": _caller_secret(
                         name="callers-team-a-keys", data={"a": "c2stMQ==", "z": "c2stMQ=="}
                     ),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -2342,7 +2420,7 @@ COMPOSE_CASES = [
                     "caller-secret-team-b-keys": _caller_secret(
                         name="callers-team-b-keys", data={"x": "c2stMg==", "y": "c2stMQ=="}
                     ),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -2433,7 +2511,7 @@ COMPOSE_CASES = [
                     "caller-secret-team-b-keys": _caller_secret(
                         name="callers-team-b-keys", data={"a": "c2stMQ==", "b": "c2stMg=="}
                     ),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -2497,7 +2575,7 @@ COMPOSE_CASES = [
                 resources={
                     "caller-secret-team-a-keys": _caller_secret(name="callers-team-a-keys", data={"a": "c2stMQ=="}),
                     "caller-secret-team-b-keys": _caller_secret(name="callers-team-b-keys", data={"b": "c2stMg=="}),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -2570,7 +2648,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -2676,7 +2754,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
@@ -2838,7 +2916,7 @@ COMPOSE_CASES = [
                             }
                         )
                     ),
-                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-proxy": _envoy_proxy(drain_timeout="300s", grace_period=None, strategy=None),
                     "gateway": _gateway(https=True, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
                     "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
