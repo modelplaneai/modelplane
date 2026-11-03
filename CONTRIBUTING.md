@@ -559,12 +559,12 @@ there pins a revision of this repo, so a content change that breaks a link
 fails on the next build there: the preview of your pull request, or the
 rebuild your merge triggers.
 
-Custom Modelplane rules live in `docs/utils/vale/styles/Modelplane/`.
+Vale's config is `.vale.ini` at the repo root. Custom Modelplane rules live in
+`.vale/styles/Modelplane/`.
 
 Vale flags brand names, acronyms, API types, and technical terms it doesn't
-recognise. Add them to
-`docs/utils/vale/styles/config/vocabularies/Modelplane/accept.txt` — that is
-the single place for all Vale exceptions. Entries are case-sensitive regular
+recognise. Add them to `.vale/styles/config/vocabularies/Modelplane/accept.txt`
+— that is the single place for all Vale exceptions. Entries are case-sensitive regular
 expressions, one per line.
 
 CI runs them on every pull request via the same check (see
