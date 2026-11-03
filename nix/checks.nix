@@ -10,7 +10,7 @@
   pythonSet,
 }:
 let
-  docs = import ./docs.nix { inherit pkgs self; };
+  vale = import ./vale.nix { inherit pkgs self; };
 
   # Each function exports a 'function' Python module, so tests must run from
   # a directory where that module is importable via the venv, and one pytest
@@ -36,7 +36,13 @@ in
 {
   # Lint docs prose with Vale. The site that renders this content is the
   # docs-site repo, which builds and link-checks it where it deploys.
-  docs-vale = docs.vale;
+  docs-vale = vale.lint "docs" [ "docs/content" ];
+
+  # Lint the skills and agent prompts agents load.
+  agents-vale = vale.lint "agents" [
+    ".agents"
+    ".opencode/agents"
+  ];
 
   # Validate the example manifests the docs show against the generated Pydantic
   # models, so an example that drifts from the live API schema fails CI. Covers

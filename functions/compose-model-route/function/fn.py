@@ -161,6 +161,14 @@ def _endpoint_ready(ep: mev1alpha1.ModelEndpoint) -> bool:
     return False
 
 
+def _gateway_ready(gw: igv1alpha1.InferenceGateway) -> bool:
+    """Whether an InferenceGateway reports GatewayReady=True."""
+    for c in gw.status.conditions if gw.status and gw.status.conditions else []:
+        if c.type == "GatewayReady":
+            return c.status == "True"
+    return False
+
+
 def _distribute_weights(
     entries: list[tuple[int, list[mev1alpha1.ModelEndpoint]]],
 ) -> list[tuple[mev1alpha1.ModelEndpoint, int]]:
@@ -264,6 +272,7 @@ class Composer:
         self.provider_config = ""
         self.address: str | None = None
         self.inference_listener = _LISTENER_HTTP
+        self.gateway_ready = False
         # Endpoints per priority, as (entry weight, endpoints) so weights can be
         # distributed within a tier.
         self.tiers: dict[int, list[tuple[int, list[mev1alpha1.ModelEndpoint]]]] = {}
@@ -392,6 +401,7 @@ class Composer:
         self.provider_config = pc
         self.address = gw.status.address
         self.inference_listener = _LISTENER_HTTPS if gw.spec.tls else _LISTENER_HTTP
+        self.gateway_ready = _gateway_ready(gw)
         return True
 
     def resolve_cluster_cas(self) -> None:
@@ -873,7 +883,19 @@ class Composer:
         response.normal(self.rsp, message)
 
     def derive_conditions(self) -> None:
-        """RoutingReady once the composed route has been accepted."""
+        """RoutingReady once the gateway is ready and the composed route has
+        been accepted.
+
+        The gateway too, because AI Gateway accepts a route before the gateway
+        can serve it. Until every proxy pod runs the ext-proc, for example, the
+        pods without it fail the route's requests.
+        """
+        if not self.gateway_ready:
+            self.not_ready(
+                CONDITION_REASON_WAITING_FOR_GATEWAY,
+                f"Waiting for InferenceGateway {self.xr.spec.gatewayName} to be ready",
+            )
+            return
         if resource.get_condition(self.req.observed.resources.get("route"), "Ready").status != "True":
             self.not_ready(
                 CONDITION_REASON_WAITING_FOR_ROUTE,

@@ -1,0 +1,33 @@
+name: Review Retry
+
+# GitHub's x86 runners expose KVM, but don't guarantee it, and the review VM
+# can't start on a runner without it. When a review fails for that reason, re-run
+# its failed jobs, which usually get a different runner. Two retries at most.
+on:
+  workflow_run:
+    workflows: [Review, Comment Commands]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  retry:
+    if: >-
+      vars.REVIEW_APP_ID != '' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    steps:
+      - name: Re-run a review that had no KVM
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          failed=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN/attempts/$ATTEMPT/jobs" \
+            --jq '[.jobs[].steps[] | select(.name == "Allow the runner user to use KVM" and .conclusion == "failure")] | length')
+          if [ "$failed" -gt 0 ]; then
+            gh run rerun "$RUN" --failed --repo "$GITHUB_REPOSITORY"
+          fi

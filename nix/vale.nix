@@ -1,9 +1,4 @@
-# Docs checks that run against the content in this repo.
-#
-# The Hugo project that renders this content - config, layouts, theme, asset
-# pipelines - is the docs-site repo, which is also what builds and deploys the
-# published site. What lives here is the content and the linting of it, so a
-# prose change fails CI in the repo where it was written.
+# Vale checks, which lint the repo's prose with the config in .vale.ini.
 { pkgs, self }:
 let
   # Vale lints prose against a set of style packages (Google, Microsoft, etc.)
@@ -14,8 +9,8 @@ let
   # publishes a new release; rerun the build and update outputHash when Nix
   # reports a mismatch. Local styles (Modelplane/) and the vocabulary live in
   # the repo and are merged in at lint time, not here.
-  valeStyles =
-    pkgs.runCommand "modelplane-docs-vale-styles"
+  styles =
+    pkgs.runCommand "modelplane-vale-styles"
       {
         nativeBuildInputs = [
           pkgs.vale
@@ -27,7 +22,7 @@ let
       }
       ''
         export HOME=$TMPDIR
-        cp ${self}/docs/utils/vale/.vale.ini .vale.ini
+        cp ${self}/.vale.ini .vale.ini
         # Since Vale 3.12, sync installs packages into the user data directory
         # rather than the config's StylesPath, and that directory is
         # platform-specific: XDG on Linux, Application Support on macOS. Copy
@@ -45,11 +40,13 @@ let
       '';
 in
 {
-  # Lint docs prose with Vale. Merges the network-synced style packages with the
-  # repo's local Modelplane style and vocabulary into one StylesPath, then lints
-  # offline.
-  vale =
-    pkgs.runCommand "modelplane-docs-vale"
+  # Lint the markdown under dirs. .vale.ini's sections match paths relative to
+  # the repo root, so this runs from there, with the config and a merged
+  # StylesPath assembled outside it: the synced packages, plus the repo's own
+  # Modelplane style and vocabulary.
+  lint =
+    name: dirs:
+    pkgs.runCommand "modelplane-${name}-vale"
       {
         nativeBuildInputs = [
           pkgs.vale
@@ -58,18 +55,17 @@ in
       }
       ''
         export HOME=$TMPDIR
-        # .vale.ini sets a relative "StylesPath = styles", resolved next to the
-        # config file. Assemble the config and a merged styles/ here so vale
-        # picks up both the synced packages and the repo's local styles.
-        cp ${self}/docs/utils/vale/.vale.ini .vale.ini
-        mkdir styles
+        config=$TMPDIR/vale
+        mkdir -p $config/.vale/styles
+        cp ${self}/.vale.ini $config/.vale.ini
         # The synced packages come out of the store read-only, and ai-tells
         # ships a config/ directory that the repo's vocabularies merge into.
-        cp -r --no-preserve=mode ${valeStyles}/* styles/
-        cp -r ${self}/docs/utils/vale/styles/* styles/
-        find ${self}/docs/content -name '*.md' -print0 | \
+        cp -r --no-preserve=mode ${styles}/* $config/.vale/styles/
+        cp -r ${self}/.vale/styles/Modelplane ${self}/.vale/styles/config $config/.vale/styles/
+        cd ${self}
+        find ${pkgs.lib.escapeShellArgs dirs} -name '*.md' -print0 | \
           xargs -0 --no-run-if-empty \
-            vale --config="$PWD/.vale.ini"
+            vale --config="$config/.vale.ini"
         mkdir -p $out
         touch $out/.vale-passed
       '';
