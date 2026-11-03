@@ -100,7 +100,7 @@ class ApplyCase:
     composed: dict[str, dict]
     replica: v1alpha1.ModelReplica
     provider_config: str
-    workload_keys: dict[str, str]
+    stack: str
     want: dict[str, dict]
 
 
@@ -153,17 +153,6 @@ class ReadyCopiesCase:
     backend: base.Backend
     observed: dict[str, fnv1.Resource]
     want: int
-
-
-@dataclasses.dataclass
-class WorkloadKeyCase:
-    """A test case for base.workload_key, of an engine named main."""
-
-    name: str
-    reason: str
-    backend: str
-    observed: dict[str, fnv1.Resource]
-    want: str
 
 
 @dataclasses.dataclass
@@ -791,7 +780,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -888,7 +877,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -997,7 +986,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -1098,7 +1087,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -1191,7 +1180,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -1279,7 +1268,7 @@ BUILD_CASES = [
         serving_label="dep-clusterA",
         stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="dep-clusterA-main-3d1d5",
                 claim_template_name="dep-clusterA-main-standalone-devices-145eb",
                 replicas=1,
@@ -1368,7 +1357,7 @@ BUILD_CASES = [
         serving_label="dep-clusterB",
         stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="dep-clusterB-main-d6c52",
                 claim_template_name="dep-clusterB-main-standalone-devices-5a8a8",
                 replicas=1,
@@ -1492,7 +1481,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-prefill": _deployment(
+            "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -1523,7 +1512,7 @@ BUILD_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
-            "model-serving-decode": _deployment(
+            "workload-native-decode": _deployment(
                 name="r-decode-4b27b",
                 claim_template_name="r-decode-standalone-devices-63392",
                 replicas=1,
@@ -1604,7 +1593,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -1723,7 +1712,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -1820,7 +1809,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -1926,7 +1915,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Dynamo",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -2100,7 +2089,7 @@ BUILD_CASES = [
         stack="Dynamo",
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
-            "model-serving-main": _pod_clique_set(
+            "workload-grove-main": _pod_clique_set(
                 name="r-main-bb4e3",
                 cliques=[
                     {
@@ -2339,7 +2328,7 @@ BUILD_CASES = [
         stack="Dynamo",
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
-            "model-serving-main": _pod_clique_set(
+            "workload-grove-main": _pod_clique_set(
                 name="r-main-bb4e3",
                 cliques=[
                     {
@@ -2573,7 +2562,7 @@ BUILD_CASES = [
         stack="Dynamo",
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
-            "model-serving-main": _pod_clique_set(
+            "workload-grove-main": _pod_clique_set(
                 name="r-main-bb4e3",
                 cliques=[
                     {
@@ -2810,7 +2799,7 @@ BUILD_CASES = [
         stack="Dynamo",
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
-            "model-serving-main": _pod_clique_set(
+            "workload-grove-main": _pod_clique_set(
                 name="r-main-bb4e3",
                 cliques=[
                     {
@@ -3052,7 +3041,7 @@ BUILD_CASES = [
         stack="Dynamo",
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
-            "model-serving-main": _pod_clique_set(
+            "workload-grove-main": _pod_clique_set(
                 name="r-main-bb4e3",
                 cliques=[
                     {
@@ -3275,7 +3264,7 @@ BUILD_CASES = [
         stack="Dynamo",
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
-            "model-serving-main": _pod_clique_set(
+            "workload-grove-main": _pod_clique_set(
                 name="r-main-bb4e3",
                 cliques=[
                     {
@@ -3496,7 +3485,7 @@ BUILD_CASES = [
         stack="Dynamo",
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
-            "model-serving-main": _pod_clique_set(
+            "workload-grove-main": _pod_clique_set(
                 name="r-main-bb4e3",
                 cliques=[
                     {
@@ -3715,7 +3704,7 @@ BUILD_CASES = [
         stack="Dynamo",
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
-            "model-serving-main": _pod_clique_set(
+            "workload-grove-main": _pod_clique_set(
                 name="r-main-bb4e3",
                 cliques=[
                     {
@@ -4003,7 +3992,7 @@ BUILD_CASES = [
         stack="Dynamo",
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
-            "model-serving-main": _pod_clique_set(
+            "workload-grove-main": _pod_clique_set(
                 name="r-main-bb4e3",
                 cliques=[
                     {
@@ -4302,7 +4291,7 @@ BUILD_CASES = [
         stack="Dynamo",
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
-            "model-serving-main": _pod_clique_set(
+            "workload-grove-main": _pod_clique_set(
                 name="r-main-bb4e3",
                 cliques=[
                     {
@@ -4588,7 +4577,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _leader_worker_set(
+            "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
                 leader_claim_template_name="r-main-leader-devices-f58c6",
@@ -4712,7 +4701,7 @@ BUILD_CASES = [
         serving_label="qwen2.5",
         stack="Standard",
         want={
-            "model-serving-main": _leader_worker_set(
+            "workload-llmd-main": _leader_worker_set(
                 name="lws-qwen2-5-main-b2784-6d975",
                 serving="qwen2.5",
                 leader_claim_template_name="qwen2.5-main-leader-devices-5743a",
@@ -4839,7 +4828,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _leader_worker_set(
+            "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
                 leader_claim_template_name="r-main-leader-devices-f58c6",
@@ -4968,7 +4957,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _leader_worker_set(
+            "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
                 leader_claim_template_name="r-main-leader-devices-f58c6",
@@ -5114,7 +5103,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _leader_worker_set(
+            "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
                 leader_claim_template_name="r-main-leader-devices-f58c6",
@@ -5242,7 +5231,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _leader_worker_set(
+            "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
                 leader_claim_template_name="r-main-leader-devices-f58c6",
@@ -5363,7 +5352,7 @@ BUILD_CASES = [
         serving_label="r",
         stack="Standard",
         want={
-            "model-serving-main": _leader_worker_set(
+            "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
                 leader_claim_template_name="r-main-leader-devices-f58c6",
@@ -5443,9 +5432,7 @@ def test_build(case: BuildCase) -> None:
     # build composes one engine, so build each of the replica's engines in turn.
     got: dict[str, k8sobjv1alpha1.Object] = {}
     for engine in case.replica.spec.engines:
-        got.update(
-            case.backend.build(case.replica, engine, case.provider_config, case.serving_label, case.stack, observed={})
-        )
+        got.update(case.backend.build(case.replica, engine, case.provider_config, case.serving_label, case.stack))
     assert _sorted(objects=_to_dicts(objects=got)) == _sorted(objects=case.want), case.reason
 
 
@@ -6034,7 +6021,7 @@ APPLY_CASES = [
             "endpoint picker."
         ),
         composed={
-            "model-serving-prefill": _deployment(
+            "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -6065,7 +6052,7 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
-            "model-serving-decode": _deployment(
+            "workload-native-decode": _deployment(
                 name="r-decode-4b27b",
                 claim_template_name="r-decode-standalone-devices-63392",
                 replicas=1,
@@ -6202,9 +6189,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"prefill": "model-serving-prefill", "decode": "model-serving-decode"},
+        stack="Standard",
         want={
-            "model-serving-prefill": _deployment(
+            "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -6238,7 +6225,7 @@ APPLY_CASES = [
                 ],
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
-            "model-serving-decode": _deployment(
+            "workload-native-decode": _deployment(
                 name="r-decode-4b27b",
                 claim_template_name="r-decode-standalone-devices-63392",
                 replicas=1,
@@ -6299,7 +6286,7 @@ APPLY_CASES = [
             "floats as ints, replaces the default configuration."
         ),
         composed={
-            "model-serving-prefill": _deployment(
+            "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -6330,7 +6317,7 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
-            "model-serving-decode": _deployment(
+            "workload-native-decode": _deployment(
                 name="r-decode-4b27b",
                 claim_template_name="r-decode-standalone-devices-63392",
                 replicas=1,
@@ -6474,9 +6461,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"prefill": "model-serving-prefill", "decode": "model-serving-decode"},
+        stack="Standard",
         want={
-            "model-serving-prefill": _deployment(
+            "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -6510,7 +6497,7 @@ APPLY_CASES = [
                 ],
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
-            "model-serving-decode": _deployment(
+            "workload-native-decode": _deployment(
                 name="r-decode-4b27b",
                 claim_template_name="r-decode-standalone-devices-63392",
                 replicas=1,
@@ -6634,7 +6621,7 @@ APPLY_CASES = [
             "engine, gets the decode role."
         ),
         composed={
-            "model-serving-alpha": _deployment(
+            "workload-native-alpha": _deployment(
                 name="r-alpha-b36ce",
                 claim_template_name="r-alpha-standalone-devices-9ec1c",
                 replicas=1,
@@ -6665,7 +6652,7 @@ APPLY_CASES = [
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
             "resource-claim-alpha-standalone": _claim_template(name="r-alpha-standalone-devices-9ec1c", count=1),
-            "model-serving-beta": _deployment(
+            "workload-native-beta": _deployment(
                 name="r-beta-52d85",
                 claim_template_name="r-beta-standalone-devices-9d8b1",
                 replicas=1,
@@ -6802,9 +6789,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"alpha": "model-serving-alpha", "beta": "model-serving-beta"},
+        stack="Standard",
         want={
-            "model-serving-alpha": _deployment(
+            "workload-native-alpha": _deployment(
                 name="r-alpha-b36ce",
                 claim_template_name="r-alpha-standalone-devices-9ec1c",
                 replicas=1,
@@ -6838,7 +6825,7 @@ APPLY_CASES = [
                 ],
             ),
             "resource-claim-alpha-standalone": _claim_template(name="r-alpha-standalone-devices-9ec1c", count=1),
-            "model-serving-beta": _deployment(
+            "workload-native-beta": _deployment(
                 name="r-beta-52d85",
                 claim_template_name="r-beta-standalone-devices-9d8b1",
                 replicas=1,
@@ -6901,7 +6888,7 @@ APPLY_CASES = [
             "clique left as the backend composed it."
         ),
         composed={
-            "model-serving-prefill": _deployment(
+            "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -6933,7 +6920,7 @@ APPLY_CASES = [
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "scaling-group-decode": _scaling_group(pcs_name="r-decode-4b27b"),
-            "model-serving-decode": _pod_clique_set(
+            "workload-grove-decode": _pod_clique_set(
                 name="r-decode-4b27b",
                 cliques=[
                     {
@@ -7211,9 +7198,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"prefill": "model-serving-prefill", "decode": "model-serving-decode"},
+        stack="Dynamo",
         want={
-            "model-serving-prefill": _deployment(
+            "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
                 claim_template_name="r-prefill-standalone-devices-f62af",
                 replicas=1,
@@ -7248,7 +7235,7 @@ APPLY_CASES = [
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "scaling-group-decode": _scaling_group(pcs_name="r-decode-4b27b"),
-            "model-serving-decode": _pod_clique_set(
+            "workload-grove-decode": _pod_clique_set(
                 name="r-decode-4b27b",
                 cliques=[
                     {
@@ -7426,7 +7413,7 @@ APPLY_CASES = [
             "A replica of one Standalone pod with no serving block is fronted by an InferencePool and endpoint picker."
         ),
         composed={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7502,9 +7489,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"main": "model-serving-main"},
+        stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7581,7 +7568,7 @@ APPLY_CASES = [
         name="UnifiedLargeBlockSize",
         reason="An engine block size above 64 sets the default picker configuration's blockSizeTokens.",
         composed={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7657,9 +7644,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"main": "model-serving-main"},
+        stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7736,7 +7723,7 @@ APPLY_CASES = [
         name="UnifiedLongContext",
         reason="An engine context length above 131072 leaves the default picker configuration's maxPrefixTokensToMatch at 131072.",
         composed={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7812,9 +7799,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"main": "model-serving-main"},
+        stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -7894,7 +7881,7 @@ APPLY_CASES = [
             "secrets, with Modelplane's environment, ports, probe and config mount added."
         ),
         composed={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -8001,9 +7988,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"main": "model-serving-main"},
+        stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -8106,7 +8093,7 @@ APPLY_CASES = [
             "A picker that sets no config gets no ConfigMap, config mount, config environment or checksum annotation."
         ),
         composed={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -8198,9 +8185,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"main": "model-serving-main"},
+        stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -8277,7 +8264,7 @@ APPLY_CASES = [
         name="UnifiedLabeledReplica",
         reason="A Unified replica labeled with its deployment and index gets an endpoint picker labeled with both.",
         composed={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -8355,9 +8342,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"main": "model-serving-main"},
+        stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=1,
@@ -8443,7 +8430,7 @@ APPLY_CASES = [
             "A replica of two Standalone pods with no serving block is fronted by an InferencePool and endpoint picker."
         ),
         composed={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=2,
@@ -8519,9 +8506,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"main": "model-serving-main"},
+        stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="r-main-bb4e3",
                 claim_template_name="r-main-standalone-devices-f456f",
                 replicas=2,
@@ -8604,7 +8591,7 @@ APPLY_CASES = [
         name="UnifiedLeaderWorkerSet",
         reason="A LeaderWorkerSet with no serving block is fronted by an InferencePool and endpoint picker.",
         composed={
-            "model-serving-main": _leader_worker_set(
+            "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
                 leader_claim_template_name="r-main-leader-devices-f58c6",
@@ -8744,9 +8731,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"main": "model-serving-main"},
+        stack="Standard",
         want={
-            "model-serving-main": _leader_worker_set(
+            "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
                 leader_claim_template_name="r-main-leader-devices-f58c6",
@@ -8858,7 +8845,7 @@ APPLY_CASES = [
             "picker names."
         ),
         composed={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="qwen2.5-7b-abcde-main-e910a",
                 claim_template_name="qwen2.5-7b-abcde-main-standalone-devices-771a9",
                 replicas=1,
@@ -8936,9 +8923,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"main": "model-serving-main"},
+        stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="qwen2.5-7b-abcde-main-e910a",
                 claim_template_name="qwen2.5-7b-abcde-main-standalone-devices-771a9",
                 replicas=1,
@@ -9028,7 +9015,7 @@ APPLY_CASES = [
             "DNS-1035 label."
         ),
         composed={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="a" * 57 + "-88380",
                 claim_template_name="a" * 57 + "-05ced",
                 replicas=1,
@@ -9104,9 +9091,9 @@ APPLY_CASES = [
             ],
         ),
         provider_config="cluster-a-pc",
-        workload_keys={"main": "model-serving-main"},
+        stack="Standard",
         want={
-            "model-serving-main": _deployment(
+            "workload-native-main": _deployment(
                 name="a" * 57 + "-88380",
                 claim_template_name="a" * 57 + "-05ced",
                 replicas=1,
@@ -9190,7 +9177,7 @@ APPLY_CASES = [
 def test_apply(case: ApplyCase) -> None:
     """routing.apply fronts a replica's engines with the routing its serving mode selects."""
     composed = {key: k8sobjv1alpha1.Object.model_validate(copy.deepcopy(obj)) for key, obj in case.composed.items()}  # noqa: MPT401  # routing.apply edits the manifests in place.
-    got = routing.apply(composed, case.replica, case.provider_config, case.workload_keys)
+    got = routing.apply(composed, case.replica, case.provider_config, case.stack)
     assert _sorted(objects=_to_dicts(objects=got)) == _sorted(objects=case.want), case.reason
 
 
@@ -9814,27 +9801,6 @@ def _observed(*, status: dict | None, ready: bool) -> fnv1.Resource:
     return fnv1.Resource(resource=resource.dict_to_struct(obj))
 
 
-def _observed_workload(*, kind: str, status: dict, ready: bool) -> fnv1.Resource:
-    """An engine's workload Object as observed back, composing a workload of kind with status."""
-    obj = {
-        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-        "kind": "Object",
-        "spec": {"forProvider": {"manifest": {"kind": kind}}},
-        "status": {
-            "atProvider": {"manifest": {"kind": kind, "status": status}},
-            "conditions": [
-                {
-                    "type": "Ready",
-                    "status": "True" if ready else "False",
-                    "reason": "Available" if ready else "Unavailable",
-                    "lastTransitionTime": "2025-01-01T00:00:00Z",
-                }
-            ],
-        },
-    }
-    return fnv1.Resource(resource=resource.dict_to_struct(obj))
-
-
 def _main_engine() -> v1alpha1.Engine:
     """An engine named main, whose workload and scaling group keys the observed resources use."""
     return v1alpha1.Engine(
@@ -9849,21 +9815,21 @@ READY_COPIES_CASES = [
         name="DeploymentReadyPods",
         reason="A Deployment counts each ready pod as a copy.",
         backend=native.NativeBackend(),
-        observed={"model-serving-main": _observed(status={"readyReplicas": 1}, ready=False)},
+        observed={"workload-native-main": _observed(status={"readyReplicas": 1}, ready=False)},
         want=1,
     ),
     ReadyCopiesCase(
         name="DeploymentNoneReady",
         reason="A Deployment leaves readyReplicas out at 0, so it counts no copies.",
         backend=native.NativeBackend(),
-        observed={"model-serving-main": _observed(status={}, ready=False)},
+        observed={"workload-native-main": _observed(status={}, ready=False)},
         want=0,
     ),
     ReadyCopiesCase(
         name="LeaderWorkerSetGroups",
         reason="A LeaderWorkerSet counts each ready group as a copy.",
         backend=llmd.LLMDBackend(),
-        observed={"model-serving-main": _observed(status={"readyReplicas": 2}, ready=True)},
+        observed={"workload-llmd-main": _observed(status={"readyReplicas": 2}, ready=True)},
         want=2,
     ),
     ReadyCopiesCase(
@@ -9871,7 +9837,7 @@ READY_COPIES_CASES = [
         reason="A Grove engine counts its scaling group's available copies, not its PodCliqueSet's.",
         backend=grove.GroveBackend(),
         observed={
-            "model-serving-main": _observed(status={"availableReplicas": 1}, ready=True),
+            "workload-grove-main": _observed(status={"availableReplicas": 1}, ready=True),
             "scaling-group-main": _observed(status={"availableReplicas": 1}, ready=False),
         },
         want=1,
@@ -9880,37 +9846,7 @@ READY_COPIES_CASES = [
         name="GroveScalingGroupUnobserved",
         reason="Until its scaling group is observed, a ready PodCliqueSet means one copy is ready.",
         backend=grove.GroveBackend(),
-        observed={"model-serving-main": _observed(status={"availableReplicas": 1}, ready=True)},
-        want=1,
-    ),
-    ReadyCopiesCase(
-        name="DeploymentMoved",
-        reason="A Deployment that replaced a LeaderWorkerSet counts copies under its own kind's key.",
-        backend=native.NativeBackend(),
-        observed={
-            "model-serving-main": _observed_workload(kind="LeaderWorkerSet", status={"readyReplicas": 2}, ready=True),
-            "workload-native-main": _observed_workload(kind="Deployment", status={"readyReplicas": 1}, ready=False),
-        },
-        want=1,
-    ),
-    ReadyCopiesCase(
-        name="LeaderWorkerSetMoved",
-        reason="A LeaderWorkerSet that replaced a Deployment counts copies under its own kind's key.",
-        backend=llmd.LLMDBackend(),
-        observed={
-            "model-serving-main": _observed_workload(kind="Deployment", status={"readyReplicas": 2}, ready=True),
-            "workload-llmd-main": _observed_workload(kind="LeaderWorkerSet", status={"readyReplicas": 1}, ready=False),
-        },
-        want=1,
-    ),
-    ReadyCopiesCase(
-        name="PodCliqueSetMoved",
-        reason="Until its scaling group is observed, a PodCliqueSet that replaced a Deployment counts under its own key.",
-        backend=grove.GroveBackend(),
-        observed={
-            "model-serving-main": _observed_workload(kind="Deployment", status={"readyReplicas": 2}, ready=False),
-            "workload-grove-main": _observed_workload(kind="PodCliqueSet", status={}, ready=True),
-        },
+        observed={"workload-grove-main": _observed(status={"availableReplicas": 1}, ready=True)},
         want=1,
     ),
     ReadyCopiesCase(
@@ -9927,97 +9863,3 @@ READY_COPIES_CASES = [
 def test_ready_copies(case: ReadyCopiesCase) -> None:
     """A backend counts an engine's ready copies from its observed workload."""
     assert case.backend.ready_copies(_main_engine(), case.observed) == case.want, case.reason
-
-
-# A workload of a new kind takes a new key, so Crossplane deletes the old
-# Object and with it the old workload. Updating the Object in place would leave
-# the old workload running. A workload whose kind doesn't change keeps the key
-# it's observed under, so it isn't recreated.
-WORKLOAD_KEY_CASES = [
-    WorkloadKeyCase(
-        name="NothingObserved",
-        reason="A new engine's workload takes the engine's key, whatever its kind.",
-        backend=base.LLMD,
-        observed={},
-        want="model-serving-main",
-    ),
-    WorkloadKeyCase(
-        name="DeploymentKept",
-        reason="A Deployment already under the engine's key keeps it.",
-        backend=base.NATIVE,
-        observed={"model-serving-main": _observed_workload(kind="Deployment", status={}, ready=True)},
-        want="model-serving-main",
-    ),
-    WorkloadKeyCase(
-        name="LeaderWorkerSetKept",
-        reason="A LeaderWorkerSet already under the engine's key keeps it.",
-        backend=base.LLMD,
-        observed={"model-serving-main": _observed_workload(kind="LeaderWorkerSet", status={}, ready=True)},
-        want="model-serving-main",
-    ),
-    WorkloadKeyCase(
-        name="PodCliqueSetKept",
-        reason="A PodCliqueSet already under the engine's key keeps it.",
-        backend=base.GROVE,
-        observed={"model-serving-main": _observed_workload(kind="PodCliqueSet", status={}, ready=True)},
-        want="model-serving-main",
-    ),
-    WorkloadKeyCase(
-        name="KindUnknown",
-        reason="An Object under the engine's key whose manifest doesn't set a kind keeps the key, so nothing is deleted.",
-        backend=base.LLMD,
-        observed={"model-serving-main": _observed(status=None, ready=False)},
-        want="model-serving-main",
-    ),
-    WorkloadKeyCase(
-        name="DeploymentToGang",
-        reason="A LeaderWorkerSet replacing a Deployment under the engine's key takes a key of its own kind.",
-        backend=base.LLMD,
-        observed={"model-serving-main": _observed_workload(kind="Deployment", status={}, ready=True)},
-        want="workload-llmd-main",
-    ),
-    WorkloadKeyCase(
-        name="DeploymentToGrove",
-        reason="A PodCliqueSet replacing a Deployment under the engine's key takes a key of its own kind.",
-        backend=base.GROVE,
-        observed={"model-serving-main": _observed_workload(kind="Deployment", status={}, ready=True)},
-        want="workload-grove-main",
-    ),
-    WorkloadKeyCase(
-        name="GangToDeployment",
-        reason="A Deployment replacing a LeaderWorkerSet under the engine's key takes a key of its own kind.",
-        backend=base.NATIVE,
-        observed={"model-serving-main": _observed_workload(kind="LeaderWorkerSet", status={}, ready=True)},
-        want="workload-native-main",
-    ),
-    WorkloadKeyCase(
-        name="OldWorkloadStillObserved",
-        reason="While the old workload is still observed, the new one keeps the key of its own kind.",
-        backend=base.LLMD,
-        observed={
-            "model-serving-main": _observed_workload(kind="Deployment", status={}, ready=True),
-            "workload-llmd-main": _observed_workload(kind="LeaderWorkerSet", status={}, ready=True),
-        },
-        want="workload-llmd-main",
-    ),
-    WorkloadKeyCase(
-        name="KindKeyKept",
-        reason="Once the old workload is gone, a workload under its kind's key keeps that key.",
-        backend=base.LLMD,
-        observed={"workload-llmd-main": _observed_workload(kind="LeaderWorkerSet", status={}, ready=True)},
-        want="workload-llmd-main",
-    ),
-    WorkloadKeyCase(
-        name="SwitchedBack",
-        reason="A Deployment replacing a LeaderWorkerSet under its kind's key takes the engine's key again.",
-        backend=base.NATIVE,
-        observed={"workload-llmd-main": _observed_workload(kind="LeaderWorkerSet", status={}, ready=True)},
-        want="model-serving-main",
-    ),
-]
-
-
-@pytest.mark.parametrize("case", WORKLOAD_KEY_CASES, ids=lambda case: case.name)
-def test_workload_key(case: WorkloadKeyCase) -> None:
-    """An engine's workload keeps the key it's observed under, unless a workload of another kind holds it."""
-    assert base.workload_key(_main_engine(), case.backend, case.observed) == case.want, case.reason

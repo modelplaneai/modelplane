@@ -60,8 +60,6 @@ class LLMDBackend:
         # backend. Unused here: this backend is Standard-only, so there's no
         # stack to switch on.
         stack: str,  # noqa: ARG002
-        *,
-        observed: Mapping[str, fnv1.Resource],
     ) -> dict[str, k8sobjv1alpha1.Object]:
         leader = base.engine_member(engine, base.ROLE_LEADER)
         worker = base.engine_member(engine, base.ROLE_WORKER)
@@ -168,7 +166,7 @@ class LLMDBackend:
         }
 
         composed = {
-            base.workload_key(engine, base.LLMD, observed): base.wrap_object(
+            base.workload_key(engine, base.LLMD): base.wrap_object(
                 provider_config, leader_worker_set, cel_query=base.ALL_COPIES_READY_CEL, watch=True
             ),
         }
@@ -184,4 +182,4 @@ class LLMDBackend:
 
     def ready_copies(self, engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource]) -> int:
         """How many copies of the engine are ready, from its observed workload."""
-        return base.ready_replicas(base.workload_key(engine, base.LLMD, observed), observed)
+        return base.ready_replicas(base.workload_key(engine, base.LLMD), observed)

@@ -828,8 +828,8 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_prefill_decode_replica(serving=v1alpha1.Serving(mode="PrefillDecode")),
                 resources={
-                    "model-serving-prefill": _observed_deployment(ready=True, ready_replicas=1),
-                    "model-serving-decode": _observed_deployment(ready=True, ready_replicas=1),
+                    "workload-native-prefill": _observed_deployment(ready=True, ready_replicas=1),
+                    "workload-native-decode": _observed_deployment(ready=True, ready_replicas=1),
                 },
             ),
             required_resources={
@@ -877,8 +877,8 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_prefill_decode_replica(serving=v1alpha1.Serving(mode="PrefillDecode")),
                 resources={
-                    "model-serving-prefill": _observed_deployment(ready=True, ready_replicas=1),
-                    "model-serving-decode": _observed_deployment(ready=False, ready_replicas=0),
+                    "workload-native-prefill": _observed_deployment(ready=True, ready_replicas=1),
+                    "workload-native-decode": _observed_deployment(ready=False, ready_replicas=0),
                 },
             ),
             required_resources={
@@ -1012,7 +1012,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-prefill": _deployment(
+                    "workload-native-prefill": _deployment(
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-prefill-10d7e",
@@ -1031,7 +1031,7 @@ COMPOSE_CASES = [
                     "resource-claim-prefill-standalone": _claim_template(
                         ready=fnv1.READY_UNSPECIFIED, name="test-replica-prefill-standalone-devices-51762"
                     ),
-                    "model-serving-decode": _deployment(
+                    "workload-native-decode": _deployment(
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-decode-44185",
@@ -1143,7 +1143,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
@@ -1239,7 +1239,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
@@ -1400,7 +1400,7 @@ COMPOSE_CASES = [
                     )
                 ),
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
@@ -1546,7 +1546,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
@@ -1634,7 +1634,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
@@ -1692,21 +1692,21 @@ COMPOSE_CASES = [
             ],
         ),
     ),
-    # The engine's key is held by a LeaderWorkerSet, as when an engine changes
-    # from a Leader and Worker to Standalone. Leaving model-serving-main out of
-    # desired has Crossplane delete its Object, which deletes the
+    # The engine changed from a Leader and Worker to Standalone, so its
+    # LeaderWorkerSet's Object is still observed. Leaving workload-llmd-main out
+    # of desired has Crossplane delete that Object, which deletes the
     # LeaderWorkerSet and frees its GPUs for the Deployment.
     Case(
         name="WorkloadKindChanged",
         reason=(
-            "With a workload of another kind under the engine's key, the Deployment is composed under a key of its "
-            "own kind and the old key is dropped, so the old workload's readiness doesn't count."
+            "With the engine's LeaderWorkerSet still observed, the Deployment is composed under its own backend's key "
+            "and the LeaderWorkerSet's is dropped, so the old workload's readiness doesn't count."
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_model_replica(copies=1),
                 resources={
-                    "model-serving-main": fnv1.Resource(
+                    "workload-llmd-main": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
                                 "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
@@ -1880,7 +1880,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=1),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1),
+                    "workload-native-main": _observed_deployment(ready=True, ready_replicas=1),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                 },
@@ -1893,7 +1893,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         copies=1,
                         ready=fnv1.READY_TRUE,
                         name="test-replica-main-6b608",
@@ -1962,7 +1962,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=1),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1),
+                    "workload-native-main": _observed_deployment(ready=True, ready_replicas=1),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -1982,7 +1982,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         copies=1,
                         ready=fnv1.READY_TRUE,
                         name="test-replica-main-6b608",
@@ -2051,7 +2051,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=1),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=1),
+                    "workload-native-main": _observed_deployment(ready=True, ready_replicas=1),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -2071,7 +2071,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         copies=1,
                         ready=fnv1.READY_TRUE,
                         name="test-replica-main-6b608",
@@ -2137,7 +2137,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=2),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=1),
+                    "workload-native-main": _observed_deployment(ready=False, ready_replicas=1),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -2157,7 +2157,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         ready=fnv1.READY_UNSPECIFIED,
                         copies=2,
                         name="test-replica-main-6b608",
@@ -2216,7 +2216,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=2),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=0),
+                    "workload-native-main": _observed_deployment(ready=False, ready_replicas=0),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -2236,7 +2236,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         ready=fnv1.READY_UNSPECIFIED,
                         copies=2,
                         name="test-replica-main-6b608",
@@ -2298,7 +2298,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=2),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=False, ready_replicas=2),
+                    "workload-native-main": _observed_deployment(ready=False, ready_replicas=2),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -2318,7 +2318,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         ready=fnv1.READY_UNSPECIFIED,
                         copies=2,
                         name="test-replica-main-6b608",
@@ -2377,7 +2377,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=2),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=2),
+                    "workload-native-main": _observed_deployment(ready=True, ready_replicas=2),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -2397,7 +2397,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         ready=fnv1.READY_TRUE,
                         copies=2,
                         name="test-replica-main-6b608",
@@ -2459,7 +2459,7 @@ COMPOSE_CASES = [
             observed=fnv1.State(
                 composite=_model_replica(copies=2),
                 resources={
-                    "model-serving-main": _observed_deployment(ready=True, ready_replicas=2),
+                    "workload-native-main": _observed_deployment(ready=True, ready_replicas=2),
                     "model-route": _observed_object(ready=True),
                     "resource-claim-main-standalone": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
@@ -2479,7 +2479,7 @@ COMPOSE_CASES = [
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving-main": _deployment(
+                    "workload-native-main": _deployment(
                         ready=fnv1.READY_TRUE,
                         copies=2,
                         name="test-replica-main-6b608",

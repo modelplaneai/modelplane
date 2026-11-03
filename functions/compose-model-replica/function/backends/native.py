@@ -42,8 +42,6 @@ class NativeBackend:
         provider_config: str,
         serving_label: str,
         stack: str,
-        *,
-        observed: Mapping[str, fnv1.Resource],
     ) -> dict[str, k8sobjv1alpha1.Object]:
         member = base.engine_member(engine, base.ROLE_STANDALONE)
         # select_backend dispatches the native backend only for an engine with a
@@ -120,7 +118,7 @@ class NativeBackend:
         }
 
         composed = {
-            base.workload_key(engine, base.NATIVE, observed): base.wrap_object(
+            base.workload_key(engine, base.NATIVE): base.wrap_object(
                 provider_config, deployment, cel_query=base.ALL_COPIES_READY_CEL, watch=True
             ),
         }
@@ -133,4 +131,4 @@ class NativeBackend:
 
     def ready_copies(self, engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource]) -> int:
         """How many copies of the engine are ready, from its observed workload."""
-        return base.ready_replicas(base.workload_key(engine, base.NATIVE, observed), observed)
+        return base.ready_replicas(base.workload_key(engine, base.NATIVE), observed)
