@@ -1,0 +1,45 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: synthetic-gpu
+spec:
+  description: Fake GPU from dra-example-driver
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.example.com
+    deviceClassName: gpu.example.com
+    count: 1
+    capacity:
+      memory: { value: "80Gi" }
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: local
+  labels:
+    modelplane.ai/region: local
+spec:
+  cluster:
+    source: Existing
+    existing:
+      secretRef:
+        name: local-cluster-kubeconfig
+        key: kubeconfig
+  nodePools:
+  - name: gpu-synthetic
+    className: synthetic-gpu
+    # Two nodeCount allows both models to schedule on a single node
+    nodeCount: 2
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceGateway
+metadata:
+  name: public
+spec:
+  clusterName: local
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml-team

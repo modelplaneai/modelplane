@@ -1,0 +1,49 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: smollm2
+  namespace: ml-team
+spec:
+  replicas: 1
+  template:
+    spec:
+      engines:
+      - name: smollm2
+        members:
+        - role: Standalone
+          nodeSelector:
+            devices:
+            - name: gpu
+              count: 1
+              selectors:
+              - cel: device.capacity["gpu.example.com"].memory.compareTo(quantity("20Gi")) >= 0
+          template:
+            spec:
+              containers:
+              - name: engine
+                image: ghcr.io/ggml-org/llama.cpp:server@sha256:991cf50e9eb7dee4c18090849c7f909bafc5a1884cdde2dc3011df7407da09d6
+                env:
+                - { name: LLAMA_ARG_HF_REPO, value: "HuggingFaceTB/SmolLM2-360M-Instruct-GGUF" }
+                - { name: LLAMA_ARG_HF_FILE, value: "smollm2-360m-instruct-q8_0.gguf" }
+                - { name: LLAMA_ARG_ALIAS, value: "$(MODELPLANE_SERVED_MODEL_NAME)" }
+                - { name: LLAMA_ARG_HOST, value: "0.0.0.0" }
+                - { name: LLAMA_ARG_PORT, value: "8000" }
+                - { name: LLAMA_ARG_CTX_SIZE, value: "2048" }
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: assistant
+  namespace: ml-team
+spec:
+  endpoints:
+  - name: smollm2
+    priority: 0
+    selector:
+      matchLabels:
+        modelplane.ai/deployment: smollm2
+  - name: smollm
+    priority: 1
+    selector:
+      matchLabels:
+        modelplane.ai/deployment: smollm
