@@ -122,11 +122,6 @@ COMPONENTS: list[Component] = [
         # resolve. enableBackend turns on the Backend API the AI Gateway
         # relies on.
         values={
-            # Two controller replicas, safe because the controller elects a
-            # leader by default (the API default, not a value; its lease RBAC
-            # ships unconditional), so a system node's drain only moves the
-            # standby, not the reconciles.
-            "deployment": {"replicas": 2},
             "config": {
                 "envoyGateway": {
                     "extensionApis": {"enableBackend": True},
@@ -194,16 +189,7 @@ COMPONENTS: list[Component] = [
             # Gateway's whole xDS update down with it (envoyproxy/ai-gateway#2600,
             # fix in flight as #2601). That failure is visible, where a lost caller
             # isn't.
-            "controller": {
-                "logRequestHeaderAttributes": f"{_CALLER_HEADER}:caller",
-                # Two controller replicas, safe because the controller elects a
-                # leader (leaderElection.enabled defaults to true in the chart),
-                # so a system node's drain only moves the standby, not the
-                # control loop. The Envoy Gateway controller below gets two for
-                # the same reason, via its deployment.replicas value; its leader
-                # election is on by default in the controller itself.
-                "replicaCount": 2,
-            }
+            "controller": {"logRequestHeaderAttributes": f"{_CALLER_HEADER}:caller"}
         },
     ),
     # Gateway API Inference Extension CRDs, providing the InferencePool

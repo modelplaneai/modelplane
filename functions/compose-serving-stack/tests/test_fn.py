@@ -2716,7 +2716,6 @@ COMPOSE_CASES = [
                                         },
                                         "namespace": "envoy-gateway-system",
                                         "values": {
-                                            "deployment": {"replicas": 2},
                                             "config": {
                                                 "envoyGateway": {
                                                     "extensionApis": {"enableBackend": True},
@@ -2778,10 +2777,7 @@ COMPOSE_CASES = [
                                         },
                                         "namespace": "envoy-ai-gateway-system",
                                         "values": {
-                                            "controller": {
-                                                "logRequestHeaderAttributes": "x-modelplane-caller:caller",
-                                                "replicaCount": 2,
-                                            }
+                                            "controller": {"logRequestHeaderAttributes": "x-modelplane-caller:caller"}
                                         },
                                     },
                                 },
@@ -4187,7 +4183,6 @@ COMPOSE_CASES = [
                                         },
                                         "namespace": "envoy-gateway-system",
                                         "values": {
-                                            "deployment": {"replicas": 2},
                                             "config": {
                                                 "envoyGateway": {
                                                     "extensionApis": {"enableBackend": True},
