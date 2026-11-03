@@ -71,22 +71,31 @@ def _desired_model_service(*, total_routes: int, ready_routes: int, ready: fnv1.
     )
 
 
-def _inference_gateway(
-    *, name: str, cluster_name: str, service_selector: dict | None, address: str | None
-) -> fnv1.Resource:
-    """An InferenceGateway, as the gateways requirement returns it."""
+def _inference_gateway(*, name: str, cluster_name: str, service_selector: dict | None, ready: bool) -> fnv1.Resource:
+    """An InferenceGateway, as the gateways requirement returns it, reporting GatewayReady=True only if ready."""
     spec: dict = {"clusterName": cluster_name}
     if service_selector is not None:
         spec["serviceSelector"] = service_selector
-    gateway: dict = {
-        "apiVersion": "modelplane.ai/v1alpha1",
-        "kind": "InferenceGateway",
-        "metadata": {"name": name},
-        "spec": spec,
-    }
-    if address is not None:
-        gateway["status"] = {"address": address}
-    return fnv1.Resource(resource=resource.dict_to_struct(gateway))
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "InferenceGateway",
+                "metadata": {"name": name},
+                "spec": spec,
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "GatewayReady",
+                            "status": "True" if ready else "False",
+                            "reason": "GatewayProgrammed" if ready else "WaitingForGateway",
+                            "lastTransitionTime": "2026-06-08T00:00:00Z",
+                        }
+                    ]
+                },
+            }
+        )
+    )
 
 
 def _model_route(*, name: str, gateway: str, cluster: str, ready: fnv1.Ready) -> fnv1.Resource:
@@ -174,7 +183,7 @@ COMPOSE_CASES = [
                             name="eu",
                             cluster_name="gw-eu",
                             service_selector={"matchLabels": {"region": "eu"}},
-                            address=None,
+                            ready=False,
                         ),
                     ]
                 ),
@@ -211,17 +220,17 @@ COMPOSE_CASES = [
             ],
         ),
     ),
-    # A gateway with no address is left out of readiness, but with no other
+    # A gateway that isn't ready is left out of readiness, but with no other
     # gateway there is nowhere a caller could reach the service.
     Case(
-        name="OnlyGatewayNoAddress",
-        reason="A ModelService whose only gateway has no address yet composes a ModelRoute for it but reports WaitingForGateways.",
+        name="OnlyGatewayNotReady",
+        reason="A ModelService whose only gateway isn't GatewayReady composes a ModelRoute for it but reports WaitingForGateways.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(composite=_model_service(labels=None)),
             required_resources={
                 "gateways": fnv1.Resources(
                     items=[
-                        _inference_gateway(name="eu", cluster_name="gw-eu", service_selector=None, address=None),
+                        _inference_gateway(name="eu", cluster_name="gw-eu", service_selector=None, ready=False),
                     ]
                 ),
             },
@@ -261,12 +270,8 @@ COMPOSE_CASES = [
             required_resources={
                 "gateways": fnv1.Resources(
                     items=[
-                        _inference_gateway(
-                            name="eu", cluster_name="gw-eu", service_selector=None, address="203.0.113.1"
-                        ),
-                        _inference_gateway(
-                            name="us", cluster_name="gw-us", service_selector=None, address="203.0.113.2"
-                        ),
+                        _inference_gateway(name="eu", cluster_name="gw-eu", service_selector=None, ready=True),
+                        _inference_gateway(name="us", cluster_name="gw-us", service_selector=None, ready=True),
                     ]
                 ),
             },
@@ -351,12 +356,8 @@ COMPOSE_CASES = [
             required_resources={
                 "gateways": fnv1.Resources(
                     items=[
-                        _inference_gateway(
-                            name="eu", cluster_name="gw-eu", service_selector=None, address="203.0.113.1"
-                        ),
-                        _inference_gateway(
-                            name="us", cluster_name="gw-us", service_selector=None, address="203.0.113.2"
-                        ),
+                        _inference_gateway(name="eu", cluster_name="gw-eu", service_selector=None, ready=True),
+                        _inference_gateway(name="us", cluster_name="gw-us", service_selector=None, ready=True),
                     ]
                 ),
             },
@@ -389,10 +390,11 @@ COMPOSE_CASES = [
             ],
         ),
     ),
-    # A gateway still coming up is excluded from readiness rather than failing it.
+    # A gateway still coming up, or rolling out its proxy, is excluded from
+    # readiness rather than failing it.
     Case(
-        name="OneGatewayNoAddress",
-        reason="With one gateway's ModelRoute ready and the other gateway without an address, a ModelService reports RoutingReady and is ready.",
+        name="OneGatewayNotReady",
+        reason="With one gateway's ModelRoute ready and the other gateway not GatewayReady, a ModelService reports RoutingReady and is ready.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_model_service(labels=None),
@@ -421,10 +423,8 @@ COMPOSE_CASES = [
             required_resources={
                 "gateways": fnv1.Resources(
                     items=[
-                        _inference_gateway(
-                            name="eu", cluster_name="gw-eu", service_selector=None, address="203.0.113.1"
-                        ),
-                        _inference_gateway(name="us", cluster_name="gw-us", service_selector=None, address=None),
+                        _inference_gateway(name="eu", cluster_name="gw-eu", service_selector=None, ready=True),
+                        _inference_gateway(name="us", cluster_name="gw-us", service_selector=None, ready=False),
                     ]
                 ),
             },

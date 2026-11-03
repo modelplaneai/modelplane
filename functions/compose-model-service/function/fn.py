@@ -191,13 +191,16 @@ class Composer:
         return resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True"
 
     def gateway_ready(self, gw: igv1alpha1.InferenceGateway) -> bool:
-        """Whether the gateway itself is up, i.e. has an address to serve on.
+        """Whether the gateway itself is up, i.e. reports GatewayReady=True.
 
-        A gateway still provisioning is excluded from the readiness aggregation
-        so it can't fail the service; compose-inference-gateway reports its
-        progress on the gateway.
+        A gateway still provisioning or rolling out its proxy is excluded from
+        the readiness aggregation so it can't fail the service;
+        compose-inference-gateway reports its progress on the gateway.
         """
-        return bool(gw.status and gw.status.address)
+        for c in gw.status.conditions if gw.status and gw.status.conditions else []:
+            if c.type == "GatewayReady":
+                return c.status == "True"
+        return False
 
     def write_status(self) -> None:
         """Publish the model name and the ModelRoute counts.
