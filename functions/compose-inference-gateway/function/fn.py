@@ -49,6 +49,7 @@ CONDITION_REASON_GATEWAY_PROGRAMMED = "GatewayProgrammed"
 CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
 CONDITION_REASON_WAITING_FOR_GATEWAY = "WaitingForGateway"
 CONDITION_REASON_WAITING_FOR_AI_GATEWAY_ROUTE = "WaitingForAIGatewayRoute"
+CONDITION_REASON_WAITING_FOR_ENVOY_DEPLOYMENT = "WaitingForEnvoyDeployment"
 CONDITION_REASON_CLUSTER_TAKEN = "ClusterAlreadyHasGateway"
 CONDITION_REASON_SECRETS_MISSING = "SecretsMissing"
 CONDITION_REASON_AUTH_NOT_ACCEPTED = "CallerAuthNotAccepted"
@@ -81,6 +82,12 @@ _REDIRECT_NAME = "inference-gateway-redirect"
 _AI_GATEWAY_ANCHOR_NAME = "inference-gateway-anchor"
 _AI_GATEWAY_ANCHOR_HEADER = "x-modelplane-gateway-anchor"
 _AI_GATEWAY_ANCHOR_HEADER_VALUE = "true"
+
+# Where Envoy Gateway runs the Gateway's proxy, and the name the EnvoyProxy pins
+# its Deployment to. Envoy Gateway otherwise names it with a hash, which
+# readiness would have to track to observe it.
+_ENVOY_GATEWAY_NAMESPACE = "envoy-gateway-system"
+_ENVOY_DEPLOYMENT_NAME = "envoy-modelplane-system-inference-gateway"
 
 # The Gateway's listener names. When the gateway terminates TLS, inference binds
 # to the HTTPS listener alone (compose-model-route sets the AIGatewayRoute's
@@ -160,6 +167,22 @@ _POLICY_ACCEPTED_CEL = (
 _AI_GATEWAY_ROUTE_ACCEPTED_CEL = (
     "has(object.status) && has(object.status.conditions) && "
     "object.status.conditions.exists(c, c.type == 'Accepted' && c.status == 'True')"
+)
+
+# AI Gateway writes its ext-proc config hash to the proxy's pod template once a
+# route is attached, and its webhook injects the ext-proc into every pod created
+# while one is. The anchor route keeps one attached, so every pod runs the
+# ext-proc once the template carries the hash and no pod predates it. One
+# available pod is enough, so a drained or evicted pod doesn't take the gateway
+# out of readiness while the other serves.
+_ENVOY_DEPLOYMENT_ROLLED_OUT_CEL = (
+    "has(object.spec.template.metadata.annotations) && "
+    "'aigateway.envoyproxy.io/extproc-config-hash' in object.spec.template.metadata.annotations && "
+    "has(object.status) && "
+    "has(object.status.observedGeneration) && object.status.observedGeneration >= object.metadata.generation && "
+    "has(object.status.updatedReplicas) && has(object.status.replicas) && "
+    "object.status.updatedReplicas == object.status.replicas && "
+    "has(object.status.availableReplicas) && object.status.availableReplicas > 0"
 )
 
 # Kubernetes injects ndots:5 into every pod, which tells the resolver to try each
@@ -331,6 +354,7 @@ class Composer:
         self.resolve_secrets()
         self.compose_secrets()
         self.compose_envoy_proxy()
+        self.compose_envoy_deployment()
         self.compose_gateway()
         self.compose_ai_gateway_anchor()
         self.compose_client_pki()
@@ -572,6 +596,7 @@ class Composer:
                             "kubernetes": {
                                 "envoyService": {"externalTrafficPolicy": "Cluster"},
                                 "envoyDeployment": {
+                                    "name": _ENVOY_DEPLOYMENT_NAME,
                                     "replicas": _PROXY_REPLICAS,
                                     "patch": {"type": "StrategicMerge", "value": _NDOTS_PATCH},
                                     "pod": {
@@ -607,6 +632,27 @@ class Composer:
                 },
             ),
         )
+
+    def compose_envoy_deployment(self) -> None:
+        """Observe the Deployment Envoy Gateway runs the Gateway's proxy as, so
+        GatewayReady can wait for its pods to run AI Gateway's ext-proc.
+
+        Watched, so provider-kubernetes updates the Object as soon as the
+        Deployment changes rather than on its next poll, and the gateway doesn't
+        stay ready through a later rollout.
+        """
+        obj = _k8s_object(
+            self.pc,
+            {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "metadata": {"name": _ENVOY_DEPLOYMENT_NAME, "namespace": _ENVOY_GATEWAY_NAMESPACE},
+            },
+            ready_when=_ENVOY_DEPLOYMENT_ROLLED_OUT_CEL,
+        )
+        obj.spec.managementPolicies = ["Observe"]
+        obj.spec.watch = True
+        resource.update(self.rsp.desired.resources["envoy-deployment"], obj)
 
     def compose_gateway(self) -> None:
         """The Gateway callers connect to.
@@ -1397,12 +1443,11 @@ class Composer:
 
     def derive_conditions(self) -> None:
         """GatewayReady tracks the Gateway being programmed, its caller policy
-        being accepted where the XR asks for auth, and the anchor route being
-        accepted.
+        being accepted where the XR asks for auth, the anchor route being
+        accepted, and every proxy pod running AI Gateway's ext-proc.
 
         All of them, because the Gateway has an address while a rejected policy
-        fails every request with a 500, and its proxy runs no ext-proc until AI
-        Gateway accepts a route.
+        or a missing ext-proc fails every request with a 500.
 
         A missing input Secret is reported here too (see resolve_secrets). The
         Gateway's own readiness only tracks having an address, so neither a
@@ -1457,6 +1502,11 @@ class Composer:
                 "ai-gateway-anchor",
                 CONDITION_REASON_WAITING_FOR_AI_GATEWAY_ROUTE,
                 f"Waiting for the AI Gateway anchor route on cluster {cluster} to be accepted",
+            ),
+            (
+                "envoy-deployment",
+                CONDITION_REASON_WAITING_FOR_ENVOY_DEPLOYMENT,
+                f"Waiting for the Envoy Deployment on cluster {cluster} to finish rolling out",
             ),
         ]
         for key, reason, message in waits:
