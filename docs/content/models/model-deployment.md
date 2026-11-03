@@ -235,8 +235,10 @@ independently:
   failure drops one copy instead of taking the whole replica out of service,
   and the replica keeps [serving](#reading-a-deployments-status) while at least
   one copy of each engine is ready. The replica reports `Ready` only when every
-  copy is ready. In disaggregated serving, copies also set the
-  prefill-to-decode ratio.
+  copy is ready. A change to an engine replaces its copies one at a time,
+  stopping each old copy before its replacement starts, so an engine with one
+  copy stops serving until the new copy is ready. In disaggregated serving,
+  copies also set the prefill-to-decode ratio.
 - **`worker.nodes`** sets how many nodes one gang spans: a `Leader` plus that
   many `Worker` pods. It's how big one multi-node engine is.
 

@@ -470,6 +470,7 @@ def _deployment(
                     "spec": {
                         "replicas": replicas,
                         "selector": {"matchLabels": {"modelplane.ai/workload": name}},
+                        "strategy": {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1}},
                         "template": {
                             "metadata": pod_metadata,
                             "spec": {

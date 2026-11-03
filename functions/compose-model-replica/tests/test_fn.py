@@ -250,6 +250,10 @@ def _deployment(*, ready: fnv1.Ready, name: str, claim_template_name: str, label
                             "spec": {
                                 "replicas": copies,
                                 "selector": {"matchLabels": {"modelplane.ai/workload": name}},
+                                "strategy": {
+                                    "type": "RollingUpdate",
+                                    "rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1},
+                                },
                                 "template": {
                                     "metadata": {"labels": labels},
                                     "spec": {
