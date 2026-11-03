@@ -31,6 +31,7 @@ from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import routing
 from function.backends import base, grove, llmd, native
+from models.ai.modelplane.modelcache import v1alpha1 as mcv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -47,6 +48,7 @@ class BuildCase:
     provider_config: str
     serving_label: str
     stack: str
+    cache: mcv1alpha1.Mount | None
     want: dict[str, dict]
 
 
@@ -77,7 +79,7 @@ class CacheMountsCase:
 
     name: str
     reason: str
-    replica: v1alpha1.ModelReplica
+    cache: mcv1alpha1.Mount | None
     want: tuple[list[dict], list[dict]]
 
 
@@ -87,8 +89,20 @@ class CacheEnvCase:
 
     name: str
     reason: str
-    replica: v1alpha1.ModelReplica
+    cache: mcv1alpha1.Mount | None
     want: list[dict]
+
+
+@dataclasses.dataclass
+class ModelExpressSecurityContextCase:
+    """A test case for base.modelexpress_security_context."""
+
+    name: str
+    reason: str
+    replica: v1alpha1.ModelReplica
+    stack: str
+    cache: mcv1alpha1.Mount | None
+    want: dict | None
 
 
 @dataclasses.dataclass
@@ -711,6 +725,19 @@ def _replica(
     )
 
 
+def _mount(*, claim_name: str) -> mcv1alpha1.Mount:
+    """The mount a HuggingFace ModelCache publishes for a cluster: its claim at /mnt/models, found by repo ID."""
+    return mcv1alpha1.Mount(
+        volumes=[
+            mcv1alpha1.Volume(
+                name="model-cache", persistentVolumeClaim=mcv1alpha1.PersistentVolumeClaim(claimName=claim_name)
+            )
+        ],
+        volumeMounts=[mcv1alpha1.VolumeMount(name="model-cache", mountPath="/mnt/models")],
+        env=[mcv1alpha1.EnvItem(name="HF_HUB_CACHE", value="/mnt/models")],
+    )
+
+
 def _to_dicts(*, objects: dict[str, k8sobjv1alpha1.Object]) -> dict[str, dict]:
     """objects as dicts of only the fields the code set."""
     return {key: obj.model_dump(exclude_unset=True, by_alias=True) for key, obj in objects.items()}
@@ -778,6 +805,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -875,6 +903,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -984,6 +1013,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -1085,6 +1115,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -1178,6 +1209,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -1266,6 +1298,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="dep-clusterA",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _deployment(
                 name="dep-clusterA-main-3d1d5",
@@ -1355,6 +1388,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="dep-clusterB",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _deployment(
                 name="dep-clusterB-main-d6c52",
@@ -1479,6 +1513,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-prefill": _deployment(
                 name="r-prefill-d90b0",
@@ -1591,6 +1626,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -1710,6 +1746,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=_mount(claim_name="modelcache-ml-team-qwen-17db2"),
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -1807,6 +1844,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=_mount(claim_name="modelcache-ml-team-qwen-17db2"),
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -1913,6 +1951,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Dynamo",
+        cache=_mount(claim_name="modelcache-ml-team-qwen-17db2"),
         want={
             "model-serving-main": _deployment(
                 name="r-main-bb4e3",
@@ -2086,6 +2125,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Dynamo",
+        cache=None,
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
             "model-serving-main": _pod_clique_set(
@@ -2325,6 +2365,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Dynamo",
+        cache=None,
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
             "model-serving-main": _pod_clique_set(
@@ -2559,6 +2600,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Dynamo",
+        cache=None,
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
             "model-serving-main": _pod_clique_set(
@@ -2796,6 +2838,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Dynamo",
+        cache=None,
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
             "model-serving-main": _pod_clique_set(
@@ -3038,6 +3081,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Dynamo",
+        cache=None,
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
             "model-serving-main": _pod_clique_set(
@@ -3261,6 +3305,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Dynamo",
+        cache=None,
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
             "model-serving-main": _pod_clique_set(
@@ -3482,6 +3527,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Dynamo",
+        cache=None,
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
             "model-serving-main": _pod_clique_set(
@@ -3701,6 +3747,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Dynamo",
+        cache=_mount(claim_name="modelcache-ml-team-kimi-aa322"),
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
             "model-serving-main": _pod_clique_set(
@@ -3989,6 +4036,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Dynamo",
+        cache=_mount(claim_name="modelcache-ml-team-kimi-aa322"),
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
             "model-serving-main": _pod_clique_set(
@@ -4288,6 +4336,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Dynamo",
+        cache=_mount(claim_name="modelcache-ml-team-qwen-17db2"),
         want={
             "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
             "model-serving-main": _pod_clique_set(
@@ -4575,6 +4624,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _leader_worker_set(
                 name="r-main-bb4e3",
@@ -4699,6 +4749,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="qwen2.5",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _leader_worker_set(
                 name="lws-qwen2-5-main-b2784-6d975",
@@ -4826,6 +4877,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _leader_worker_set(
                 name="r-main-bb4e3",
@@ -4955,6 +5007,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _leader_worker_set(
                 name="r-main-bb4e3",
@@ -5101,6 +5154,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _leader_worker_set(
                 name="r-main-bb4e3",
@@ -5229,6 +5283,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=None,
         want={
             "model-serving-main": _leader_worker_set(
                 name="r-main-bb4e3",
@@ -5350,6 +5405,7 @@ BUILD_CASES = [
         provider_config="cluster-a-pc",
         serving_label="r",
         stack="Standard",
+        cache=_mount(claim_name="modelcache-ml-team-c-c5cc6"),
         want={
             "model-serving-main": _leader_worker_set(
                 name="r-main-bb4e3",
@@ -5431,7 +5487,9 @@ def test_build(case: BuildCase) -> None:
     # build composes one engine, so build each of the replica's engines in turn.
     got: dict[str, k8sobjv1alpha1.Object] = {}
     for engine in case.replica.spec.engines:
-        got.update(case.backend.build(case.replica, engine, case.provider_config, case.serving_label, case.stack))
+        got.update(
+            case.backend.build(case.replica, engine, case.provider_config, case.serving_label, case.stack, case.cache)
+        )
     assert _sorted(objects=_to_dicts(objects=got)) == _sorted(objects=case.want), case.reason
 
 
@@ -5790,100 +5848,32 @@ CACHE_MOUNTS_CASES = [
     CacheMountsCase(
         name="NoCache",
         reason="A replica with no cache gets no volume or mount.",
-        replica=_replica(
-            name=None,
-            namespace="ml-team",
-            cluster_name="c",
-            labels=None,
-            model_cache_ref=None,
-            serving=None,
-            engines=[
-                v1alpha1.Engine(
-                    name="main",
-                    copies=1,
-                    members=[
-                        v1alpha1.Member(
-                            role="Standalone",
-                            nodePoolName="frontier",
-                            deviceRequests=[
-                                v1alpha1.DeviceRequest(
-                                    name="gpu",
-                                    deviceClassName="gpu.nvidia.com",
-                                    count=1,
-                                    selectors=[
-                                        v1alpha1.Selector(
-                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
-                                        )
-                                    ],
-                                )
-                            ],
-                            template=v1alpha1.Template(
-                                spec=v1alpha1.Spec(
-                                    containers=[
-                                        v1alpha1.Container(
-                                            name="engine",
-                                            image="vllm/vllm-openai:latest",
-                                            args=[],
-                                        )
-                                    ]
-                                )
-                            ),
-                        )
-                    ],
-                )
-            ],
-        ),
+        cache=None,
         want=([], []),
     ),
     CacheMountsCase(
         name="WithCache",
         reason="A replica with a cache gets a volume for its PVC and a mount for it.",
-        replica=_replica(
-            name=None,
-            namespace="ml-team",
-            cluster_name="c",
-            labels=None,
-            model_cache_ref=v1alpha1.ModelCacheRef(name="qwen"),
-            serving=None,
-            engines=[
-                v1alpha1.Engine(
-                    name="main",
-                    copies=1,
-                    members=[
-                        v1alpha1.Member(
-                            role="Standalone",
-                            nodePoolName="frontier",
-                            deviceRequests=[
-                                v1alpha1.DeviceRequest(
-                                    name="gpu",
-                                    deviceClassName="gpu.nvidia.com",
-                                    count=1,
-                                    selectors=[
-                                        v1alpha1.Selector(
-                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
-                                        )
-                                    ],
-                                )
-                            ],
-                            template=v1alpha1.Template(
-                                spec=v1alpha1.Spec(
-                                    containers=[
-                                        v1alpha1.Container(
-                                            name="engine",
-                                            image="vllm/vllm-openai:latest",
-                                            args=[],
-                                        )
-                                    ]
-                                )
-                            ),
-                        )
-                    ],
-                )
-            ],
-        ),
+        cache=_mount(claim_name="modelcache-ml-team-qwen-17db2"),
         want=(
             [{"name": "model-cache", "persistentVolumeClaim": {"claimName": "modelcache-ml-team-qwen-17db2"}}],
             [{"name": "model-cache", "mountPath": "/mnt/models"}],
+        ),
+    ),
+    CacheMountsCase(
+        name="CopiesTheCacheMount",
+        reason="A replica copies the volumes and mounts its cache publishes, including a read-only mount.",
+        cache=mcv1alpha1.Mount(
+            volumes=[
+                mcv1alpha1.Volume(
+                    name="weights", persistentVolumeClaim=mcv1alpha1.PersistentVolumeClaim(claimName="filled")
+                )
+            ],
+            volumeMounts=[mcv1alpha1.VolumeMount(name="weights", mountPath="/mnt/models", readOnly=True)],
+        ),
+        want=(
+            [{"name": "weights", "persistentVolumeClaim": {"claimName": "filled"}}],
+            [{"name": "weights", "mountPath": "/mnt/models", "readOnly": True}],
         ),
     ),
 ]
@@ -5892,58 +5882,14 @@ CACHE_MOUNTS_CASES = [
 @pytest.mark.parametrize("case", CACHE_MOUNTS_CASES, ids=lambda case: case.name)
 def test_cache_mounts(case: CacheMountsCase) -> None:
     """A replica's cache contributes a volume and a mount."""
-    assert base.cache_mounts(case.replica) == case.want, case.reason
+    assert base.cache_mounts(case.cache) == case.want, case.reason
 
 
-# cache_env reads only whether a replica has a cache, so the replicas here have
-# no name and a placeholder cluster, c.
 CACHE_ENV_CASES = [
     CacheEnvCase(
         name="NoCache",
         reason="A replica with no cache gets no env.",
-        replica=_replica(
-            name=None,
-            namespace="ml-team",
-            cluster_name="c",
-            labels=None,
-            model_cache_ref=None,
-            serving=None,
-            engines=[
-                v1alpha1.Engine(
-                    name="main",
-                    copies=1,
-                    members=[
-                        v1alpha1.Member(
-                            role="Standalone",
-                            nodePoolName="frontier",
-                            deviceRequests=[
-                                v1alpha1.DeviceRequest(
-                                    name="gpu",
-                                    deviceClassName="gpu.nvidia.com",
-                                    count=1,
-                                    selectors=[
-                                        v1alpha1.Selector(
-                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
-                                        )
-                                    ],
-                                )
-                            ],
-                            template=v1alpha1.Template(
-                                spec=v1alpha1.Spec(
-                                    containers=[
-                                        v1alpha1.Container(
-                                            name="engine",
-                                            image="vllm/vllm-openai:latest",
-                                            args=[],
-                                        )
-                                    ]
-                                )
-                            ),
-                        )
-                    ],
-                )
-            ],
-        ),
+        cache=None,
         want=[],
     ),
     # The cache is staged in HuggingFace's cache layout, so pointing
@@ -5955,6 +5901,32 @@ CACHE_ENV_CASES = [
     CacheEnvCase(
         name="WithCache",
         reason="A replica with a cache gets HF_HUB_CACHE pointing at the mount, and no HF_HUB_OFFLINE.",
+        cache=_mount(claim_name="modelcache-ml-team-qwen-17db2"),
+        want=[{"name": "HF_HUB_CACHE", "value": "/mnt/models"}],
+    ),
+    CacheEnvCase(
+        name="CopiesTheCacheEnv",
+        reason="A replica copies every variable its cache publishes, in order.",
+        cache=mcv1alpha1.Mount(
+            env=[mcv1alpha1.EnvItem(name="HF_HUB_CACHE", value="/mnt/models"), mcv1alpha1.EnvItem(name="A", value="b")]
+        ),
+        want=[{"name": "HF_HUB_CACHE", "value": "/mnt/models"}, {"name": "A", "value": "b"}],
+    ),
+]
+
+
+@pytest.mark.parametrize("case", CACHE_ENV_CASES, ids=lambda case: case.name)
+def test_cache_env(case: CacheEnvCase) -> None:
+    """A replica's cache contributes the env that resolves a model against it."""
+    assert base.cache_env(case.cache) == case.want, case.reason
+
+
+# modelexpress_security_context reads only a replica's cache reference, so the
+# replicas here have no name and a placeholder cluster, c.
+MODELEXPRESS_SECURITY_CONTEXT_CASES = [
+    ModelExpressSecurityContextCase(
+        name="MountedOnDynamo",
+        reason="An engine that mounts its cache on a Dynamo cluster gets IPC_LOCK.",
         replica=_replica(
             name=None,
             namespace="ml-team",
@@ -5965,32 +5937,13 @@ CACHE_ENV_CASES = [
             engines=[
                 v1alpha1.Engine(
                     name="main",
-                    copies=1,
                     members=[
                         v1alpha1.Member(
                             role="Standalone",
                             nodePoolName="frontier",
-                            deviceRequests=[
-                                v1alpha1.DeviceRequest(
-                                    name="gpu",
-                                    deviceClassName="gpu.nvidia.com",
-                                    count=1,
-                                    selectors=[
-                                        v1alpha1.Selector(
-                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
-                                        )
-                                    ],
-                                )
-                            ],
                             template=v1alpha1.Template(
                                 spec=v1alpha1.Spec(
-                                    containers=[
-                                        v1alpha1.Container(
-                                            name="engine",
-                                            image="vllm/vllm-openai:latest",
-                                            args=[],
-                                        )
-                                    ]
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
                                 )
                             ),
                         )
@@ -5998,15 +5951,81 @@ CACHE_ENV_CASES = [
                 )
             ],
         ),
-        want=[{"name": "HF_HUB_CACHE", "value": "/mnt/models"}],
+        stack="Dynamo",
+        cache=_mount(claim_name="modelcache-ml-team-qwen-17db2"),
+        want={"capabilities": {"add": ["IPC_LOCK"]}},
+    ),
+    # A running replica that gains a cache reference keeps its engines as they
+    # are until the cache is Ready, and adding a capability would roll them.
+    ModelExpressSecurityContextCase(
+        name="NotMountedOnDynamo",
+        reason="An engine that references a cache it doesn't mount yet gets no IPC_LOCK.",
+        replica=_replica(
+            name=None,
+            namespace="ml-team",
+            cluster_name="c",
+            labels=None,
+            model_cache_ref=v1alpha1.ModelCacheRef(name="qwen"),
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        )
+                    ],
+                )
+            ],
+        ),
+        stack="Dynamo",
+        cache=None,
+        want=None,
+    ),
+    ModelExpressSecurityContextCase(
+        name="MountedOnStandard",
+        reason="An engine that mounts its cache off Dynamo gets no IPC_LOCK.",
+        replica=_replica(
+            name=None,
+            namespace="ml-team",
+            cluster_name="c",
+            labels=None,
+            model_cache_ref=v1alpha1.ModelCacheRef(name="qwen"),
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        )
+                    ],
+                )
+            ],
+        ),
+        stack="Standard",
+        cache=_mount(claim_name="modelcache-ml-team-qwen-17db2"),
+        want=None,
     ),
 ]
 
 
-@pytest.mark.parametrize("case", CACHE_ENV_CASES, ids=lambda case: case.name)
-def test_cache_env(case: CacheEnvCase) -> None:
-    """A replica's cache contributes the env that resolves a model against it."""
-    assert base.cache_env(case.replica) == case.want, case.reason
+@pytest.mark.parametrize("case", MODELEXPRESS_SECURITY_CONTEXT_CASES, ids=lambda case: case.name)
+def test_modelexpress_security_context(case: ModelExpressSecurityContextCase) -> None:
+    """An engine that mounts its cache on a Dynamo cluster can pin memory for GPUDirect RDMA."""
+    assert base.modelexpress_security_context(case.replica, case.stack, case.cache) == case.want, case.reason
 
 
 APPLY_CASES = [
