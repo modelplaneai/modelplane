@@ -528,12 +528,7 @@ def _epp(*, ready: fnv1.Ready, config_checksum: str) -> fnv1.Resource:
                                                 "topologyKey": "kubernetes.io/hostname",
                                                 "whenUnsatisfiable": "ScheduleAnyway",
                                                 "labelSelector": {"matchLabels": {"app": "test-replica-epp"}},
-                                            },
-                                            {
-                                                "maxSkew": 1,
-                                                "topologyKey": "topology.kubernetes.io/zone",
-                                                "whenUnsatisfiable": "ScheduleAnyway",
-                                                "labelSelector": {"matchLabels": {"app": "test-replica-epp"}},
+                                                "matchLabelKeys": ["pod-template-hash"],
                                             },
                                         ],
                                     },
@@ -827,10 +822,9 @@ def _observed_deployment(*, ready: bool, ready_replicas: int) -> fnv1.Resource:
     )
 
 
-# One helper plays ten roles: the observed route, claim template, InferencePool
-# and seven endpoint picker objects. The function reads only an observed
-# Object's Ready condition, so all ten have the same shape, and writing out the
-# eight that appear in only two cases inline would bury those cases.
+# One helper plays several roles: the observed route, claim template,
+# InferencePool and endpoint picker objects. The function reads only an
+# observed Object's Ready condition, so they all have the same shape.
 def _observed_object(*, ready: bool) -> fnv1.Resource:
     """A composed Object as observed back, with the Ready condition its readiness policy derives."""
     return fnv1.Resource(

@@ -133,13 +133,17 @@ set `env` and `resources`, and the template can set `imagePullSecrets`.
 replaces the default configuration rather than merging with it. Leave it out
 for a picker that takes no configuration.
 
-Modelplane runs two copies of the picker, spread across nodes where it can,
-and both route requests. A drain evicts one copy at a time. The other copy
-keeps routing while its peer moves. Don't turn on the picker's leader
-election, because only the leader reports ready and a drain could never evict
-it. The copies don't share routing state, such as llm-d's approximate prefix
-cache. Each learns only from the requests it routes. That costs some prefix
-cache hits when a replica runs more than one copy of an engine.
+Modelplane runs two pickers, spread across nodes where it can, and both route
+requests. A drain evicts one picker at a time. The other keeps routing while
+its peer moves. On a system pool of one node both pickers share the node. A
+drain evicts one, and evicts the other only once the first runs on another
+node. Without a new node, the drain waits for the cloud's drain timeout, or for
+someone to delete the remaining picker. A picker you write must work as two independent
+instances. Don't turn on the picker's leader election, because only the leader
+reports ready and a drain could never evict it. The pickers don't share
+routing state, such as llm-d's approximate prefix cache. Each learns only from
+the requests it routes. That costs some prefix cache hits when a replica runs
+more than one copy of an engine.
 
 Under `Unified`, leave out `router` and `endpointPicker` to get Modelplane's
 llm-d picker and [default configuration](#picker-configurations). Under

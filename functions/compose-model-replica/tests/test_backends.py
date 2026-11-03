@@ -270,12 +270,7 @@ def _epp(
                 "topologyKey": "kubernetes.io/hostname",
                 "whenUnsatisfiable": "ScheduleAnyway",
                 "labelSelector": {"matchLabels": {"app": app}},
-            },
-            {
-                "maxSkew": 1,
-                "topologyKey": "topology.kubernetes.io/zone",
-                "whenUnsatisfiable": "ScheduleAnyway",
-                "labelSelector": {"matchLabels": {"app": app}},
+                "matchLabelKeys": ["pod-template-hash"],
             },
         ],
     }
