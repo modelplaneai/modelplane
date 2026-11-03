@@ -149,7 +149,11 @@ spec:
                     diskSizeGb:
                       type: integer
                       default: 100
-                      description: Root volume size in GB.
+                      description: >-
+                        Root volume size in GB. On a node group with
+                        localStorage, the root volume holds only the OS:
+                        container images, writable layers, pod logs and
+                        emptyDir volumes use the instance store instead.
                       minimum: 10
                       maximum: 65536
                     nodeCount:
@@ -192,8 +196,8 @@ spec:
                       type: object
                       description: >-
                         Capacity Reservation backing this node group. When set,
-                        Modelplane composes a launch template that launches
-                        instances only into the reservation. A Capacity Block
+                        the node group's launch template launches instances
+                        only into the reservation. A Capacity Block
                         node group also uses the CAPACITY_BLOCK capacity type.
                         The node group's zones must match the reservation's
                         Availability Zone, and nodeCount must not exceed the
@@ -249,6 +253,27 @@ spec:
                       enum:
                       - None
                       - EFA
+                    localStorage:
+                      type: object
+                      description: >-
+                        Set up the instance's NVMe instance store when a node
+                        boots. nodeadm stripes the disks into one RAID 0 array
+                        and moves container images, writable layers, pod logs
+                        and emptyDir volumes onto it, so the node's
+                        ephemeral-storage is the array's. An instance type with
+                        no instance store skips the setup. Omit to keep
+                        everything on the root volume.
+                      properties:
+                        size:
+                          type: string
+                          description: >-
+                            The array's size as a Kubernetes Quantity (e.g.
+                            "27Ti"). Tagged on the node group as its
+                            ephemeral-storage, so Cluster Autoscaler can scale
+                            the group up from zero for a pod that requests
+                            ephemeral-storage.
+                          minLength: 1
+                          maxLength: 32
             type: object
           status:
             description: EKSClusterStatus defines the observed state of EKSCluster.

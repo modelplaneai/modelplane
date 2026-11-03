@@ -113,6 +113,13 @@ _NVIDIA_GPU_DRIVER = "gpu.nvidia.com"
 # InferenceClass device claim values. An unset claim means DRA.
 _CLAIM_DRA = "DRA"
 
+# The driver of the device a class uses to describe node-local storage. A
+# class that has one gets its pools' local disks set up, and a selector can
+# read the device's size capacity. Only EKS sets the disks up, so a class that
+# describes them gates every other provisioned source.
+_LOCAL_STORAGE_DRIVER = "storage.modelplane.ai"
+_LOCAL_STORAGE_SOURCES = frozenset({CLUSTER_SOURCE_EKS})
+
 # Composed resource key for the backend XR.
 BACKEND_RESOURCE_KEY = "serving-stack"
 
@@ -274,6 +281,11 @@ def _agent_observable(cls: iclv1alpha1.InferenceClass) -> bool:
     return any(d.driver == _NVIDIA_GPU_DRIVER and (d.claim or _CLAIM_DRA) == _CLAIM_DRA for d in cls.spec.devices or [])
 
 
+def _local_storage(cls: iclv1alpha1.InferenceClass) -> iclv1alpha1.Device | None:
+    """The device by which the class describes node-local storage, if any."""
+    return next((d for d in cls.spec.devices or [] if d.driver == _LOCAL_STORAGE_DRIVER), None)
+
+
 def _gateway_hostname(cluster_name: str) -> str:
     """The internal name an InferenceGateway addresses this cluster's gateway by.
 
@@ -363,7 +375,7 @@ class Composer:
         self.compose_input_usages()
 
         source = cluster.source
-        if not self.check_devices_supported(source):
+        if not self.check_devices_supported(source) or not self.check_local_storage_supported(source):
             return
 
         if source == CLUSTER_SOURCE_GKE:
@@ -837,6 +849,25 @@ class Composer:
         # have Crossplane garbage-collect a running cluster - the cloud
         # cluster XR, ServingStack and Usages - the moment a shared class
         # starts claiming an unsupported driver.
+        self.fail(CONDITION_REASON_UNSUPPORTED_DEVICES, msg)
+        return False
+
+    def check_local_storage_supported(self, source: Cloud) -> bool:
+        """Gate on a class describing local storage the source won't set up.
+
+        A pool sets up its local disks only where Modelplane knows how, so on
+        any other provisioned source the class's description would promise
+        disks the nodes don't have. Existing never gates: the operator sets
+        the disks up. Fatal, like check_devices_supported, and for the same
+        reason.
+        """
+        if source == CLUSTER_SOURCE_EXISTING or source in _LOCAL_STORAGE_SOURCES:
+            return True
+        offending = sorted(name for name, cls in self.classes.items() if _local_storage(cls))
+        if not offending:
+            return True
+        described = "; ".join(f"class {n} describes {_LOCAL_STORAGE_DRIVER} local storage" for n in offending)
+        msg = f"{described}; only {', '.join(sorted(_LOCAL_STORAGE_SOURCES))} clusters set it up"
         self.fail(CONDITION_REASON_UNSUPPORTED_DEVICES, msg)
         return False
 
@@ -1467,6 +1498,15 @@ class Composer:
             # on-demand pool's EKSCluster spec stays free of fabric: None.
             if pool.fabric and pool.fabric.type == "EFA":
                 node_pool.fabric = pool.fabric.type
+            # Set up local disks only for a class that describes them, so the
+            # description is what provisions them rather than a claim that can
+            # drift from the nodes.
+            storage = _local_storage(cls)
+            if storage:
+                node_pool.localStorage = eksv1alpha1.LocalStorage()
+                size = (storage.capacity or {}).get("size")
+                if size:
+                    node_pool.localStorage.size = size.value
             eks_node_pools.append(node_pool)
 
         eks_spec = eksv1alpha1.Spec(

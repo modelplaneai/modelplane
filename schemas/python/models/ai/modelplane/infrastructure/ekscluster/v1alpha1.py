@@ -86,6 +86,13 @@ class Gpu(BaseModel):
     """
 
 
+class LocalStorage(BaseModel):
+    size: constr(min_length=1, max_length=32) | None = None
+    """
+    The array's size as a Kubernetes Quantity (e.g. "27Ti"). Tagged on the node group as its ephemeral-storage, so Cluster Autoscaler can scale the group up from zero for a pod that requests ephemeral-storage.
+    """
+
+
 class Zone(RootModel[constr(min_length=1, max_length=63)]):
     root: constr(min_length=1, max_length=63)
 
@@ -93,11 +100,11 @@ class Zone(RootModel[constr(min_length=1, max_length=63)]):
 class NodePool(BaseModel):
     capacityReservation: CapacityReservation | None = None
     """
-    Capacity Reservation backing this node group. When set, Modelplane composes a launch template that launches instances only into the reservation. A Capacity Block node group also uses the CAPACITY_BLOCK capacity type. The node group's zones must match the reservation's Availability Zone, and nodeCount must not exceed the reserved instance count. Omit for on-demand node groups.
+    Capacity Reservation backing this node group. When set, the node group's launch template launches instances only into the reservation. A Capacity Block node group also uses the CAPACITY_BLOCK capacity type. The node group's zones must match the reservation's Availability Zone, and nodeCount must not exceed the reserved instance count. Omit for on-demand node groups.
     """
     diskSizeGb: conint(ge=10, le=65536) | None = 100
     """
-    Root volume size in GB.
+    Root volume size in GB. On a node group with localStorage, the root volume holds only the OS: container images, writable layers, pod logs and emptyDir volumes use the instance store instead.
     """
     fabric: Literal['None', 'EFA'] | None = 'None'
     """
@@ -110,6 +117,10 @@ class NodePool(BaseModel):
     instanceType: constr(min_length=1, max_length=63)
     """
     EC2 instance type (e.g. m6i.large, g6.xlarge, p4d.24xlarge).
+    """
+    localStorage: LocalStorage | None = None
+    """
+    Set up the instance's NVMe instance store when a node boots. nodeadm stripes the disks into one RAID 0 array and moves container images, writable layers, pod logs and emptyDir volumes onto it, so the node's ephemeral-storage is the array's. An instance type with no instance store skips the setup. Omit to keep everything on the root volume.
     """
     maxNodeCount: conint(ge=0, le=1000) | None = 8
     """

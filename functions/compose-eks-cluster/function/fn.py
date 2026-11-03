@@ -161,20 +161,21 @@ _SECRET_KEY_KUBECONFIG = "kubeconfig"
 _AMI_TYPE_SYSTEM = "AL2023_x86_64_STANDARD"
 _AMI_TYPE_GPU = "AL2023_x86_64_NVIDIA"
 
-# Root EBS device name on the AL2023 EKS-optimised AMIs. A launch-template node
-# group sizes its root volume through a block device mapping on this device,
-# since EKS won't accept the node group's diskSize when a template is set.
+# Root EBS device name on the AL2023 EKS-optimised AMIs. Every inference node
+# group's launch template sizes the root volume through a block device mapping
+# on this device, since EKS won't accept the node group's diskSize alongside a
+# template.
 _ROOT_DEVICE_NAME = "/dev/xvda"
 
-# Node-local storage. Every inference node group's launch template asks nodeadm,
-# the AL2023 AMIs' node bootstrapper, to stripe the instance's NVMe instance
-# store disks into one RAID-0 array mounted under /mnt/k8s-disks, and to move
-# the kubelet and containerd state and pod logs onto it. Container images,
-# emptyDir volumes, and the node's ephemeral-storage capacity then live on the
-# local disks rather than the root EBS volume. nodeadm skips the setup on an
-# instance type with no instance store, so the template is the same for every
-# pool. EKS merges this NodeConfig with the one it generates for the node group,
-# which requires MIME multipart user data; EC2 takes it base64-encoded.
+# Node-local storage. The launch template of a pool with localStorage asks
+# nodeadm, the AL2023 AMIs' node bootstrapper, to stripe the instance's NVMe
+# instance store disks into one RAID-0 array mounted under /mnt/k8s-disks, and
+# to move the kubelet and containerd state and pod logs onto it. Container
+# images, emptyDir volumes, and the node's ephemeral-storage capacity then live
+# on the local disks rather than the root EBS volume. nodeadm skips the setup on
+# an instance type with no instance store. EKS merges this NodeConfig with the
+# one it generates for the node group, which requires MIME multipart user data;
+# EC2 takes it base64-encoded.
 _NODE_USER_DATA = base64.b64encode(
     b"""MIME-Version: 1.0
 Content-Type: multipart/mixed; boundary="//"
@@ -193,13 +194,17 @@ spec:
 """
 ).decode()
 
-# Capacity Reservation backing. A node group backed by a Capacity Reservation
-# uses a launch template that launches instances only into the reservation. A
+# Cluster Autoscaler builds a node group's template node, which it uses to scale
+# up from zero, from the instance type's CPU, memory and GPUs. It reads any
+# other resource from a tag like this one on the node group, so a pool with
+# local storage carries its array's size here.
+_TAG_CA_EPHEMERAL_STORAGE = "k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage"
+
+# Capacity Reservation backing. The launch template of a node group backed by
+# a Capacity Reservation launches instances only into the reservation. A
 # Capacity Block for ML additionally needs the "capacity-block" instance market
 # type in the template and the CAPACITY_BLOCK capacity type on the node group;
-# an On-Demand Capacity Reservation uses the default on-demand market. EKS
-# requires the instance type to come from the launch template (not the node
-# group's instanceTypes) whenever a template is set.
+# an On-Demand Capacity Reservation uses the default on-demand market.
 _RESERVATION_TYPE_CAPACITY_BLOCK = "CapacityBlock"
 _CAPACITY_TYPE_CAPACITY_BLOCK = "CAPACITY_BLOCK"
 _MARKET_TYPE_CAPACITY_BLOCK = "capacity-block"
@@ -881,9 +886,9 @@ class Composer:
         for pool in self.xr.spec.nodePools:
             reservation = pool.capacityReservation
             efa = pool.fabric == _FABRIC_EFA
-            # Every inference pool has a launch template, to carry the node
-            # user data that sets up local storage, plus any capacity
-            # reservation and EFA interfaces.
+            # Every inference pool has a launch template, to carry its instance
+            # type, disk size and any capacity reservation, EFA interfaces and
+            # local storage setup.
             self._compose_launch_template(pool, reservation, efa=efa)
             if efa:
                 self._compose_efa_security_group()
@@ -917,6 +922,8 @@ class Composer:
             )
             if reservation and reservation.type == _RESERVATION_TYPE_CAPACITY_BLOCK:
                 fp.capacityType = _CAPACITY_TYPE_CAPACITY_BLOCK
+            if pool.localStorage and pool.localStorage.size:
+                fp.tags = {_TAG_CA_EPHEMERAL_STORAGE: pool.localStorage.size}
 
             zone_refs = self._subnet_refs_for_pool(pool)
             if zone_refs:
@@ -984,11 +991,11 @@ class Composer:
         """Compose an EC2 launch template for a node group.
 
         EKS launches the node group's instances from this template. It carries
-        the instance type, the user data that sets up local storage and,
-        depending on the pool, the capacity reservation (so instances come only
-        from the reservation) and/or EFA network interfaces (so nodes get
-        GPUDirect RDMA). The node group references it by name; for a Capacity
-        Block pool it also sets capacityType.
+        the instance type, the disk size and, depending on the pool, the
+        capacity reservation (so instances come only from the reservation), EFA
+        network interfaces (so nodes get GPUDirect RDMA), and the user data that
+        sets up local storage. The node group references it by name; for a
+        Capacity Block pool it also sets capacityType.
 
         The template must not set subnets - EKS rejects a launch template with
         subnet configuration for managed node groups and takes the subnets from
@@ -1006,8 +1013,9 @@ class Composer:
                     ebs=ltv1beta1.Ebs(volumeSize=pool.diskSizeGb),
                 ),
             ],
-            userData=_NODE_USER_DATA,
         )
+        if pool.localStorage:
+            fp.userData = _NODE_USER_DATA
 
         if reservation:
             fp.capacityReservationSpecification = ltv1beta1.CapacityReservationSpecification(
