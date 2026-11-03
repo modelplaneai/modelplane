@@ -225,3 +225,32 @@ depends on the source:
 The ML team's `ModelCache` and `ModelDeployment` specs are the same regardless of
 which backing storage a cluster uses.
 <!-- vale write-good.Passive = YES -->
+
+## Local storage
+
+Many GPU machines have local NVMe disks, such as the eight 3.84 TB disks of an
+EC2 `p6-b300.48xlarge`. A class describes them with a `Synthetic` device whose
+driver is `storage.modelplane.ai`, sized by its `size` capacity:
+
+```yaml
+devices:
+- name: scratch
+  claim: Synthetic
+  driver: storage.modelplane.ai
+  capacity:
+    size: {value: "27Ti"}
+```
+
+On `EKS`, Modelplane sets up the instance store disks of every pool whose class
+has this device. It stripes them into one RAID 0 array when a node boots, and
+moves the node's container images, writable container layers and pod logs onto
+it. Only the OS stays on the root volume, so `diskSizeGb` no longer sizes image
+storage. The node's `ephemeral-storage` is the array's. The node group is tagged
+with `size`, so the cluster autoscaler knows that capacity before the pool has
+any nodes.
+
+The array lasts only as long as the node. Don't keep anything on it that you
+can't fetch or compute again.
+
+Modelplane rejects a class with this device on the other managed sources, which
+don't set up local disks yet. On an `Existing` cluster you set them up yourself.

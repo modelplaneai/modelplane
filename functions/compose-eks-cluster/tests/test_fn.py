@@ -15,6 +15,7 @@
 """Tests for the compose-eks-cluster function."""
 
 import asyncio
+import base64
 import dataclasses
 import json
 
@@ -37,6 +38,26 @@ class Case:
     reason: str
     req: fnv1.RunFunctionRequest
     want: fnv1.RunFunctionResponse
+
+
+# The user data a pool with localStorage carries, before base64: a MIME
+# multipart document whose one part is a nodeadm NodeConfig asking for a RAID 0
+# array.
+_LOCAL_STORAGE_USER_DATA = """MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="//"
+
+--//
+Content-Type: application/node.eks.aws
+
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  instance:
+    localStorage:
+      strategy: RAID0
+
+--//--
+"""
 
 
 def _xr(*, credentials: v1alpha1.Credentials | None, node_pools: list[v1alpha1.NodePool]) -> fnv1.Resource:
@@ -1807,7 +1828,7 @@ COMPOSE_CASES = [
     # type from the launch template.
     Case(
         name="CapacityBlock",
-        reason="An EKSCluster with a Capacity Block pool composes a launch template targeting its reservation and a CAPACITY_BLOCK node group that uses the template.",
+        reason="An EKSCluster with a Capacity Block pool with local storage composes a launch template targeting its reservation and setting up the instance store, and a CAPACITY_BLOCK node group that uses the template and tags its ephemeral-storage for Cluster Autoscaler.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_xr(
@@ -1825,6 +1846,7 @@ COMPOSE_CASES = [
                             capacityReservation=v1alpha1.CapacityReservation(
                                 type="CapacityBlock", id="cr-0123456789abcdef0"
                             ),
+                            localStorage=v1alpha1.LocalStorage(size="28Ti"),
                             zones=[v1alpha1.Zone("us-west-2a")],
                         ),
                     ],
@@ -1953,6 +1975,7 @@ COMPOSE_CASES = [
                                         "blockDeviceMappings": [
                                             {"deviceName": "/dev/xvda", "ebs": {"volumeSize": 1024}},
                                         ],
+                                        "userData": base64.b64encode(_LOCAL_STORAGE_USER_DATA.encode()).decode(),
                                         "instanceMarketOptions": {"marketType": "capacity-block"},
                                         "capacityReservationSpecification": {
                                             "capacityReservationPreference": "capacity-reservations-only",
@@ -1986,6 +2009,9 @@ COMPOSE_CASES = [
                                         "launchTemplate": {
                                             "name": "test-cluster-lt-gpu-h200-83c00",
                                             "version": "$Latest",
+                                        },
+                                        "tags": {
+                                            "k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage": "28Ti",
                                         },
                                         "subnetIdRefs": [{"name": "test-cluster-private-subnet-us-west-2a-6a89f"}],
                                         "scalingConfig": {"minSize": 0, "maxSize": 2},

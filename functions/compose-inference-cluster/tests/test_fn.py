@@ -7390,3 +7390,64 @@ def test_existing_never_gates() -> None:
     )
     assert composer.check_devices_supported("Existing") is True
     assert list(composer.rsp.conditions) == []
+
+
+def test_local_storage_gate() -> None:
+    """A class describing storage.modelplane.ai local storage gates a GKE
+    cluster with UnsupportedDevices, since only EKS sets the disks up. EKS
+    passes, and so does Existing, where the operator sets them up."""
+    devices = {
+        "h200-nvme": [
+            {"name": "gpu", "claim": "DRA", "driver": "gpu.nvidia.com", "deviceClassName": "gpu.nvidia.com"},
+            {"name": "scratch", "claim": "Synthetic", "driver": "storage.modelplane.ai"},
+        ],
+    }
+    assert _composer(source="EKS", devices_by_class=devices).check_local_storage_supported("EKS") is True
+    assert _composer(source="Existing", devices_by_class=devices).check_local_storage_supported("Existing") is True
+    composer = _composer(source="GKE", devices_by_class=devices)
+    assert composer.check_local_storage_supported("GKE") is False
+    conditions = {c.type: c for c in composer.rsp.conditions}
+    assert conditions["ClusterReady"].reason == "UnsupportedDevices"
+    assert conditions["ClusterReady"].message == (
+        "class h200-nvme describes storage.modelplane.ai local storage; only EKS clusters set it up"
+    )
+
+
+def test_eks_local_storage() -> None:
+    """An EKS pool whose class describes storage.modelplane.ai local storage
+    gets localStorage on its EKSCluster node pool, sized from the device's
+    size capacity. A pool whose class doesn't describe it gets none."""
+    pools = [
+        v1alpha1.NodePool(name="nvme-pool", className="h200-nvme", nodeCount=1, maxNodeCount=2),
+        v1alpha1.NodePool(name="plain-pool", className="h200", nodeCount=1, maxNodeCount=2),
+    ]
+    cluster = v1alpha1.Cluster(source="EKS", eks=v1alpha1.Eks(region="us-west-2"))
+    req = fnv1.RunFunctionRequest(
+        observed=fnv1.State(composite=_inference_cluster(cluster=cluster, node_pools=pools)),
+    )
+    composer = fn.Composer(req, fnv1.RunFunctionResponse())
+    gpu = {"name": "gpu", "claim": "DRA", "driver": "gpu.nvidia.com", "deviceClassName": "gpu.nvidia.com"}
+    scratch = {
+        "name": "scratch",
+        "claim": "Synthetic",
+        "driver": "storage.modelplane.ai",
+        "capacity": {"size": {"value": "28Ti"}},
+    }
+    for name, devices in {"h200-nvme": [gpu, scratch], "h200": [gpu]}.items():
+        composer.classes[name] = fn.iclv1alpha1.InferenceClass.model_validate(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "InferenceClass",
+                "metadata": {"name": name},
+                "spec": {
+                    "devices": devices,
+                    "provisioning": {
+                        "provider": "EKS",
+                        "eks": {"instanceType": "p5en.48xlarge", "accelerator": {"type": "nvidia-h200", "count": 8}},
+                    },
+                },
+            }
+        )
+    assert composer.compose_eks_cluster(v1alpha1.Eks(region="us-west-2")) is True
+    got = json_format.MessageToDict(composer.rsp.desired.resources["eks-cluster"].resource)
+    assert [p.get("localStorage") for p in got["spec"]["nodePools"]] == [{"size": "28Ti"}, None]

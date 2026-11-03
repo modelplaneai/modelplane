@@ -143,6 +143,9 @@ class Eks(BaseModel):
     GPU accelerator to attach when provisioning the node group. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU group: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
     """
     diskSizeGb: conint(ge=10) | None = 100
+    """
+    Root volume size in GB. If spec.devices describes local storage with a storage.modelplane.ai device, the root volume holds only the OS: container images, writable layers, pod logs and emptyDir volumes use the instance store instead.
+    """
     instanceType: constr(min_length=1)
     """
     EC2 instance type (e.g. g6.xlarge, p4d.24xlarge). The instance family determines the GPU model, if any. The accelerator block below doesn't change the hardware, but whether it's set decides whether the group is provisioned as a GPU or a CPU pool.

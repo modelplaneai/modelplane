@@ -208,6 +208,12 @@ spec:
                         minLength: 1
                       diskSizeGb:
                         type: integer
+                        description: >-
+                          Root volume size in GB. If spec.devices describes
+                          local storage with a storage.modelplane.ai device,
+                          the root volume holds only the OS: container images,
+                          writable layers, pod logs and emptyDir volumes use
+                          the instance store instead.
                         default: 100
                         minimum: 10
                       accelerator:
