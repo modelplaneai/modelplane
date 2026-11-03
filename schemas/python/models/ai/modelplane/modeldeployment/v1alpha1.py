@@ -133,12 +133,12 @@ class Port(BaseModel):
 
 
 class Grpc(BaseModel):
-    port: int
+    port: conint(ge=1, le=65535)
     service: str | None = None
 
 
 class HttpGet(BaseModel):
-    path: str | None = None
+    path: constr(pattern=r'^/') | None = None
     port: int | str
 
 
@@ -188,11 +188,11 @@ class Container(BaseModel):
     """
     ports: list[Port] | None = Field(None, max_length=8)
     """
-    Ports the container listens on. The engine container's port named "http" is where Modelplane probes the engine and scrapes its metrics. Without one, the engine serves on 8000, and an unnamed port 8000 is its "http" port. A container in front of the engine declares 8000, and the engine then declares its "http" port elsewhere. A Worker's ports pass through as written.
+    Ports the container listens on. The engine container's port named "http" is where Modelplane probes the engine and scrapes its metrics. Without one, the engine serves on the serving port (serving.port, 8000 by default), and an unnamed port there is its "http" port. A container in front of the engine declares the serving port, and the engine then declares its "http" port elsewhere. A Worker's ports pass through as written.
     """
     readinessProbe: ReadinessProbe | None = None
     """
-    How Kubernetes checks that a container beside the engine is ready, such as a sidecar on port 8000. The engine container can't set one: Modelplane probes the engine on its http port.
+    How Kubernetes checks that the container is ready. Without one, Modelplane probes the engine container of a Standalone or Leader member with GET /health on its http port. A probe set here replaces that default whole, and Kubernetes defaults apply to any field it leaves out. A Worker has no http port, so its engine's probe may name only a port the engine container declares.
     """
     resources: Resources | None = None
     """
@@ -207,7 +207,7 @@ class ImagePullSecret(BaseModel):
 class Spec(BaseModel):
     containers: list[Container] = Field(..., max_length=8, min_length=1)
     """
-    Containers for the engine pod. Exactly one is named "engine", the inference engine. The others run beside it, such as a routing sidecar. Modelplane adds device claims, MODELPLANE_ environment, ModelCache mounts, /dev/shm and the readiness probe to the engine container only.
+    Containers for the engine pod. Exactly one is named "engine", the inference engine. The others run beside it, such as a routing sidecar. Modelplane adds device claims, MODELPLANE_ environment, ModelCache mounts, /dev/shm and a default readiness probe to the engine container only.
     """
     imagePullSecrets: list[ImagePullSecret] | None = None
     """
@@ -324,6 +324,10 @@ class Serving(BaseModel):
     mode: Literal['Unified', 'PrefillDecode']
     """
     Unified serves prefill and decode on one engine. PrefillDecode splits them across two engines, each marking its phase as Prefill or Decode.
+    """
+    port: conint(ge=1, le=65535) | None = None
+    """
+    The port every serving pod receives requests on, where the InferencePool sends them. The engine serves its API there unless a container in front of it, such as a sidecar, declares this port. Defaults to 8000.
     """
     router: Literal['EndpointPicker'] | None = None
     """

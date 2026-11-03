@@ -14,8 +14,8 @@
 #   --enable-auto-tool-choice turns on server-side tool selection.
 #   --max-model-len can be lowered to shrink the KV cache footprint; 262144
 #     matches Poolside's reference config.
-#   The engine container must be named `engine` and listen on :8000 (Modelplane
-#     scrapes 8000).
+#   The engine container must be named `engine`. It listens on :8000,
+#     Modelplane's default serving port.
 #
 # H100-specific FP8 settings, carried over from a community 4x H100 build:
 #   VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER=0 selects an FP8 GEMM path that is

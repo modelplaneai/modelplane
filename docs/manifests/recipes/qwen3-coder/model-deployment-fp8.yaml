@@ -17,7 +17,7 @@
 #     without the first, and v0.5.10 publishes no token histograms without the
 #     second. Modelplane's collector reads both.
 #   --host 0.0.0.0 --port 8000: SGLang defaults to 127.0.0.1:30000, but
-#     Modelplane's contract is 0.0.0.0:8000 with a /health probe. Args pass
+#     Modelplane's default is 0.0.0.0:8000 with a /health probe. Args pass
 #     through verbatim - Modelplane injects nothing for a non-vLLM engine.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment

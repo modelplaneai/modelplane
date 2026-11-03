@@ -13,7 +13,9 @@ cluster.
 Modelplane is unopinionated about the engine itself. You bring the container and
 its flags, and Modelplane shapes a serving topology around it. The engine flags
 you write carry parallelism, quantization, and KV transfer, never injected by
-Modelplane.
+Modelplane. By default Modelplane expects the engine to serve on port 8000 and
+answer `GET /health` once it's ready. For an engine that doesn't, see
+[Engine port and readiness](#engine-port-and-readiness).
 
 As with a Kubernetes Deployment, `spec.replicas` sets the replica count and
 `spec.template` describes each replica. Labels for the composed ModelReplicas
@@ -120,6 +122,39 @@ runtime. vLLM's `NixlConnector` (and SGLang's NIXL transfer backend) import the
 `nixl` package. On an image without it, the engines crash at startup with
 `NIXL is not available`. Recent vanilla `vllm/vllm-openai` images include NIXL,
 so pin a current tag rather than an old one.
+
+## Engine port and readiness
+
+A serving pod receives requests on port 8000, and Modelplane checks that the
+engine is ready with `GET /health` on that port. For an engine that listens on
+another port, set `serving.port`. For one that reports readiness elsewhere, set
+a `readinessProbe` on the engine container. It replaces Modelplane's check
+whole, and Kubernetes defaults apply to the fields it leaves out, so the timeout
+is 1 second unless you set `timeoutSeconds`. This engine listens on 8080 and
+answers `/v1/models` once it's ready:
+
+```yaml {nocopy=true}
+serving:
+  port: 8080
+engines:
+- name: main
+  members:
+  - role: Standalone
+    template:
+      spec:
+        containers:
+        - name: engine
+          image: registry.example.com/my-engine:1.0
+          readinessProbe:
+            httpGet:
+              path: /v1/models
+              port: http
+```
+
+`serving.port` is where the InferencePool sends requests for every engine of
+the deployment. When a container in front of the engine, such as the llm-d
+sidecar, declares that port, the engine serves elsewhere, as
+[Ports]({{< ref "routing.md#ports" >}}) describes.
 
 ## Requesting GPUs
 
