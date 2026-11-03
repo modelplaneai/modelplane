@@ -2716,6 +2716,7 @@ COMPOSE_CASES = [
                                         },
                                         "namespace": "envoy-gateway-system",
                                         "values": {
+                                            "deployment": {"replicas": 2},
                                             "config": {
                                                 "envoyGateway": {
                                                     "extensionApis": {"enableBackend": True},
@@ -2746,7 +2747,7 @@ COMPOSE_CASES = [
                                                         ],
                                                     },
                                                 }
-                                            }
+                                            },
                                         },
                                     },
                                 },
@@ -2777,7 +2778,10 @@ COMPOSE_CASES = [
                                         },
                                         "namespace": "envoy-ai-gateway-system",
                                         "values": {
-                                            "controller": {"logRequestHeaderAttributes": "x-modelplane-caller:caller"}
+                                            "controller": {
+                                                "logRequestHeaderAttributes": "x-modelplane-caller:caller",
+                                                "replicaCount": 2,
+                                            }
                                         },
                                     },
                                 },
@@ -2815,7 +2819,37 @@ COMPOSE_CASES = [
                                                 "provider": {
                                                     "type": "Kubernetes",
                                                     "kubernetes": {
-                                                        "envoyService": {"externalTrafficPolicy": "Cluster"}
+                                                        "envoyService": {"externalTrafficPolicy": "Cluster"},
+                                                        "envoyDeployment": {
+                                                            "replicas": 2,
+                                                            "pod": {
+                                                                "topologySpreadConstraints": [
+                                                                    {
+                                                                        "maxSkew": 1,
+                                                                        "topologyKey": "kubernetes.io/hostname",
+                                                                        "whenUnsatisfiable": "ScheduleAnyway",
+                                                                        "labelSelector": {
+                                                                            "matchLabels": {
+                                                                                "gateway.envoyproxy.io/owning-gateway-name": "cluster-gateway",
+                                                                                "gateway.envoyproxy.io/owning-gateway-namespace": "modelplane-system",
+                                                                            }
+                                                                        },
+                                                                    },
+                                                                    {
+                                                                        "maxSkew": 1,
+                                                                        "topologyKey": "topology.kubernetes.io/zone",
+                                                                        "whenUnsatisfiable": "ScheduleAnyway",
+                                                                        "labelSelector": {
+                                                                            "matchLabels": {
+                                                                                "gateway.envoyproxy.io/owning-gateway-name": "cluster-gateway",
+                                                                                "gateway.envoyproxy.io/owning-gateway-namespace": "modelplane-system",
+                                                                            }
+                                                                        },
+                                                                    },
+                                                                ]
+                                                            },
+                                                        },
+                                                        "envoyPDB": {"maxUnavailable": 1},
                                                     },
                                                 }
                                             },
@@ -4153,6 +4187,7 @@ COMPOSE_CASES = [
                                         },
                                         "namespace": "envoy-gateway-system",
                                         "values": {
+                                            "deployment": {"replicas": 2},
                                             "config": {
                                                 "envoyGateway": {
                                                     "extensionApis": {"enableBackend": True},
@@ -4183,7 +4218,7 @@ COMPOSE_CASES = [
                                                         ],
                                                     },
                                                 }
-                                            }
+                                            },
                                         },
                                     },
                                 },

@@ -59,6 +59,13 @@ _CALLER_HEADER = "x-modelplane-caller"
 # names it as the CA certificate's issuer, so the two must agree.
 SELFSIGNED_ISSUER = "modelplane-selfsigned"
 
+# Labels every envoy pod of the cluster gateway carries, from Envoy Gateway's
+# default pod labels. The proxy's topology spread constraints select on them.
+_CLUSTER_GATEWAY_LABELS = {
+    "gateway.envoyproxy.io/owning-gateway-name": "cluster-gateway",
+    "gateway.envoyproxy.io/owning-gateway-namespace": "modelplane-system",
+}
+
 # trust-manager republishes the cluster CA's certificate into a ConfigMap
 # without its private key, which is what lets the control plane read the
 # certificate to hand to an InferenceGateway. Modelplane's pin: it's gateway-path
@@ -115,6 +122,11 @@ COMPONENTS: list[Component] = [
         # resolve. enableBackend turns on the Backend API the AI Gateway
         # relies on.
         values={
+            # Two controller replicas, safe because the controller elects a
+            # leader by default (the API default, not a value; its lease RBAC
+            # ships unconditional), so a system node's drain only moves the
+            # standby, not the reconciles.
+            "deployment": {"replicas": 2},
             "config": {
                 "envoyGateway": {
                     "extensionApis": {"enableBackend": True},
@@ -166,22 +178,33 @@ COMPONENTS: list[Component] = [
         repository=_AI_GATEWAY_REPO,
         version=_AI_GATEWAY_VERSION,
         depends_on=["ai-gateway-crds"],
-        # logRequestHeaderAttributes copies the caller identity into the
-        # io.envoy.ai_gateway metadata namespace, so an InferenceGateway's
-        # access log can read the caller from metadata rather than the
-        # request header. The header is stripped before a request reaches
-        # a backend Modelplane doesn't operate, so reading the log from the
-        # header would lose the caller from the third-party records that
-        # attribute provider spend.
-        #
-        # Any non-empty mapping, the controller's default of
-        # "agent-session-id:session.id" included, makes the PostTranslateModify
-        # hook walk every listener for an HTTP connection manager and error on
-        # the first filter chain without one, taking a co-located TCP/UDPRoute
-        # Gateway's whole xDS update down with it (envoyproxy/ai-gateway#2600,
-        # fix in flight as #2601). That failure is visible, where a lost caller
-        # isn't.
-        values={"controller": {"logRequestHeaderAttributes": f"{_CALLER_HEADER}:caller"}},
+        values={
+            # logRequestHeaderAttributes copies the caller identity into the
+            # io.envoy.ai_gateway metadata namespace, so an InferenceGateway's
+            # access log can read the caller from metadata rather than the
+            # request header. The header is stripped before a request reaches
+            # a backend Modelplane doesn't operate, so reading the log from the
+            # header would lose the caller from the third-party records that
+            # attribute provider spend.
+            #
+            # Any non-empty mapping, the controller's default of
+            # "agent-session-id:session.id" included, makes the PostTranslateModify
+            # hook walk every listener for an HTTP connection manager and error on
+            # the first filter chain without one, taking a co-located TCP/UDPRoute
+            # Gateway's whole xDS update down with it (envoyproxy/ai-gateway#2600,
+            # fix in flight as #2601). That failure is visible, where a lost caller
+            # isn't.
+            "controller": {
+                "logRequestHeaderAttributes": f"{_CALLER_HEADER}:caller",
+                # Two controller replicas, safe because the controller elects a
+                # leader (leaderElection.enabled defaults to true in the chart),
+                # so a system node's drain only moves the standby, not the
+                # control loop. The Envoy Gateway controller below gets two for
+                # the same reason, via its deployment.replicas value; its leader
+                # election is on by default in the controller itself.
+                "replicaCount": 2,
+            }
+        },
     ),
     # Gateway API Inference Extension CRDs, providing the InferencePool
     # that disaggregated replicas front their decode endpoints with.
@@ -215,6 +238,14 @@ COMPONENTS: list[Component] = [
     # is accepted by every cloud Modelplane runs on; the inference
     # gateway does not need client source-IP preservation. The
     # GatewayClass references it via parametersRef.
+    #
+    # It also runs two proxy pods with a disruption budget and node/zone
+    # spread, the same shape compose-inference-gateway gives the fleet
+    # gateway's proxy: a drain of one system node, which is routine node
+    # maintenance on every cloud, must not take the only hop into the
+    # cluster's engines down. The constraints prefer separate nodes and
+    # zones rather than requiring them, since a cluster's system pool can
+    # be a single node (Nebius's default).
     Manifests(
         key="gateway-proxy",
         depends_on=["gateway-namespace"],
@@ -228,6 +259,21 @@ COMPONENTS: list[Component] = [
                         "type": "Kubernetes",
                         "kubernetes": {
                             "envoyService": {"externalTrafficPolicy": "Cluster"},
+                            "envoyDeployment": {
+                                "replicas": 2,
+                                "pod": {
+                                    "topologySpreadConstraints": [
+                                        {
+                                            "maxSkew": 1,
+                                            "topologyKey": key,
+                                            "whenUnsatisfiable": "ScheduleAnyway",
+                                            "labelSelector": {"matchLabels": _CLUSTER_GATEWAY_LABELS},
+                                        }
+                                        for key in ("kubernetes.io/hostname", "topology.kubernetes.io/zone")
+                                    ]
+                                },
+                            },
+                            "envoyPDB": {"maxUnavailable": 1},
                         },
                     },
                 },
