@@ -509,6 +509,111 @@ def test_nebius_exporter_dra() -> None:
     assert exporter.values["kubernetesDRA"] == {"enabled": True}
 
 
+# The clouds that install the gpu-operator, and so carry its exporter's DRA
+# and pod-label values (MODELPLANE_VALUES in generate.py, mirrored in civo.py).
+# A constant tuple: the style checker holds module-level assignments to
+# constants and case tables.
+GPU_OPERATOR_CLOUDS = ("AKS", "EKS", "GKE", "Civo")
+
+
+@pytest.mark.parametrize("cloud", GPU_OPERATOR_CLOUDS)
+def test_dcgm_pod_labels(cloud: str) -> None:
+    """Every cloud that runs the gpu-operator maps DRA-allocated pods and allows Modelplane's identity labels.
+
+    Modelplane allocates GPUs through DRA and turns the device plugin off, so
+    without KUBERNETES_ENABLE_DRA the exporter finds no pod and every GPU
+    series carries no deployment; without the allowlist the exporter attaches
+    every pod label. A literal, so a changed value fails here rather than only
+    once deployed.
+    """
+    joined = stacks.join(cloud, "Standard")  # ty: ignore[invalid-argument-type]  # parametrize erases the Literal
+    operator = next(c for c in joined if isinstance(c, stacks.Chart) and c.key == "gpu-operator")
+    assert operator.values is not None
+    exporter = operator.values["dcgmExporter"]
+    allowlist = r"^modelplane\.ai/(deployment|replica|role|engine)$"
+    assert exporter["enablePodLabels"] is True
+    assert exporter["podLabelAllowlistRegex"] == [allowlist]
+
+
+@pytest.mark.parametrize("cloud", ["AKS", "EKS", "Civo"])
+def test_dcgm_rbac(cloud: str) -> None:
+    """Every cloud that runs the gpu-operator's exporter composes the resourceslices RBAC.
+
+    The operator's exporter ClusterRole grants pods only (v26.7.x), and the
+    exporter's DRA mode reads resource.k8s.io resourceslices to map a claim's
+    allocations to GPUs. Without the grant the exporter starts, exports every
+    field, and still attaches no pod labels - nothing else fails.
+    """
+    joined = stacks.join(cloud, "Standard")  # ty: ignore[invalid-argument-type]  # parametrize erases the Literal
+    role = next((m for m in joined if isinstance(m, stacks.Manifests) and m.key == "dcgm-exporter-clusterrole"), None)
+    binding = next(
+        (m for m in joined if isinstance(m, stacks.Manifests) and m.key == "dcgm-exporter-clusterrolebinding"), None
+    )
+    assert role is not None
+    assert role.manifests == [
+        {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "ClusterRole",
+            "metadata": {"name": "nvidia-dcgm-exporter-read-resourceslices"},
+            "rules": [
+                {
+                    "apiGroups": ["resource.k8s.io"],
+                    "resources": ["resourceslices"],
+                    "verbs": ["get", "list", "watch"],
+                },
+            ],
+        },
+    ]
+    assert binding is not None
+    assert binding.manifests == [
+        {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "ClusterRoleBinding",
+            "metadata": {"name": "nvidia-dcgm-exporter-read-resourceslices"},
+            "roleRef": {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "ClusterRole",
+                "name": "nvidia-dcgm-exporter-read-resourceslices",
+            },
+            "subjects": [
+                {
+                    "kind": "ServiceAccount",
+                    "name": "nvidia-dcgm-exporter",
+                    "namespace": "gpu-operator",
+                },
+            ],
+        },
+    ]
+
+
+@pytest.mark.parametrize("cloud", ["GKE", "Nebius", "Vultr", "Existing"])
+def test_dcgm_rbac_absent(cloud: str) -> None:
+    """No cloud without the gpu-operator's exporter composes the resourceslices RBAC.
+
+    GKE's managed exporter needs no modelplane-composed RBAC, and Nebius's
+    standalone chart ships the RBAC its own DRA mode needs.
+    """
+    joined = stacks.join(cloud, "Standard")  # ty: ignore[invalid-argument-type]  # parametrize erases the Literal
+    assert [c.key for c in joined if isinstance(c, stacks.Manifests) and c.key.startswith("dcgm-exporter-")] == []
+
+
+def test_nebius_pod_labels() -> None:
+    """Nebius's dcgm-exporter attaches the same identity labels as the gpu-operator clouds.
+
+    The standalone chart's kubernetes.enablePodLabels, the counterpart of the
+    gpu-operator's dcgmExporter.enablePodLabels (see MODELPLANE_VALUES in
+    generate.py), with the same allowlist: a GPU series joins its engine's on
+    deployment, replica, role and engine on every cloud alike.
+    """
+    joined = stacks.join("Nebius", "Standard")
+    exporter = next(c for c in joined if isinstance(c, stacks.Chart) and c.key == "dcgm-exporter")
+    assert exporter.values is not None
+    assert exporter.values["kubernetes"] == {
+        "enablePodLabels": True,
+        "podLabelAllowlistRegex": [r"^modelplane\.ai/(deployment|replica|role|engine)$"],
+    }
+
+
 # Each case's input is the real joined Civo stack rather than a literal one.
 # The transform finds the gpu-operator and DRA driver charts by key, and where
 # a key matches nothing it rewrites nothing, without complaint. Only the real
@@ -545,6 +650,9 @@ WITH_NVLINK_DISABLED_CASES = [
                     "dcgmExporter": {
                         "config": {"create": True, "data": _DCGM_METRICS_CSV, "name": "dcgm-exporter"},
                         "serviceMonitor": {"enabled": False},
+                        "enablePodLabels": True,
+                        "podLabelAllowlistRegex": [r"^modelplane\.ai/(deployment|replica|role|engine)$"],
+                        "env": [{"name": "KUBERNETES_ENABLE_DRA", "value": "true"}],
                     },
                     "devicePlugin": {"enabled": False},
                     "driver": {
@@ -655,6 +763,9 @@ WITH_NVLINK_DISABLED_CASES = [
                     "dcgmExporter": {
                         "config": {"create": True, "data": _DCGM_METRICS_CSV, "name": "dcgm-exporter"},
                         "serviceMonitor": {"enabled": False},
+                        "enablePodLabels": True,
+                        "podLabelAllowlistRegex": [r"^modelplane\.ai/(deployment|replica|role|engine)$"],
+                        "env": [{"name": "KUBERNETES_ENABLE_DRA", "value": "true"}],
                     },
                     "devicePlugin": {"enabled": False},
                     "driver": {

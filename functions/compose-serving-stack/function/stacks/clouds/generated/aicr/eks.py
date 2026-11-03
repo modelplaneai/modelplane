@@ -22,7 +22,7 @@
 # Recipe: base -> monitoring-hpa -> eks -> eks-inference (sha256:10b28b989099)
 # Kubernetes floor: 1.32.4; eks XRD default 1.36
 
-from function.stacks.components import Chart, Component
+from function.stacks.components import Chart, Component, Manifests
 
 # DRA drivers this cloud supports that arrive outside the serving
 # stack; the stacks package folds them into its derived
@@ -285,6 +285,9 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
                     "name": "dcgm-exporter",
                 },
                 "serviceMonitor": {"enabled": True, "honorLabels": True, "interval": "30s"},
+                "enablePodLabels": True,
+                "podLabelAllowlistRegex": ["^modelplane\\.ai/(deployment|replica|role|engine)$"],
+                "env": [{"name": "KUBERNETES_ENABLE_DRA", "value": "true"}],
             },
             "devicePlugin": {
                 "enabled": False,
@@ -318,6 +321,43 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
             "toolkit": {"enabled": False},
             "validator": {"plugin": {"env": [{"name": "WITH_WORKLOAD", "value": "false"}]}},
         },
+    ),
+    Manifests(
+        key="dcgm-exporter-clusterrole",
+        depends_on=["gpu-operator"],
+        dra_drivers=["gpu.nvidia.com"],
+        manifests=[
+            {
+                "apiVersion": "rbac.authorization.k8s.io/v1",
+                "kind": "ClusterRole",
+                "metadata": {"name": "nvidia-dcgm-exporter-read-resourceslices"},
+                "rules": [
+                    {
+                        "apiGroups": ["resource.k8s.io"],
+                        "resources": ["resourceslices"],
+                        "verbs": ["get", "list", "watch"],
+                    }
+                ],
+            }
+        ],
+    ),
+    Manifests(
+        key="dcgm-exporter-clusterrolebinding",
+        depends_on=["gpu-operator"],
+        dra_drivers=["gpu.nvidia.com"],
+        manifests=[
+            {
+                "apiVersion": "rbac.authorization.k8s.io/v1",
+                "kind": "ClusterRoleBinding",
+                "metadata": {"name": "nvidia-dcgm-exporter-read-resourceslices"},
+                "roleRef": {
+                    "apiGroup": "rbac.authorization.k8s.io",
+                    "kind": "ClusterRole",
+                    "name": "nvidia-dcgm-exporter-read-resourceslices",
+                },
+                "subjects": [{"kind": "ServiceAccount", "name": "nvidia-dcgm-exporter", "namespace": "gpu-operator"}],
+            }
+        ],
     ),
     Chart(
         key="k8s-ephemeral-storage-metrics",

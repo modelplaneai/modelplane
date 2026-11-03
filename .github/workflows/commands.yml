@@ -36,3 +36,51 @@ jobs:
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         github_workspace: ${{ github.workspace }}
+
+  # Pins the PR's head commit when the comment arrives, so a push after a
+  # maintainer asks for a review of someone else's PR isn't what gets reviewed.
+  review-command:
+    permissions:
+      pull-requests: write
+    runs-on: ubuntu-24.04
+    # Only a new comment. The slash command action checks the commenter's
+    # permission on created and edited comments, and lets a deleted one through
+    # unchecked.
+    if: >-
+      vars.REVIEW_APP_ID != '' &&
+      github.event.action == 'created' &&
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/review')
+    outputs:
+      sha: ${{ steps.head.outputs.sha }}
+    steps:
+    - name: Extract Command
+      uses: xt0rted/slash-command-action@bf51f8f5f4ea3d58abc7eca58f77104182b23e88 # v2
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        command: review
+        reaction: "true"
+        reaction-type: "eyes"
+        allow-edits: "false"
+        permission-level: write
+
+    - name: Find the PR's head commit
+      id: head
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PR: ${{ github.event.issue.number }}
+      run: |
+        sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+  review:
+    needs: review-command
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    uses: ./.github/workflows/review.yml
+    with:
+      pr: ${{ github.event.issue.number }}
+      sha: ${{ needs.review-command.outputs.sha }}
+    secrets: inherit

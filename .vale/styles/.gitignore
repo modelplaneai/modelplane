@@ -1,0 +1,6 @@
+# Packages vale sync downloads. Committed styles live under Modelplane/ and
+# config/ only.
+/*
+!/Modelplane/
+!/config/
+!/.gitignore

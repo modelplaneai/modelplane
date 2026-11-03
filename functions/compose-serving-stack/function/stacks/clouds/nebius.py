@@ -188,6 +188,11 @@ COMPONENTS: list[Component] = [
             # are allocated through DRA, which the exporter only maps back to
             # pods with this set; the chart adds the RBAC it needs.
             "kubernetesDRA": {"enabled": True},
+            # The pod-label allowlist of MODELPLANE_VALUES in generate.py.
+            "kubernetes": {
+                "enablePodLabels": True,
+                "podLabelAllowlistRegex": [r"^modelplane\.ai/(deployment|replica|role|engine)$"],
+            },
             "tolerations": [
                 {
                     "key": "nvidia.com/gpu",

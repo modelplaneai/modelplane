@@ -125,7 +125,7 @@ def delete_namespace(cluster: kube.Cluster) -> None:
 
 
 @pytest.fixture(scope="session")
-def routed(control_plane: kube.Cluster, workload: kube.Cluster) -> gateway.Serving:
+def routed(control_plane: kube.Cluster) -> gateway.Serving:
     """Wait for the InferenceGateway to route ModelService ml-team/mock.
 
     Bring-up returns once Modelplane is installed and the manifests are applied,
@@ -133,10 +133,11 @@ def routed(control_plane: kube.Cluster, workload: kube.Cluster) -> gateway.Servi
     that's already up, each wait returns at once.
     """
 
-    # RoutingReady means the route is composed and applied on every gateway
-    # serving the ModelService. Its status.model and the gateway's endpoints
-    # both publish before that, without a replica, so waiting on either would
-    # start sending requests while the engine is still rolling out.
+    # RoutingReady means the route is accepted on every gateway serving the
+    # ModelService, and every proxy pod of those gateways runs AI Gateway's
+    # ext-proc. Its status.model and the gateway's endpoints both publish
+    # before that, without a replica, so waiting on either would start sending
+    # requests while the engine is still rolling out.
     def routing_ready() -> msv1alpha1.ModelService:
         obj = control_plane.modelplane("modelservices", "mock", "ml-team")
         assert obj is not None, "ModelService ml-team/mock doesn't exist"
@@ -150,27 +151,6 @@ def routed(control_plane: kube.Cluster, workload: kube.Cluster) -> gateway.Servi
     ms = wait.until(routing_ready, timeout=20 * 60, what="ModelService ml-team/mock to route", retry=kube.RETRY)
     assert ms.status is not None
     assert ms.status.model, "ModelService ml-team/mock is RoutingReady but publishes no model name"
-
-    # AI Gateway rolls the gateway's proxy pods once the first route reaches
-    # it, to stamp them with the hash of its sidecar's config, so a fresh
-    # gateway is still replacing its pods when the route goes ready. Requests
-    # can fail during that rollout, which starts only once AI Gateway has seen
-    # the route. So wait for the stamp, then for the rollout to finish.
-    def proxies_rolled_out() -> None:
-        deployments = workload.apps.list_namespaced_deployment(
-            gateway.PROXY_NAMESPACE, label_selector=gateway.PROXY_SELECTOR, _request_timeout=kube.TIMEOUT_SECONDS
-        ).items
-        assert deployments, "the InferenceGateway has no proxy Deployment"
-        for d in deployments:
-            annotations = d.spec.template.metadata.annotations or {}
-            assert "aigateway.envoyproxy.io/extproc-config-hash" in annotations, (
-                f"AI Gateway hasn't stamped Deployment {d.metadata.name}'s pods"
-            )
-            kube.rolled_out(d)
-
-    wait.until(
-        proxies_rolled_out, timeout=5 * 60, what="the InferenceGateway's proxy pods to roll out", retry=kube.RETRY
-    )
 
     def endpoints_published() -> igv1alpha1.Endpoints:
         obj = control_plane.modelplane("inferencegateways", "local", None)
