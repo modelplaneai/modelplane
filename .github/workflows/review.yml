@@ -4,11 +4,15 @@ name: Review
 # ready for review. A maintainer can review any other PR, or re-review one after
 # new pushes, by commenting /review (see commands.yml).
 #
-# pull_request_target runs with secrets even for PRs from forks, which every PR
-# is. So the agent runs the PR's code in a Firecracker microVM that holds no
-# credential that can do harm: a read-only GitHub token, and no model API key.
-# A proxy on the runner adds the key to the agent's model requests. The VM writes its review to a disk as
-# a tar, and a separate job with no model in it validates and posts the review.
+# pull_request_target runs this workflow from the default branch, with secrets,
+# even for PRs from forks, which every PR is. That's safe only because nothing
+# on the runner runs the PR's code. The review job checks it out only to copy it
+# into a Firecracker microVM, where the agent runs it. The VM holds no
+# credential that can do harm: a read-only GitHub token, and no model API key. A
+# proxy on the runner adds the key to the agent's model requests. The VM writes
+# its review to a disk as a tar, and a separate job with no model in it
+# validates and posts the review. Never add a step that runs anything from the
+# PR outside the VM.
 on:
   pull_request_target:
     types: [opened, ready_for_review]
@@ -110,6 +114,8 @@ jobs:
           path: reviewer
           persist-credentials: false
 
+      # checkout refuses a fork's code under pull_request_target unless we opt
+      # in. The runner never runs this code. Only the VM does.
       - name: Checkout the PR
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -117,6 +123,7 @@ jobs:
           path: pr
           fetch-depth: 0
           persist-credentials: false
+          allow-unsafe-pr-checkout: true
 
       # Everything opencode reads as config or instructions comes from main, as
       # do the Vale config the agent lints its review with, and CONTRIBUTING.md,
