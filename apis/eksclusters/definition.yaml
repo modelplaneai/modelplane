@@ -196,8 +196,8 @@ spec:
                       type: object
                       description: >-
                         Capacity Reservation backing this node group. When set,
-                        the node group's launch template launches instances
-                        only into the reservation. A Capacity Block
+                        Modelplane composes a launch template that launches
+                        instances only into the reservation. A Capacity Block
                         node group also uses the CAPACITY_BLOCK capacity type.
                         The node group's zones must match the reservation's
                         Availability Zone, and nodeCount must not exceed the

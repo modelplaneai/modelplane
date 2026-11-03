@@ -100,7 +100,7 @@ class Zone(RootModel[constr(min_length=1, max_length=63)]):
 class NodePool(BaseModel):
     capacityReservation: CapacityReservation | None = None
     """
-    Capacity Reservation backing this node group. When set, the node group's launch template launches instances only into the reservation. A Capacity Block node group also uses the CAPACITY_BLOCK capacity type. The node group's zones must match the reservation's Availability Zone, and nodeCount must not exceed the reserved instance count. Omit for on-demand node groups.
+    Capacity Reservation backing this node group. When set, Modelplane composes a launch template that launches instances only into the reservation. A Capacity Block node group also uses the CAPACITY_BLOCK capacity type. The node group's zones must match the reservation's Availability Zone, and nodeCount must not exceed the reserved instance count. Omit for on-demand node groups.
     """
     diskSizeGb: conint(ge=10, le=65536) | None = 100
     """
