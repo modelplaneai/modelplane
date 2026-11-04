@@ -107,6 +107,7 @@ class LLMDBackend:
                 c["readinessProbe"] = base.readiness_probe(base.engine_http_port(engine_container))
             elif engine_container.ports:
                 c["ports"] = base.declared_ports(engine_container)
+            c.update(base.engine_extra_probes(engine_container))
             return c
 
         def pod_spec(member: v1alpha1.Member, c: dict) -> dict:

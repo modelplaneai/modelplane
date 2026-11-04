@@ -583,6 +583,107 @@ spec:
                                             failureThreshold:
                                               type: integer
                                               minimum: 1
+                                        livenessProbe:
+                                          type: object
+                                          description: >-
+                                            How Kubernetes checks that a container is still alive. On the
+                                            engine container this restarts an engine whose process stays up
+                                            while it has hung, such as a TP worker stalled in a collective.
+                                            Pair it with a startupProbe, which holds it off while a large
+                                            model loads.
+                                          x-kubernetes-validations:
+                                          - rule: "[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1"
+                                            message: "livenessProbe sets exactly one of httpGet, tcpSocket and grpc"
+                                          properties:
+                                            httpGet:
+                                              type: object
+                                              required: [port]
+                                              properties:
+                                                path:
+                                                  type: string
+                                                port:
+                                                  anyOf: [{type: integer}, {type: string}]
+                                                  x-kubernetes-int-or-string: true
+                                            tcpSocket:
+                                              type: object
+                                              required: [port]
+                                              properties:
+                                                port:
+                                                  anyOf: [{type: integer}, {type: string}]
+                                                  x-kubernetes-int-or-string: true
+                                            grpc:
+                                              type: object
+                                              required: [port]
+                                              properties:
+                                                port:
+                                                  type: integer
+                                                service:
+                                                  type: string
+                                            initialDelaySeconds:
+                                              type: integer
+                                              minimum: 0
+                                            periodSeconds:
+                                              type: integer
+                                              minimum: 1
+                                            timeoutSeconds:
+                                              type: integer
+                                              minimum: 1
+                                            successThreshold:
+                                              type: integer
+                                              minimum: 1
+                                            failureThreshold:
+                                              type: integer
+                                              minimum: 1
+                                        startupProbe:
+                                          type: object
+                                          description: >-
+                                            How Kubernetes checks that a container has finished starting up.
+                                            Loading a large model takes minutes, so a livenessProbe beside
+                                            this one waits until this first succeeds, and only then restarts
+                                            the container on failure.
+                                          x-kubernetes-validations:
+                                          - rule: "[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1"
+                                            message: "startupProbe sets exactly one of httpGet, tcpSocket and grpc"
+                                          properties:
+                                            httpGet:
+                                              type: object
+                                              required: [port]
+                                              properties:
+                                                path:
+                                                  type: string
+                                                port:
+                                                  anyOf: [{type: integer}, {type: string}]
+                                                  x-kubernetes-int-or-string: true
+                                            tcpSocket:
+                                              type: object
+                                              required: [port]
+                                              properties:
+                                                port:
+                                                  anyOf: [{type: integer}, {type: string}]
+                                                  x-kubernetes-int-or-string: true
+                                            grpc:
+                                              type: object
+                                              required: [port]
+                                              properties:
+                                                port:
+                                                  type: integer
+                                                service:
+                                                  type: string
+                                            initialDelaySeconds:
+                                              type: integer
+                                              minimum: 0
+                                            periodSeconds:
+                                              type: integer
+                                              minimum: 1
+                                            timeoutSeconds:
+                                              type: integer
+                                              minimum: 1
+                                            successThreshold:
+                                              type: integer
+                                              minimum: 1
+                                            failureThreshold:
+                                              type: integer
+                                              minimum: 1
                                         ports:
                                           type: array
                                           maxItems: 8

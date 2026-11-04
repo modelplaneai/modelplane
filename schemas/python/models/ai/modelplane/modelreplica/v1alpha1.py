@@ -134,6 +134,28 @@ class ReadinessProbe(BaseModel):
     timeoutSeconds: conint(ge=1) | None = None
 
 
+class LivenessProbe(BaseModel):
+    failureThreshold: conint(ge=1) | None = None
+    grpc: Grpc | None = None
+    httpGet: HttpGet | None = None
+    initialDelaySeconds: conint(ge=0) | None = None
+    periodSeconds: conint(ge=1) | None = None
+    successThreshold: conint(ge=1) | None = None
+    tcpSocket: TcpSocket | None = None
+    timeoutSeconds: conint(ge=1) | None = None
+
+
+class StartupProbe(BaseModel):
+    failureThreshold: conint(ge=1) | None = None
+    grpc: Grpc | None = None
+    httpGet: HttpGet | None = None
+    initialDelaySeconds: conint(ge=0) | None = None
+    periodSeconds: conint(ge=1) | None = None
+    successThreshold: conint(ge=1) | None = None
+    tcpSocket: TcpSocket | None = None
+    timeoutSeconds: conint(ge=1) | None = None
+
+
 class Resources(BaseModel):
     limits: dict[str, int | str] | None = Field(None, max_length=3)
     requests: dict[str, int | str] | None = Field(None, max_length=3)
@@ -154,6 +176,10 @@ class Container(BaseModel):
     name: constr(
         pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
     )
+    livenessProbe: LivenessProbe | None = None
+    """
+    How Kubernetes checks that a container is still alive. On the engine container this restarts an engine whose process stays up while it has hung, such as a TP worker stalled in a collective. Pair it with a startupProbe, which holds it off while a large model loads.
+    """
     ports: list[Port] | None = Field(None, max_length=8)
     readinessProbe: ReadinessProbe | None = None
     """
@@ -162,6 +188,10 @@ class Container(BaseModel):
     resources: Resources | None = None
     """
     CPU and memory requests and limits. On the engine container, Modelplane adds the member's device claim beside them.
+    """
+    startupProbe: StartupProbe | None = None
+    """
+    How Kubernetes checks that a container has finished starting up. Loading a large model takes minutes, so a livenessProbe beside this one waits until this first succeeds, and only then restarts the container on failure.
     """
     volumeMounts: list[VolumeMount] | None = Field(None, max_length=16)
 

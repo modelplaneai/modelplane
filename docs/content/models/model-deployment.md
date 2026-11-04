@@ -234,6 +234,7 @@ spec:
 | A volume | `name` and one source: `emptyDir`, `persistentVolumeClaim`, `ephemeral`, `configMap`, `secret`, `projected`, `downwardAPI`, or `csi`. Modelplane passes the source's fields through, and the workload cluster validates them. |
 | A volume mount | `name`, `mountPath`, `subPath`, and `readOnly`. |
 | An init container | `name`, `image`, `command`, `args`, `env`, `resources`, and `volumeMounts`. Modelplane adds nothing to it. |
+| A container probe | `livenessProbe` or `startupProbe`, each with one of `httpGet`, `tcpSocket`, or `grpc` plus timing fields. Modelplane adds the readiness probe itself, but a liveness probe restarts a hung engine and a startup probe holds that liveness probe off while the model loads. |
 
 The deployment doesn't keep other fields, such as a mount's `mountPropagation`
 or an init container's `securityContext`.

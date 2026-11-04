@@ -6065,6 +6065,473 @@ BUILD_CASES = [
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
         },
     ),
+    # The engine container's liveness and startup probes pass through
+    # untouched on every backend, beside the readiness probe Modelplane
+    # adds itself.
+    BuildCase(
+        name="StandaloneEngineProbes",
+        reason="A Standalone engine's liveness and startup probes pass through beside the readiness probe.",
+        backend=native.NativeBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=1,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="lmsysorg/sglang:latest",
+                                            args=["--model=Qwen/Qwen3-8B"],
+                                            livenessProbe=v1alpha1.LivenessProbe(
+                                                httpGet=v1alpha1.HttpGet(path="/health", port=8000),
+                                                periodSeconds=10,
+                                            ),
+                                            startupProbe=v1alpha1.StartupProbe(
+                                                httpGet=v1alpha1.HttpGet(path="/health", port=8000),
+                                                periodSeconds=30,
+                                                failureThreshold=60,
+                                            ),
+                                        )
+                                    ]
+                                )
+                            ),
+                        )
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": _deployment(
+                name="r-main-bb4e3",
+                claim_template_name="r-main-standalone-devices-f456f",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "main",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "r",
+                        "modelplane.ai/workload": "r-main-bb4e3",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "lmsysorg/sglang:latest",
+                        "args": ["--model=Qwen/Qwen3-8B"],
+                        "ports": [{"name": "http", "containerPort": 8000}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "livenessProbe": {"httpGet": {"path": "/health", "port": 8000}, "periodSeconds": 10},
+                        "startupProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "periodSeconds": 30,
+                            "failureThreshold": 60,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    }
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+        },
+    ),
+    BuildCase(
+        name="LLMDEngineProbes",
+        reason="A Leader/Worker engine on llm-d passes its liveness and startup probes through on both pods.",
+        backend=llmd.LLMDBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="lmsysorg/sglang:latest",
+                                            livenessProbe=v1alpha1.LivenessProbe(
+                                                httpGet=v1alpha1.HttpGet(path="/health", port=8000)
+                                            ),
+                                            startupProbe=v1alpha1.StartupProbe(
+                                                httpGet=v1alpha1.HttpGet(path="/health", port=8000),
+                                                periodSeconds=30,
+                                            ),
+                                        )
+                                    ]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="lmsysorg/sglang:latest",
+                                            livenessProbe=v1alpha1.LivenessProbe(
+                                                tcpSocket=v1alpha1.TcpSocket(port=8000)
+                                            ),
+                                        )
+                                    ]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": _leader_worker_set(
+                name="r-main-bb4e3",
+                serving="r",
+                leader_claim_template_name="r-main-leader-devices-f58c6",
+                worker_claim_template_name="r-main-worker-devices-99b8a",
+                replicas=1,
+                size=2,
+                leader_containers=[
+                    {
+                        "name": "engine",
+                        "image": "lmsysorg/sglang:latest",
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "resources": {"claims": [{"name": "devices"}]},
+                        "env": [
+                            {"name": "MODELPLANE_LEADER_ADDRESS", "value": "$(LWS_LEADER_ADDRESS)"},
+                            {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                        ],
+                        "ports": [{"name": "http", "containerPort": 8000}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "livenessProbe": {"httpGet": {"path": "/health", "port": 8000}},
+                        "startupProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "periodSeconds": 30,
+                        },
+                    }
+                ],
+                leader_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                worker_containers=[
+                    {
+                        "name": "engine",
+                        "image": "lmsysorg/sglang:latest",
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "resources": {"claims": [{"name": "devices"}]},
+                        "env": [
+                            {"name": "MODELPLANE_LEADER_ADDRESS", "value": "$(LWS_LEADER_ADDRESS)"},
+                            {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                        ],
+                        "livenessProbe": {"tcpSocket": {"port": 8000}},
+                    }
+                ],
+                worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            ),
+            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
+            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+        },
+    ),
+    BuildCase(
+        name="GroveEngineProbes",
+        reason="A Grove leader's liveness and startup probes pass through beside its readiness probe, and a worker's liveness probe does too.",
+        backend=grove.GroveBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="lmsysorg/sglang:latest",
+                                            ports=[v1alpha1.Port(name="http", containerPort=8001)],
+                                            livenessProbe=v1alpha1.LivenessProbe(
+                                                httpGet=v1alpha1.HttpGet(path="/health", port=8001),
+                                                periodSeconds=10,
+                                            ),
+                                            startupProbe=v1alpha1.StartupProbe(
+                                                httpGet=v1alpha1.HttpGet(path="/health", port=8001),
+                                                periodSeconds=30,
+                                            ),
+                                        )
+                                    ]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="lmsysorg/sglang:latest",
+                                            livenessProbe=v1alpha1.LivenessProbe(
+                                                tcpSocket=v1alpha1.TcpSocket(port=5557)
+                                            ),
+                                        )
+                                    ]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Dynamo",
+        want={
+            "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
+            "model-serving-main": _pod_clique_set(
+                name="r-main-bb4e3",
+                cliques=[
+                    {
+                        "name": "leader",
+                        "labels": {
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Leader",
+                            "modelplane.ai/serving": "r",
+                            "kai.scheduler/queue": "modelplane",
+                            "modelplane.ai/clique-role": "leader",
+                        },
+                        "spec": {
+                            "roleName": "leader",
+                            "replicas": 1,
+                            "minAvailable": 1,
+                            "podSpec": {
+                                "containers": [
+                                    {
+                                        "name": "engine",
+                                        "image": "lmsysorg/sglang:latest",
+                                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                                        "resources": {"claims": [{"name": "devices"}]},
+                                        "env": [
+                                            {
+                                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                                "value": "$(GROVE_PCSG_NAME)-$(GROVE_PCSG_INDEX)-leader-0.$(GROVE_HEADLESS_SERVICE)",
+                                            }
+                                        ],
+                                        "ports": [{"name": "http", "containerPort": 8001}],
+                                        "readinessProbe": {
+                                            "httpGet": {"path": "/health", "port": 8001},
+                                            "initialDelaySeconds": 30,
+                                            "periodSeconds": 10,
+                                            "timeoutSeconds": 5,
+                                        },
+                                        "livenessProbe": {
+                                            "httpGet": {"path": "/health", "port": 8001},
+                                            "periodSeconds": 10,
+                                        },
+                                        "startupProbe": {
+                                            "httpGet": {"path": "/health", "port": 8001},
+                                            "periodSeconds": 30,
+                                        },
+                                    }
+                                ],
+                                "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                                "schedulerName": "kai-scheduler",
+                                "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                "resourceClaims": [
+                                    {
+                                        "name": "devices",
+                                        "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                    }
+                                ],
+                                "tolerations": [
+                                    {
+                                        "key": "nvidia.com/gpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    },
+                                    {
+                                        "key": "amd.com/gpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    },
+                                    {
+                                        "key": "modelplane.ai/cpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                    {
+                        "name": "worker",
+                        "labels": {
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Worker",
+                            "kai.scheduler/queue": "modelplane",
+                        },
+                        "spec": {
+                            "roleName": "worker",
+                            "replicas": 1,
+                            "minAvailable": 1,
+                            "podSpec": {
+                                "containers": [
+                                    {
+                                        "name": "engine",
+                                        "image": "lmsysorg/sglang:latest",
+                                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                                        "resources": {"claims": [{"name": "devices"}]},
+                                        "env": [
+                                            {
+                                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                                "value": "$(GROVE_PCSG_NAME)-$(GROVE_PCSG_INDEX)-leader-0.$(GROVE_HEADLESS_SERVICE)",
+                                            }
+                                        ],
+                                        "livenessProbe": {"tcpSocket": {"port": 5557}},
+                                    }
+                                ],
+                                "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                                "schedulerName": "kai-scheduler",
+                                "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                "resourceClaims": [
+                                    {
+                                        "name": "devices",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                    }
+                                ],
+                                "tolerations": [
+                                    {
+                                        "key": "nvidia.com/gpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    },
+                                    {
+                                        "key": "amd.com/gpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    },
+                                    {
+                                        "key": "modelplane.ai/cpu",
+                                        "operator": "Exists",
+                                        "effect": "NoSchedule",
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                ],
+            ),
+            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
+            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+        },
+    ),
 ]
 
 

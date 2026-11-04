@@ -77,6 +77,7 @@ class NativeBackend:
             "ports": base.engine_ports(engine_container),
             "volumeMounts": base.engine_volume_mounts(engine_container, cache_volume_mounts),
             "readinessProbe": base.readiness_probe(base.engine_http_port(engine_container)),
+            **base.engine_extra_probes(engine_container),
         }
         # GPUs bind via DRA: the container references the pod-level claim
         # backed by the member's ResourceClaimTemplate. A Standalone member

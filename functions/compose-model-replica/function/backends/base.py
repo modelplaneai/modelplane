@@ -733,6 +733,24 @@ def readiness_probe(port: int) -> dict:
     }
 
 
+def engine_extra_probes(container: v1alpha1.Container) -> dict[str, dict]:
+    """The engine container's liveness and startup probes, as the user wrote them.
+
+    Both pass through untouched, on every engine pod - including a worker, whose
+    hang a liveness probe should restart too. Modelplane adds the readiness
+    probe itself (the engine can't set one), so these two are the only probes
+    the user needs: a liveness probe restarts an engine whose process stays up
+    while it has hung, and a startup probe holds that liveness probe off while a
+    large model loads.
+    """
+    probes = {}
+    if container.livenessProbe is not None:
+        probes["livenessProbe"] = container.livenessProbe.model_dump(exclude_none=True)
+    if container.startupProbe is not None:
+        probes["startupProbe"] = container.startupProbe.model_dump(exclude_none=True)
+    return probes
+
+
 def engine_member(engine: v1alpha1.Engine, role: str) -> v1alpha1.Member | None:
     """The engine's member with this role, or None.
 
