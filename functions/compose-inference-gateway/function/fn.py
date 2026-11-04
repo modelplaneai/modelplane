@@ -1023,10 +1023,16 @@ class Composer:
 
         Each key in a Secret is one caller: the entry's name is the identity,
         which the policy resolves and forwards as a header, and the value is the
-        key, which it strips so it travels no further. A caller sends its key in
+        key, which it strips so it travels no further. A caller's key travels in
         Authorization, as "Bearer <key>" the way an OpenAI client does, or in
         x-api-key the way an Anthropic client does. The filter tries them in
         that order and strips both.
+
+        spec.auth.apiKey.header moves the key to a header of the caller's
+        choosing, so a caller can carry both a Modelplane key and its own
+        provider credential, such as a Claude Code session forwarding its
+        claude.ai login in Authorization. Only that header is read and stripped;
+        Authorization and x-api-key pass through to backends.
 
         Composed only when the XR asks for auth. Without it the gateway
         authenticates nobody, which is a deliberate shape for running behind
@@ -1044,11 +1050,23 @@ class Composer:
         target = {"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": _GATEWAY_NAME}
         if self.caller_secrets:
             refs = [{"name": f"callers-{s.get('metadata', {}).get('name', '')}"} for s in self.caller_secrets]
+            # The headers the caller's key is read from, and stripped. The
+            # default two leave no caller credential on a request, which is
+            # what a gateway authenticating callers to Modelplane's own
+            # backends owes them. A header set on the XR moves the key, so
+            # the caller's Authorization and x-api-key stay on the request
+            # for a backend the caller authenticates to itself, such as
+            # api.anthropic.com on a Claude subscription.
+            headers = ["Authorization", "x-api-key"]
+            auth = self.xr.spec.auth
+            api_key = auth.apiKey if auth else None
+            if api_key and api_key.header:
+                headers = [api_key.header]
             spec: dict = {
                 "targetRefs": [target],
                 "apiKeyAuth": {
                     "credentialRefs": refs,
-                    "extractFrom": [{"headers": ["Authorization", "x-api-key"]}],
+                    "extractFrom": [{"headers": headers}],
                     "forwardClientIDHeader": _CALLER_HEADER,
                     "sanitize": True,
                 },

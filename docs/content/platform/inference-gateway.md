@@ -45,6 +45,15 @@ OpenAI clients do, or in `x-api-key`, as Anthropic clients do. The gateway
 stamps the identity onto every request and usage record, and never forwards
 the caller's key to a model.
 
+Set `spec.auth.apiKey.header` to read the key from a header of your choosing
+instead, such as `x-modelplane-key`. The gateway then reads and strips only
+that header, and the caller's `Authorization` and `x-api-key` pass through to
+every backend. That lets a caller carry a credential of its own to a backend
+that asks for one, at the cost of every backend seeing it: a caller's own
+credentials now reach every backend this gateway serves, including
+Modelplane's. A backend with a credential set overwrites the caller's headers
+with its own, so only endpoints without one receive what the caller sent.
+
 The gateway is cluster-scoped, so it selects these Secrets from `modelplane-system`
 on the control plane. Label each to match the `secretSelector`, with one entry
 per caller:
