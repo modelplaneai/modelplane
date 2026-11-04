@@ -118,20 +118,6 @@ class EnvItem(BaseModel):
     valueFrom: ValueFrom | None = None
 
 
-class Port(BaseModel):
-    containerPort: conint(ge=1, le=65535)
-    """
-    Port number the container listens on.
-    """
-    name: (
-        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
-        | None
-    ) = None
-    """
-    Port name. The engine container's port named "http" is where Modelplane probes the engine and scrapes its metrics.
-    """
-
-
 class Grpc(BaseModel):
     port: int
     service: str | None = None
@@ -146,17 +132,6 @@ class TcpSocket(BaseModel):
     port: int | str
 
 
-class ReadinessProbe(BaseModel):
-    failureThreshold: conint(ge=1) | None = None
-    grpc: Grpc | None = None
-    httpGet: HttpGet | None = None
-    initialDelaySeconds: conint(ge=0) | None = None
-    periodSeconds: conint(ge=1) | None = None
-    successThreshold: conint(ge=1) | None = None
-    tcpSocket: TcpSocket | None = None
-    timeoutSeconds: conint(ge=1) | None = None
-
-
 class LivenessProbe(BaseModel):
     failureThreshold: conint(ge=1) | None = None
     grpc: Grpc | None = None
@@ -168,7 +143,21 @@ class LivenessProbe(BaseModel):
     timeoutSeconds: conint(ge=1) | None = None
 
 
-class StartupProbe(BaseModel):
+class Port(BaseModel):
+    containerPort: conint(ge=1, le=65535)
+    """
+    Port number the container listens on.
+    """
+    name: (
+        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
+        | None
+    ) = None
+    """
+    Port name. The engine container's port named "http" is where Modelplane probes the engine and scrapes its metrics.
+    """
+
+
+class ReadinessProbe(BaseModel):
     failureThreshold: conint(ge=1) | None = None
     grpc: Grpc | None = None
     httpGet: HttpGet | None = None
@@ -182,6 +171,17 @@ class StartupProbe(BaseModel):
 class Resources(BaseModel):
     limits: dict[str, int | str] | None = Field(None, max_length=3)
     requests: dict[str, int | str] | None = Field(None, max_length=3)
+
+
+class StartupProbe(BaseModel):
+    failureThreshold: conint(ge=1) | None = None
+    grpc: Grpc | None = None
+    httpGet: HttpGet | None = None
+    initialDelaySeconds: conint(ge=0) | None = None
+    periodSeconds: conint(ge=1) | None = None
+    successThreshold: conint(ge=1) | None = None
+    tcpSocket: TcpSocket | None = None
+    timeoutSeconds: conint(ge=1) | None = None
 
 
 class VolumeMount(BaseModel):

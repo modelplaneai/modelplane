@@ -101,14 +101,6 @@ class EnvItem(BaseModel):
     valueFrom: ValueFrom | None = None
 
 
-class Port(BaseModel):
-    containerPort: conint(ge=1, le=65535)
-    name: (
-        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
-        | None
-    ) = None
-
-
 class Grpc(BaseModel):
     port: int
     service: str | None = None
@@ -123,17 +115,6 @@ class TcpSocket(BaseModel):
     port: int | str
 
 
-class ReadinessProbe(BaseModel):
-    failureThreshold: conint(ge=1) | None = None
-    grpc: Grpc | None = None
-    httpGet: HttpGet | None = None
-    initialDelaySeconds: conint(ge=0) | None = None
-    periodSeconds: conint(ge=1) | None = None
-    successThreshold: conint(ge=1) | None = None
-    tcpSocket: TcpSocket | None = None
-    timeoutSeconds: conint(ge=1) | None = None
-
-
 class LivenessProbe(BaseModel):
     failureThreshold: conint(ge=1) | None = None
     grpc: Grpc | None = None
@@ -145,7 +126,15 @@ class LivenessProbe(BaseModel):
     timeoutSeconds: conint(ge=1) | None = None
 
 
-class StartupProbe(BaseModel):
+class Port(BaseModel):
+    containerPort: conint(ge=1, le=65535)
+    name: (
+        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
+        | None
+    ) = None
+
+
+class ReadinessProbe(BaseModel):
     failureThreshold: conint(ge=1) | None = None
     grpc: Grpc | None = None
     httpGet: HttpGet | None = None
@@ -161,6 +150,17 @@ class Resources(BaseModel):
     requests: dict[str, int | str] | None = Field(None, max_length=3)
 
 
+class StartupProbe(BaseModel):
+    failureThreshold: conint(ge=1) | None = None
+    grpc: Grpc | None = None
+    httpGet: HttpGet | None = None
+    initialDelaySeconds: conint(ge=0) | None = None
+    periodSeconds: conint(ge=1) | None = None
+    successThreshold: conint(ge=1) | None = None
+    tcpSocket: TcpSocket | None = None
+    timeoutSeconds: conint(ge=1) | None = None
+
+
 class VolumeMount(BaseModel):
     mountPath: constr(min_length=1)
     name: constr(min_length=1, max_length=63)
@@ -173,13 +173,13 @@ class Container(BaseModel):
     command: list[str] | None = None
     env: list[EnvItem] | None = None
     image: constr(min_length=1)
-    name: constr(
-        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
-    )
     livenessProbe: LivenessProbe | None = None
     """
     How Kubernetes checks that a container is still alive. On the engine container this restarts an engine whose process stays up while it has hung, such as a TP worker stalled in a collective. Pair it with a startupProbe, which holds it off while a large model loads.
     """
+    name: constr(
+        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
+    )
     ports: list[Port] | None = Field(None, max_length=8)
     readinessProbe: ReadinessProbe | None = None
     """
