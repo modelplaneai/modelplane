@@ -657,6 +657,7 @@ def _leader_worker_set() -> fnv1.Resource:
                     "forProvider": {
                         "chart": {"name": "lws", "repository": "oci://registry.k8s.io/lws/charts", "version": "v0.8.0"},
                         "namespace": "lws-system",
+                        "values": {"resources": {"requests": {"cpu": "250m"}}},
                     },
                 },
             }
@@ -1162,7 +1163,7 @@ def _nodewright_operator() -> fnv1.Resource:
                                     "env": {"copyDirRoot": "/etc/nodewright", "reapplyOnReboot": "true"},
                                     "resources": {
                                         "limits": {"cpu": "1000m", "memory": "4000Mi"},
-                                        "requests": {"cpu": "1000m", "memory": "2000Mi"},
+                                        "requests": {"cpu": "500m", "memory": "2000Mi"},
                                     },
                                 },
                                 "tolerations": [],

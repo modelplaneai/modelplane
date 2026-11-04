@@ -97,7 +97,7 @@ COMPONENTS: list[Component] = [
                     "env": {"copyDirRoot": "/etc/nodewright", "reapplyOnReboot": "true"},
                     "resources": {
                         "limits": {"cpu": "1000m", "memory": "4000Mi"},
-                        "requests": {"cpu": "1000m", "memory": "2000Mi"},
+                        "requests": {"cpu": "500m", "memory": "2000Mi"},
                     },
                 },
                 "tolerations": [],

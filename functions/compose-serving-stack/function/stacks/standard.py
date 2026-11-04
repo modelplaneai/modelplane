@@ -30,5 +30,8 @@ COMPONENTS: list[Component] = [
         chart="lws",
         repository="oci://registry.k8s.io/lws/charts",
         version="v0.8.0",
+        # The chart requests a whole core for a controller that peaks
+        # around 30m, which leaves no room on a two-node system pool.
+        values={"resources": {"requests": {"cpu": "250m"}}},
     ),
 ]
