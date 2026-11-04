@@ -37,6 +37,7 @@ spec:
             description: VultrClusterSpec defines the desired state of VultrCluster.
             required:
             - region
+            - kubernetesVersion
             - nodePools
             properties:
               region:
@@ -48,13 +49,13 @@ spec:
                 maxLength: 32
               kubernetesVersion:
                 type: string
-                default: "v1.36.2+1"
                 description: >-
                   VKE cluster Kubernetes version. VKE requires an exact
-                  version string including the build suffix; list current
-                  versions with vultr-cli kubernetes versions. Defaults to
-                  a version where Dynamic Resource Allocation (how GPUs
-                  bind to pods) is generally available.
+                  version string including the build suffix and accepts
+                  only the versions it currently offers; list them with
+                  vultr-cli kubernetes versions. Use a version where
+                  Dynamic Resource Allocation (how GPUs bind to pods) is
+                  generally available.
                 minLength: 1
                 maxLength: 16
               credentials:

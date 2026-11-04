@@ -99,8 +99,8 @@ kubectl wait --for=condition=Ready ic --all --timeout=20m
 ## Your model keeps running
 
 Growing the fleet doesn't disturb anything already deployed. `qwen-demo` stays
-on its original cluster and the two new clusters add capacity the moment
-they're `Ready` with no interruption for the ML team. A replica only moves if
+on its original cluster and the new capacity comes online the moment it's
+`Ready` with no interruption for the ML team. A replica only moves if
 its deployment changes in a way that no longer fits where it runs. 
 
 ## Next step

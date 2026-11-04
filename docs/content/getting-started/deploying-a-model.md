@@ -59,8 +59,8 @@ NAME              CLUSTER       SERVING   SYNCED   READY   COMPOSITION          
 qwen-demo-7323a   eks-us-east   True      True     True    modelreplicas.modelplane.ai   12m
 ```
 
-The ML team never named a cluster. The scheduler matched the GPU requirement
-(`>= 20Gi`) against the `InferenceClass` the platform team published and made
+The ML team never named a cluster. The scheduler matched the deployment's GPU
+requirement against the `InferenceClass` the platform team published and made
 the placement. 
 
 ## Expose the model

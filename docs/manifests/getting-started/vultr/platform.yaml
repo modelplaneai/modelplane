@@ -39,7 +39,7 @@ spec:
       region: ewr
       # VKE accepts only the exact versions it currently offers; list them
       # with vultr-cli kubernetes versions.
-      kubernetesVersion: "v1.36.5+2"
+      kubernetesVersion: "v1.36.6+1"
   nodePools:
   - name: gpu-a16
     className: a16-1x
