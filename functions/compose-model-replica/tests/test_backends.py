@@ -262,7 +262,19 @@ def _epp(
     template_metadata: dict = {"labels": labels}
     if annotations is not None:
         template_metadata["annotations"] = annotations
-    pod_spec: dict = {"serviceAccountName": name, "containers": containers}
+    pod_spec: dict = {
+        "serviceAccountName": name,
+        "containers": containers,
+        "topologySpreadConstraints": [
+            {
+                "maxSkew": 1,
+                "topologyKey": "kubernetes.io/hostname",
+                "whenUnsatisfiable": "ScheduleAnyway",
+                "labelSelector": {"matchLabels": {"app": app}},
+                "matchLabelKeys": ["pod-template-hash"],
+            },
+        ],
+    }
     if volumes is not None:
         pod_spec["volumes"] = volumes
     if image_pull_secrets is not None:
@@ -285,7 +297,8 @@ def _epp(
                     "kind": "Deployment",
                     "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
                     "spec": {
-                        "replicas": 1,
+                        "replicas": 2,
+                        "strategy": {"rollingUpdate": {"maxUnavailable": 1}},
                         "selector": {"matchLabels": {"app": app}},
                         "template": {"metadata": template_metadata, "spec": pod_spec},
                     },
@@ -436,6 +449,28 @@ def _epp_service(*, name: str, app: str) -> dict:
                     "spec": {
                         "selector": {"app": app},
                         "ports": [{"name": "grpc-ext-proc", "port": 9002, "targetPort": 9002, "appProtocol": "http2"}],
+                    },
+                }
+            },
+        }
+    }
+
+
+def _epp_disruption_budget(*, name: str, app: str) -> dict:
+    """The Object composing the endpoint picker's PodDisruptionBudget."""
+    return {
+        "spec": {
+            "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+            "readiness": {"policy": "SuccessfulCreate"},
+            "forProvider": {
+                "manifest": {
+                    "apiVersion": "policy/v1",
+                    "kind": "PodDisruptionBudget",
+                    "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
+                    "spec": {
+                        "maxUnavailable": 1,
+                        "selector": {"matchLabels": {"app": app}},
+                        "unhealthyPodEvictionPolicy": "AlwaysAllow",
                     },
                 }
             },
@@ -6286,6 +6321,7 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="r-epp", app="r-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="r-epp", app="r-epp"),
         },
     ),
     ApplyCase(
@@ -6621,6 +6657,7 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="r-epp", app="r-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="r-epp", app="r-epp"),
         },
     ),
     ApplyCase(
@@ -6886,6 +6923,7 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="r-epp", app="r-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="r-epp", app="r-epp"),
         },
     ),
     # The leader clique gets the llm-d role, inference-serving and app labels.
@@ -7401,6 +7439,7 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="r-epp", app="r-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="r-epp", app="r-epp"),
         },
     ),
     # A replica with no serving block is served Unified.
@@ -7571,6 +7610,7 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="r-epp", app="r-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="r-epp", app="r-epp"),
         },
     ),
     ApplyCase(
@@ -7726,6 +7766,7 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="r-epp", app="r-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="r-epp", app="r-epp"),
         },
     ),
     ApplyCase(
@@ -7881,6 +7922,7 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="r-epp", app="r-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="r-epp", app="r-epp"),
         },
     ),
     ApplyCase(
@@ -8094,6 +8136,7 @@ APPLY_CASES = [
                 image_pull_secrets=[{"name": "registry-credentials"}],
             ),
             "epp-service": _epp_service(name="r-epp", app="r-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="r-epp", app="r-epp"),
         },
     ),
     ApplyCase(
@@ -8261,6 +8304,7 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="r-epp", app="r-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="r-epp", app="r-epp"),
         },
     ),
     # A built-in MetricMapping renames the picker's scheduling latency, and
@@ -8431,6 +8475,7 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="r-epp", app="r-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="r-epp", app="r-epp"),
         },
     ),
     ApplyCase(
@@ -8588,6 +8633,7 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="r-epp", app="r-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="r-epp", app="r-epp"),
         },
     ),
     # Unified routing reads the engine args for the KV block size through
@@ -8841,6 +8887,7 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="r-epp", app="r-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="r-epp", app="r-epp"),
         },
     ),
     # A Service must be named by a DNS-1035 label, which has no dots, and a
@@ -9011,6 +9058,7 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="epp-qwen2-5-7b-abcde-epp-da596", app="qwen2.5-7b-abcde-epp"),
+            "epp-disruption-budget": _epp_disruption_budget(name="qwen2.5-7b-abcde-epp", app="qwen2.5-7b-abcde-epp"),
         },
     ),
     # A label value can be at most 63 characters, so a replica name of 60 or
@@ -9177,6 +9225,9 @@ APPLY_CASES = [
                 image_pull_secrets=None,
             ),
             "epp-service": _epp_service(name="epp-" + "a" * 53 + "-2dd65", app="epp-" + "a" * 53 + "-2dd65"),
+            "epp-disruption-budget": _epp_disruption_budget(
+                name="a" * 57 + "-abcde-epp", app="epp-" + "a" * 53 + "-2dd65"
+            ),
         },
     ),
 ]
