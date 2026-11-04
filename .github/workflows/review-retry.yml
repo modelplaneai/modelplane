@@ -3,6 +3,10 @@ name: Review Retry
 # GitHub's x86 runners expose KVM, but don't guarantee it, and the review VM
 # can't start on a runner without it. When a review fails for that reason, re-run
 # its failed jobs, which usually get a different runner. Two retries at most.
+#
+# workflow_run runs from main with secrets, like pull_request_target, even when
+# the review was for a fork's PR. That's safe because this only reads the run's
+# job steps and re-runs it. It never checks out or runs anything from the PR.
 on:
   workflow_run:
     workflows: [Review, Comment Commands]

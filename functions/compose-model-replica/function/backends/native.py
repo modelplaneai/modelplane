@@ -33,6 +33,16 @@ from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
 from function.backends import base
 
+# Stop an old copy before starting its replacement, one copy at a time, as a
+# LeaderWorkerSet's default rollout does. Kubernetes' default surges first: an
+# engine of fewer than four copies starts a new pod and waits for it to be
+# available before it stops an old one. On a pool with no free device the new
+# pod can't schedule until an old pod releases its claim, so the rollout
+# deadlocks, even when the old pod is crash-looping. The cost is that a
+# one-copy engine stops serving while its new pod starts, even where a device
+# is free.
+_ROLLING_UPDATE = {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1}}
+
 
 class NativeBackend:
     def build(
@@ -110,6 +120,7 @@ class NativeBackend:
             "spec": {
                 "replicas": int(engine.copies or 1),
                 "selector": {"matchLabels": selector},
+                "strategy": _ROLLING_UPDATE,
                 "template": {
                     "metadata": base.pod_metadata(member, pod_labels, replica=replica, engine=engine),
                     "spec": pod_spec,
@@ -119,7 +130,7 @@ class NativeBackend:
 
         composed = {
             base.workload_key(engine, base.NATIVE): base.wrap_object(
-                provider_config, deployment, cel_query=base.ALL_COPIES_READY_CEL, watch=True
+                provider_config, deployment, cel_query=base.DEPLOYMENT_ALL_COPIES_READY_CEL, watch=True
             ),
         }
         # Gated like the container's resources above, and for the same reason.

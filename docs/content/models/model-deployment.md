@@ -235,8 +235,10 @@ independently:
   failure drops one copy instead of taking the whole replica out of service,
   and the replica keeps [serving](#reading-a-deployments-status) while at least
   one copy of each engine is ready. The replica reports `Ready` only when every
-  copy is ready. In disaggregated serving, copies also set the
-  prefill-to-decode ratio.
+  copy is ready. A change to an engine replaces its copies one at a time,
+  stopping each old copy before its replacement starts, so an engine with one
+  copy stops serving until the new copy is ready. In disaggregated serving,
+  copies also set the prefill-to-decode ratio.
 - **`worker.nodes`** sets how many nodes one gang spans: a `Leader` plus that
   many `Worker` pods. It's how big one multi-node engine is.
 
@@ -261,10 +263,10 @@ whether the model answers requests.
 | `ReplicasReady` | Every replica in `spec.replicas` is at full capacity. |
 | `Ready` | `ReplicasReady` is True and the referenced `ModelCache` exists. |
 
-A deployment with `ReplicasServing=True` and `Ready=False` is degraded. It
-serves from the replicas and copies that are up. `kubectl get` shows
-`ReplicasServing` in the `SERVING` column, and a replica's `ModelServing` in
-its own.
+A deployment with `ReplicasServing=True` and `Ready=False` is degraded, or is
+rolling out an update. It serves from the replicas and copies that are up.
+`kubectl get` shows `ReplicasServing` in the `SERVING` column, and a replica's
+`ModelServing` in its own.
 
 Each `ModelReplica` reports `ModelAccepted`, `ModelServing` and `ModelReady`.
 Each implies the one before it, so the first False one says what the replica is
@@ -274,9 +276,10 @@ waiting on:
 - `ModelServing`: at least one copy of every engine is ready, and the endpoint
   picker and routes in front of them are in place. The deployment routes to a
   replica only while it's serving.
-- `ModelReady`: every copy is ready. Its message counts the ready copies, and
-  its reason is `Degraded` while the replica serves below full capacity. The
-  replica's `Ready` mirrors it.
+- `ModelReady`: every copy is ready and runs the current spec. Its message
+  counts the ready copies. Its reason is `Degraded` while the replica serves
+  below full capacity, and `RollingOut` while an update replaces copies that
+  still serve. The replica's `Ready` mirrors it.
 
 To see which replica a deployment is waiting on:
 

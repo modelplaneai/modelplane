@@ -237,8 +237,13 @@ def _deployment(*, ready: fnv1.Ready, name: str, claim_template_name: str, label
                     "readiness": {
                         "policy": "DeriveFromCelQuery",
                         "celQuery": (
-                            'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
+                            "has(object.status) && has(object.status.conditions) && "
+                            'object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
                             " && has(object.status.readyReplicas) && object.status.readyReplicas >= object.spec.replicas"
+                            " && has(object.status.observedGeneration)"
+                            " && object.status.observedGeneration == object.metadata.generation"
+                            " && has(object.status.updatedReplicas) && object.status.updatedReplicas >= object.spec.replicas"
+                            " && has(object.status.replicas) && object.status.replicas == object.status.updatedReplicas"
                         ),
                     },
                     "watch": True,
@@ -250,6 +255,10 @@ def _deployment(*, ready: fnv1.Ready, name: str, claim_template_name: str, label
                             "spec": {
                                 "replicas": copies,
                                 "selector": {"matchLabels": {"modelplane.ai/workload": name}},
+                                "strategy": {
+                                    "type": "RollingUpdate",
+                                    "rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1},
+                                },
                                 "template": {
                                     "metadata": {"labels": labels},
                                     "spec": {
@@ -457,7 +466,8 @@ def _epp(*, ready: fnv1.Ready, config_checksum: str) -> fnv1.Resource:
                     "readiness": {
                         "policy": "DeriveFromCelQuery",
                         "celQuery": (
-                            'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
+                            "has(object.status) && has(object.status.conditions) && "
+                            'object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
                             ' && !object.status.conditions.exists(c, c.type == "Progressing" && c.status == "False")'
                         ),
                     },
