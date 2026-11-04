@@ -259,6 +259,13 @@ def _nodepool_gpu(*, cred_kind: str, cred_name: str, reservation_affinity: dict 
             "modelplane.ai/pool": "gpu-pool",
             "cloud.google.com/gke-nvidia-gpu-dra-driver": "true",
         },
+        "taint": [
+            {
+                "key": "nvidia.com/gpu",
+                "value": "present",
+                "effect": "NO_SCHEDULE",
+            },
+        ],
     }
     if reservation_affinity is not None:
         node_config["reservationAffinity"] = reservation_affinity
