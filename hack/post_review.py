@@ -275,7 +275,8 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        with tarfile.open(args.output) as output:
+        # Uncompressed only, so the agent can't hand over a decompression bomb.
+        with tarfile.open(args.output, "r:") as output:
             review = parse(output)
     except (ValueError, tarfile.TarError, UnicodeDecodeError) as e:
         sys.stderr.write(f"invalid review: {e}\n")
@@ -293,6 +294,9 @@ def main() -> int:
             since = subprocess.run(
                 [
                     "git",
+                    # A PR controls its file names, so git mustn't read one as
+                    # a pattern.
+                    "--literal-pathspecs",
                     f"--git-dir={args.git_dir}",
                     "diff",
                     "-U0",

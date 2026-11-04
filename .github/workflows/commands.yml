@@ -83,4 +83,6 @@ jobs:
     with:
       pr: ${{ github.event.issue.number }}
       sha: ${{ needs.review-command.outputs.sha }}
-    secrets: inherit
+    secrets:
+      REVIEW_APP_KEY: ${{ secrets.REVIEW_APP_KEY }}
+      REVIEW_MODEL_API_KEY: ${{ secrets.REVIEW_MODEL_API_KEY }}

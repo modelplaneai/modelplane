@@ -211,6 +211,9 @@
                   rm /work/gh-token
                   cd /work/pr
                   git config --global --add safe.directory /work/pr
+                  # Only the agent writes the review. A PR can commit files
+                  # under _output, so clear it first.
+                  rm -rf _output/review
                   mkdir -p _output/review
                   vale sync
                   # The console, which the workflow's log shows, gets opencode's

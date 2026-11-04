@@ -28,6 +28,11 @@ on:
           commit when its job starts.
         type: string
         required: true
+    secrets:
+      REVIEW_APP_KEY:
+        required: true
+      REVIEW_MODEL_API_KEY:
+        required: true
 
 permissions: {}
 
@@ -86,12 +91,32 @@ jobs:
             echo "member=false" >> "$GITHUB_OUTPUT"
           fi
 
+  # The re-review marker counts only in the reviewer's own reviews. Other bots,
+  # such as Copilot, write model output into reviews too. The reviewer's login
+  # comes from its App. This job mints a token only to learn it, and never uses
+  # the token.
+  app:
+    if: vars.REVIEW_APP_ID != ''
+    runs-on: ubuntu-24.04
+    permissions: {}
+    outputs:
+      login: ${{ steps.token.outputs.app-slug }}[bot]
+    steps:
+      - name: Learn the reviewer's login
+        id: token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ vars.REVIEW_APP_ID }}
+          private-key: ${{ secrets.REVIEW_APP_KEY }}
+          permission-metadata: read
+
   review:
     # A /review comment skips the author job, having already checked that the
     # commenter can write.
-    needs: author
+    needs: [author, app]
     if: >-
       !cancelled() &&
+      needs.app.result == 'success' &&
       vars.REVIEW_APP_ID != '' && (
         github.event_name == 'issue_comment' ||
         needs.author.outputs.member == 'true'
@@ -125,11 +150,12 @@ jobs:
           persist-credentials: false
           allow-unsafe-pr-checkout: true
 
-      # Everything opencode reads as config or instructions comes from main, as
-      # do the Vale config the agent lints its review with, and CONTRIBUTING.md,
-      # which the skills defer to. That stops a PR
-      # editing its own review instructions. PR code the agent runs can still
-      # rewrite them mid-review, which the design accepts.
+      # The config and instructions opencode starts with come from main, as do
+      # the Vale config the agent lints its review with, and CONTRIBUTING.md,
+      # which the skills defer to. A PR can still steer its own review, which
+      # the design accepts. opencode loads any AGENTS.md the PR adds beside a
+      # file the agent reads, and PR code the agent runs can rewrite its
+      # instructions mid-review.
       - name: Install the reviewer's config from main
         run: |
           for f in .opencode .agents .claude .vale .vale.ini opencode.json opencode.jsonc AGENTS.md CLAUDE.md CONTRIBUTING.md; do
@@ -141,6 +167,7 @@ jobs:
         id: context
         env:
           GH_TOKEN: ${{ github.token }}
+          REVIEWER: ${{ needs.app.outputs.login }}
         run: |
           mkdir context
           gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
@@ -150,9 +177,9 @@ jobs:
           gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/comments" > context/review-comments.json
           gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" > context/issue-comments.json
 
-          # The last commit a bot review covered, from the marker post_review.py puts
-          # in each review it posts.
-          last=$(jq -rs 'add | map(select(.user.type == "Bot")) | map(.body | capture("<!-- modelplane-review sha=(?<sha>[0-9a-f]{40}) -->").sha) | last // ""' context/reviews.json)
+          # The last commit the reviewer covered, from the marker post_review.py
+          # puts in each review it posts.
+          last=$(jq -rs --arg reviewer "$REVIEWER" 'add | map(select(.user.login == $reviewer)) | map(.body | capture("<!-- modelplane-review sha=(?<sha>[0-9a-f]{40}) -->").sha) | last // ""' context/reviews.json)
           echo "LAST=$last" >> "$GITHUB_ENV"
           echo "last=$last" >> "$GITHUB_OUTPUT"
 
@@ -180,7 +207,7 @@ jobs:
           fi
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v31
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
 
       # The VM reaches the runner only on the proxy's port, and reaches the
       # internet through NAT. Private, link-local and Azure platform addresses
@@ -311,6 +338,7 @@ jobs:
     needs: review
     if: ${{ !cancelled() && needs.review.result == 'success' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions: {}
 
     steps:
