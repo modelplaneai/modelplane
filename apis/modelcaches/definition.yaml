@@ -117,3 +117,61 @@ spec:
                       enum: [Pending, Hydrating, Ready, Failed]
                     message:
                       type: string
+                      description: >-
+                        Why the model isn't readable on this cluster yet,
+                        while phase isn't Ready.
+                    mount:
+                      type: object
+                      description: >-
+                        How an engine pod reads the model on this cluster.
+                        Set only while phase is Ready. A ModelReplica adds
+                        these to each of its engine pods.
+                      properties:
+                        volumes:
+                          type: array
+                          description: >-
+                            Pod volumes, each a subset of a Kubernetes
+                            Volume.
+                          maxItems: 8
+                          items:
+                            type: object
+                            required: [name]
+                            properties:
+                              name:
+                                type: string
+                              persistentVolumeClaim:
+                                type: object
+                                required: [claimName]
+                                properties:
+                                  claimName:
+                                    type: string
+                        volumeMounts:
+                          type: array
+                          description: >-
+                            Container volume mounts, each a subset of a
+                            Kubernetes VolumeMount.
+                          maxItems: 8
+                          items:
+                            type: object
+                            required: [name, mountPath]
+                            properties:
+                              name:
+                                type: string
+                              mountPath:
+                                type: string
+                              readOnly:
+                                type: boolean
+                        env:
+                          type: array
+                          description: >-
+                            Container environment variables. A variable the
+                            engine sets itself takes precedence.
+                          maxItems: 8
+                          items:
+                            type: object
+                            required: [name, value]
+                            properties:
+                              name:
+                                type: string
+                              value:
+                                type: string

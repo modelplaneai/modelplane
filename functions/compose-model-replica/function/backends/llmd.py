@@ -39,6 +39,7 @@ staged weights.
 from collections.abc import Mapping
 
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
+from models.ai.modelplane.modelcache import v1alpha1 as mcv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
@@ -60,6 +61,7 @@ class LLMDBackend:
         # backend. Unused here: this backend is Standard-only, so there's no
         # stack to switch on.
         stack: str,  # noqa: ARG002
+        cache: mcv1alpha1.Mount | None,
     ) -> dict[str, k8sobjv1alpha1.Object]:
         leader = base.engine_member(engine, base.ROLE_LEADER)
         worker = base.engine_member(engine, base.ROLE_WORKER)
@@ -73,7 +75,7 @@ class LLMDBackend:
         # Gang size: the leader plus the worker's nodes (one follower pod each).
         size = 1 + (int(worker.worker.nodes) if worker.worker else 1)
 
-        cache_volumes, cache_volume_mounts = base.cache_mounts(replica)
+        cache_volumes, cache_volume_mounts = base.cache_mounts(cache)
 
         def container(member: v1alpha1.Member, *, serving: bool) -> dict:
             engine_container = base.engine_container(member)
@@ -99,7 +101,7 @@ class LLMDBackend:
             # LWS prepends its own LWS_* vars ahead of all of these in the
             # running pod. cache_env points HuggingFace at the mount so every
             # member's --model=<repo> resolves against the pre-staged snapshot.
-            env = [base.leader_address_env(), base.rank_env(), *base.cache_env(replica)]
+            env = [base.leader_address_env(), base.rank_env(), *base.cache_env(cache)]
             if engine_container.env:
                 env.extend(e.model_dump(exclude_none=True) for e in engine_container.env)
             c["env"] = env

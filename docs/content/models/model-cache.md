@@ -38,6 +38,29 @@ default branch, which finds a cache staged without a `revision` or with
 revision too (`--revision` for vLLM). If the engine uses the default branch
 instead, it finds nothing staged there and downloads the model a second time.
 
+## Waiting for the cache
+
+A replica doesn't start its engines until the cache is ready on its cluster.
+Until then the `ModelReplica` reports `ModelAccepted` as `False` with reason
+`WaitingForCache`, and a message from the cache that says what it's waiting
+for. The `ModelCache` gives the same message for each cluster:
+
+```bash
+kubectl get modelcache qwen -n ml-team -o jsonpath='{.status.clusters}'
+```
+
+The message gives the claim that hasn't bound and the node it's waiting on,
+the repository the hydration Job is downloading (`Downloading <repo> into
+PersistentVolumeClaim <claim>`), or the Job that failed and why. A replica checks
+its cache about once a minute. Its engines start up to about a minute after the
+cache turns `Ready`.
+
+A replica whose engines already run doesn't wait. Until its cache is ready on
+its cluster, the engines keep the cache they mount now, or run without one if
+they mount none. This holds when the cache stops being ready, when someone
+deletes it, and when you add a cache to the deployment or switch it to another
+one. The engines restart onto the new cache once it's ready.
+
 ## Authenticating
 
 A gated or private model needs a credential to fetch. When a cache stages the
