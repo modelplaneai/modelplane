@@ -565,6 +565,7 @@ spec:
                                         maximum: 63
                                   template:
                                     type: object
+                                    required: [spec]
                                     description: >-
                                       Pod template for this member's engine pods. A
                                       curated subset of PodTemplateSpec.

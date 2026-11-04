@@ -220,7 +220,7 @@ class Template(BaseModel):
     """
     Metadata applied to the member's pods. Useful for labels and annotations that control cluster-level features like service mesh injection. Label keys under the modelplane.ai/ prefix are reserved.
     """
-    spec: Spec | None = None
+    spec: Spec
     """
     Pod spec for this member's engine pods.
     """

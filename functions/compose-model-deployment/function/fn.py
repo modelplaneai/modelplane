@@ -104,8 +104,6 @@ def _inject_served_model_name(template: mrv1alpha1.Template, served: str) -> Non
     to. Only the engine answers to the name, so a sidecar beside it doesn't get
     it.
     """
-    if template.spec is None:
-        return
     for container in template.spec.containers:
         if container.name != "engine":
             continue
