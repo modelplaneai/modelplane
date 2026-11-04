@@ -20,6 +20,7 @@ serving resources. Backends return provider-kubernetes Objects; the dispatcher
 """
 
 import hashlib
+import json
 import re
 from collections.abc import Mapping
 from typing import Protocol
@@ -65,7 +66,62 @@ class Backend(Protocol):
 # Backend identifiers.
 NATIVE = "native"
 LLMD = "llmd"
-GROVE = "grove"
+DYNAMO = "dynamo"
+
+
+def dynamo_framework(member: v1alpha1.Member) -> str:
+    """Resolve the runtime backend from the authored launch or a Dynamo image."""
+    container = engine_container(member)
+    launch = " ".join([*(container.command or []), *(container.args or [])])
+    for framework in ("sglang", "trtllm", "vllm"):
+        if f"dynamo.{framework}" in launch or (
+            "/ai-dynamo/" in container.image and f"{framework}-runtime" in container.image
+        ):
+            return framework
+    raise ValueError("Dynamo engines must use a runtime image and launch dynamo.vllm, dynamo.sglang, or dynamo.trtllm")
+
+
+def dynamo_graph_revision(replica: v1alpha1.ModelReplica) -> str:
+    """Hash fields the pinned DGD API cannot update, leaving mutable workload settings out."""
+    engines = []
+    frameworks = set()
+    power_annotation = "dynamo.nvidia.com/gpu-power-limit"
+    for engine in sorted(replica.spec.engines, key=lambda e: e.name):
+        members = []
+        has_power_limit = any(
+            m.template.metadata and power_annotation in (m.template.metadata.annotations or {}) for m in engine.members
+        )
+        for member in sorted(engine.members, key=member_role):
+            try:
+                frameworks.add(dynamo_framework(member))
+            except ValueError:
+                # Invalid requested launches still need a deterministic key for condition derivation.
+                frameworks.add("unsupported")
+            shape = {"role": member_role(member), "nodes": int(member.worker.nodes) if member.worker else 1}
+            if has_power_limit:
+                shape["powerLimit"] = (
+                    (member.template.metadata.annotations or {}).get(power_annotation)
+                    if member.template.metadata
+                    else None
+                )
+                # The operator freezes GPU allocation while a power limit is set.
+                shape["devices"] = [
+                    r.model_dump(exclude_none=True) for r in sorted(member.deviceRequests or [], key=lambda r: r.name)
+                ]
+                shape["resources"] = {
+                    c.name: c.resources.model_dump(exclude_none=True) if c.resources else {}
+                    for c in member.template.spec.containers
+                }
+            members.append(shape)
+        engines.append({"name": engine.name, "type": (engine.phase or "worker").lower(), "members": members})
+    shape = {"frameworks": sorted(frameworks), "engines": engines}
+    return hashlib.sha256(json.dumps(shape, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:10]
+
+
+def dynamo_workload_key(replica: v1alpha1.ModelReplica) -> str:
+    """Changing both the Object key and DGD name makes Crossplane delete the previous graph."""
+    return f"{DYNAMO_WORKLOAD_KEY}-{dynamo_graph_revision(replica)}"
+
 
 # Member roles.
 ROLE_STANDALONE = "Standalone"
@@ -355,8 +411,8 @@ def pod_metadata(
 
 
 # Backend-neutral aliases for the orchestrator's own gang-coordination vars, so
-# a member's command doesn't name LWS or Grove directly. Rank is LWS-only;
-# Grove has no equivalent yet (see grove_leader_address_env).
+# a member's command doesn't name LWS or Grove directly.
+# Dynamo aliases the operator's DYNAMO_LEADER_ADDRESS and DYNAMO_RANK.
 LEADER_ADDRESS_ENV = "MODELPLANE_LEADER_ADDRESS"
 RANK_ENV = "MODELPLANE_RANK"
 _LWS_LEADER_ADDRESS_ENV = "LWS_LEADER_ADDRESS"
@@ -387,35 +443,6 @@ def rank_env() -> dict:
     return {"name": RANK_ENV, "value": f"$({_LWS_WORKER_INDEX_ENV})"}
 
 
-_GROVE_PCSG_NAME_ENV = "GROVE_PCSG_NAME"
-_GROVE_PCSG_INDEX_ENV = "GROVE_PCSG_INDEX"
-_GROVE_HEADLESS_SERVICE_ENV = "GROVE_HEADLESS_SERVICE"
-
-
-def grove_leader_address_env() -> dict:
-    """The MODELPLANE_LEADER_ADDRESS env entry for the Grove backend.
-
-    Concatenating the PCSG name and index reproduces Grove's own PodClique name,
-    and the leader clique holds one pod, so this resolves to the leader of *this
-    gang*. The PCS-scoped vars are identical across gangs and would point every
-    engine.copies at gang 0's leader.
-
-    Needs Grove to inject its vars before template env for the expansion to see
-    them (grove#753, first released in v0.1.0-alpha.12-rc2, which the serving
-    stack pins).
-    """
-    leader_pod = f"$({_GROVE_PCSG_NAME_ENV})-$({_GROVE_PCSG_INDEX_ENV})-{GROVE_LEADER_CLIQUE}-0"
-    address = leader_pod + f".$({_GROVE_HEADLESS_SERVICE_ENV})"
-    return {"name": LEADER_ADDRESS_ENV, "value": address}
-
-
-# Clique names are immutable and must be unique within a PodCliqueSet, so they're
-# fixed rather than derived from the member role. Both cliques sit in one scaling
-# group, so engine.copies scales the leader+worker pair as a unit.
-GROVE_LEADER_CLIQUE = "leader"
-GROVE_WORKER_CLIQUE = "worker"
-GROVE_PCSG = "gang"
-
 # The scheduler every Grove-composed PodCliqueSet's pods name, and the KAI
 # queue they're labelled into (see compose-serving-stack's compose_kai_queues).
 GROVE_SCHEDULER_NAME = "kai-scheduler"
@@ -429,7 +456,7 @@ GROVE_QUEUE = "modelplane"
 # replica's resources don't collide in the response map.
 ROUTE_KEY = "model-route"
 _WORKLOAD_KEY = "workload"
-_SCALING_GROUP_KEY = "scaling-group"
+DYNAMO_WORKLOAD_KEY = "workload-dynamo"
 _CLAIM_KEY = "resource-claim"
 
 # HTTPRoute request timeout for model traffic. "0s" disables it (Gateway API
@@ -464,11 +491,6 @@ def engine_workload_key(engine: v1alpha1.Engine, stack: str) -> str:
     return workload_key(engine, select_backend(engine, stack))
 
 
-def scaling_group_key(engine: v1alpha1.Engine) -> str:
-    """Response key for the observed Grove PodCliqueScalingGroup of an engine."""
-    return f"{_SCALING_GROUP_KEY}-{engine.name}"
-
-
 def member_role(member: v1alpha1.Member) -> str:
     """A member's role, lowercased, defaulting to standalone.
 
@@ -493,6 +515,8 @@ def claim_key(engine: v1alpha1.Engine, member: v1alpha1.Member) -> str:
 
 def workload_keys(replica: v1alpha1.ModelReplica, stack: str) -> list[str]:
     """Response keys of every engine's workload, in engine order."""
+    if stack == "Dynamo":
+        return [dynamo_workload_key(replica)]
     return [engine_workload_key(g, stack) for g in replica.spec.engines]
 
 
@@ -538,36 +562,6 @@ DEPLOYMENT_ALL_COPIES_READY_CEL = (
     " && object.status.observedGeneration == object.metadata.generation"
     " && has(object.status.updatedReplicas) && object.status.updatedReplicas >= object.spec.replicas"
     " && has(object.status.replicas) && object.status.replicas == object.status.updatedReplicas"
-)
-
-# Grove publishes no Ready or Available condition on a PodCliqueSet, so
-# readiness comes from its replica counters: a replica counts as available once
-# every clique and scaling group is at or above minAvailable. observedGeneration
-# guards against a count left over from before the last spec change.
-# status.podGangStatuses looks useful here but Grove never populates it.
-#
-# The scaling group's minAvailable is 1, so this is true once one copy of the
-# engine is up. GROVE_ALL_COPIES_READY_CEL counts every copy.
-GROVE_AVAILABLE_CEL = (
-    "has(object.status) && has(object.status.observedGeneration) && "
-    "object.status.observedGeneration == object.metadata.generation && "
-    "object.spec.replicas > 0 && has(object.status.availableReplicas) && "
-    "object.status.availableReplicas >= object.spec.replicas"
-)
-
-# CEL readiness query for a Grove PodCliqueScalingGroup with every copy
-# available and running the current template. Its availableReplicas counts the
-# copies whose cliques are all at or above their minAvailable, whatever template
-# they run, so the old copies keep it full after a spec change until the
-# rolling update deletes one. updatedReplicas counts only the available copies
-# whose cliques run the current template. Unlike the PodCliqueSet's query it
-# needs no observedGeneration guard: Grove recounts the group from its cliques
-# on every reconcile, and a spec change to the set doesn't bump the group's
-# generation.
-GROVE_ALL_COPIES_READY_CEL = (
-    "has(object.status) && has(object.status.availableReplicas) && "
-    "object.status.availableReplicas >= object.spec.replicas && "
-    "has(object.status.updatedReplicas) && object.status.updatedReplicas >= object.spec.replicas"
 )
 
 
@@ -717,11 +711,13 @@ def select_backend(engine: v1alpha1.Engine, stack: str) -> str:
     A single Standalone member is a self-contained pod, served natively as a
     Deployment. A Leader plus Worker gang coordinates across nodes, served by
     the cluster's chosen stack: Standard (a LeaderWorkerSet, the LLMD backend)
-    or Dynamo (a Grove PodCliqueSet).
+    or Dynamo (a DynamoGraphDeployment containing every engine).
     """
+    if stack == "Dynamo":
+        return DYNAMO
     if engine_member(engine, ROLE_STANDALONE) is not None:
         return NATIVE
-    return GROVE if stack == "Dynamo" else LLMD
+    return LLMD
 
 
 def engine_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine) -> str:
@@ -730,9 +726,8 @@ def engine_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine) -> str:
     Every engine's resources are qualified by the engine name: per-replica so
     co-located replicas of one deployment don't collide on the remote cluster,
     and per-engine so a multi-engine replica's workloads don't collide with each
-    other. Names the native Deployment. The llm-d LeaderWorkerSet and the Grove
-    gang use lws_name and grove_pcs_name instead, which budget for their own
-    name rules.
+    other. Names the native Deployment. The llm-d LeaderWorkerSet uses lws_name
+    instead, which budgets for its own name rules. Dynamo names a graph for the entire replica.
     """
     return resource.child_name(_name(replica.metadata), engine.name)
 
@@ -778,34 +773,6 @@ def lws_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine) -> str:
     its LeaderWorkerSet.
     """
     return dns_1035_label(engine_name(replica, engine), "lws", _LWS_NAME_MAX)
-
-
-# Grove rejects a PodCliqueSet whose resource names sum past 45 characters:
-# len(pcs) + len(pcsg) + len(pclq). With "gang" and "worker" that leaves 35 for
-# the PodCliqueSet name. This reserves more than it has to, since the composed
-# pod name carries replica indices and Grove's own random suffix on top, and
-# it's tighter than the 63-character budget engine_name() uses.
-_GROVE_PCS_NAME_MAX = 24
-
-
-def grove_pcs_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine) -> str:
-    """The PodCliqueSet name for a gang engine.
-
-    Same shape as resource.child_name (a deterministic hash suffix keeps two
-    truncated-to-the-same-prefix names from colliding), but truncated to
-    Grove's tighter name budget rather than the general 63-character limit.
-
-    Dots are replaced after hashing, since Grove names the gang's headless
-    Service after the PodCliqueSet and a Service name can't contain one. A
-    truncated prefix drops a trailing '.' along with any '-', so replacing it
-    can't leave '--' before the hash. A leading digit is left alone:
-    Kubernetes accepts one in a Service name from 1.36, so a PodCliqueSet named
-    that way may be running there, and renaming it would orphan it.
-    """
-    full = f"{_name(replica.metadata)}-{engine.name}"
-    h = hashlib.sha256(full.encode()).hexdigest()[:5]
-    prefix = full[: _GROVE_PCS_NAME_MAX - len(h) - 1].rstrip("-.")
-    return f"{prefix}-{h}".replace(".", "-")
 
 
 def claim_template_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine, member: v1alpha1.Member) -> str:

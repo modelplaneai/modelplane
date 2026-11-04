@@ -46,14 +46,8 @@ IMAGE = "otel/opentelemetry-collector-contrib:0.161.0"
 # leaving a worker to be collected by both.
 _DEPLOYMENT_LABEL = "modelplane_ai_deployment"
 
-# The name of the engine's port, which the user declares or compose-model-replica
-# adds, and the containers that carry it: the engine, and the endpoint picker,
-# whose metrics port has the same name. Matching the container too keeps the job off a port another
-# container in the pod names http, such as a sidecar the user writes.
-_METRICS_PORT = "http"
-# The engine container's name, and the picker's in compose-model-replica's
-# routing.py. A separate function, so the names are restated here.
-_METRICS_CONTAINERS = "engine|epp"
+# Standard engines and endpoint pickers expose metrics on http; Dynamo's main
+# runtime container exposes them on system. Match each container/port pair once.
 
 # The port the AI gateway's ext-proc sidecar serves its own metrics on, which
 # is where the GenAI semantic-convention series live. Envoy's admin port
@@ -266,14 +260,12 @@ def _scrape_configs() -> list[dict[str, Any]]:
                     "regex": ".+",
                 },
                 {
-                    "source_labels": ["__meta_kubernetes_pod_container_port_name"],
+                    "source_labels": [
+                        "__meta_kubernetes_pod_container_name",
+                        "__meta_kubernetes_pod_container_port_name",
+                    ],
                     "action": "keep",
-                    "regex": _METRICS_PORT,
-                },
-                {
-                    "source_labels": ["__meta_kubernetes_pod_container_name"],
-                    "action": "keep",
-                    "regex": _METRICS_CONTAINERS,
+                    "regex": "(engine|epp);http|main;system",
                 },
                 *_relabel_pod_identity(),
             ],

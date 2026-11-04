@@ -78,13 +78,11 @@ spec:
                   message: "serving.endpointPicker may only be set when serving.router is EndpointPicker"
                 - rule: "!has(self.router) || has(self.endpointPicker)"
                   message: "serving.router EndpointPicker requires serving.endpointPicker with its template"
-                - rule: "self.mode != 'PrefillDecode' || (has(self.router) && self.router == 'EndpointPicker')"
-                  message: "PrefillDecode serving requires serving.router EndpointPicker and serving.endpointPicker"
                 description: >-
                   Serving, inherited verbatim from the parent
-                  ModelDeployment. Both modes front the serving pods with an
-                  InferencePool and an endpoint picker, which endpointPicker
-                  can configure. PrefillDecode also role-labels the engine
+                  ModelDeployment. On Standard, both modes front the serving pods with an
+                  InferencePool and an endpoint picker. Dynamo uses a shared
+                  runtime frontend instead; omit router and endpointPicker there. PrefillDecode also role-labels the engine
                   each marks with its phase.
                 properties:
                   mode:

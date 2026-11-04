@@ -1,0 +1,64 @@
+{
+  "name": "Standalone",
+  "reason": "Immutable graph settings replace both identities while mutable changes and list ordering retain them.",
+  "replica": {
+    "apiVersion": "modelplane.ai/v1alpha1",
+    "kind": "ModelReplica",
+    "metadata": {
+      "name": "r",
+      "namespace": "ml-team"
+    },
+    "spec": {
+      "clusterName": "cluster-a",
+      "engines": [
+        {
+          "name": "main",
+          "copies": 3,
+          "members": [
+            {
+              "role": "Standalone",
+              "nodePoolName": "frontier",
+              "template": {
+                "spec": {
+                  "containers": [
+                    {
+                      "name": "engine",
+                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                      "command": [
+                        "python3",
+                        "-m",
+                        "dynamo.vllm"
+                      ],
+                      "args": [
+                        "--model",
+                        "Qwen/Qwen3-0.6B"
+                      ]
+                    },
+                    {
+                      "name": "logging",
+                      "image": "example/logger:1",
+                      "args": [
+                        "--stdout"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "deviceRequests": [
+                {
+                  "name": "gpu",
+                  "deviceClassName": "gpu.nvidia.com",
+                  "count": 1
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "want": {
+    "key": "workload-dynamo-9a9f92bce0",
+    "name": "r-9a9f92bce0"
+  }
+}

@@ -1,0 +1,681 @@
+{
+  "name": "RollingOut",
+  "reason": "The complete Dynamo composition reports engine and frontend readiness and routes to the graph frontend.",
+  "request": {
+    "observed": {
+      "composite": {
+        "resource": {
+          "apiVersion": "modelplane.ai/v1alpha1",
+          "kind": "ModelReplica",
+          "metadata": {
+            "name": "r",
+            "namespace": "ml-team"
+          },
+          "spec": {
+            "clusterName": "cluster-a",
+            "engines": [
+              {
+                "name": "main",
+                "copies": 3,
+                "members": [
+                  {
+                    "role": "Standalone",
+                    "nodePoolName": "frontier",
+                    "template": {
+                      "spec": {
+                        "containers": [
+                          {
+                            "name": "engine",
+                            "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                            "command": [
+                              "python3",
+                              "-m",
+                              "dynamo.vllm"
+                            ],
+                            "args": [
+                              "--model",
+                              "Qwen/Qwen3-0.6B"
+                            ]
+                          },
+                          {
+                            "name": "logging",
+                            "image": "example/logger:1",
+                            "args": [
+                              "--stdout"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "deviceRequests": [
+                      {
+                        "name": "gpu",
+                        "deviceClassName": "gpu.nvidia.com",
+                        "count": 1
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "resources": {
+        "model-route": {
+          "resource": {
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object",
+            "spec": {
+              "providerConfigRef": {
+                "kind": "ClusterProviderConfig",
+                "name": "cluster-a-pc"
+              },
+              "readiness": {
+                "policy": "SuccessfulCreate"
+              },
+              "forProvider": {
+                "manifest": {
+                  "apiVersion": "gateway.networking.k8s.io/v1",
+                  "kind": "HTTPRoute",
+                  "metadata": {
+                    "name": "r",
+                    "namespace": "mp-ml-team-51733"
+                  },
+                  "spec": {
+                    "parentRefs": [
+                      {
+                        "name": "cluster-gateway",
+                        "namespace": "modelplane-system"
+                      }
+                    ],
+                    "rules": [
+                      {
+                        "matches": [
+                          {
+                            "path": {
+                              "type": "PathPrefix",
+                              "value": "/ml-team/r/"
+                            }
+                          }
+                        ],
+                        "timeouts": {
+                          "request": "0s"
+                        },
+                        "filters": [
+                          {
+                            "type": "URLRewrite",
+                            "urlRewrite": {
+                              "path": {
+                                "type": "ReplacePrefixMatch",
+                                "replacePrefixMatch": "/"
+                              }
+                            }
+                          }
+                        ],
+                        "backendRefs": [
+                          {
+                            "group": "",
+                            "kind": "Service",
+                            "name": "r-9a9f92bce0-frontend",
+                            "port": 8000
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "status": {
+              "conditions": [
+                {
+                  "type": "Ready",
+                  "status": "True",
+                  "reason": "Available",
+                  "lastTransitionTime": "2026-01-01T00:00:00Z"
+                }
+              ]
+            }
+          }
+        },
+        "resource-claim-main-standalone": {
+          "resource": {
+            "spec": {
+              "providerConfigRef": {
+                "kind": "ClusterProviderConfig",
+                "name": "cluster-a-pc"
+              },
+              "readiness": {
+                "policy": "SuccessfulCreate"
+              },
+              "forProvider": {
+                "manifest": {
+                  "apiVersion": "resource.k8s.io/v1",
+                  "kind": "ResourceClaimTemplate",
+                  "metadata": {
+                    "name": "r-main-standalone-devices-f456f",
+                    "namespace": "mp-ml-team-51733"
+                  },
+                  "spec": {
+                    "spec": {
+                      "devices": {
+                        "requests": [
+                          {
+                            "name": "gpu",
+                            "exactly": {
+                              "deviceClassName": "gpu.nvidia.com",
+                              "count": 1
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object",
+            "status": {
+              "conditions": [
+                {
+                  "type": "Ready",
+                  "status": "True",
+                  "reason": "Created",
+                  "lastTransitionTime": "2026-01-01T00:00:00Z"
+                }
+              ]
+            }
+          }
+        },
+        "workload-dynamo-9a9f92bce0": {
+          "resource": {
+            "spec": {
+              "providerConfigRef": {
+                "kind": "ClusterProviderConfig",
+                "name": "cluster-a-pc"
+              },
+              "readiness": {
+                "policy": "DeriveFromCelQuery",
+                "celQuery": "has(object.status) && has(object.status.observedGeneration) && object.status.observedGeneration == object.metadata.generation && has(object.status.conditions) && object.status.conditions.exists(c, c.type == \"Ready\" && c.status == \"True\")"
+              },
+              "watch": true,
+              "forProvider": {
+                "manifest": {
+                  "apiVersion": "nvidia.com/v1beta1",
+                  "kind": "DynamoGraphDeployment",
+                  "metadata": {
+                    "name": "r-9a9f92bce0",
+                    "namespace": "mp-ml-team-51733"
+                  },
+                  "spec": {
+                    "backendFramework": "vllm",
+                    "components": [
+                      {
+                        "name": "frontend",
+                        "type": "frontend",
+                        "replicas": 1,
+                        "podTemplate": {
+                          "metadata": {
+                            "labels": {
+                              "modelplane.ai/serving": "r",
+                              "modelplane.ai/replica": "r",
+                              "modelplane.ai/deployment": "r"
+                            }
+                          },
+                          "spec": {
+                            "containers": [
+                              {
+                                "name": "main",
+                                "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                                "command": [
+                                  "python3",
+                                  "-m",
+                                  "dynamo.frontend"
+                                ],
+                                "args": [
+                                  "--http-port",
+                                  "8000",
+                                  "--router-mode",
+                                  "kv"
+                                ],
+                                "env": [],
+                                "volumeMounts": []
+                              }
+                            ],
+                            "volumes": []
+                          }
+                        },
+                        "runtimeVersionOverride": "1.7.0"
+                      },
+                      {
+                        "name": "engine-main",
+                        "type": "worker",
+                        "replicas": 3,
+                        "podTemplate": {
+                          "metadata": {
+                            "labels": {
+                              "modelplane.ai/engine": "main",
+                              "modelplane.ai/role": "Standalone",
+                              "kai.scheduler/queue": "modelplane"
+                            }
+                          },
+                          "spec": {
+                            "containers": [
+                              {
+                                "name": "main",
+                                "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                                "command": [
+                                  "python3",
+                                  "-m",
+                                  "dynamo.vllm"
+                                ],
+                                "args": [
+                                  "--model",
+                                  "Qwen/Qwen3-0.6B"
+                                ],
+                                "volumeMounts": [],
+                                "env": []
+                              },
+                              {
+                                "name": "logging",
+                                "image": "example/logger:1",
+                                "args": [
+                                  "--stdout"
+                                ]
+                              }
+                            ],
+                            "volumes": [],
+                            "schedulerName": "kai-scheduler",
+                            "nodeSelector": {
+                              "modelplane.ai/pool": "frontier"
+                            },
+                            "tolerations": [
+                              {
+                                "key": "nvidia.com/gpu",
+                                "operator": "Exists",
+                                "effect": "NoSchedule"
+                              },
+                              {
+                                "key": "amd.com/gpu",
+                                "operator": "Exists",
+                                "effect": "NoSchedule"
+                              },
+                              {
+                                "key": "modelplane.ai/cpu",
+                                "operator": "Exists",
+                                "effect": "NoSchedule"
+                              }
+                            ]
+                          }
+                        },
+                        "runtimeVersionOverride": "1.7.0"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object",
+            "status": {
+              "conditions": [
+                {
+                  "type": "Ready",
+                  "status": "False",
+                  "reason": "Reconciling",
+                  "lastTransitionTime": "2026-01-01T00:00:00Z"
+                }
+              ],
+              "atProvider": {
+                "manifest": {
+                  "apiVersion": "nvidia.com/v1beta1",
+                  "kind": "DynamoGraphDeployment",
+                  "metadata": {
+                    "name": "r-9a9f92bce0",
+                    "namespace": "mp-ml-team-51733",
+                    "generation": 1
+                  },
+                  "status": {
+                    "observedGeneration": 1,
+                    "components": {
+                      "engine-main": {
+                        "readyReplicas": 3
+                      },
+                      "frontend": {
+                        "readyReplicas": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "requiredResources": {
+      "cluster": {
+        "items": [
+          {
+            "resource": {
+              "apiVersion": "modelplane.ai/v1alpha1",
+              "kind": "InferenceCluster",
+              "metadata": {
+                "name": "cluster-a"
+              },
+              "spec": {
+                "stack": "Dynamo",
+                "cluster": {
+                  "source": "Existing",
+                  "existing": {
+                    "secretRef": {
+                      "name": "k"
+                    }
+                  }
+                }
+              },
+              "status": {
+                "providerConfigRef": {
+                  "name": "cluster-a-pc"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "want": {
+    "meta": {
+      "ttl": "60s"
+    },
+    "desired": {
+      "resources": {
+        "model-route": {
+          "resource": {
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object",
+            "spec": {
+              "providerConfigRef": {
+                "kind": "ClusterProviderConfig",
+                "name": "cluster-a-pc"
+              },
+              "readiness": {
+                "policy": "SuccessfulCreate"
+              },
+              "forProvider": {
+                "manifest": {
+                  "apiVersion": "gateway.networking.k8s.io/v1",
+                  "kind": "HTTPRoute",
+                  "metadata": {
+                    "name": "r",
+                    "namespace": "mp-ml-team-51733"
+                  },
+                  "spec": {
+                    "parentRefs": [
+                      {
+                        "name": "cluster-gateway",
+                        "namespace": "modelplane-system"
+                      }
+                    ],
+                    "rules": [
+                      {
+                        "matches": [
+                          {
+                            "path": {
+                              "type": "PathPrefix",
+                              "value": "/ml-team/r/"
+                            }
+                          }
+                        ],
+                        "timeouts": {
+                          "request": "0s"
+                        },
+                        "filters": [
+                          {
+                            "type": "URLRewrite",
+                            "urlRewrite": {
+                              "path": {
+                                "type": "ReplacePrefixMatch",
+                                "replacePrefixMatch": "/"
+                              }
+                            }
+                          }
+                        ],
+                        "backendRefs": [
+                          {
+                            "group": "",
+                            "kind": "Service",
+                            "name": "r-9a9f92bce0-frontend",
+                            "port": 8000
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "ready": "READY_TRUE"
+        },
+        "resource-claim-main-standalone": {
+          "resource": {
+            "spec": {
+              "providerConfigRef": {
+                "kind": "ClusterProviderConfig",
+                "name": "cluster-a-pc"
+              },
+              "readiness": {
+                "policy": "SuccessfulCreate"
+              },
+              "forProvider": {
+                "manifest": {
+                  "apiVersion": "resource.k8s.io/v1",
+                  "kind": "ResourceClaimTemplate",
+                  "metadata": {
+                    "name": "r-main-standalone-devices-f456f",
+                    "namespace": "mp-ml-team-51733"
+                  },
+                  "spec": {
+                    "spec": {
+                      "devices": {
+                        "requests": [
+                          {
+                            "name": "gpu",
+                            "exactly": {
+                              "deviceClassName": "gpu.nvidia.com",
+                              "count": 1
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object"
+          },
+          "ready": "READY_TRUE"
+        },
+        "workload-dynamo-9a9f92bce0": {
+          "resource": {
+            "spec": {
+              "providerConfigRef": {
+                "kind": "ClusterProviderConfig",
+                "name": "cluster-a-pc"
+              },
+              "readiness": {
+                "policy": "DeriveFromCelQuery",
+                "celQuery": "has(object.status) && has(object.status.observedGeneration) && object.status.observedGeneration == object.metadata.generation && has(object.status.conditions) && object.status.conditions.exists(c, c.type == \"Ready\" && c.status == \"True\")"
+              },
+              "watch": true,
+              "forProvider": {
+                "manifest": {
+                  "apiVersion": "nvidia.com/v1beta1",
+                  "kind": "DynamoGraphDeployment",
+                  "metadata": {
+                    "name": "r-9a9f92bce0",
+                    "namespace": "mp-ml-team-51733"
+                  },
+                  "spec": {
+                    "backendFramework": "vllm",
+                    "components": [
+                      {
+                        "name": "frontend",
+                        "type": "frontend",
+                        "replicas": 1,
+                        "podTemplate": {
+                          "metadata": {
+                            "labels": {
+                              "modelplane.ai/serving": "r",
+                              "modelplane.ai/replica": "r",
+                              "modelplane.ai/deployment": "r"
+                            }
+                          },
+                          "spec": {
+                            "containers": [
+                              {
+                                "name": "main",
+                                "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                                "command": [
+                                  "python3",
+                                  "-m",
+                                  "dynamo.frontend"
+                                ],
+                                "args": [
+                                  "--http-port",
+                                  "8000",
+                                  "--router-mode",
+                                  "kv"
+                                ],
+                                "env": [],
+                                "volumeMounts": []
+                              }
+                            ],
+                            "volumes": []
+                          }
+                        },
+                        "runtimeVersionOverride": "1.7.0"
+                      },
+                      {
+                        "name": "engine-main",
+                        "type": "worker",
+                        "replicas": 3,
+                        "podTemplate": {
+                          "metadata": {
+                            "labels": {
+                              "modelplane.ai/engine": "main",
+                              "modelplane.ai/role": "Standalone",
+                              "kai.scheduler/queue": "modelplane"
+                            }
+                          },
+                          "spec": {
+                            "containers": [
+                              {
+                                "name": "main",
+                                "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                                "command": [
+                                  "python3",
+                                  "-m",
+                                  "dynamo.vllm"
+                                ],
+                                "args": [
+                                  "--model",
+                                  "Qwen/Qwen3-0.6B"
+                                ],
+                                "volumeMounts": [],
+                                "env": [],
+                                "resources": {
+                                  "claims": [
+                                    {
+                                      "name": "devices"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "name": "logging",
+                                "image": "example/logger:1",
+                                "args": [
+                                  "--stdout"
+                                ]
+                              }
+                            ],
+                            "volumes": [],
+                            "schedulerName": "kai-scheduler",
+                            "nodeSelector": {
+                              "modelplane.ai/pool": "frontier"
+                            },
+                            "tolerations": [
+                              {
+                                "key": "nvidia.com/gpu",
+                                "operator": "Exists",
+                                "effect": "NoSchedule"
+                              },
+                              {
+                                "key": "amd.com/gpu",
+                                "operator": "Exists",
+                                "effect": "NoSchedule"
+                              },
+                              {
+                                "key": "modelplane.ai/cpu",
+                                "operator": "Exists",
+                                "effect": "NoSchedule"
+                              }
+                            ],
+                            "resourceClaims": [
+                              {
+                                "name": "devices",
+                                "resourceClaimTemplateName": "r-main-standalone-devices-f456f"
+                              }
+                            ]
+                          }
+                        },
+                        "runtimeVersionOverride": "1.7.0"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object"
+          }
+        }
+      }
+    },
+    "context": {},
+    "requirements": {
+      "resources": {
+        "cluster": {
+          "apiVersion": "modelplane.ai/v1alpha1",
+          "kind": "InferenceCluster",
+          "matchName": "cluster-a"
+        }
+      }
+    },
+    "conditions": [
+      {
+        "type": "ModelAccepted",
+        "status": "STATUS_CONDITION_TRUE",
+        "reason": "Accepted"
+      },
+      {
+        "type": "ModelServing",
+        "status": "STATUS_CONDITION_TRUE",
+        "reason": "Serving"
+      },
+      {
+        "type": "ModelReady",
+        "status": "STATUS_CONDITION_FALSE",
+        "reason": "RollingOut",
+        "message": "3 of 3 engine copies ready"
+      }
+    ]
+  }
+}

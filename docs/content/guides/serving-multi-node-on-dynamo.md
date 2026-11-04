@@ -9,7 +9,7 @@ it serves across two nodes as a gang: a `Leader` and a `Worker`, one L4 each,
 pipeline-parallel across the pair. On a
 [Dynamo cluster]({{< ref "/platform/inference-cluster.md#serving-stack" >}}) Grove
 and the KAI Scheduler gang-schedule the two pods together, Modelplane composes
-them as a Grove `PodCliqueSet`, and NVIDIA ModelExpress serves their weights.
+a `DynamoGraphDeployment` with a frontend and a multi-node engine component, and NVIDIA ModelExpress serves their weights.
 
 This is the [getting started tour]({{< ref "/getting-started" >}}) scaled to two
 nodes: one larger model on a `spec.stack: Dynamo` cluster.
@@ -20,7 +20,7 @@ for the gateway and cloud credentials, then apply the manifests below.
 
 The `InferenceClass` describes a single-L4 node, sized up from the getting started
 tour's for the larger model. The `InferenceCluster` runs two of them and sets
-`spec.stack: Dynamo`, so Modelplane installs Grove, the KAI Scheduler, and
+`spec.stack: Dynamo`, so Modelplane installs the Dynamo operator, Grove, the KAI Scheduler, and
 ModelExpress on the cluster.
 
 {{< manifests "guides/serving-multi-node-on-dynamo/inference-class.yaml" >}}
@@ -46,13 +46,11 @@ kubectl create namespace ml-team
 
 ## Deploy the gang
 
-The `Leader` and `Worker` run the same `vllm serve`, differing only in node rank.
-`$(MODELPLANE_LEADER_ADDRESS)` resolves to the leader on either stack, but
-`$(MODELPLANE_RANK)` isn't injected on Dynamo yet. The worker derives its rank
-from Grove's `GROVE_PCLQ_POD_INDEX` instead.
-[Multi-node deployments]({{< ref "/models/model-deployment.md#multi-node" >}})
-covers this. Both load with `--load-format modelexpress`, so they read the cached
-weights through the Dynamo stack's ModelExpress server.
+The `Leader` and `Worker` run `python3 -m dynamo.vllm` from a Dynamo runtime
+image. Their explicit role templates own the launch arguments.
+`$(MODELPLANE_LEADER_ADDRESS)` resolves to the leader and `$(MODELPLANE_RANK)`
+to the pod's rank in its engine copy. Both load with `--load-format modelexpress`,
+so they read cached weights through the shared ModelExpress server.
 
 {{< manifests "guides/serving-multi-node-on-dynamo/model-deployment.yaml" >}}
 
@@ -63,12 +61,15 @@ slower than later ones:
 kubectl get md -n ml-team --watch
 ```
 
-On the workload cluster the gang is a Grove `PodCliqueSet`, the Dynamo stack's
-multi-node workload in place of a LeaderWorkerSet:
+On the workload cluster, inspect the graph and the workloads its operator owns:
 
 ```bash
-kubectl get podcliquesets.grove.io -A   # workload cluster
+kubectl get dynamographdeployments.nvidia.com -A
+kubectl get podcliquesets.grove.io -A
 ```
+
+The graph's component counters report ready engine copies, including whole
+multi-node gangs. Its Ready condition also covers the frontend and rollout.
 
 ## Expose and query
 
@@ -89,7 +90,7 @@ kubectl run -i --rm curl-test \
 ```
 
 The gateway resolves the model to the gang's one endpoint and routes the request
-to the leader.
+to its Dynamo frontend. The frontend routes inference to the engine leader.
 
 ## Scale out with peer-to-peer loading
 
@@ -113,7 +114,7 @@ Once the second gang starts, watch its leader load from the first over
 ModelExpress:
 
 ```bash
-kubectl logs -n mp-ml-team-51733 -l modelplane.ai/clique-role=leader -c engine --tail=-1 \
+kubectl logs -n mp-ml-team-51733 -l modelplane.ai/role=Leader -c main --tail=-1 \
   | grep "source worker"   # workload cluster, in ml-team's mirrored namespace
 # [Worker 0] Trying source worker 63d91022 (266 tensors)
 ```
