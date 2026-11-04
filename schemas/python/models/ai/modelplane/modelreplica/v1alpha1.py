@@ -141,7 +141,7 @@ class Resources(BaseModel):
 
 class VolumeMount(BaseModel):
     mountPath: constr(min_length=1)
-    name: constr(min_length=1)
+    name: constr(min_length=1, max_length=63)
     readOnly: bool | None = None
     subPath: str | None = None
 
@@ -179,6 +179,9 @@ class InitContainer(BaseModel):
         pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
     )
     resources: Resources | None = None
+    """
+    CPU and memory requests and limits.
+    """
     volumeMounts: list[VolumeMount] | None = Field(None, max_length=16)
 
 
@@ -188,12 +191,9 @@ class Volume(BaseModel):
     downwardAPI: dict[str, Any] | None = None
     emptyDir: dict[str, Any] | None = None
     ephemeral: dict[str, Any] | None = None
-    hostPath: dict[str, Any] | None = None
-    image: dict[str, Any] | None = None
     name: constr(
         pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
     )
-    nfs: dict[str, Any] | None = None
     persistentVolumeClaim: dict[str, Any] | None = None
     projected: dict[str, Any] | None = None
     secret: dict[str, Any] | None = None

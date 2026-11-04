@@ -5434,7 +5434,7 @@ BUILD_CASES = [
     # A member's volumes and init containers pass through as written, beside
     # the volumes and mounts Modelplane adds. An init container can mount
     # Modelplane's model-cache volume by name, here to stage weights from the
-    # cache onto a node's NVMe.
+    # cache onto a scratch volume.
     BuildCase(
         name="StandaloneVolumes",
         reason=(
@@ -5474,9 +5474,11 @@ BUILD_CASES = [
                                         v1alpha1.Container(
                                             name="engine",
                                             image="vllm/vllm-openai:latest",
-                                            args=["--model=/mnt/nvme/GLM-5"],
+                                            args=["--model=/scratch/GLM-5"],
                                             volumeMounts=[
-                                                v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme", readOnly=True)
+                                                v1alpha1.VolumeMount(
+                                                    name="scratch", mountPath="/scratch", readOnly=True
+                                                )
                                             ],
                                         )
                                     ],
@@ -5484,18 +5486,14 @@ BUILD_CASES = [
                                         v1alpha1.InitContainer(
                                             name="stage-weights",
                                             image="ghcr.io/example/stage:v1",
-                                            command=["/bin/sh", "-c", "cp -rn /mnt/models/. /mnt/nvme/"],
+                                            command=["/bin/sh", "-c", "cp -rn /mnt/models/. /scratch/"],
                                             volumeMounts=[
                                                 v1alpha1.VolumeMount(name="model-cache", mountPath="/mnt/models"),
-                                                v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme"),
+                                                v1alpha1.VolumeMount(name="scratch", mountPath="/scratch"),
                                             ],
                                         )
                                     ],
-                                    volumes=[
-                                        v1alpha1.Volume(
-                                            name="nvme", hostPath={"path": "/mnt/nvme", "type": "Directory"}
-                                        )
-                                    ],
+                                    volumes=[v1alpha1.Volume(name="scratch", emptyDir={"sizeLimit": "2Ti"})],
                                 )
                             ),
                         )
@@ -5535,12 +5533,12 @@ BUILD_CASES = [
                                             {
                                                 "name": "engine",
                                                 "image": "vllm/vllm-openai:latest",
-                                                "args": ["--model=/mnt/nvme/GLM-5"],
+                                                "args": ["--model=/scratch/GLM-5"],
                                                 "ports": [{"name": "http", "containerPort": 8000}],
                                                 "volumeMounts": [
                                                     {"name": "dshm", "mountPath": "/dev/shm"},
                                                     {"name": "model-cache", "mountPath": "/mnt/models"},
-                                                    {"mountPath": "/mnt/nvme", "name": "nvme", "readOnly": True},
+                                                    {"mountPath": "/scratch", "name": "scratch", "readOnly": True},
                                                 ],
                                                 "readinessProbe": {
                                                     "httpGet": {"path": "/health", "port": 8000},
@@ -5558,16 +5556,16 @@ BUILD_CASES = [
                                                 "name": "model-cache",
                                                 "persistentVolumeClaim": {"claimName": "modelcache-ml-team-glm-587ca"},
                                             },
-                                            {"hostPath": {"path": "/mnt/nvme", "type": "Directory"}, "name": "nvme"},
+                                            {"emptyDir": {"sizeLimit": "2Ti"}, "name": "scratch"},
                                         ],
                                         "initContainers": [
                                             {
-                                                "command": ["/bin/sh", "-c", "cp -rn /mnt/models/. /mnt/nvme/"],
+                                                "command": ["/bin/sh", "-c", "cp -rn /mnt/models/. /scratch/"],
                                                 "image": "ghcr.io/example/stage:v1",
                                                 "name": "stage-weights",
                                                 "volumeMounts": [
                                                     {"mountPath": "/mnt/models", "name": "model-cache"},
-                                                    {"mountPath": "/mnt/nvme", "name": "nvme"},
+                                                    {"mountPath": "/scratch", "name": "scratch"},
                                                 ],
                                             }
                                         ],
@@ -5638,17 +5636,15 @@ BUILD_CASES = [
                                         v1alpha1.Container(
                                             name="engine",
                                             image="vllm/vllm-openai:latest",
-                                            args=["--model=/mnt/nvme/GLM-5"],
+                                            args=["--model=/scratch/GLM-5"],
                                             volumeMounts=[
-                                                v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme", readOnly=True)
+                                                v1alpha1.VolumeMount(
+                                                    name="scratch", mountPath="/scratch", readOnly=True
+                                                )
                                             ],
                                         )
                                     ],
-                                    volumes=[
-                                        v1alpha1.Volume(
-                                            name="nvme", hostPath={"path": "/mnt/nvme", "type": "Directory"}
-                                        )
-                                    ],
+                                    volumes=[v1alpha1.Volume(name="scratch", emptyDir={"sizeLimit": "2Ti"})],
                                 )
                             ),
                         ),
@@ -5674,9 +5670,11 @@ BUILD_CASES = [
                                         v1alpha1.Container(
                                             name="engine",
                                             image="vllm/vllm-openai:latest",
-                                            args=["--model=/mnt/nvme/GLM-5"],
+                                            args=["--model=/scratch/GLM-5"],
                                             volumeMounts=[
-                                                v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme", readOnly=True)
+                                                v1alpha1.VolumeMount(
+                                                    name="scratch", mountPath="/scratch", readOnly=True
+                                                )
                                             ],
                                         )
                                     ],
@@ -5684,15 +5682,11 @@ BUILD_CASES = [
                                         v1alpha1.InitContainer(
                                             name="stage-weights",
                                             image="ghcr.io/example/stage:v1",
-                                            command=["/bin/sh", "-c", "cp -rn /mnt/models/. /mnt/nvme/"],
-                                            volumeMounts=[v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme")],
+                                            command=["/bin/sh", "-c", "cp -rn /mnt/models/. /scratch/"],
+                                            volumeMounts=[v1alpha1.VolumeMount(name="scratch", mountPath="/scratch")],
                                         )
                                     ],
-                                    volumes=[
-                                        v1alpha1.Volume(
-                                            name="nvme", hostPath={"path": "/mnt/nvme", "type": "Directory"}
-                                        )
-                                    ],
+                                    volumes=[v1alpha1.Volume(name="scratch", emptyDir={"sizeLimit": "2Ti"})],
                                 )
                             ),
                         ),
@@ -5731,10 +5725,10 @@ BUILD_CASES = [
                                                     "image": "vllm/vllm-openai:latest",
                                                     "volumeMounts": [
                                                         {"name": "dshm", "mountPath": "/dev/shm"},
-                                                        {"mountPath": "/mnt/nvme", "name": "nvme", "readOnly": True},
+                                                        {"mountPath": "/scratch", "name": "scratch", "readOnly": True},
                                                     ],
                                                     "resources": {"claims": [{"name": "devices"}]},
-                                                    "args": ["--model=/mnt/nvme/GLM-5"],
+                                                    "args": ["--model=/scratch/GLM-5"],
                                                     "env": [
                                                         {
                                                             "name": "MODELPLANE_LEADER_ADDRESS",
@@ -5754,8 +5748,8 @@ BUILD_CASES = [
                                             "volumes": [
                                                 {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                                                 {
-                                                    "hostPath": {"path": "/mnt/nvme", "type": "Directory"},
-                                                    "name": "nvme",
+                                                    "emptyDir": {"sizeLimit": "2Ti"},
+                                                    "name": "scratch",
                                                 },
                                             ],
                                             "nodeSelector": {"modelplane.ai/pool": "frontier"},
@@ -5784,10 +5778,10 @@ BUILD_CASES = [
                                                     "image": "vllm/vllm-openai:latest",
                                                     "volumeMounts": [
                                                         {"name": "dshm", "mountPath": "/dev/shm"},
-                                                        {"mountPath": "/mnt/nvme", "name": "nvme", "readOnly": True},
+                                                        {"mountPath": "/scratch", "name": "scratch", "readOnly": True},
                                                     ],
                                                     "resources": {"claims": [{"name": "devices"}]},
-                                                    "args": ["--model=/mnt/nvme/GLM-5"],
+                                                    "args": ["--model=/scratch/GLM-5"],
                                                     "env": [
                                                         {
                                                             "name": "MODELPLANE_LEADER_ADDRESS",
@@ -5800,16 +5794,16 @@ BUILD_CASES = [
                                             "volumes": [
                                                 {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                                                 {
-                                                    "hostPath": {"path": "/mnt/nvme", "type": "Directory"},
-                                                    "name": "nvme",
+                                                    "emptyDir": {"sizeLimit": "2Ti"},
+                                                    "name": "scratch",
                                                 },
                                             ],
                                             "initContainers": [
                                                 {
-                                                    "command": ["/bin/sh", "-c", "cp -rn /mnt/models/. /mnt/nvme/"],
+                                                    "command": ["/bin/sh", "-c", "cp -rn /mnt/models/. /scratch/"],
                                                     "image": "ghcr.io/example/stage:v1",
                                                     "name": "stage-weights",
-                                                    "volumeMounts": [{"mountPath": "/mnt/nvme", "name": "nvme"}],
+                                                    "volumeMounts": [{"mountPath": "/scratch", "name": "scratch"}],
                                                 }
                                             ],
                                             "nodeSelector": {"modelplane.ai/pool": "frontier"},
@@ -5888,17 +5882,15 @@ BUILD_CASES = [
                                         v1alpha1.Container(
                                             name="engine",
                                             image="vllm/vllm-openai:latest",
-                                            args=["--model=/mnt/nvme/GLM-5"],
+                                            args=["--model=/scratch/GLM-5"],
                                             volumeMounts=[
-                                                v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme", readOnly=True)
+                                                v1alpha1.VolumeMount(
+                                                    name="scratch", mountPath="/scratch", readOnly=True
+                                                )
                                             ],
                                         )
                                     ],
-                                    volumes=[
-                                        v1alpha1.Volume(
-                                            name="nvme", hostPath={"path": "/mnt/nvme", "type": "Directory"}
-                                        )
-                                    ],
+                                    volumes=[v1alpha1.Volume(name="scratch", emptyDir={"sizeLimit": "2Ti"})],
                                 )
                             ),
                         ),
@@ -5924,9 +5916,11 @@ BUILD_CASES = [
                                         v1alpha1.Container(
                                             name="engine",
                                             image="vllm/vllm-openai:latest",
-                                            args=["--model=/mnt/nvme/GLM-5"],
+                                            args=["--model=/scratch/GLM-5"],
                                             volumeMounts=[
-                                                v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme", readOnly=True)
+                                                v1alpha1.VolumeMount(
+                                                    name="scratch", mountPath="/scratch", readOnly=True
+                                                )
                                             ],
                                         )
                                     ],
@@ -5934,15 +5928,11 @@ BUILD_CASES = [
                                         v1alpha1.InitContainer(
                                             name="stage-weights",
                                             image="ghcr.io/example/stage:v1",
-                                            command=["/bin/sh", "-c", "cp -rn /mnt/models/. /mnt/nvme/"],
-                                            volumeMounts=[v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme")],
+                                            command=["/bin/sh", "-c", "cp -rn /mnt/models/. /scratch/"],
+                                            volumeMounts=[v1alpha1.VolumeMount(name="scratch", mountPath="/scratch")],
                                         )
                                     ],
-                                    volumes=[
-                                        v1alpha1.Volume(
-                                            name="nvme", hostPath={"path": "/mnt/nvme", "type": "Directory"}
-                                        )
-                                    ],
+                                    volumes=[v1alpha1.Volume(name="scratch", emptyDir={"sizeLimit": "2Ti"})],
                                 )
                             ),
                         ),
@@ -5977,10 +5967,10 @@ BUILD_CASES = [
                                         "image": "vllm/vllm-openai:latest",
                                         "volumeMounts": [
                                             {"name": "dshm", "mountPath": "/dev/shm"},
-                                            {"mountPath": "/mnt/nvme", "name": "nvme", "readOnly": True},
+                                            {"mountPath": "/scratch", "name": "scratch", "readOnly": True},
                                         ],
                                         "resources": {"claims": [{"name": "devices"}]},
-                                        "args": ["--model=/mnt/nvme/GLM-5"],
+                                        "args": ["--model=/scratch/GLM-5"],
                                         "env": [
                                             {
                                                 "name": "MODELPLANE_LEADER_ADDRESS",
@@ -5998,7 +5988,7 @@ BUILD_CASES = [
                                 ],
                                 "volumes": [
                                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
-                                    {"hostPath": {"path": "/mnt/nvme", "type": "Directory"}, "name": "nvme"},
+                                    {"emptyDir": {"sizeLimit": "2Ti"}, "name": "scratch"},
                                 ],
                                 "schedulerName": "kai-scheduler",
                                 "nodeSelector": {"modelplane.ai/pool": "frontier"},
@@ -6031,10 +6021,10 @@ BUILD_CASES = [
                                         "image": "vllm/vllm-openai:latest",
                                         "volumeMounts": [
                                             {"name": "dshm", "mountPath": "/dev/shm"},
-                                            {"mountPath": "/mnt/nvme", "name": "nvme", "readOnly": True},
+                                            {"mountPath": "/scratch", "name": "scratch", "readOnly": True},
                                         ],
                                         "resources": {"claims": [{"name": "devices"}]},
-                                        "args": ["--model=/mnt/nvme/GLM-5"],
+                                        "args": ["--model=/scratch/GLM-5"],
                                         "env": [
                                             {
                                                 "name": "MODELPLANE_LEADER_ADDRESS",
@@ -6045,14 +6035,14 @@ BUILD_CASES = [
                                 ],
                                 "volumes": [
                                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
-                                    {"hostPath": {"path": "/mnt/nvme", "type": "Directory"}, "name": "nvme"},
+                                    {"emptyDir": {"sizeLimit": "2Ti"}, "name": "scratch"},
                                 ],
                                 "initContainers": [
                                     {
-                                        "command": ["/bin/sh", "-c", "cp -rn /mnt/models/. /mnt/nvme/"],
+                                        "command": ["/bin/sh", "-c", "cp -rn /mnt/models/. /scratch/"],
                                         "image": "ghcr.io/example/stage:v1",
                                         "name": "stage-weights",
-                                        "volumeMounts": [{"mountPath": "/mnt/nvme", "name": "nvme"}],
+                                        "volumeMounts": [{"mountPath": "/scratch", "name": "scratch"}],
                                     }
                                 ],
                                 "schedulerName": "kai-scheduler",

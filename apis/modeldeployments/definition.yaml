@@ -111,6 +111,12 @@ spec:
                       message: "PrefillDecode serving requires exactly one engine with phase Decode"
                     - rule: "(has(self.serving) && self.serving.mode == 'PrefillDecode') || !self.engines.exists(e, has(e.phase))"
                       message: "engine phase may only be set when serving.mode is PrefillDecode"
+                    # Modelplane adds the model-cache volume only for a
+                    # deployment that references a ModelCache. Check mounts of
+                    # it here, where modelCacheRef and the templates are both
+                    # visible.
+                    - rule: "has(self.modelCacheRef) || self.engines.all(e, e.members.all(m, !has(m.template.spec) || (m.template.spec.containers.all(c, !has(c.volumeMounts) || !c.volumeMounts.exists(v, v.name == 'model-cache')) && (!has(m.template.spec.initContainers) || m.template.spec.initContainers.all(c, !has(c.volumeMounts) || !c.volumeMounts.exists(v, v.name == 'model-cache'))))))"
+                      message: "a container mounts model-cache, which Modelplane adds only when modelCacheRef is set"
                     properties:
                       clusterSelector:
                         type: object
@@ -622,6 +628,8 @@ spec:
                                         x-kubernetes-validations:
                                         - rule: "!has(self.initContainers) || !self.initContainers.exists(i, self.containers.exists(c, c.name == i.name))"
                                           message: "an init container can't share a name with a container"
+                                        - rule: "self.containers.all(c, !has(c.volumeMounts) || c.volumeMounts.all(m, m.name in ['dshm', 'model-cache'] || (has(self.volumes) && self.volumes.exists(v, v.name == m.name)))) && (!has(self.initContainers) || self.initContainers.all(c, !has(c.volumeMounts) || c.volumeMounts.all(m, m.name in ['dshm', 'model-cache'] || (has(self.volumes) && self.volumes.exists(v, v.name == m.name)))))"
+                                          message: "each volume mount names one of the pod's volumes, dshm, or model-cache"
                                         properties:
                                           containers:
                                             type: array
@@ -858,9 +866,9 @@ spec:
                                                   x-kubernetes-list-map-keys: [mountPath]
                                                   description: >-
                                                     Volumes to mount into the container. A mount names one of the pod's
-                                                    volumes, or a volume Modelplane adds: dshm, and model-cache when the
-                                                    deployment references a ModelCache. The engine container can't mount at
-                                                    /dev/shm or /mnt/models, where Modelplane mounts those two.
+                                                    volumes, dshm, or model-cache when the deployment sets modelCacheRef,
+                                                    and takes name, mountPath, subPath and readOnly. The engine container
+                                                    can't mount at /dev/shm or /mnt/models, where Modelplane mounts those two.
                                                   items:
                                                     type: object
                                                     required: [name, mountPath]
@@ -868,6 +876,7 @@ spec:
                                                       name:
                                                         type: string
                                                         minLength: 1
+                                                        maxLength: 63
                                                         description: The volume to mount.
                                                       mountPath:
                                                         type: string
@@ -897,8 +906,9 @@ spec:
                                             x-kubernetes-list-map-keys: [name]
                                             description: >-
                                               Containers that run to completion, in order, before the pod's containers
-                                              start, such as one that stages weights onto a node-local volume.
-                                              Modelplane passes them through as written.
+                                              start, such as one that copies weights from the ModelCache to a scratch
+                                              volume. Each takes name, image, command, args, env, resources and
+                                              volumeMounts. Modelplane adds nothing to them.
                                             items:
                                               type: object
                                               required: [name, image]
@@ -930,9 +940,7 @@ spec:
                                                     valueFrom.secretKeyRef /
                                                     configMapKeyRef for secrets and
                                                     config (like HF_TOKEN), and
-                                                    valueFrom.fieldRef for pod fields
-                                                    (e.g. status.podIP for vLLM's
-                                                    VLLM_HOST_IP on multi-NIC nodes).
+                                                    valueFrom.fieldRef for pod fields.
                                                   items:
                                                     type: object
                                                     required: [name]
@@ -1002,10 +1010,9 @@ spec:
                                                   x-kubernetes-list-type: map
                                                   x-kubernetes-list-map-keys: [mountPath]
                                                   description: >-
-                                                    Volumes to mount into the container. A mount names one of the pod's
-                                                    volumes, or a volume Modelplane adds: dshm, and model-cache when the
-                                                    deployment references a ModelCache. The engine container can't mount at
-                                                    /dev/shm or /mnt/models, where Modelplane mounts those two.
+                                                    Volumes to mount into the init container. A mount names one of the pod's
+                                                    volumes, dshm, or model-cache when the deployment sets modelCacheRef,
+                                                    and takes name, mountPath, subPath and readOnly.
                                                   items:
                                                     type: object
                                                     required: [name, mountPath]
@@ -1013,6 +1020,7 @@ spec:
                                                       name:
                                                         type: string
                                                         minLength: 1
+                                                        maxLength: 63
                                                         description: The volume to mount.
                                                       mountPath:
                                                         type: string
@@ -1030,19 +1038,22 @@ spec:
                                             x-kubernetes-list-type: map
                                             x-kubernetes-list-map-keys: [name]
                                             description: >-
-                                              Volumes the pod's containers and init containers can mount, beside the
-                                              ones Modelplane adds. Each sets a name and one Kubernetes volume source,
-                                              written as in a pod spec, such as a hostPath to a node's local NVMe. The
-                                              names dshm and model-cache are reserved for Modelplane's own volumes.
+                                              Volumes the pod's containers and init containers can mount, beside dshm
+                                              and model-cache, which Modelplane adds. Each sets a name and one source:
+                                              configMap, csi, downwardAPI, emptyDir, ephemeral, persistentVolumeClaim,
+                                              projected or secret. Modelplane passes the source's fields through and the
+                                              workload cluster validates them. Sources that reach the node, such as
+                                              hostPath and nfs, aren't accepted. The names dshm and model-cache, and names
+                                              that start with modelplane-, are reserved for Modelplane's volumes.
                                             x-kubernetes-validations:
-                                            - rule: "self.all(v, !(v.name in ['dshm', 'model-cache']))"
-                                              message: "volume names dshm and model-cache are reserved for the volumes Modelplane adds"
+                                            - rule: "self.all(v, !(v.name in ['dshm', 'model-cache']) && !v.name.startsWith('modelplane-'))"
+                                              message: "volume names dshm, model-cache and modelplane-* are reserved for the volumes Modelplane adds"
                                             items:
                                               type: object
                                               required: [name]
                                               x-kubernetes-validations:
-                                              - rule: "[has(self.configMap), has(self.csi), has(self.downwardAPI), has(self.emptyDir), has(self.ephemeral), has(self.hostPath), has(self.image), has(self.nfs), has(self.persistentVolumeClaim), has(self.projected), has(self.secret)].filter(s, s).size() == 1"
-                                                message: "a volume sets exactly one of configMap, csi, downwardAPI, emptyDir, ephemeral, hostPath, image, nfs, persistentVolumeClaim, projected, secret"
+                                              - rule: "[has(self.configMap), has(self.csi), has(self.downwardAPI), has(self.emptyDir), has(self.ephemeral), has(self.persistentVolumeClaim), has(self.projected), has(self.secret)].filter(s, s).size() == 1"
+                                                message: "a volume sets exactly one of configMap, csi, downwardAPI, emptyDir, ephemeral, persistentVolumeClaim, projected, secret; hostPath, nfs and other sources that reach the node aren't accepted"
                                               properties:
                                                 name:
                                                   type: string
@@ -1063,15 +1074,6 @@ spec:
                                                   type: object
                                                   x-kubernetes-preserve-unknown-fields: true
                                                 ephemeral:
-                                                  type: object
-                                                  x-kubernetes-preserve-unknown-fields: true
-                                                hostPath:
-                                                  type: object
-                                                  x-kubernetes-preserve-unknown-fields: true
-                                                image:
-                                                  type: object
-                                                  x-kubernetes-preserve-unknown-fields: true
-                                                nfs:
                                                   type: object
                                                   x-kubernetes-preserve-unknown-fields: true
                                                 persistentVolumeClaim:

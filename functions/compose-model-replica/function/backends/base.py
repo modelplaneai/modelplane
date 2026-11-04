@@ -111,9 +111,10 @@ def cache_mounts(replica: v1alpha1.ModelReplica) -> tuple[list[dict], list[dict]
 
 
 # Every engine pod gets a memory-backed /dev/shm, since vLLM tensor parallelism
-# and NIXL KV transfer need a large one. The XRDs reserve this volume name and
-# _CACHE_VOLUME, and keep the engine container's own mounts off both paths, so
-# the user's volumes and mounts never collide with Modelplane's.
+# and NIXL KV transfer need a large one. The XRDs reserve this volume name,
+# _CACHE_VOLUME and the modelplane- prefix, and keep the engine container's own
+# mounts off both paths, so the user's volumes and mounts never collide with
+# Modelplane's. Name any volume Modelplane adds later modelplane-<something>.
 _SHM_VOLUME = "dshm"
 _SHM_MOUNT_PATH = "/dev/shm"
 

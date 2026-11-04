@@ -167,7 +167,7 @@ class VolumeMount(BaseModel):
     """
     Where to mount the volume in the container.
     """
-    name: constr(min_length=1)
+    name: constr(min_length=1, max_length=63)
     """
     The volume to mount.
     """
@@ -219,7 +219,7 @@ class Container(BaseModel):
     """
     volumeMounts: list[VolumeMount] | None = Field(None, max_length=16)
     """
-    Volumes to mount into the container. A mount names one of the pod's volumes, or a volume Modelplane adds: dshm, and model-cache when the deployment references a ModelCache. The engine container can't mount at /dev/shm or /mnt/models, where Modelplane mounts those two.
+    Volumes to mount into the container. A mount names one of the pod's volumes, dshm, or model-cache when the deployment sets modelCacheRef, and takes name, mountPath, subPath and readOnly. The engine container can't mount at /dev/shm or /mnt/models, where Modelplane mounts those two.
     """
 
 
@@ -238,7 +238,7 @@ class InitContainer(BaseModel):
     """
     env: list[EnvItem] | None = None
     """
-    Environment variables. Supports valueFrom.secretKeyRef / configMapKeyRef for secrets and config (like HF_TOKEN), and valueFrom.fieldRef for pod fields (e.g. status.podIP for vLLM's VLLM_HOST_IP on multi-NIC nodes).
+    Environment variables. Supports valueFrom.secretKeyRef / configMapKeyRef for secrets and config (like HF_TOKEN), and valueFrom.fieldRef for pod fields.
     """
     image: constr(min_length=1)
     """
@@ -256,7 +256,7 @@ class InitContainer(BaseModel):
     """
     volumeMounts: list[VolumeMount] | None = Field(None, max_length=16)
     """
-    Volumes to mount into the container. A mount names one of the pod's volumes, or a volume Modelplane adds: dshm, and model-cache when the deployment references a ModelCache. The engine container can't mount at /dev/shm or /mnt/models, where Modelplane mounts those two.
+    Volumes to mount into the init container. A mount names one of the pod's volumes, dshm, or model-cache when the deployment sets modelCacheRef, and takes name, mountPath, subPath and readOnly.
     """
 
 
@@ -266,15 +266,12 @@ class Volume(BaseModel):
     downwardAPI: dict[str, Any] | None = None
     emptyDir: dict[str, Any] | None = None
     ephemeral: dict[str, Any] | None = None
-    hostPath: dict[str, Any] | None = None
-    image: dict[str, Any] | None = None
     name: constr(
         pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
     )
     """
     Volume name, which a container's volumeMounts refer to.
     """
-    nfs: dict[str, Any] | None = None
     persistentVolumeClaim: dict[str, Any] | None = None
     projected: dict[str, Any] | None = None
     secret: dict[str, Any] | None = None
@@ -291,11 +288,11 @@ class Spec(BaseModel):
     """
     initContainers: list[InitContainer] | None = Field(None, max_length=8)
     """
-    Containers that run to completion, in order, before the pod's containers start, such as one that stages weights onto a node-local volume. Modelplane passes them through as written.
+    Containers that run to completion, in order, before the pod's containers start, such as one that copies weights from the ModelCache to a scratch volume. Each takes name, image, command, args, env, resources and volumeMounts. Modelplane adds nothing to them.
     """
     volumes: list[Volume] | None = Field(None, max_length=16)
     """
-    Volumes the pod's containers and init containers can mount, beside the ones Modelplane adds. Each sets a name and one Kubernetes volume source, written as in a pod spec, such as a hostPath to a node's local NVMe. The names dshm and model-cache are reserved for Modelplane's own volumes.
+    Volumes the pod's containers and init containers can mount, beside dshm and model-cache, which Modelplane adds. Each sets a name and one source: configMap, csi, downwardAPI, emptyDir, ephemeral, persistentVolumeClaim, projected or secret. Modelplane passes the source's fields through and the workload cluster validates them. Sources that reach the node, such as hostPath and nfs, aren't accepted. The names dshm and model-cache, and names that start with modelplane-, are reserved for Modelplane's volumes.
     """
 
 

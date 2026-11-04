@@ -431,6 +431,8 @@ spec:
                                 x-kubernetes-validations:
                                 - rule: "!has(self.initContainers) || !self.initContainers.exists(i, self.containers.exists(c, c.name == i.name))"
                                   message: "an init container can't share a name with a container"
+                                - rule: "self.containers.all(c, !has(c.volumeMounts) || c.volumeMounts.all(m, m.name in ['dshm', 'model-cache'] || (has(self.volumes) && self.volumes.exists(v, v.name == m.name)))) && (!has(self.initContainers) || self.initContainers.all(c, !has(c.volumeMounts) || c.volumeMounts.all(m, m.name in ['dshm', 'model-cache'] || (has(self.volumes) && self.volumes.exists(v, v.name == m.name)))))"
+                                  message: "each volume mount names one of the pod's volumes, dshm, or model-cache"
                                 properties:
                                   containers:
                                     type: array
@@ -614,6 +616,7 @@ spec:
                                               name:
                                                 type: string
                                                 minLength: 1
+                                                maxLength: 63
                                               mountPath:
                                                 type: string
                                                 minLength: 1
@@ -731,6 +734,7 @@ spec:
                                               name:
                                                 type: string
                                                 minLength: 1
+                                                maxLength: 63
                                               mountPath:
                                                 type: string
                                                 minLength: 1
@@ -744,14 +748,14 @@ spec:
                                     x-kubernetes-list-type: map
                                     x-kubernetes-list-map-keys: [name]
                                     x-kubernetes-validations:
-                                    - rule: "self.all(v, !(v.name in ['dshm', 'model-cache']))"
-                                      message: "volume names dshm and model-cache are reserved for the volumes Modelplane adds"
+                                    - rule: "self.all(v, !(v.name in ['dshm', 'model-cache']) && !v.name.startsWith('modelplane-'))"
+                                      message: "volume names dshm, model-cache and modelplane-* are reserved for the volumes Modelplane adds"
                                     items:
                                       type: object
                                       required: [name]
                                       x-kubernetes-validations:
-                                      - rule: "[has(self.configMap), has(self.csi), has(self.downwardAPI), has(self.emptyDir), has(self.ephemeral), has(self.hostPath), has(self.image), has(self.nfs), has(self.persistentVolumeClaim), has(self.projected), has(self.secret)].filter(s, s).size() == 1"
-                                        message: "a volume sets exactly one of configMap, csi, downwardAPI, emptyDir, ephemeral, hostPath, image, nfs, persistentVolumeClaim, projected, secret"
+                                      - rule: "[has(self.configMap), has(self.csi), has(self.downwardAPI), has(self.emptyDir), has(self.ephemeral), has(self.persistentVolumeClaim), has(self.projected), has(self.secret)].filter(s, s).size() == 1"
+                                        message: "a volume sets exactly one of configMap, csi, downwardAPI, emptyDir, ephemeral, persistentVolumeClaim, projected, secret; hostPath, nfs and other sources that reach the node aren't accepted"
                                       properties:
                                         name:
                                           type: string
@@ -771,15 +775,6 @@ spec:
                                           type: object
                                           x-kubernetes-preserve-unknown-fields: true
                                         ephemeral:
-                                          type: object
-                                          x-kubernetes-preserve-unknown-fields: true
-                                        hostPath:
-                                          type: object
-                                          x-kubernetes-preserve-unknown-fields: true
-                                        image:
-                                          type: object
-                                          x-kubernetes-preserve-unknown-fields: true
-                                        nfs:
                                           type: object
                                           x-kubernetes-preserve-unknown-fields: true
                                         persistentVolumeClaim:
