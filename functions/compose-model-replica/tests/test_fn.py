@@ -1721,11 +1721,8 @@ COMPOSE_CASES = [
                             {
                                 "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
                                 "kind": "Object",
-                                "spec": {"forProvider": {"manifest": {"kind": "LeaderWorkerSet"}}},
                                 "status": {
-                                    "atProvider": {
-                                        "manifest": {"kind": "LeaderWorkerSet", "status": {"readyReplicas": 1}}
-                                    },
+                                    "atProvider": {"manifest": {"status": {"readyReplicas": 1}}},
                                     "conditions": [
                                         {
                                             "type": "Ready",

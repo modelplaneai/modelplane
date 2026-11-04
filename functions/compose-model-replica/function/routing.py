@@ -363,7 +363,7 @@ def _unified(
     # The prefix-cache producer must chunk prefixes at the engine's KV block
     # size; derive it from the first engine's flags (HACK, #179).
     first = replica.spec.engines[0]
-    block_size = _kv_block_size(_engine_args(out[base.workload_key(first, base.select_backend(first, stack))]))
+    block_size = _kv_block_size(_engine_args(out[base.engine_workload_key(first, stack)]))
     container, config_yaml, secrets = _picker(replica, _unified_epp_config_yaml(block_size))
     selector = {base.LABEL_SERVING: base.serving_label(replica)}
     ns = base.remote_namespace(replica)
@@ -397,8 +397,8 @@ def _disaggregated(
     decode = next(e for e in replica.spec.engines if e.phase == "Decode")
 
     out = dict(composed)
-    prefill_key = base.workload_key(prefill, base.select_backend(prefill, stack))
-    decode_key = base.workload_key(decode, base.select_backend(decode, stack))
+    prefill_key = base.engine_workload_key(prefill, stack)
+    decode_key = base.engine_workload_key(decode, stack)
     _label_role(out[prefill_key], role="prefill")
     _label_role(out[decode_key], role="decode")
 

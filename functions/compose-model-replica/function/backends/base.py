@@ -454,6 +454,16 @@ def workload_key(engine: v1alpha1.Engine, backend: str) -> str:
     return f"{_WORKLOAD_KEY}-{backend}-{engine.name}"
 
 
+def engine_workload_key(engine: v1alpha1.Engine, stack: str) -> str:
+    """workload_key of an engine under the cluster's stack.
+
+    Each backend composes its engines' workloads under its own key, and the
+    stack picks the backend, so one call settles the key instead of every
+    caller repeating select_backend.
+    """
+    return workload_key(engine, select_backend(engine, stack))
+
+
 def scaling_group_key(engine: v1alpha1.Engine) -> str:
     """Response key for the observed Grove PodCliqueScalingGroup of an engine."""
     return f"{_SCALING_GROUP_KEY}-{engine.name}"
@@ -483,7 +493,7 @@ def claim_key(engine: v1alpha1.Engine, member: v1alpha1.Member) -> str:
 
 def workload_keys(replica: v1alpha1.ModelReplica, stack: str) -> list[str]:
     """Response keys of every engine's workload, in engine order."""
-    return [workload_key(g, select_backend(g, stack)) for g in replica.spec.engines]
+    return [engine_workload_key(g, stack) for g in replica.spec.engines]
 
 
 # DRA API the ResourceClaimTemplate targets. The manifest is a raw dict wrapped
