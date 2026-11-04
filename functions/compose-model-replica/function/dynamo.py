@@ -19,6 +19,7 @@ sidecars, placement, and device claims. A shared frontend routes requests to all
 workers in the graph, including native prefill/decode handoffs.
 """
 
+import re
 from collections.abc import Mapping
 
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -51,11 +52,21 @@ def component_name(engine: v1alpha1.Engine) -> str:
     return base.dns_1035_label(f"engine-{engine.name}", "engine", 16)
 
 
-def _runtime_version(member: v1alpha1.Member) -> dict[str, str]:
-    image = base.engine_container(member).image.split("@")[0]
-    if image.endswith(f"-runtime-nightly:{NIGHTLY_TAG}"):
-        return {"runtimeVersionOverride": NIGHTLY_RUNTIME_VERSION}
-    return {}
+def _runtime_version(members: list[v1alpha1.Member]) -> dict[str, str]:
+    """A component override applies to every role, independent of member order."""
+    images = [base.engine_container(member).image.split("@")[0] for member in members]
+    if not any(image.endswith(f"-runtime-nightly:{NIGHTLY_TAG}") for image in images):
+        return {}
+    for image in images:
+        if image.endswith(f"-runtime-nightly:{NIGHTLY_TAG}"):
+            continue
+        version = re.fullmatch(r"v?(\d+\.\d+\.\d+)(?:[-+].*)?", image.rsplit(":", 1)[-1])
+        if version is None or version.group(1) != NIGHTLY_RUNTIME_VERSION:
+            raise ValueError(
+                "Nightly component members must use the pinned nightly or semantic "
+                f"runtime version {NIGHTLY_RUNTIME_VERSION}"
+            )
+    return {"runtimeVersionOverride": NIGHTLY_RUNTIME_VERSION}
 
 
 def _runtime_port_number(name: str, variable: str, configured: dict | None, default: int) -> int:
@@ -104,18 +115,23 @@ def _runtime_ports(container: dict) -> None:
 def validate(replica: v1alpha1.ModelReplica) -> str | None:
     """Reject graph shapes that would lose user configuration or be rejected by DGD admission."""
     frameworks = set()
-    for engine in replica.spec.engines:
-        for member in engine.members:
-            try:
+    try:
+        for engine in replica.spec.engines:
+            _runtime_version(engine.members)
+            for member in engine.members:
                 frameworks.add(base.dynamo_framework(member))
-                _runtime_ports(base.engine_container(member).model_dump(exclude_none=True))
-            except ValueError as err:
-                return str(err)
-            container = base.engine_container(member)
-            if not container.command and not container.args:
-                return f"Dynamo member {engine.name}/{base.member_role(member)} requires a command or runtime args"
-            if any(c.name == "main" for c in member.template.spec.containers):
-                return "Dynamo reserves container name main for the engine; rename the sidecar named main"
+                container = base.engine_container(member)
+                _runtime_ports(container.model_dump(exclude_none=True))
+                if not container.command and not container.args:
+                    raise ValueError(
+                        f"Dynamo member {engine.name}/{base.member_role(member)} requires a command or runtime args"
+                    )
+                if any(c.name == "main" for c in member.template.spec.containers):
+                    raise ValueError(
+                        "Dynamo reserves container name main for the engine; rename the sidecar named main"
+                    )
+    except ValueError as err:
+        return str(err)
     if len(frameworks) != 1:
         return "All engines in a Dynamo graph must use the same backend framework"
     if replica.spec.serving and replica.spec.serving.router:
@@ -168,7 +184,7 @@ def build(replica: v1alpha1.ModelReplica, provider_config: str) -> dict[str, k8s
     frontend = {
         "name": FRONTEND,
         "type": "frontend",
-        **_runtime_version(first_member),
+        **_runtime_version([first_member]),
         "replicas": 1,
         "podTemplate": {
             "metadata": {
@@ -206,7 +222,7 @@ def build(replica: v1alpha1.ModelReplica, provider_config: str) -> dict[str, k8s
         component = {
             "name": component_name(engine),
             "type": (engine.phase or "worker").lower(),
-            **_runtime_version(engine.members[0]),
+            **_runtime_version(engine.members),
             "replicas": int(engine.copies or 1),
         }
         if standalone := base.engine_member(engine, base.ROLE_STANDALONE):
