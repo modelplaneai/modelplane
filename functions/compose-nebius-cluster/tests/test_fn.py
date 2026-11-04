@@ -52,8 +52,8 @@ def _xr(*, credentials: v1alpha1.Credentials | None, node_pools: list[v1alpha1.N
     return fnv1.Resource(resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json", by_alias=True)))
 
 
-def _desired_xr(*, credentials_secret: bool) -> fnv1.Resource:
-    """The desired XR's status, which names the credentials Secret only if credentials_secret."""
+def _desired_xr(*, credentials_secret: bool, node_pools: list[dict]) -> fnv1.Resource:
+    """The desired XR's status, publishing node_pools' states and naming the credentials Secret only if credentials_secret."""
     secrets = [{"type": "Kubeconfig", "name": "test-cluster-kubeconfig-55b57", "key": "kubeconfig"}]
     if credentials_secret:
         secrets.append(
@@ -66,7 +66,13 @@ def _desired_xr(*, credentials_secret: bool) -> fnv1.Resource:
         )
     return fnv1.Resource(
         resource=resource.dict_to_struct(
-            {"status": {"secrets": secrets, "cache": {"storageClassName": "modelplane-rwx-fs"}}},
+            {
+                "status": {
+                    "nodePools": node_pools,
+                    "secrets": secrets,
+                    "cache": {"storageClassName": "modelplane-rwx-fs"},
+                }
+            },
         ),
     )
 
@@ -183,8 +189,8 @@ def _filesystem(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Re
     )
 
 
-def _subnet_observed(*, cred_kind: str, cred_name: str, subnet_id: str) -> fnv1.Resource:
-    """The observed subnet, provisioned with subnet_id but not yet Ready."""
+def _subnet_observed(*, cred_kind: str, cred_name: str, subnet_id: str, ready: bool) -> fnv1.Resource:
+    """The observed subnet, provisioned with subnet_id."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -198,14 +204,24 @@ def _subnet_observed(*, cred_kind: str, cred_name: str, subnet_id: str) -> fnv1.
                         "ipv4PrivatePools": {"useNetworkPools": True},
                     },
                 },
-                "status": {"atProvider": {"id": subnet_id}},
+                "status": {
+                    "atProvider": {"id": subnet_id},
+                    "conditions": [
+                        {
+                            "type": "Ready",
+                            "status": "True" if ready else "False",
+                            "reason": "Available" if ready else "Creating",
+                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                        },
+                    ],
+                },
             }
         ),
     )
 
 
-def _filesystem_observed(*, cred_kind: str, cred_name: str, filesystem_id: str) -> fnv1.Resource:
-    """The observed cache filesystem, provisioned with filesystem_id but not yet Ready."""
+def _filesystem_observed(*, cred_kind: str, cred_name: str, filesystem_id: str, ready: bool) -> fnv1.Resource:
+    """The observed cache filesystem, provisioned with filesystem_id."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -219,7 +235,17 @@ def _filesystem_observed(*, cred_kind: str, cred_name: str, filesystem_id: str) 
                         "sizeGibibytes": 1024,
                     },
                 },
-                "status": {"atProvider": {"id": filesystem_id}},
+                "status": {
+                    "atProvider": {"id": filesystem_id},
+                    "conditions": [
+                        {
+                            "type": "Ready",
+                            "status": "True" if ready else "False",
+                            "reason": "Available" if ready else "Creating",
+                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                        },
+                    ],
+                },
             }
         ),
     )
@@ -436,6 +462,121 @@ def _provider_config(*, api_version: str) -> fnv1.Resource:
     )
 
 
+def _gpu_cluster(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed GpuCluster for InfiniBand fabric-2."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "compute.nebius.m.upbound.io/v1beta1",
+                "kind": "GpuCluster",
+                "metadata": {"labels": {"modelplane.ai/fabric": "fabric-2"}},
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                    "forProvider": {
+                        "name": "test-cluster-fabric-2",
+                        "infinibandFabric": "fabric-2",
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _csi_release(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed csi-mounted-fs-path Helm release, tolerating the GPU taint."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                "kind": "Release",
+                "metadata": {"namespace": "modelplane-system"},
+                "spec": {
+                    "managementPolicies": ["Observe", "Create", "Update"],
+                    "providerConfigRef": {
+                        "kind": "ProviderConfig",
+                        "name": "test-cluster-kubeconfig-55b57",
+                    },
+                    "forProvider": {
+                        "chart": {
+                            "name": "csi-mounted-fs-path",
+                            "repository": "oci://cr.eu-north1.nebius.cloud/mk8s/helm",
+                            "version": "0.1.6",
+                        },
+                        "namespace": "kube-system",
+                        "values": {
+                            "dataDir": "/mnt/data/csi-mounted-fs-path-data/",
+                            "tolerations": [
+                                {
+                                    "key": "nvidia.com/gpu",
+                                    "operator": "Exists",
+                                    "effect": "NoSchedule",
+                                },
+                            ],
+                        },
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _storage_class() -> fnv1.Resource:
+    """The composed Object holding the RWX StorageClass, ready once created."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "metadata": {"namespace": "modelplane-system"},
+                "spec": {
+                    "managementPolicies": ["Observe", "Create", "Update"],
+                    "providerConfigRef": {
+                        "kind": "ProviderConfig",
+                        "name": "test-cluster-kubeconfig-55b57",
+                    },
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "storage.k8s.io/v1",
+                            "kind": "StorageClass",
+                            "metadata": {"name": "modelplane-rwx-fs"},
+                            "provisioner": "mounted-fs-path.csi.nebius.ai",
+                            "volumeBindingMode": "WaitForFirstConsumer",
+                        },
+                    },
+                },
+            }
+        ),
+        ready=fnv1.READY_TRUE,
+    )
+
+
+def _observed_managed_resource(*, ready: bool, failure: str | None) -> fnv1.Resource:
+    """An observed managed resource with the given Ready status, whose provider
+    reports its last operation failed with failure unless it's None."""
+    conditions = [
+        {
+            "type": "Ready",
+            "status": "True" if ready else "False",
+            "reason": "Available" if ready else "Creating",
+            "lastTransitionTime": "2024-01-01T00:00:00Z",
+        },
+    ]
+    if failure is not None:
+        conditions.append(
+            {
+                "type": "LastAsyncOperation",
+                "status": "False",
+                "reason": "AsyncCreateFailure",
+                "message": failure,
+                "lastTransitionTime": "2024-01-01T00:00:00Z",
+            }
+        )
+    return fnv1.Resource(resource=resource.dict_to_struct({"status": {"conditions": conditions}}))
+
+
 def _to_dict(msg: message.Message) -> dict:
     """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
     return json.loads(json_format.MessageToJson(msg, sort_keys=True))
@@ -480,7 +621,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(credentials_secret=True),
+                composite=_desired_xr(credentials_secret=True, node_pools=[{"name": "gpu-h100", "state": "Pending"}]),
                 resources={
                     "network": _network(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -506,6 +647,20 @@ COMPOSE_CASES = [
                 ),
             ],
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="3 of 7 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "nebius-provider-config": fnv1.ResourceSelector(
@@ -541,12 +696,16 @@ COMPOSE_CASES = [
                 ),
                 resources={
                     "subnet": _subnet_observed(
-                        cred_kind="ClusterProviderConfig", cred_name="default", subnet_id="vpcsubnet-e00test"
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        subnet_id="vpcsubnet-e00test",
+                        ready=False,
                     ),
                     "filesystem": _filesystem_observed(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
                         filesystem_id="computefilesystem-e00test",
+                        ready=False,
                     ),
                 },
             ),
@@ -559,7 +718,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(credentials_secret=True),
+                composite=_desired_xr(
+                    credentials_secret=True, node_pools=[{"name": "cpu-pool", "state": "Provisioning"}]
+                ),
                 resources={
                     "network": _network(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -587,6 +748,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="3 of 8 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "nebius-provider-config": fnv1.ResourceSelector(
@@ -620,12 +795,16 @@ COMPOSE_CASES = [
                 ),
                 resources={
                     "subnet": _subnet_observed(
-                        cred_kind="ClusterProviderConfig", cred_name="default", subnet_id="vpcsubnet-e00test"
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        subnet_id="vpcsubnet-e00test",
+                        ready=False,
                     ),
                     "filesystem": _filesystem_observed(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
                         filesystem_id="computefilesystem-e00test",
+                        ready=False,
                     ),
                 },
             ),
@@ -633,7 +812,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(credentials_secret=False),
+                composite=_desired_xr(
+                    credentials_secret=False, node_pools=[{"name": "gpu-h100", "state": "Provisioning"}]
+                ),
                 resources={
                     "network": _network(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -668,6 +849,20 @@ COMPOSE_CASES = [
                 ),
             ],
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 6 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "nebius-provider-config": fnv1.ResourceSelector(
@@ -704,12 +899,16 @@ COMPOSE_CASES = [
                 ),
                 resources={
                     "subnet": _subnet_observed(
-                        cred_kind="ClusterProviderConfig", cred_name="default", subnet_id="vpcsubnet-e00test"
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        subnet_id="vpcsubnet-e00test",
+                        ready=False,
                     ),
                     "filesystem": _filesystem_observed(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
                         filesystem_id="computefilesystem-e00test",
+                        ready=False,
                     ),
                     "provider-config-kubernetes": fnv1.Resource(
                         resource=resource.dict_to_struct(
@@ -745,7 +944,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(credentials_secret=True),
+                composite=_desired_xr(
+                    credentials_secret=True, node_pools=[{"name": "gpu-h100", "state": "Provisioning"}]
+                ),
                 resources={
                     "network": _network(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -783,6 +984,20 @@ COMPOSE_CASES = [
                 ),
             ],
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="3 of 8 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "nebius-provider-config": fnv1.ResourceSelector(
@@ -819,12 +1034,16 @@ COMPOSE_CASES = [
                 ),
                 resources={
                     "subnet": _subnet_observed(
-                        cred_kind="ClusterProviderConfig", cred_name="default", subnet_id="vpcsubnet-e00test"
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        subnet_id="vpcsubnet-e00test",
+                        ready=False,
                     ),
                     "filesystem": _filesystem_observed(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
                         filesystem_id="computefilesystem-e00test",
+                        ready=False,
                     ),
                 },
             ),
@@ -837,7 +1056,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(credentials_secret=True),
+                composite=_desired_xr(
+                    credentials_secret=True, node_pools=[{"name": "gpu-h100", "state": "Provisioning"}]
+                ),
                 resources={
                     "network": _network(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -852,22 +1073,7 @@ COMPOSE_CASES = [
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
                     "cloud-init": _cloud_init_secret(),
-                    "gpu-cluster-fabric-2": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "compute.nebius.m.upbound.io/v1beta1",
-                                "kind": "GpuCluster",
-                                "metadata": {"labels": {"modelplane.ai/fabric": "fabric-2"}},
-                                "spec": {
-                                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
-                                    "forProvider": {
-                                        "name": "test-cluster-fabric-2",
-                                        "infinibandFabric": "fabric-2",
-                                    },
-                                },
-                            }
-                        ),
-                    ),
+                    "gpu-cluster-fabric-2": _gpu_cluster(ready=fnv1.READY_UNSPECIFIED),
                     "nodegroup-system": _nodegroup_system(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
@@ -884,6 +1090,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="3 of 8 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "nebius-provider-config": fnv1.ResourceSelector(
@@ -1180,7 +1400,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(credentials_secret=True),
+                composite=_desired_xr(credentials_secret=True, node_pools=[{"name": "gpu-h100", "state": "Ready"}]),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
                     "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -1189,68 +1409,8 @@ COMPOSE_CASES = [
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
                     ),
                     "cloud-init": _cloud_init_secret(),
-                    "release-csi-mounted-fs-path": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "helm.m.crossplane.io/v1beta1",
-                                "kind": "Release",
-                                "metadata": {"namespace": "modelplane-system"},
-                                "spec": {
-                                    "managementPolicies": ["Observe", "Create", "Update"],
-                                    "providerConfigRef": {
-                                        "kind": "ProviderConfig",
-                                        "name": "test-cluster-kubeconfig-55b57",
-                                    },
-                                    "forProvider": {
-                                        "chart": {
-                                            "name": "csi-mounted-fs-path",
-                                            "repository": "oci://cr.eu-north1.nebius.cloud/mk8s/helm",
-                                            "version": "0.1.6",
-                                        },
-                                        "namespace": "kube-system",
-                                        "values": {
-                                            "dataDir": "/mnt/data/csi-mounted-fs-path-data/",
-                                            "tolerations": [
-                                                {
-                                                    "key": "nvidia.com/gpu",
-                                                    "operator": "Exists",
-                                                    "effect": "NoSchedule",
-                                                },
-                                            ],
-                                        },
-                                    },
-                                },
-                            }
-                        ),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "storage-class-rwx-fs": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                                "kind": "Object",
-                                "metadata": {"namespace": "modelplane-system"},
-                                "spec": {
-                                    "managementPolicies": ["Observe", "Create", "Update"],
-                                    "providerConfigRef": {
-                                        "kind": "ProviderConfig",
-                                        "name": "test-cluster-kubeconfig-55b57",
-                                    },
-                                    "readiness": {"policy": "SuccessfulCreate"},
-                                    "forProvider": {
-                                        "manifest": {
-                                            "apiVersion": "storage.k8s.io/v1",
-                                            "kind": "StorageClass",
-                                            "metadata": {"name": "modelplane-rwx-fs"},
-                                            "provisioner": "mounted-fs-path.csi.nebius.ai",
-                                            "volumeBindingMode": "WaitForFirstConsumer",
-                                        },
-                                    },
-                                },
-                            }
-                        ),
-                        ready=fnv1.READY_TRUE,
-                    ),
+                    "release-csi-mounted-fs-path": _csi_release(ready=fnv1.READY_TRUE),
+                    "storage-class-rwx-fs": _storage_class(),
                     "nodegroup-system": _nodegroup_system(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
                     ),
@@ -1267,6 +1427,18 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "nebius-provider-config": fnv1.ResourceSelector(
@@ -1306,12 +1478,16 @@ COMPOSE_CASES = [
                 ),
                 resources={
                     "subnet": _subnet_observed(
-                        cred_kind="ProviderConfig", cred_name="my-nebius-account", subnet_id="vpcsubnet-e00test"
+                        cred_kind="ProviderConfig",
+                        cred_name="my-nebius-account",
+                        subnet_id="vpcsubnet-e00test",
+                        ready=False,
                     ),
                     "filesystem": _filesystem_observed(
                         cred_kind="ProviderConfig",
                         cred_name="my-nebius-account",
                         filesystem_id="computefilesystem-e00test",
+                        ready=False,
                     ),
                 },
             ),
@@ -1328,7 +1504,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(credentials_secret=True),
+                composite=_desired_xr(
+                    credentials_secret=True, node_pools=[{"name": "gpu-h100", "state": "Provisioning"}]
+                ),
                 resources={
                     "network": _network(
                         cred_kind="ProviderConfig", cred_name="my-nebius-account", ready=fnv1.READY_UNSPECIFIED
@@ -1359,6 +1537,20 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="3 of 8 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "nebius-provider-config": fnv1.ResourceSelector(
@@ -1454,7 +1646,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(credentials_secret=True),
+                composite=_desired_xr(credentials_secret=True, node_pools=[{"name": "gpu-h100", "state": "Pending"}]),
                 resources={
                     "network": _network(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -1480,6 +1672,20 @@ COMPOSE_CASES = [
                 ),
             ],
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="3 of 7 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "nebius-provider-config": fnv1.ResourceSelector(
@@ -1537,7 +1743,9 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(credentials_secret=True),
+                composite=_desired_xr(
+                    credentials_secret=True, node_pools=[{"name": "gpu-h100", "state": "Provisioning"}]
+                ),
                 resources={
                     "network": _network(
                         cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
@@ -1568,6 +1776,759 @@ COMPOSE_CASES = [
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="3 of 8 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+            requirements=fnv1.Requirements(
+                resources={
+                    "nebius-provider-config": fnv1.ResourceSelector(
+                        api_version="nebius.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
+                    ),
+                },
+            ),
+        ),
+    ),
+    Case(
+        name="StagesClusterProvisioning",
+        reason="With the mk8s cluster unready, ClusterReady is Provisioning with a count of its ready resources, and NodePoolsReady is Pending on it while no pool is Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-h100",
+                            role="GPU",
+                            platform="gpu-h100-sxm",
+                            preset="8gpu-128vcpu-1600gb",
+                            diskSizeGb=200,
+                            nodeCount=2,
+                            fabric=v1alpha1.Fabric(
+                                type="InfiniBand",
+                                infiniband=v1alpha1.Infiniband(fabric="fabric-2"),
+                            ),
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpu-pool",
+                            role="CPU",
+                            platform="cpu-d3",
+                            preset="8vcpu-32gb",
+                            nodeCount=1,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "network": _observed_managed_resource(ready=True, failure=None),
+                    "subnet": _subnet_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        subnet_id="vpcsubnet-e00test",
+                        ready=True,
+                    ),
+                    "filesystem": _filesystem_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        filesystem_id="computefilesystem-e00test",
+                        ready=True,
+                    ),
+                    "cluster": _observed_managed_resource(ready=False, failure=None),
+                },
+            ),
+            required_resources={
+                "nebius-provider-config": fnv1.Resources(
+                    items=[_nebius_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    credentials_secret=True,
+                    node_pools=[
+                        {"name": "gpu-h100", "state": "Provisioning"},
+                        {"name": "cpu-pool", "state": "Provisioning"},
+                    ],
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "filesystem": _filesystem(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "cloud-init": _cloud_init_secret(),
+                    "gpu-cluster-fabric-2": _gpu_cluster(ready=fnv1.READY_UNSPECIFIED),
+                    "nodegroup-system": _nodegroup_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodegroup-gpu-h100": _nodegroup_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        autoscaling=None,
+                        fixed_node_count=2,
+                        fabric="fabric-2",
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "nodegroup-cpu-pool": _nodegroup_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "release-csi-mounted-fs-path": _csi_release(ready=fnv1.READY_UNSPECIFIED),
+                    "storage-class-rwx-fs": _storage_class(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="7 of 10 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+            requirements=fnv1.Requirements(
+                resources={
+                    "nebius-provider-config": fnv1.ResourceSelector(
+                        api_version="nebius.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
+                    ),
+                },
+            ),
+        ),
+    ),
+    Case(
+        name="StagesPoolsProvisioning",
+        reason="With every cluster resource Ready and fabric-2's GpuCluster unready, ClusterReady is True, gpu-h100 is Provisioning though its node group is Ready, cpu-pool is Ready, and NodePoolsReady counts the Ready pools.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-h100",
+                            role="GPU",
+                            platform="gpu-h100-sxm",
+                            preset="8gpu-128vcpu-1600gb",
+                            diskSizeGb=200,
+                            nodeCount=2,
+                            fabric=v1alpha1.Fabric(
+                                type="InfiniBand",
+                                infiniband=v1alpha1.Infiniband(fabric="fabric-2"),
+                            ),
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpu-pool",
+                            role="CPU",
+                            platform="cpu-d3",
+                            preset="8vcpu-32gb",
+                            nodeCount=1,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "network": _observed_managed_resource(ready=True, failure=None),
+                    "subnet": _subnet_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        subnet_id="vpcsubnet-e00test",
+                        ready=True,
+                    ),
+                    "cluster": _observed_managed_resource(ready=True, failure=None),
+                    "filesystem": _filesystem_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        filesystem_id="computefilesystem-e00test",
+                        ready=True,
+                    ),
+                    "gpu-cluster-fabric-2": _observed_managed_resource(ready=False, failure=None),
+                    "nodegroup-system": _observed_managed_resource(ready=True, failure=None),
+                    "nodegroup-gpu-h100": _observed_managed_resource(ready=True, failure=None),
+                    "nodegroup-cpu-pool": _observed_managed_resource(ready=True, failure=None),
+                    "release-csi-mounted-fs-path": _observed_managed_resource(ready=True, failure=None),
+                },
+            ),
+            required_resources={
+                "nebius-provider-config": fnv1.Resources(
+                    items=[_nebius_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    credentials_secret=True,
+                    node_pools=[{"name": "gpu-h100", "state": "Provisioning"}, {"name": "cpu-pool", "state": "Ready"}],
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "filesystem": _filesystem(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "cloud-init": _cloud_init_secret(),
+                    "gpu-cluster-fabric-2": _gpu_cluster(ready=fnv1.READY_UNSPECIFIED),
+                    "nodegroup-system": _nodegroup_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "nodegroup-gpu-h100": _nodegroup_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        autoscaling=None,
+                        fixed_node_count=2,
+                        fabric="fabric-2",
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "nodegroup-cpu-pool": _nodegroup_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "release-csi-mounted-fs-path": _csi_release(ready=fnv1.READY_TRUE),
+                    "storage-class-rwx-fs": _storage_class(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="1 of 2 node pools ready",
+                ),
+            ],
+            requirements=fnv1.Requirements(
+                resources={
+                    "nebius-provider-config": fnv1.ResourceSelector(
+                        api_version="nebius.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
+                    ),
+                },
+            ),
+        ),
+    ),
+    Case(
+        name="StagesAllReady",
+        reason="With every resource Ready, ClusterReady and NodePoolsReady are True and both pools are Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-h100",
+                            role="GPU",
+                            platform="gpu-h100-sxm",
+                            preset="8gpu-128vcpu-1600gb",
+                            diskSizeGb=200,
+                            nodeCount=2,
+                            fabric=v1alpha1.Fabric(
+                                type="InfiniBand",
+                                infiniband=v1alpha1.Infiniband(fabric="fabric-2"),
+                            ),
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpu-pool",
+                            role="CPU",
+                            platform="cpu-d3",
+                            preset="8vcpu-32gb",
+                            nodeCount=1,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "network": _observed_managed_resource(ready=True, failure=None),
+                    "subnet": _subnet_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        subnet_id="vpcsubnet-e00test",
+                        ready=True,
+                    ),
+                    "cluster": _observed_managed_resource(ready=True, failure=None),
+                    "filesystem": _filesystem_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        filesystem_id="computefilesystem-e00test",
+                        ready=True,
+                    ),
+                    "gpu-cluster-fabric-2": _observed_managed_resource(ready=True, failure=None),
+                    "nodegroup-system": _observed_managed_resource(ready=True, failure=None),
+                    "nodegroup-gpu-h100": _observed_managed_resource(ready=True, failure=None),
+                    "nodegroup-cpu-pool": _observed_managed_resource(ready=True, failure=None),
+                    "release-csi-mounted-fs-path": _observed_managed_resource(ready=True, failure=None),
+                },
+            ),
+            required_resources={
+                "nebius-provider-config": fnv1.Resources(
+                    items=[_nebius_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    credentials_secret=True,
+                    node_pools=[{"name": "gpu-h100", "state": "Ready"}, {"name": "cpu-pool", "state": "Ready"}],
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "filesystem": _filesystem(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "cloud-init": _cloud_init_secret(),
+                    "gpu-cluster-fabric-2": _gpu_cluster(ready=fnv1.READY_TRUE),
+                    "nodegroup-system": _nodegroup_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "nodegroup-gpu-h100": _nodegroup_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        autoscaling=None,
+                        fixed_node_count=2,
+                        fabric="fabric-2",
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "nodegroup-cpu-pool": _nodegroup_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "release-csi-mounted-fs-path": _csi_release(ready=fnv1.READY_TRUE),
+                    "storage-class-rwx-fs": _storage_class(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
+            requirements=fnv1.Requirements(
+                resources={
+                    "nebius-provider-config": fnv1.ResourceSelector(
+                        api_version="nebius.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
+                    ),
+                },
+            ),
+        ),
+    ),
+    Case(
+        name="StagesPoolFailed",
+        reason="With the provider reporting fabric-2's GpuCluster create failed, gpu-h100 is Failed with the provider's error prefixed by gpu-cluster-fabric-2, and NodePoolsReady is Failed while ClusterReady is still Provisioning.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-h100",
+                            role="GPU",
+                            platform="gpu-h100-sxm",
+                            preset="8gpu-128vcpu-1600gb",
+                            diskSizeGb=200,
+                            nodeCount=2,
+                            fabric=v1alpha1.Fabric(
+                                type="InfiniBand",
+                                infiniband=v1alpha1.Infiniband(fabric="fabric-2"),
+                            ),
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpu-pool",
+                            role="CPU",
+                            platform="cpu-d3",
+                            preset="8vcpu-32gb",
+                            nodeCount=1,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "network": _observed_managed_resource(ready=True, failure=None),
+                    "subnet": _subnet_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        subnet_id="vpcsubnet-e00test",
+                        ready=True,
+                    ),
+                    "filesystem": _filesystem_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        filesystem_id="computefilesystem-e00test",
+                        ready=True,
+                    ),
+                    "cluster": _observed_managed_resource(ready=False, failure=None),
+                    "gpu-cluster-fabric-2": _observed_managed_resource(
+                        ready=False,
+                        failure="async create failed: RESOURCE_EXHAUSTED: GPU cluster quota exceeded",
+                    ),
+                },
+            ),
+            required_resources={
+                "nebius-provider-config": fnv1.Resources(
+                    items=[_nebius_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    credentials_secret=True,
+                    node_pools=[
+                        {
+                            "name": "gpu-h100",
+                            "state": "Failed",
+                            "message": "gpu-cluster-fabric-2: async create failed: RESOURCE_EXHAUSTED: GPU cluster quota exceeded",
+                        },
+                        {"name": "cpu-pool", "state": "Provisioning"},
+                    ],
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "filesystem": _filesystem(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "cloud-init": _cloud_init_secret(),
+                    "gpu-cluster-fabric-2": _gpu_cluster(ready=fnv1.READY_UNSPECIFIED),
+                    "nodegroup-system": _nodegroup_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodegroup-gpu-h100": _nodegroup_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        autoscaling=None,
+                        fixed_node_count=2,
+                        fabric="fabric-2",
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "nodegroup-cpu-pool": _nodegroup_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "release-csi-mounted-fs-path": _csi_release(ready=fnv1.READY_UNSPECIFIED),
+                    "storage-class-rwx-fs": _storage_class(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="7 of 10 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Failed",
+                    message="1 of 2 node pools failed: gpu-h100",
+                ),
+            ],
+            requirements=fnv1.Requirements(
+                resources={
+                    "nebius-provider-config": fnv1.ResourceSelector(
+                        api_version="nebius.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
+                    ),
+                },
+            ),
+        ),
+    ),
+    Case(
+        name="StagesClusterFailed",
+        reason="With the provider reporting the mk8s cluster and system node group creates failed, ClusterReady is Failed with the cluster's error and a count of the other failure, and NodePoolsReady is Pending on it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-h100",
+                            role="GPU",
+                            platform="gpu-h100-sxm",
+                            preset="8gpu-128vcpu-1600gb",
+                            diskSizeGb=200,
+                            nodeCount=2,
+                            fabric=v1alpha1.Fabric(
+                                type="InfiniBand",
+                                infiniband=v1alpha1.Infiniband(fabric="fabric-2"),
+                            ),
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpu-pool",
+                            role="CPU",
+                            platform="cpu-d3",
+                            preset="8vcpu-32gb",
+                            nodeCount=1,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "network": _observed_managed_resource(ready=True, failure=None),
+                    "subnet": _subnet_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        subnet_id="vpcsubnet-e00test",
+                        ready=True,
+                    ),
+                    "filesystem": _filesystem_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        filesystem_id="computefilesystem-e00test",
+                        ready=True,
+                    ),
+                    "cluster": _observed_managed_resource(
+                        ready=False,
+                        failure="async create failed: INVALID_ARGUMENT: unsupported Kubernetes version",
+                    ),
+                    "nodegroup-system": _observed_managed_resource(
+                        ready=False,
+                        failure="async create failed: RESOURCE_EXHAUSTED: cpu-d3 quota exceeded",
+                    ),
+                },
+            ),
+            required_resources={
+                "nebius-provider-config": fnv1.Resources(
+                    items=[_nebius_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    credentials_secret=True,
+                    node_pools=[
+                        {"name": "gpu-h100", "state": "Provisioning"},
+                        {"name": "cpu-pool", "state": "Provisioning"},
+                    ],
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "filesystem": _filesystem(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "cloud-init": _cloud_init_secret(),
+                    "gpu-cluster-fabric-2": _gpu_cluster(ready=fnv1.READY_UNSPECIFIED),
+                    "nodegroup-system": _nodegroup_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodegroup-gpu-h100": _nodegroup_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        autoscaling=None,
+                        fixed_node_count=2,
+                        fabric="fabric-2",
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "nodegroup-cpu-pool": _nodegroup_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "release-csi-mounted-fs-path": _csi_release(ready=fnv1.READY_UNSPECIFIED),
+                    "storage-class-rwx-fs": _storage_class(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Failed",
+                    message="cluster: async create failed: INVALID_ARGUMENT: unsupported Kubernetes version (and 1 more)",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+            requirements=fnv1.Requirements(
+                resources={
+                    "nebius-provider-config": fnv1.ResourceSelector(
+                        api_version="nebius.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
+                    ),
+                },
+            ),
+        ),
+    ),
+    Case(
+        name="ClusterUnreadyPoolsReady",
+        reason="With the mk8s cluster gone unready while both pools' resources are Ready, ClusterReady is Provisioning and NodePoolsReady reports the pools' own state, True, not Pending.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-h100",
+                            role="GPU",
+                            platform="gpu-h100-sxm",
+                            preset="8gpu-128vcpu-1600gb",
+                            diskSizeGb=200,
+                            nodeCount=2,
+                            fabric=v1alpha1.Fabric(
+                                type="InfiniBand",
+                                infiniband=v1alpha1.Infiniband(fabric="fabric-2"),
+                            ),
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpu-pool",
+                            role="CPU",
+                            platform="cpu-d3",
+                            preset="8vcpu-32gb",
+                            nodeCount=1,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "network": _observed_managed_resource(ready=True, failure=None),
+                    "subnet": _subnet_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        subnet_id="vpcsubnet-e00test",
+                        ready=True,
+                    ),
+                    "cluster": _observed_managed_resource(ready=False, failure=None),
+                    "filesystem": _filesystem_observed(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        filesystem_id="computefilesystem-e00test",
+                        ready=True,
+                    ),
+                    "gpu-cluster-fabric-2": _observed_managed_resource(ready=True, failure=None),
+                    "nodegroup-system": _observed_managed_resource(ready=True, failure=None),
+                    "nodegroup-gpu-h100": _observed_managed_resource(ready=True, failure=None),
+                    "nodegroup-cpu-pool": _observed_managed_resource(ready=True, failure=None),
+                    "release-csi-mounted-fs-path": _observed_managed_resource(ready=True, failure=None),
+                },
+            ),
+            required_resources={
+                "nebius-provider-config": fnv1.Resources(
+                    items=[_nebius_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    credentials_secret=True,
+                    node_pools=[{"name": "gpu-h100", "state": "Ready"}, {"name": "cpu-pool", "state": "Ready"}],
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "filesystem": _filesystem(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "cloud-init": _cloud_init_secret(),
+                    "gpu-cluster-fabric-2": _gpu_cluster(ready=fnv1.READY_TRUE),
+                    "nodegroup-system": _nodegroup_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "nodegroup-gpu-h100": _nodegroup_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        autoscaling=None,
+                        fixed_node_count=2,
+                        fabric="fabric-2",
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "nodegroup-cpu-pool": _nodegroup_cpu(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "release-csi-mounted-fs-path": _csi_release(ready=fnv1.READY_TRUE),
+                    "storage-class-rwx-fs": _storage_class(),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="9 of 10 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "nebius-provider-config": fnv1.ResourceSelector(

@@ -55,12 +55,13 @@ def _xr(*, credentials: v1alpha1.Credentials | None, node_pools: list[v1alpha1.N
     return fnv1.Resource(resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json", by_alias=True)))
 
 
-def _desired_xr() -> fnv1.Resource:
-    """The desired XR, publishing its connection Secrets and cache StorageClass."""
+def _desired_xr(*, node_pools: list[dict]) -> fnv1.Resource:
+    """The desired XR, publishing node_pools' states, its connection Secrets and cache StorageClass."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
                 "status": {
+                    "nodePools": node_pools,
                     "secrets": [
                         {
                             "type": "Kubeconfig",
@@ -126,7 +127,7 @@ def _network(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resou
     )
 
 
-def _projectservice_filestore(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
+def _projectservice_filestore(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resource:
     """The composed ProjectService that enables the Filestore API."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -142,10 +143,11 @@ def _projectservice_filestore(*, cred_kind: str, cred_name: str) -> fnv1.Resourc
                 },
             }
         ),
+        ready=ready,
     )
 
 
-def _subnet(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
+def _subnet(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resource:
     """The composed Subnetwork, with secondary ranges for pods and services."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -166,10 +168,11 @@ def _subnet(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
                 },
             }
         ),
+        ready=ready,
     )
 
 
-def _cluster(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
+def _cluster(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resource:
     """The composed GKE Cluster."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -204,10 +207,11 @@ def _cluster(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
                 },
             }
         ),
+        ready=ready,
     )
 
 
-def _nodepool_system(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
+def _nodepool_system(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resource:
     """The composed system NodePool the function adds to every cluster."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -233,10 +237,13 @@ def _nodepool_system(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
                 },
             }
         ),
+        ready=ready,
     )
 
 
-def _nodepool_gpu(*, cred_kind: str, cred_name: str, reservation_affinity: dict | None) -> fnv1.Resource:
+def _nodepool_gpu(
+    *, cred_kind: str, cred_name: str, reservation_affinity: dict | None, ready: fnv1.Ready
+) -> fnv1.Resource:
     """The composed NodePool for the XR's gpu-pool, consuming a reservation unless reservation_affinity is None."""
     node_config: dict = {
         "machineType": "a2-highgpu-8g",
@@ -279,6 +286,7 @@ def _nodepool_gpu(*, cred_kind: str, cred_name: str, reservation_affinity: dict 
                 },
             }
         ),
+        ready=ready,
     )
 
 
@@ -341,7 +349,7 @@ def _service_account(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fn
     )
 
 
-def _service_account_key(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
+def _service_account_key(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resource:
     """The composed ServiceAccountKey."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -359,6 +367,7 @@ def _service_account_key(*, cred_kind: str, cred_name: str) -> fnv1.Resource:
                 },
             }
         ),
+        ready=ready,
     )
 
 
@@ -395,6 +404,165 @@ def _provider_config(*, api_version: str) -> fnv1.Resource:
     )
 
 
+def _observed_resource(*, ready: bool) -> fnv1.Resource:
+    """An observed managed resource, Ready or not."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "Ready",
+                            "status": "True" if ready else "False",
+                            "reason": "Available" if ready else "Creating",
+                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                        },
+                    ],
+                },
+            }
+        ),
+    )
+
+
+def _observed_network(*, ready: bool) -> fnv1.Resource:
+    """The observed Network, whose external name is the VPC the Filestore StorageClass is pinned to."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
+                "kind": "Network",
+                "metadata": {
+                    "annotations": {"crossplane.io/external-name": "test-cluster-abc12"},
+                },
+                "spec": {
+                    "forProvider": {
+                        "autoCreateSubnetworks": False,
+                    },
+                },
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "Ready",
+                            "status": "True" if ready else "False",
+                            "reason": "Available" if ready else "Creating",
+                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                        },
+                    ],
+                },
+            }
+        ),
+    )
+
+
+def _observed_service_account(*, ready: bool) -> fnv1.Resource:
+    """The observed ServiceAccount, whose email the IAM binding grants roles to."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "cloudplatform.gcp.m.upbound.io/v1beta1",
+                "kind": "ServiceAccount",
+                "spec": {"forProvider": {}},
+                "status": {
+                    "atProvider": {
+                        "email": "test-sa@my-gcp-project.iam.gserviceaccount.com",
+                    },
+                    "conditions": [
+                        {
+                            "type": "Ready",
+                            "status": "True" if ready else "False",
+                            "reason": "Available" if ready else "Creating",
+                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                        },
+                    ],
+                },
+            }
+        ),
+    )
+
+
+def _iam_binding(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed ProjectIAMMember granting the observed service account container.admin."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "cloudplatform.gcp.m.upbound.io/v1beta1",
+                "kind": "ProjectIAMMember",
+                "spec": {
+                    "providerConfigRef": {"kind": cred_kind, "name": cred_name},
+                    "forProvider": {
+                        "role": "roles/container.admin",
+                        "member": "serviceAccount:test-sa@my-gcp-project.iam.gserviceaccount.com",
+                        "project": "my-gcp-project",
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _storage_class_rwx() -> fnv1.Resource:
+    """The composed Filestore StorageClass, pinned to the observed Network's VPC.
+
+    A StorageClass has no Ready condition, hence SuccessfulCreate, and the
+    Object omits Delete so it dies with the cluster rather than wedging
+    teardown on the deleted kubeconfig Secret.
+    """
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "metadata": {"namespace": "modelplane-system"},
+                "spec": {
+                    "managementPolicies": ["Observe", "Create", "Update"],
+                    "providerConfigRef": {
+                        "kind": "ProviderConfig",
+                        "name": "test-cluster-kubeconfig-55b57",
+                    },
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "storage.k8s.io/v1",
+                            "kind": "StorageClass",
+                            "metadata": {"name": "modelplane-rwx"},
+                            "provisioner": "filestore.csi.storage.gke.io",
+                            "parameters": {
+                                "tier": "enterprise",
+                                "network": "test-cluster-abc12",
+                            },
+                            "volumeBindingMode": "Immediate",
+                            "allowVolumeExpansion": True,
+                        },
+                    },
+                },
+            }
+        ),
+        ready=fnv1.READY_TRUE,
+    )
+
+
+def _observed_failed(*, message: str) -> fnv1.Resource:
+    """An observed managed resource whose provider reports its last operation failed with message."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "LastAsyncOperation",
+                            "status": "False",
+                            "reason": "AsyncCreateFailure",
+                            "message": message,
+                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                        },
+                    ],
+                },
+            }
+        ),
+    )
+
+
 def _to_dict(msg: message.Message) -> dict:
     """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
     return json.loads(json_format.MessageToJson(msg, sort_keys=True))
@@ -427,7 +595,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-pool", "state": "Provisioning"}]),
                 resources={
                     "network": _network(
                         cred_kind="ClusterProviderConfig",
@@ -435,26 +603,50 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "projectservice-filestore": _projectservice_filestore(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-system": _nodepool_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-gpu-pool": _nodepool_gpu(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
-                    ),
-                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "nodepool-system": _nodepool_system(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "nodepool-gpu-pool": _nodepool_gpu(
-                        cred_kind="ClusterProviderConfig", cred_name="default", reservation_affinity=None
+                        reservation_affinity=None,
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "service-account": _service_account(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
-                    "service-account-key": _service_account_key(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "service-account-key": _service_account_key(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
                     "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 9 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "gcp-provider-config": fnv1.ResourceSelector(
@@ -493,7 +685,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-pool", "state": "Provisioning"}]),
                 resources={
                     "network": _network(
                         cred_kind="ClusterProviderConfig",
@@ -501,12 +693,17 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "projectservice-filestore": _projectservice_filestore(
-                        cred_kind="ClusterProviderConfig",
-                        cred_name="default",
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
-                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "nodepool-system": _nodepool_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-system": _nodepool_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "nodepool-gpu-pool": _nodepool_gpu(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
@@ -515,18 +712,35 @@ COMPOSE_CASES = [
                             "key": "compute.googleapis.com/reservation-name",
                             "values": ["a100-calendar"],
                         },
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "service-account": _service_account(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
-                    "service-account-key": _service_account_key(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "service-account-key": _service_account_key(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
                     "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 9 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "gcp-provider-config": fnv1.ResourceSelector(
@@ -565,7 +779,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-pool", "state": "Provisioning"}]),
                 resources={
                     "network": _network(
                         cred_kind="ClusterProviderConfig",
@@ -573,12 +787,17 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "projectservice-filestore": _projectservice_filestore(
-                        cred_kind="ClusterProviderConfig",
-                        cred_name="default",
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
-                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "nodepool-system": _nodepool_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-system": _nodepool_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "nodepool-gpu-pool": _nodepool_gpu(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
@@ -587,18 +806,35 @@ COMPOSE_CASES = [
                             "key": "compute.googleapis.com/reservation-name",
                             "values": ["projects/shared-reservations/reservations/a100-calendar"],
                         },
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "service-account": _service_account(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
-                    "service-account-key": _service_account_key(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "service-account-key": _service_account_key(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
                     "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 9 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "gcp-provider-config": fnv1.ResourceSelector(
@@ -635,7 +871,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "cpu-pool", "state": "Provisioning"}]),
                 resources={
                     "network": _network(
                         cred_kind="ClusterProviderConfig",
@@ -643,24 +879,45 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "projectservice-filestore": _projectservice_filestore(
-                        cred_kind="ClusterProviderConfig",
-                        cred_name="default",
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
-                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "nodepool-system": _nodepool_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-system": _nodepool_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "nodepool-cpu-pool": _nodepool_cpu(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "service-account": _service_account(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
-                    "service-account-key": _service_account_key(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "service-account-key": _service_account_key(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
                     "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 9 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "gcp-provider-config": fnv1.ResourceSelector(
@@ -676,7 +933,7 @@ COMPOSE_CASES = [
     # the function marks it not ready.
     Case(
         name="ProviderConfigMissing",
-        reason="With the GCP provider config missing and no cluster observed to take the project from, a GKECluster composes nothing and isn't ready.",
+        reason="With the GCP provider config missing and no cluster observed to take the project from, a GKECluster composes nothing, isn't ready, and reports ClusterReady waiting for the provider config.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_xr(
@@ -703,6 +960,20 @@ COMPOSE_CASES = [
                 ),
             ],
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="Waiting for GCP ClusterProviderConfig default",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "gcp-provider-config": fnv1.ResourceSelector(
@@ -731,57 +1002,8 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "service-account": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "cloudplatform.gcp.m.upbound.io/v1beta1",
-                                "kind": "ServiceAccount",
-                                "spec": {"forProvider": {}},
-                                "status": {
-                                    "atProvider": {
-                                        "email": "test-sa@my-gcp-project.iam.gserviceaccount.com",
-                                    },
-                                    "conditions": [
-                                        {
-                                            "type": "Ready",
-                                            "status": "True",
-                                            "reason": "Available",
-                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
-                                        },
-                                    ],
-                                },
-                            }
-                        ),
-                    ),
-                    "network": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
-                                "kind": "Network",
-                                "metadata": {
-                                    # The external-name annotation carries the
-                                    # provider-generated VPC name, which the
-                                    # function pins the Filestore StorageClass to.
-                                    "annotations": {"crossplane.io/external-name": "test-cluster-abc12"},
-                                },
-                                "spec": {
-                                    "forProvider": {
-                                        "autoCreateSubnetworks": False,
-                                    },
-                                },
-                                "status": {
-                                    "conditions": [
-                                        {
-                                            "type": "Ready",
-                                            "status": "True",
-                                            "reason": "Available",
-                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
-                                        },
-                                    ],
-                                },
-                            }
-                        ),
-                    ),
+                    "service-account": _observed_service_account(ready=True),
+                    "network": _observed_network(ready=True),
                 },
             ),
             required_resources={
@@ -793,7 +1015,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-pool", "state": "Provisioning"}]),
                 resources={
                     "network": _network(
                         cred_kind="ClusterProviderConfig",
@@ -801,79 +1023,54 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                     ),
                     "projectservice-filestore": _projectservice_filestore(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "storage-class-rwx": _storage_class_rwx(),
+                    "subnet": _subnet(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-system": _nodepool_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-gpu-pool": _nodepool_gpu(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
-                    ),
-                    # Composed once the observed Network's external name gives
-                    # the VPC to pin Filestore to. A StorageClass has no Ready
-                    # condition, hence SuccessfulCreate, and the Object omits
-                    # Delete so it dies with the cluster rather than wedging
-                    # teardown on the deleted kubeconfig Secret.
-                    "storage-class-rwx": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                                "kind": "Object",
-                                "metadata": {"namespace": "modelplane-system"},
-                                "spec": {
-                                    "managementPolicies": ["Observe", "Create", "Update"],
-                                    "providerConfigRef": {
-                                        "kind": "ProviderConfig",
-                                        "name": "test-cluster-kubeconfig-55b57",
-                                    },
-                                    "readiness": {"policy": "SuccessfulCreate"},
-                                    "forProvider": {
-                                        "manifest": {
-                                            "apiVersion": "storage.k8s.io/v1",
-                                            "kind": "StorageClass",
-                                            "metadata": {"name": "modelplane-rwx"},
-                                            "provisioner": "filestore.csi.storage.gke.io",
-                                            "parameters": {
-                                                "tier": "enterprise",
-                                                "network": "test-cluster-abc12",
-                                            },
-                                            "volumeBindingMode": "Immediate",
-                                            "allowVolumeExpansion": True,
-                                        },
-                                    },
-                                },
-                            }
-                        ),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "nodepool-system": _nodepool_system(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "nodepool-gpu-pool": _nodepool_gpu(
-                        cred_kind="ClusterProviderConfig", cred_name="default", reservation_affinity=None
+                        reservation_affinity=None,
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "service-account": _service_account(
                         cred_kind="ClusterProviderConfig",
                         cred_name="default",
                         ready=fnv1.READY_TRUE,
                     ),
-                    "service-account-key": _service_account_key(cred_kind="ClusterProviderConfig", cred_name="default"),
-                    "iam-binding": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "cloudplatform.gcp.m.upbound.io/v1beta1",
-                                "kind": "ProjectIAMMember",
-                                "spec": {
-                                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
-                                    "forProvider": {
-                                        "role": "roles/container.admin",
-                                        "member": "serviceAccount:test-sa@my-gcp-project.iam.gserviceaccount.com",
-                                        "project": "my-gcp-project",
-                                    },
-                                },
-                            }
-                        ),
+                    "service-account-key": _service_account_key(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "iam-binding": _iam_binding(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
                     ),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
                     "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="5 of 11 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             requirements=fnv1.Requirements(
                 resources={
                     "gcp-provider-config": fnv1.ResourceSelector(
@@ -904,20 +1101,7 @@ COMPOSE_CASES = [
                     ],
                 ),
                 resources={
-                    "service-account": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "cloudplatform.gcp.m.upbound.io/v1beta1",
-                                "kind": "ServiceAccount",
-                                "spec": {"forProvider": {}},
-                                "status": {
-                                    "atProvider": {
-                                        "email": "test-sa@my-gcp-project.iam.gserviceaccount.com",
-                                    },
-                                },
-                            }
-                        ),
-                    ),
+                    "service-account": _observed_service_account(ready=False),
                 },
             ),
             required_resources={
@@ -935,7 +1119,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(),
+                composite=_desired_xr(node_pools=[{"name": "gpu-pool", "state": "Provisioning"}]),
                 resources={
                     "network": _network(
                         cred_kind="ProviderConfig",
@@ -943,42 +1127,53 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "projectservice-filestore": _projectservice_filestore(
+                        cred_kind="ProviderConfig", cred_name="my-gcp-account", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "subnet": _subnet(
+                        cred_kind="ProviderConfig", cred_name="my-gcp-account", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "cluster": _cluster(
+                        cred_kind="ProviderConfig", cred_name="my-gcp-account", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-system": _nodepool_system(
+                        cred_kind="ProviderConfig", cred_name="my-gcp-account", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-gpu-pool": _nodepool_gpu(
                         cred_kind="ProviderConfig",
                         cred_name="my-gcp-account",
-                    ),
-                    "subnet": _subnet(cred_kind="ProviderConfig", cred_name="my-gcp-account"),
-                    "cluster": _cluster(cred_kind="ProviderConfig", cred_name="my-gcp-account"),
-                    "nodepool-system": _nodepool_system(cred_kind="ProviderConfig", cred_name="my-gcp-account"),
-                    "nodepool-gpu-pool": _nodepool_gpu(
-                        cred_kind="ProviderConfig", cred_name="my-gcp-account", reservation_affinity=None
+                        reservation_affinity=None,
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "service-account": _service_account(
                         cred_kind="ProviderConfig",
                         cred_name="my-gcp-account",
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
-                    "service-account-key": _service_account_key(cred_kind="ProviderConfig", cred_name="my-gcp-account"),
-                    "iam-binding": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "cloudplatform.gcp.m.upbound.io/v1beta1",
-                                "kind": "ProjectIAMMember",
-                                "spec": {
-                                    "providerConfigRef": {"kind": "ProviderConfig", "name": "my-gcp-account"},
-                                    "forProvider": {
-                                        "role": "roles/container.admin",
-                                        "member": "serviceAccount:test-sa@my-gcp-project.iam.gserviceaccount.com",
-                                        "project": "my-gcp-project",
-                                    },
-                                },
-                            }
-                        ),
+                    "service-account-key": _service_account_key(
+                        cred_kind="ProviderConfig", cred_name="my-gcp-account", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "iam-binding": _iam_binding(
+                        cred_kind="ProviderConfig", cred_name="my-gcp-account", ready=fnv1.READY_UNSPECIFIED
                     ),
                     "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
                     "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
                 },
             ),
             context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="2 of 10 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
             # A ProviderConfig, unlike a ClusterProviderConfig, is namespaced,
             # so the function requires it from the XR's namespace. Crossplane
             # wouldn't return the request's crossplane-system one for this
@@ -990,6 +1185,487 @@ COMPOSE_CASES = [
                         kind="ProviderConfig",
                         match_name="my-gcp-account",
                         namespace="modelplane-system",
+                    ),
+                },
+            ),
+        ),
+    ),
+    Case(
+        name="PoolsProvisioning",
+        reason="With every cluster resource observed Ready and the gpu-pool NodePool unready, ClusterReady is Available, NodePoolsReady is Provisioning and gpu-pool is Provisioning.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-pool",
+                            role="GPU",
+                            machineType="a2-highgpu-8g",
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-tesla-a100", acceleratorCount=8),
+                        ),
+                    ],
+                ),
+                resources={
+                    "network": _observed_network(ready=True),
+                    "projectservice-filestore": _observed_resource(ready=True),
+                    "subnet": _observed_resource(ready=True),
+                    "cluster": _observed_resource(ready=True),
+                    "nodepool-system": _observed_resource(ready=True),
+                    "service-account-key": _observed_resource(ready=True),
+                    "iam-binding": _observed_resource(ready=True),
+                    "service-account": _observed_service_account(ready=True),
+                    "nodepool-gpu-pool": _observed_resource(ready=False),
+                },
+            ),
+            required_resources={
+                "gcp-provider-config": fnv1.Resources(
+                    items=[_gcp_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(node_pools=[{"name": "gpu-pool", "state": "Provisioning"}]),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "projectservice-filestore": _projectservice_filestore(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "storage-class-rwx": _storage_class_rwx(),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "nodepool-system": _nodepool_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "nodepool-gpu-pool": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        reservation_affinity=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "service-account": _service_account(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "service-account-key": _service_account_key(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "iam-binding": _iam_binding(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="0 of 1 node pools ready",
+                ),
+            ],
+            requirements=fnv1.Requirements(
+                resources={
+                    "gcp-provider-config": fnv1.ResourceSelector(
+                        api_version="gcp.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
+                    ),
+                },
+            ),
+        ),
+    ),
+    Case(
+        name="AllReady",
+        reason="With every composed resource observed Ready, ClusterReady and NodePoolsReady are Available and gpu-pool is Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-pool",
+                            role="GPU",
+                            machineType="a2-highgpu-8g",
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-tesla-a100", acceleratorCount=8),
+                        ),
+                    ],
+                ),
+                resources={
+                    "network": _observed_network(ready=True),
+                    "projectservice-filestore": _observed_resource(ready=True),
+                    "subnet": _observed_resource(ready=True),
+                    "cluster": _observed_resource(ready=True),
+                    "nodepool-system": _observed_resource(ready=True),
+                    "service-account-key": _observed_resource(ready=True),
+                    "iam-binding": _observed_resource(ready=True),
+                    "service-account": _observed_service_account(ready=True),
+                    "nodepool-gpu-pool": _observed_resource(ready=True),
+                },
+            ),
+            required_resources={
+                "gcp-provider-config": fnv1.Resources(
+                    items=[_gcp_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(node_pools=[{"name": "gpu-pool", "state": "Ready"}]),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "projectservice-filestore": _projectservice_filestore(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "storage-class-rwx": _storage_class_rwx(),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "nodepool-system": _nodepool_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "nodepool-gpu-pool": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        reservation_affinity=None,
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "service-account": _service_account(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "service-account-key": _service_account_key(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "iam-binding": _iam_binding(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
+            requirements=fnv1.Requirements(
+                resources={
+                    "gcp-provider-config": fnv1.ResourceSelector(
+                        api_version="gcp.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
+                    ),
+                },
+            ),
+        ),
+    ),
+    Case(
+        name="PoolFailed",
+        reason="With the gpu-pool NodePool's LastAsyncOperation False, gpu-pool is Failed with the provider's error prefixed by the resource name, and NodePoolsReady is Failed naming the pool.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-pool",
+                            role="GPU",
+                            machineType="a2-highgpu-8g",
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-tesla-a100", acceleratorCount=8),
+                        ),
+                    ],
+                ),
+                resources={
+                    "network": _observed_network(ready=True),
+                    "projectservice-filestore": _observed_resource(ready=True),
+                    "subnet": _observed_resource(ready=True),
+                    "cluster": _observed_resource(ready=True),
+                    "nodepool-system": _observed_resource(ready=True),
+                    "service-account-key": _observed_resource(ready=True),
+                    "iam-binding": _observed_resource(ready=True),
+                    "service-account": _observed_service_account(ready=True),
+                    "nodepool-gpu-pool": _observed_failed(
+                        message="async create failed: googleapi: Error 403: Quota 'NVIDIA_A100_GPUS' exceeded. Limit: 0.0 in region us-central1."
+                    ),
+                },
+            ),
+            required_resources={
+                "gcp-provider-config": fnv1.Resources(
+                    items=[_gcp_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    node_pools=[
+                        {
+                            "name": "gpu-pool",
+                            "state": "Failed",
+                            "message": "nodepool-gpu-pool: async create failed: googleapi: Error 403: Quota 'NVIDIA_A100_GPUS' exceeded. Limit: 0.0 in region us-central1.",
+                        }
+                    ]
+                ),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "projectservice-filestore": _projectservice_filestore(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "storage-class-rwx": _storage_class_rwx(),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "nodepool-system": _nodepool_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "nodepool-gpu-pool": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        reservation_affinity=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "service-account": _service_account(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "service-account-key": _service_account_key(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "iam-binding": _iam_binding(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Failed",
+                    message="1 of 1 node pools failed: gpu-pool",
+                ),
+            ],
+            requirements=fnv1.Requirements(
+                resources={
+                    "gcp-provider-config": fnv1.ResourceSelector(
+                        api_version="gcp.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
+                    ),
+                },
+            ),
+        ),
+    ),
+    Case(
+        name="ClusterFailed",
+        reason="With the GKE Cluster's LastAsyncOperation False, ClusterReady is Failed with the provider's error prefixed by the resource name, and NodePoolsReady is Pending on it while no pool is Ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-pool",
+                            role="GPU",
+                            machineType="a2-highgpu-8g",
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-tesla-a100", acceleratorCount=8),
+                        ),
+                    ],
+                ),
+                resources={
+                    "network": _observed_network(ready=True),
+                    "projectservice-filestore": _observed_resource(ready=True),
+                    "subnet": _observed_resource(ready=True),
+                    "cluster": _observed_failed(
+                        message="async create failed: googleapi: Error 400: Master version unsupported."
+                    ),
+                    "nodepool-system": _observed_resource(ready=True),
+                    "service-account-key": _observed_resource(ready=True),
+                    "iam-binding": _observed_resource(ready=True),
+                    "service-account": _observed_service_account(ready=True),
+                    "nodepool-gpu-pool": _observed_resource(ready=False),
+                },
+            ),
+            required_resources={
+                "gcp-provider-config": fnv1.Resources(
+                    items=[_gcp_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(node_pools=[{"name": "gpu-pool", "state": "Provisioning"}]),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "projectservice-filestore": _projectservice_filestore(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "storage-class-rwx": _storage_class_rwx(),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-system": _nodepool_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "nodepool-gpu-pool": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        reservation_affinity=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "service-account": _service_account(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "service-account-key": _service_account_key(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "iam-binding": _iam_binding(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Failed",
+                    message="cluster: async create failed: googleapi: Error 400: Master version unsupported.",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Pending",
+                    message="Waiting for ClusterReady",
+                ),
+            ],
+            requirements=fnv1.Requirements(
+                resources={
+                    "gcp-provider-config": fnv1.ResourceSelector(
+                        api_version="gcp.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
+                    ),
+                },
+            ),
+        ),
+    ),
+    Case(
+        name="ClusterUnreadyPoolReady",
+        reason="With the GKE Cluster unready and the gpu-pool NodePool Ready, ClusterReady is Provisioning and NodePoolsReady reports gpu-pool's own state, Available, rather than Pending.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-pool",
+                            role="GPU",
+                            machineType="a2-highgpu-8g",
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-tesla-a100", acceleratorCount=8),
+                        ),
+                    ],
+                ),
+                resources={
+                    "network": _observed_network(ready=True),
+                    "projectservice-filestore": _observed_resource(ready=True),
+                    "subnet": _observed_resource(ready=True),
+                    "cluster": _observed_resource(ready=False),
+                    "nodepool-system": _observed_resource(ready=True),
+                    "service-account-key": _observed_resource(ready=True),
+                    "iam-binding": _observed_resource(ready=True),
+                    "service-account": _observed_service_account(ready=True),
+                    "nodepool-gpu-pool": _observed_resource(ready=True),
+                },
+            ),
+            required_resources={
+                "gcp-provider-config": fnv1.Resources(
+                    items=[_gcp_provider_config(kind="ClusterProviderConfig", name="default", namespace=None)],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(node_pools=[{"name": "gpu-pool", "state": "Ready"}]),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "projectservice-filestore": _projectservice_filestore(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "storage-class-rwx": _storage_class_rwx(),
+                    "subnet": _subnet(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
+                    "nodepool-system": _nodepool_system(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "nodepool-gpu-pool": _nodepool_gpu(
+                        cred_kind="ClusterProviderConfig",
+                        cred_name="default",
+                        reservation_affinity=None,
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "service-account": _service_account(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "service-account-key": _service_account_key(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "iam-binding": _iam_binding(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE
+                    ),
+                    "provider-config-kubernetes": _provider_config(api_version="kubernetes.m.crossplane.io/v1alpha1"),
+                    "provider-config-helm": _provider_config(api_version="helm.m.crossplane.io/v1beta1"),
+                },
+            ),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                    message="10 of 11 resources ready",
+                ),
+                fnv1.Condition(
+                    type="NodePoolsReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="Available",
+                ),
+            ],
+            requirements=fnv1.Requirements(
+                resources={
+                    "gcp-provider-config": fnv1.ResourceSelector(
+                        api_version="gcp.m.upbound.io/v1beta1",
+                        kind="ClusterProviderConfig",
+                        match_name="default",
                     ),
                 },
             ),
