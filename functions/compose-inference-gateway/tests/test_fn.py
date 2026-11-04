@@ -39,14 +39,17 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-def _xr(*, name: str, tls: bool, caller_secret_labels: dict[str, str] | None) -> fnv1.Resource:
-    """The XR on gw-eu, with TLS from eu-tls-0 if tls, and API-key auth by Secrets matching caller_secret_labels unless None."""
+def _xr(*, name: str, tls: bool, caller_secret_labels: dict[str, str] | None, auth_header: str | None) -> fnv1.Resource:
+    """The XR on gw-eu, with TLS from eu-tls-0 if tls, API-key auth by Secrets matching caller_secret_labels unless None, and the caller key read from auth_header when set."""
     tls_spec = v1alpha1.Tls(certificateRefs=[v1alpha1.CertificateRef(name="eu-tls-0")]) if tls else None
     auth = None
     if caller_secret_labels is not None:
         auth = v1alpha1.Auth(
             method="APIKey",
-            apiKey=v1alpha1.ApiKey(secretSelector=v1alpha1.SecretSelector(matchLabels=caller_secret_labels)),
+            apiKey=v1alpha1.ApiKey(
+                header=auth_header,
+                secretSelector=v1alpha1.SecretSelector(matchLabels=caller_secret_labels),
+            ),
         )
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -637,8 +640,8 @@ def _caller_secret(*, name: str, data: dict[str, str]) -> fnv1.Resource:
     )
 
 
-def _caller_auth(*, credential_refs: list[dict], ready: fnv1.Ready) -> fnv1.Resource:
-    """The composed SecurityPolicy authenticating callers by API key, against the Secrets credential_refs names."""
+def _caller_auth(*, credential_refs: list[dict], headers: list[str], ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed SecurityPolicy authenticating callers by API key, read from headers, against the Secrets credential_refs names."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -670,9 +673,7 @@ def _caller_auth(*, credential_refs: list[dict], ready: fnv1.Ready) -> fnv1.Reso
                                 ],
                                 "apiKeyAuth": {
                                     "credentialRefs": credential_refs,
-                                    # Authorization for OpenAI clients, x-api-key
-                                    # for Anthropic ones.
-                                    "extractFrom": [{"headers": ["Authorization", "x-api-key"]}],
+                                    "extractFrom": [{"headers": headers}],
                                     "forwardClientIDHeader": "x-modelplane-caller",
                                     "sanitize": True,
                                 },
@@ -1057,7 +1058,7 @@ COMPOSE_CASES = [
         name="RequirementsUnresolved",
         reason="Before its cluster and the other gateways resolve, a gateway composes nothing and waits for them.",
         req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None)),
+            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None, auth_header=None)),
         ),
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
@@ -1089,7 +1090,7 @@ COMPOSE_CASES = [
         name="ClusterNotFound",
         reason="A gateway whose named InferenceCluster doesn't exist composes nothing and says so.",
         req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None)),
+            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None, auth_header=None)),
             required_resources={
                 "clusters": fnv1.Resources(),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
@@ -1123,7 +1124,7 @@ COMPOSE_CASES = [
             "or a creation timestamp, composes nothing and reports the cluster taken."
         ),
         req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None)),
+            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None, auth_header=None)),
             required_resources={
                 "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
                 "gateways": fnv1.Resources(
@@ -1165,7 +1166,7 @@ COMPOSE_CASES = [
             "though aaa sorts first, so the incumbent keeps its cluster."
         ),
         req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=_xr(name="aaa", tls=False, caller_secret_labels=None)),
+            observed=fnv1.State(composite=_xr(name="aaa", tls=False, caller_secret_labels=None, auth_header=None)),
             required_resources={
                 "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
                 "gateways": fnv1.Resources(
@@ -1205,7 +1206,7 @@ COMPOSE_CASES = [
         name="NoProviderConfigRef",
         reason="A gateway whose cluster hasn't published a providerConfigRef yet composes nothing and waits for it.",
         req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None)),
+            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None, auth_header=None)),
             required_resources={
                 "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=False)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
@@ -1245,7 +1246,7 @@ COMPOSE_CASES = [
             "redirect, and reports nothing in status until the Gateway has an address."
         ),
         req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None)),
+            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None, auth_header=None)),
             required_resources={
                 "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
@@ -1302,7 +1303,7 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels=None),
+                composite=_xr(name="eu", tls=False, caller_secret_labels=None, auth_header=None),
                 resources={"gateway": _observed_gateway(address="34.56.129.3", ready=False)},
             ),
             required_resources={
@@ -1368,7 +1369,7 @@ COMPOSE_CASES = [
         reason="A Gateway with an IPv6 address has it bracketed in the URLs the gateway publishes.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels=None),
+                composite=_xr(name="eu", tls=False, caller_secret_labels=None, auth_header=None),
                 resources={"gateway": _observed_gateway(address="2001:db8::1", ready=False)},
             ),
             required_resources={
@@ -1439,6 +1440,7 @@ COMPOSE_CASES = [
                     name="gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                     tls=False,
                     caller_secret_labels=None,
+                    auth_header=None,
                 )
             ),
             required_resources={
@@ -1506,7 +1508,7 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels=None),
+                composite=_xr(name="eu", tls=False, caller_secret_labels=None, auth_header=None),
                 resources={
                     "gateway": _observed_gateway(address="gw.example.org", ready=True),
                     "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
@@ -1584,7 +1586,7 @@ COMPOSE_CASES = [
         reason="A programmed gateway that hasn't observed trust-manager's ConfigMap publishes no client CA.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels=None),
+                composite=_xr(name="eu", tls=False, caller_secret_labels=None, auth_header=None),
                 resources={
                     "gateway": _observed_gateway(address="gw.example.org", ready=True),
                     "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
@@ -1642,7 +1644,7 @@ COMPOSE_CASES = [
         reason="A programmed gateway reports WaitingForAIGatewayRoute until AI Gateway accepts its anchor route.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels=None),
+                composite=_xr(name="eu", tls=False, caller_secret_labels=None, auth_header=None),
                 resources={
                     "gateway": _observed_gateway(address="gw.example.org", ready=True),
                     "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=False),
@@ -1714,7 +1716,7 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels=None),
+                composite=_xr(name="eu", tls=False, caller_secret_labels=None, auth_header=None),
                 resources={
                     "gateway": _observed_gateway(address="gw.example.org", ready=True),
                     "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
@@ -1791,7 +1793,7 @@ COMPOSE_CASES = [
             "while this gateway's own cluster, publishing neither, gets none."
         ),
         req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None)),
+            observed=fnv1.State(composite=_xr(name="eu", tls=False, caller_secret_labels=None, auth_header=None)),
             required_resources={
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
                 "clusters": fnv1.Resources(
@@ -2137,7 +2139,7 @@ COMPOSE_CASES = [
             "the Secret missing."
         ),
         req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=_xr(name="eu", tls=True, caller_secret_labels=None)),
+            observed=fnv1.State(composite=_xr(name="eu", tls=True, caller_secret_labels=None, auth_header=None)),
             required_resources={
                 "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
@@ -2201,7 +2203,9 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=True, caller_secret_labels={"modelplane.ai/inference-keys": "true"}),
+                composite=_xr(
+                    name="eu", tls=True, caller_secret_labels={"modelplane.ai/inference-keys": "true"}, auth_header=None
+                ),
                 resources={
                     "gateway": _observed_gateway(address="34.56.129.3", ready=True),
                     "caller-auth": _observed_caller_auth(),
@@ -2273,7 +2277,9 @@ COMPOSE_CASES = [
                     "client-ca-bundle": _client_ca_bundle(),
                     "client-ca-configmap": _client_ca_configmap(),
                     "caller-auth": _caller_auth(
-                        credential_refs=[{"name": "callers-ml-team-keys"}], ready=fnv1.READY_TRUE
+                        credential_refs=[{"name": "callers-ml-team-keys"}],
+                        headers=["Authorization", "x-api-key"],
+                        ready=fnv1.READY_TRUE,
                     ),
                     "failover-policy": _failover_policy(),
                     "client-traffic-policy": _client_traffic_policy(),
@@ -2348,6 +2354,93 @@ COMPOSE_CASES = [
             ],
         ),
     ),
+    # A gateway reading the caller's key from a header of its own leaves the
+    # caller's Authorization and x-api-key alone, so a caller can carry a
+    # provider credential of its own, such as a Claude Code session's
+    # claude.ai login, through to a backend with no credential (#596).
+    Case(
+        name="CustomAuthHeader",
+        reason=(
+            "An auth header set on the gateway reads and strips only that header, so the caller's "
+            "Authorization and x-api-key pass through to backends."
+        ),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    name="eu",
+                    tls=False,
+                    caller_secret_labels={"modelplane.ai/inference-keys": "true"},
+                    auth_header="x-modelplane-key",
+                ),
+                resources={
+                    "gateway": _observed_gateway(address="34.56.129.3", ready=True),
+                    "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
+                    "envoy-deployment": _observed_envoy_deployment(ready=True),
+                    "caller-auth": _observed_caller_auth(),
+                },
+            ),
+            required_resources={
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
+                "caller-secrets": fnv1.Resources(
+                    items=[_caller_key_secret(name="ml-team-keys", data={"a": "c2stMQ=="})]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(
+                    status={
+                        "address": "34.56.129.3",
+                        "endpoints": {
+                            "openAI": "http://34.56.129.3/v1",
+                            "anthropic": "http://34.56.129.3/anthropic/v1",
+                        },
+                    },
+                    ready=fnv1.READY_UNSPECIFIED,
+                ),
+                resources={
+                    "caller-secret-ml-team-keys": _caller_secret(name="callers-ml-team-keys", data={"a": "c2stMQ=="}),
+                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
+                    "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
+                    "client-selfsigned-issuer": _client_selfsigned_issuer(),
+                    "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
+                    "client-ca-issuer": _client_ca_issuer(),
+                    "client-ca-bundle": _client_ca_bundle(),
+                    "client-ca-configmap": _client_ca_configmap(),
+                    "caller-auth": _caller_auth(
+                        credential_refs=[{"name": "callers-ml-team-keys"}],
+                        headers=["x-modelplane-key"],
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "failover-policy": _failover_policy(),
+                    "client-traffic-policy": _client_traffic_policy(),
+                    "healthz-filter": _healthz_filter(),
+                    "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=False, ready=fnv1.READY_TRUE),
+                    "healthz-auth": _healthz_auth(),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "caller-secrets": fnv1.ResourceSelector(
+                        api_version="v1",
+                        kind="Secret",
+                        namespace="modelplane-system",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/inference-keys": "true"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(type="GatewayReady", status=fnv1.STATUS_CONDITION_TRUE, reason="GatewayProgrammed"),
+            ],
+        ),
+    ),
     # A gateway whose caller policy was rejected refuses every request with a
     # 500 while its Gateway still has an address. Envoy Gateway rejects the
     # policy when two selected Secrets share a key value, so this is reachable
@@ -2361,7 +2454,12 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"}),
+                composite=_xr(
+                    name="eu",
+                    tls=False,
+                    caller_secret_labels={"modelplane.ai/inference-keys": "true"},
+                    auth_header=None,
+                ),
                 resources={
                     "gateway": _observed_gateway(address="34.56.129.3", ready=True),
                     "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
@@ -2399,7 +2497,9 @@ COMPOSE_CASES = [
                     "client-ca-bundle": _client_ca_bundle(),
                     "client-ca-configmap": _client_ca_configmap(),
                     "caller-auth": _caller_auth(
-                        credential_refs=[{"name": "callers-ml-team-keys"}], ready=fnv1.READY_UNSPECIFIED
+                        credential_refs=[{"name": "callers-ml-team-keys"}],
+                        headers=["Authorization", "x-api-key"],
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "failover-policy": _failover_policy(),
                     "client-traffic-policy": _client_traffic_policy(),
@@ -2448,7 +2548,12 @@ COMPOSE_CASES = [
         reason="Two caller Secrets holding the same key leave the gateway not Ready.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"}),
+                composite=_xr(
+                    name="eu",
+                    tls=False,
+                    caller_secret_labels={"modelplane.ai/inference-keys": "true"},
+                    auth_header=None,
+                ),
                 resources={
                     "gateway": _observed_gateway(address="34.56.129.3", ready=True),
                     "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
@@ -2493,6 +2598,7 @@ COMPOSE_CASES = [
                     "client-ca-configmap": _client_ca_configmap(),
                     "caller-auth": _caller_auth(
                         credential_refs=[{"name": "callers-team-a-keys"}, {"name": "callers-team-b-keys"}],
+                        headers=["Authorization", "x-api-key"],
                         ready=fnv1.READY_TRUE,
                     ),
                     "failover-policy": _failover_policy(),
@@ -2539,7 +2645,12 @@ COMPOSE_CASES = [
         reason="One caller Secret holding the same key for two callers leaves the gateway not Ready.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"}),
+                composite=_xr(
+                    name="eu",
+                    tls=False,
+                    caller_secret_labels={"modelplane.ai/inference-keys": "true"},
+                    auth_header=None,
+                ),
                 resources={
                     "gateway": _observed_gateway(address="34.56.129.3", ready=True),
                     "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
@@ -2580,7 +2691,9 @@ COMPOSE_CASES = [
                     "client-ca-bundle": _client_ca_bundle(),
                     "client-ca-configmap": _client_ca_configmap(),
                     "caller-auth": _caller_auth(
-                        credential_refs=[{"name": "callers-team-a-keys"}], ready=fnv1.READY_TRUE
+                        credential_refs=[{"name": "callers-team-a-keys"}],
+                        headers=["Authorization", "x-api-key"],
+                        ready=fnv1.READY_TRUE,
                     ),
                     "failover-policy": _failover_policy(),
                     "client-traffic-policy": _client_traffic_policy(),
@@ -2631,7 +2744,12 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"}),
+                composite=_xr(
+                    name="eu",
+                    tls=False,
+                    caller_secret_labels={"modelplane.ai/inference-keys": "true"},
+                    auth_header=None,
+                ),
                 resources={
                     "gateway": _observed_gateway(address="34.56.129.3", ready=True),
                     "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
@@ -2677,6 +2795,7 @@ COMPOSE_CASES = [
                     "client-ca-configmap": _client_ca_configmap(),
                     "caller-auth": _caller_auth(
                         credential_refs=[{"name": "callers-team-a-keys"}, {"name": "callers-team-b-keys"}],
+                        headers=["Authorization", "x-api-key"],
                         ready=fnv1.READY_TRUE,
                     ),
                     "failover-policy": _failover_policy(),
@@ -2725,7 +2844,12 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"}),
+                composite=_xr(
+                    name="eu",
+                    tls=False,
+                    caller_secret_labels={"modelplane.ai/inference-keys": "true"},
+                    auth_header=None,
+                ),
                 resources={
                     "gateway": _observed_gateway(address="34.56.129.3", ready=True),
                     "ai-gateway-anchor": _observed_ai_gateway_anchor(ready=True),
@@ -2772,6 +2896,7 @@ COMPOSE_CASES = [
                     "client-ca-configmap": _client_ca_configmap(),
                     "caller-auth": _caller_auth(
                         credential_refs=[{"name": "callers-team-a-keys"}, {"name": "callers-team-b-keys"}],
+                        headers=["Authorization", "x-api-key"],
                         ready=fnv1.READY_TRUE,
                     ),
                     "failover-policy": _failover_policy(),
@@ -2808,7 +2933,12 @@ COMPOSE_CASES = [
         reason="Caller Secrets that resolve out of name order are listed in name order in the caller policy.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"})
+                composite=_xr(
+                    name="eu",
+                    tls=False,
+                    caller_secret_labels={"modelplane.ai/inference-keys": "true"},
+                    auth_header=None,
+                )
             ),
             required_resources={
                 "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
@@ -2838,6 +2968,7 @@ COMPOSE_CASES = [
                     "client-ca-configmap": _client_ca_configmap(),
                     "caller-auth": _caller_auth(
                         credential_refs=[{"name": "callers-team-a-keys"}, {"name": "callers-team-b-keys"}],
+                        headers=["Authorization", "x-api-key"],
                         ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "failover-policy": _failover_policy(),
@@ -2890,7 +3021,12 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"})
+                composite=_xr(
+                    name="eu",
+                    tls=False,
+                    caller_secret_labels={"modelplane.ai/inference-keys": "true"},
+                    auth_header=None,
+                )
             ),
             required_resources={
                 "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
@@ -2999,7 +3135,12 @@ COMPOSE_CASES = [
         ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
-                composite=_xr(name="eu", tls=False, caller_secret_labels={"modelplane.ai/inference-keys": "true"})
+                composite=_xr(
+                    name="eu",
+                    tls=False,
+                    caller_secret_labels={"modelplane.ai/inference-keys": "true"},
+                    auth_header=None,
+                )
             ),
             required_resources={
                 "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
@@ -3121,7 +3262,9 @@ COMPOSE_CASES = [
             "cluster, and no composed Object observes a Secret."
         ),
         req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=_xr(name="eu", tls=True, caller_secret_labels={"team": "ml"})),
+            observed=fnv1.State(
+                composite=_xr(name="eu", tls=True, caller_secret_labels={"team": "ml"}, auth_header=None)
+            ),
             required_resources={
                 "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
                 "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
@@ -3184,7 +3327,9 @@ COMPOSE_CASES = [
                     "client-ca-bundle": _client_ca_bundle(),
                     "client-ca-configmap": _client_ca_configmap(),
                     "caller-auth": _caller_auth(
-                        credential_refs=[{"name": "callers-ml-team-keys"}], ready=fnv1.READY_UNSPECIFIED
+                        credential_refs=[{"name": "callers-ml-team-keys"}],
+                        headers=["Authorization", "x-api-key"],
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
                     "failover-policy": _failover_policy(),
                     "client-traffic-policy": _client_traffic_policy(),

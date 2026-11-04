@@ -17,6 +17,12 @@ class SecretSelector(BaseModel):
 
 
 class ApiKey(BaseModel):
+    header: constr(max_length=128, min_length=1, pattern=r'^[A-Za-z0-9-]+$') | None = None
+    """
+    The header a caller presents its key in, such as x-modelplane-key. The gateway reads and strips only this header.
+
+    Unset, the gateway reads Authorization, as "Bearer <key>", then x-api-key, and strips both, so nothing a caller authenticated with reaches a backend. With a header set, the caller's Authorization and x-api-key pass through to every backend unchanged, which is what a backend a caller authenticates to itself needs, such as api.anthropic.com on a caller's own Claude subscription. Every other backend this gateway serves then receives them too, so set this only when that is acceptable, until backends can opt in to receiving the caller's credential (#596).
+    """
     secretSelector: SecretSelector
     """
     Selects Secrets holding caller API keys. Each key in a selected Secret is one caller: the entry's name is the caller's identity and its value is the key.
