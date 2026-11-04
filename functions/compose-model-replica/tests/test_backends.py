@@ -5431,6 +5431,650 @@ BUILD_CASES = [
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
         },
     ),
+    # A member's volumes and init containers pass through as written, beside
+    # the volumes and mounts Modelplane adds. An init container can mount
+    # Modelplane's model-cache volume by name, here to stage weights from the
+    # cache onto a node's NVMe.
+    BuildCase(
+        name="StandaloneVolumes",
+        reason=(
+            "A Standalone member's volumes and init containers reach its Deployment's pod after Modelplane's /dev/shm and cache volumes, and the engine's own mount follows Modelplane's."
+        ),
+        backend=native.NativeBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=v1alpha1.ModelCacheRef(name="glm"),
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=/mnt/nvme/GLM-5"],
+                                            volumeMounts=[
+                                                v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme", readOnly=True)
+                                            ],
+                                        )
+                                    ],
+                                    initContainers=[
+                                        v1alpha1.InitContainer(
+                                            name="stage-weights",
+                                            image="ghcr.io/example/stage:v1",
+                                            command=["/bin/sh", "-c", "cp -rn /mnt/models/. /mnt/nvme/"],
+                                            volumeMounts=[
+                                                v1alpha1.VolumeMount(name="model-cache", mountPath="/mnt/models"),
+                                                v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme"),
+                                            ],
+                                        )
+                                    ],
+                                    volumes=[
+                                        v1alpha1.Volume(
+                                            name="nvme", hostPath={"path": "/mnt/nvme", "type": "Directory"}
+                                        )
+                                    ],
+                                )
+                            ),
+                        )
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": {
+                "spec": {
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "apps/v1",
+                            "kind": "Deployment",
+                            "metadata": {"name": "r-main-bb4e3", "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                "replicas": 1,
+                                "selector": {"matchLabels": {"modelplane.ai/workload": "r-main-bb4e3"}},
+                                "strategy": {
+                                    "type": "RollingUpdate",
+                                    "rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1},
+                                },
+                                "template": {
+                                    "metadata": {
+                                        "labels": {
+                                            "modelplane.ai/engine": "main",
+                                            "modelplane.ai/role": "Standalone",
+                                            "modelplane.ai/serving": "r",
+                                            "modelplane.ai/workload": "r-main-bb4e3",
+                                        }
+                                    },
+                                    "spec": {
+                                        "containers": [
+                                            {
+                                                "name": "engine",
+                                                "image": "vllm/vllm-openai:latest",
+                                                "args": ["--model=/mnt/nvme/GLM-5"],
+                                                "ports": [{"name": "http", "containerPort": 8000}],
+                                                "volumeMounts": [
+                                                    {"name": "dshm", "mountPath": "/dev/shm"},
+                                                    {"name": "model-cache", "mountPath": "/mnt/models"},
+                                                    {"mountPath": "/mnt/nvme", "name": "nvme", "readOnly": True},
+                                                ],
+                                                "readinessProbe": {
+                                                    "httpGet": {"path": "/health", "port": 8000},
+                                                    "initialDelaySeconds": 30,
+                                                    "periodSeconds": 10,
+                                                    "timeoutSeconds": 5,
+                                                },
+                                                "resources": {"claims": [{"name": "devices"}]},
+                                                "env": [{"name": "HF_HUB_CACHE", "value": "/mnt/models"}],
+                                            }
+                                        ],
+                                        "volumes": [
+                                            {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+                                            {
+                                                "name": "model-cache",
+                                                "persistentVolumeClaim": {"claimName": "modelcache-ml-team-glm-587ca"},
+                                            },
+                                            {"hostPath": {"path": "/mnt/nvme", "type": "Directory"}, "name": "nvme"},
+                                        ],
+                                        "initContainers": [
+                                            {
+                                                "command": ["/bin/sh", "-c", "cp -rn /mnt/models/. /mnt/nvme/"],
+                                                "image": "ghcr.io/example/stage:v1",
+                                                "name": "stage-weights",
+                                                "volumeMounts": [
+                                                    {"mountPath": "/mnt/models", "name": "model-cache"},
+                                                    {"mountPath": "/mnt/nvme", "name": "nvme"},
+                                                ],
+                                            }
+                                        ],
+                                        "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                        "resourceClaims": [
+                                            {
+                                                "name": "devices",
+                                                "resourceClaimTemplateName": "r-main-standalone-devices-f456f",
+                                            }
+                                        ],
+                                        "tolerations": [
+                                            {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                                            {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                                            {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+                                        ],
+                                    },
+                                },
+                            },
+                        }
+                    },
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {
+                        "celQuery": 'has(object.status) && has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True") && has(object.status.readyReplicas) && object.status.readyReplicas >= object.spec.replicas && has(object.status.observedGeneration) && object.status.observedGeneration == object.metadata.generation && has(object.status.updatedReplicas) && object.status.updatedReplicas >= object.spec.replicas && has(object.status.replicas) && object.status.replicas == object.status.updatedReplicas',
+                        "policy": "DeriveFromCelQuery",
+                    },
+                    "watch": True,
+                }
+            },
+            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=8),
+        },
+    ),
+    BuildCase(
+        name="LeaderWorkerVolumes",
+        reason=(
+            "A Leader/Worker member's volumes and init containers reach its own LeaderWorkerSet pod template, after Modelplane's /dev/shm volume and mount."
+        ),
+        backend=llmd.LLMDBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=/mnt/nvme/GLM-5"],
+                                            volumeMounts=[
+                                                v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme", readOnly=True)
+                                            ],
+                                        )
+                                    ],
+                                    volumes=[
+                                        v1alpha1.Volume(
+                                            name="nvme", hostPath={"path": "/mnt/nvme", "type": "Directory"}
+                                        )
+                                    ],
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=/mnt/nvme/GLM-5"],
+                                            volumeMounts=[
+                                                v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme", readOnly=True)
+                                            ],
+                                        )
+                                    ],
+                                    initContainers=[
+                                        v1alpha1.InitContainer(
+                                            name="stage-weights",
+                                            image="ghcr.io/example/stage:v1",
+                                            command=["/bin/sh", "-c", "cp -rn /mnt/models/. /mnt/nvme/"],
+                                            volumeMounts=[v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme")],
+                                        )
+                                    ],
+                                    volumes=[
+                                        v1alpha1.Volume(
+                                            name="nvme", hostPath={"path": "/mnt/nvme", "type": "Directory"}
+                                        )
+                                    ],
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": {
+                "spec": {
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "leaderworkerset.x-k8s.io/v1",
+                            "kind": "LeaderWorkerSet",
+                            "metadata": {"name": "r-main-bb4e3", "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                "replicas": 1,
+                                "leaderWorkerTemplate": {
+                                    "size": 2,
+                                    "leaderTemplate": {
+                                        "metadata": {
+                                            "labels": {
+                                                "modelplane.ai/engine": "main",
+                                                "modelplane.ai/role": "Leader",
+                                                "modelplane.ai/serving": "r",
+                                                "modelplane.ai/lws-role": "leader",
+                                            }
+                                        },
+                                        "spec": {
+                                            "containers": [
+                                                {
+                                                    "name": "engine",
+                                                    "image": "vllm/vllm-openai:latest",
+                                                    "volumeMounts": [
+                                                        {"name": "dshm", "mountPath": "/dev/shm"},
+                                                        {"mountPath": "/mnt/nvme", "name": "nvme", "readOnly": True},
+                                                    ],
+                                                    "resources": {"claims": [{"name": "devices"}]},
+                                                    "args": ["--model=/mnt/nvme/GLM-5"],
+                                                    "env": [
+                                                        {
+                                                            "name": "MODELPLANE_LEADER_ADDRESS",
+                                                            "value": "$(LWS_LEADER_ADDRESS)",
+                                                        },
+                                                        {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                                                    ],
+                                                    "ports": [{"name": "http", "containerPort": 8000}],
+                                                    "readinessProbe": {
+                                                        "httpGet": {"path": "/health", "port": 8000},
+                                                        "initialDelaySeconds": 30,
+                                                        "periodSeconds": 10,
+                                                        "timeoutSeconds": 5,
+                                                    },
+                                                }
+                                            ],
+                                            "volumes": [
+                                                {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+                                                {
+                                                    "hostPath": {"path": "/mnt/nvme", "type": "Directory"},
+                                                    "name": "nvme",
+                                                },
+                                            ],
+                                            "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                            "resourceClaims": [
+                                                {
+                                                    "name": "devices",
+                                                    "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                                }
+                                            ],
+                                            "tolerations": [
+                                                {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                                                {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                                                {
+                                                    "key": "modelplane.ai/cpu",
+                                                    "operator": "Exists",
+                                                    "effect": "NoSchedule",
+                                                },
+                                            ],
+                                        },
+                                    },
+                                    "workerTemplate": {
+                                        "spec": {
+                                            "containers": [
+                                                {
+                                                    "name": "engine",
+                                                    "image": "vllm/vllm-openai:latest",
+                                                    "volumeMounts": [
+                                                        {"name": "dshm", "mountPath": "/dev/shm"},
+                                                        {"mountPath": "/mnt/nvme", "name": "nvme", "readOnly": True},
+                                                    ],
+                                                    "resources": {"claims": [{"name": "devices"}]},
+                                                    "args": ["--model=/mnt/nvme/GLM-5"],
+                                                    "env": [
+                                                        {
+                                                            "name": "MODELPLANE_LEADER_ADDRESS",
+                                                            "value": "$(LWS_LEADER_ADDRESS)",
+                                                        },
+                                                        {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                                                    ],
+                                                }
+                                            ],
+                                            "volumes": [
+                                                {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+                                                {
+                                                    "hostPath": {"path": "/mnt/nvme", "type": "Directory"},
+                                                    "name": "nvme",
+                                                },
+                                            ],
+                                            "initContainers": [
+                                                {
+                                                    "command": ["/bin/sh", "-c", "cp -rn /mnt/models/. /mnt/nvme/"],
+                                                    "image": "ghcr.io/example/stage:v1",
+                                                    "name": "stage-weights",
+                                                    "volumeMounts": [{"mountPath": "/mnt/nvme", "name": "nvme"}],
+                                                }
+                                            ],
+                                            "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                            "resourceClaims": [
+                                                {
+                                                    "name": "devices",
+                                                    "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                                }
+                                            ],
+                                            "tolerations": [
+                                                {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                                                {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                                                {
+                                                    "key": "modelplane.ai/cpu",
+                                                    "operator": "Exists",
+                                                    "effect": "NoSchedule",
+                                                },
+                                            ],
+                                        },
+                                        "metadata": {
+                                            "labels": {"modelplane.ai/engine": "main", "modelplane.ai/role": "Worker"}
+                                        },
+                                    },
+                                },
+                            },
+                        }
+                    },
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
+                    "readiness": {
+                        "celQuery": 'has(object.status) && has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True") && has(object.status.readyReplicas) && object.status.readyReplicas >= object.spec.replicas',
+                        "policy": "DeriveFromCelQuery",
+                    },
+                    "watch": True,
+                }
+            },
+            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
+            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+        },
+    ),
+    BuildCase(
+        name="GroveVolumes",
+        reason=(
+            "A Leader/Worker member's volumes and init containers reach its own Grove clique's pod spec, after Modelplane's /dev/shm volume and mount."
+        ),
+        backend=grove.GroveBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=/mnt/nvme/GLM-5"],
+                                            volumeMounts=[
+                                                v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme", readOnly=True)
+                                            ],
+                                        )
+                                    ],
+                                    volumes=[
+                                        v1alpha1.Volume(
+                                            name="nvme", hostPath={"path": "/mnt/nvme", "type": "Directory"}
+                                        )
+                                    ],
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=/mnt/nvme/GLM-5"],
+                                            volumeMounts=[
+                                                v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme", readOnly=True)
+                                            ],
+                                        )
+                                    ],
+                                    initContainers=[
+                                        v1alpha1.InitContainer(
+                                            name="stage-weights",
+                                            image="ghcr.io/example/stage:v1",
+                                            command=["/bin/sh", "-c", "cp -rn /mnt/models/. /mnt/nvme/"],
+                                            volumeMounts=[v1alpha1.VolumeMount(name="nvme", mountPath="/mnt/nvme")],
+                                        )
+                                    ],
+                                    volumes=[
+                                        v1alpha1.Volume(
+                                            name="nvme", hostPath={"path": "/mnt/nvme", "type": "Directory"}
+                                        )
+                                    ],
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Dynamo",
+        want={
+            "model-serving-main": _pod_clique_set(
+                name="r-main-bb4e3",
+                cliques=[
+                    {
+                        "name": "leader",
+                        "labels": {
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Leader",
+                            "modelplane.ai/serving": "r",
+                            "kai.scheduler/queue": "modelplane",
+                            "modelplane.ai/clique-role": "leader",
+                        },
+                        "spec": {
+                            "roleName": "leader",
+                            "replicas": 1,
+                            "minAvailable": 1,
+                            "podSpec": {
+                                "containers": [
+                                    {
+                                        "name": "engine",
+                                        "image": "vllm/vllm-openai:latest",
+                                        "volumeMounts": [
+                                            {"name": "dshm", "mountPath": "/dev/shm"},
+                                            {"mountPath": "/mnt/nvme", "name": "nvme", "readOnly": True},
+                                        ],
+                                        "resources": {"claims": [{"name": "devices"}]},
+                                        "args": ["--model=/mnt/nvme/GLM-5"],
+                                        "env": [
+                                            {
+                                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                                "value": "$(GROVE_PCSG_NAME)-$(GROVE_PCSG_INDEX)-leader-0.$(GROVE_HEADLESS_SERVICE)",
+                                            }
+                                        ],
+                                        "ports": [{"name": "http", "containerPort": 8000}],
+                                        "readinessProbe": {
+                                            "httpGet": {"path": "/health", "port": 8000},
+                                            "initialDelaySeconds": 30,
+                                            "periodSeconds": 10,
+                                            "timeoutSeconds": 5,
+                                        },
+                                    }
+                                ],
+                                "volumes": [
+                                    {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+                                    {"hostPath": {"path": "/mnt/nvme", "type": "Directory"}, "name": "nvme"},
+                                ],
+                                "schedulerName": "kai-scheduler",
+                                "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                "resourceClaims": [
+                                    {"name": "devices", "resourceClaimTemplateName": "r-main-leader-devices-f58c6"}
+                                ],
+                                "tolerations": [
+                                    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                                    {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                                    {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+                                ],
+                            },
+                        },
+                    },
+                    {
+                        "name": "worker",
+                        "labels": {
+                            "modelplane.ai/engine": "main",
+                            "modelplane.ai/role": "Worker",
+                            "kai.scheduler/queue": "modelplane",
+                        },
+                        "spec": {
+                            "roleName": "worker",
+                            "replicas": 1,
+                            "minAvailable": 1,
+                            "podSpec": {
+                                "containers": [
+                                    {
+                                        "name": "engine",
+                                        "image": "vllm/vllm-openai:latest",
+                                        "volumeMounts": [
+                                            {"name": "dshm", "mountPath": "/dev/shm"},
+                                            {"mountPath": "/mnt/nvme", "name": "nvme", "readOnly": True},
+                                        ],
+                                        "resources": {"claims": [{"name": "devices"}]},
+                                        "args": ["--model=/mnt/nvme/GLM-5"],
+                                        "env": [
+                                            {
+                                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                                "value": "$(GROVE_PCSG_NAME)-$(GROVE_PCSG_INDEX)-leader-0.$(GROVE_HEADLESS_SERVICE)",
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "volumes": [
+                                    {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+                                    {"hostPath": {"path": "/mnt/nvme", "type": "Directory"}, "name": "nvme"},
+                                ],
+                                "initContainers": [
+                                    {
+                                        "command": ["/bin/sh", "-c", "cp -rn /mnt/models/. /mnt/nvme/"],
+                                        "image": "ghcr.io/example/stage:v1",
+                                        "name": "stage-weights",
+                                        "volumeMounts": [{"mountPath": "/mnt/nvme", "name": "nvme"}],
+                                    }
+                                ],
+                                "schedulerName": "kai-scheduler",
+                                "nodeSelector": {"modelplane.ai/pool": "frontier"},
+                                "resourceClaims": [
+                                    {"name": "devices", "resourceClaimTemplateName": "r-main-worker-devices-99b8a"}
+                                ],
+                                "tolerations": [
+                                    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                                    {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                                    {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
+                                ],
+                            },
+                        },
+                    },
+                ],
+            ),
+            "scaling-group-main": _scaling_group(pcs_name="r-main-bb4e3"),
+            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
+            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+        },
+    ),
 ]
 
 

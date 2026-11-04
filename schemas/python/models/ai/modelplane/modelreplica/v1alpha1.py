@@ -139,6 +139,13 @@ class Resources(BaseModel):
     requests: dict[str, int | str] | None = Field(None, max_length=3)
 
 
+class VolumeMount(BaseModel):
+    mountPath: constr(min_length=1)
+    name: constr(min_length=1)
+    readOnly: bool | None = None
+    subPath: str | None = None
+
+
 class Container(BaseModel):
     args: list[str] | None = None
     command: list[str] | None = None
@@ -156,15 +163,47 @@ class Container(BaseModel):
     """
     CPU and memory requests and limits. On the engine container, Modelplane adds the member's device claim beside them.
     """
+    volumeMounts: list[VolumeMount] | None = Field(None, max_length=16)
 
 
 class ImagePullSecret(BaseModel):
     name: str
 
 
+class InitContainer(BaseModel):
+    args: list[str] | None = None
+    command: list[str] | None = None
+    env: list[EnvItem] | None = None
+    image: constr(min_length=1)
+    name: constr(
+        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
+    )
+    resources: Resources | None = None
+    volumeMounts: list[VolumeMount] | None = Field(None, max_length=16)
+
+
+class Volume(BaseModel):
+    configMap: dict[str, Any] | None = None
+    csi: dict[str, Any] | None = None
+    downwardAPI: dict[str, Any] | None = None
+    emptyDir: dict[str, Any] | None = None
+    ephemeral: dict[str, Any] | None = None
+    hostPath: dict[str, Any] | None = None
+    image: dict[str, Any] | None = None
+    name: constr(
+        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
+    )
+    nfs: dict[str, Any] | None = None
+    persistentVolumeClaim: dict[str, Any] | None = None
+    projected: dict[str, Any] | None = None
+    secret: dict[str, Any] | None = None
+
+
 class Spec(BaseModel):
     containers: list[Container] = Field(..., max_length=8, min_length=1)
     imagePullSecrets: list[ImagePullSecret] | None = None
+    initContainers: list[InitContainer] | None = Field(None, max_length=8)
+    volumes: list[Volume] | None = Field(None, max_length=16)
 
 
 class Template(BaseModel):

@@ -428,6 +428,9 @@ spec:
                               spec:
                                 type: object
                                 required: [containers]
+                                x-kubernetes-validations:
+                                - rule: "!has(self.initContainers) || !self.initContainers.exists(i, self.containers.exists(c, c.name == i.name))"
+                                  message: "an init container can't share a name with a container"
                                 properties:
                                   containers:
                                     type: array
@@ -440,6 +443,8 @@ spec:
                                       message: "exactly one container must be named 'engine'"
                                     - rule: "!self.exists(c, c.name == 'engine' && has(c.readinessProbe))"
                                       message: "the engine container can't set readinessProbe; Modelplane probes it on its http port"
+                                    - rule: "!self.exists(c, c.name == 'engine' && has(c.volumeMounts) && c.volumeMounts.exists(m, m.mountPath in ['/dev/shm', '/mnt/models']))"
+                                      message: "the engine container can't mount at /dev/shm or /mnt/models; Modelplane mounts shared memory and the ModelCache there"
                                     items:
                                       type: object
                                       required: [name, image]
@@ -597,6 +602,25 @@ spec:
                                                 type: integer
                                                 minimum: 1
                                                 maximum: 65535
+                                        volumeMounts:
+                                          type: array
+                                          maxItems: 16
+                                          x-kubernetes-list-type: map
+                                          x-kubernetes-list-map-keys: [mountPath]
+                                          items:
+                                            type: object
+                                            required: [name, mountPath]
+                                            properties:
+                                              name:
+                                                type: string
+                                                minLength: 1
+                                              mountPath:
+                                                type: string
+                                                minLength: 1
+                                              subPath:
+                                                type: string
+                                              readOnly:
+                                                type: boolean
                                   imagePullSecrets:
                                     type: array
                                     items:
@@ -605,6 +629,168 @@ spec:
                                       properties:
                                         name:
                                           type: string
+                                  initContainers:
+                                    type: array
+                                    maxItems: 8
+                                    x-kubernetes-list-type: map
+                                    x-kubernetes-list-map-keys: [name]
+                                    items:
+                                      type: object
+                                      required: [name, image]
+                                      properties:
+                                        name:
+                                          type: string
+                                          minLength: 1
+                                          maxLength: 63
+                                          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                                        image:
+                                          type: string
+                                          minLength: 1
+                                        command:
+                                          type: array
+                                          items:
+                                            type: string
+                                        args:
+                                          type: array
+                                          items:
+                                            type: string
+                                        env:
+                                          type: array
+                                          items:
+                                            type: object
+                                            required: [name]
+                                            properties:
+                                              name:
+                                                type: string
+                                              value:
+                                                type: string
+                                              valueFrom:
+                                                type: object
+                                                properties:
+                                                  secretKeyRef:
+                                                    type: object
+                                                    required: [name, key]
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                      key:
+                                                        type: string
+                                                      optional:
+                                                        type: boolean
+                                                  configMapKeyRef:
+                                                    type: object
+                                                    required: [name, key]
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                      key:
+                                                        type: string
+                                                      optional:
+                                                        type: boolean
+                                                  fieldRef:
+                                                    type: object
+                                                    description: >-
+                                                      Reference a pod field via
+                                                      the downward API, e.g.
+                                                      status.podIP, metadata.name,
+                                                      or metadata.namespace.
+                                                    required: [fieldPath]
+                                                    properties:
+                                                      fieldPath:
+                                                        type: string
+                                                      apiVersion:
+                                                        type: string
+                                        resources:
+                                          type: object
+                                          description: CPU and memory requests and limits.
+                                          x-kubernetes-validations:
+                                          - rule: "(!has(self.requests) || self.requests.all(k, k in ['cpu', 'memory', 'ephemeral-storage'])) && (!has(self.limits) || self.limits.all(k, k in ['cpu', 'memory', 'ephemeral-storage']))"
+                                            message: "resources take only cpu, memory and ephemeral-storage; a member gets devices from its node pool's device requests"
+                                          properties:
+                                            requests:
+                                              type: object
+                                              maxProperties: 3
+                                              additionalProperties:
+                                                anyOf: [{type: integer}, {type: string}]
+                                                x-kubernetes-int-or-string: true
+                                            limits:
+                                              type: object
+                                              maxProperties: 3
+                                              additionalProperties:
+                                                anyOf: [{type: integer}, {type: string}]
+                                                x-kubernetes-int-or-string: true
+                                        volumeMounts:
+                                          type: array
+                                          maxItems: 16
+                                          x-kubernetes-list-type: map
+                                          x-kubernetes-list-map-keys: [mountPath]
+                                          items:
+                                            type: object
+                                            required: [name, mountPath]
+                                            properties:
+                                              name:
+                                                type: string
+                                                minLength: 1
+                                              mountPath:
+                                                type: string
+                                                minLength: 1
+                                              subPath:
+                                                type: string
+                                              readOnly:
+                                                type: boolean
+                                  volumes:
+                                    type: array
+                                    maxItems: 16
+                                    x-kubernetes-list-type: map
+                                    x-kubernetes-list-map-keys: [name]
+                                    x-kubernetes-validations:
+                                    - rule: "self.all(v, !(v.name in ['dshm', 'model-cache']))"
+                                      message: "volume names dshm and model-cache are reserved for the volumes Modelplane adds"
+                                    items:
+                                      type: object
+                                      required: [name]
+                                      x-kubernetes-validations:
+                                      - rule: "[has(self.configMap), has(self.csi), has(self.downwardAPI), has(self.emptyDir), has(self.ephemeral), has(self.hostPath), has(self.image), has(self.nfs), has(self.persistentVolumeClaim), has(self.projected), has(self.secret)].filter(s, s).size() == 1"
+                                        message: "a volume sets exactly one of configMap, csi, downwardAPI, emptyDir, ephemeral, hostPath, image, nfs, persistentVolumeClaim, projected, secret"
+                                      properties:
+                                        name:
+                                          type: string
+                                          minLength: 1
+                                          maxLength: 63
+                                          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                                        configMap:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        csi:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        downwardAPI:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        emptyDir:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        ephemeral:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        hostPath:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        image:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        nfs:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        persistentVolumeClaim:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        projected:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        secret:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
           status:
             type: object
             properties:

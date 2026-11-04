@@ -221,6 +221,45 @@ The `describe` output shows each device's driver, attributes (like
 selectors read. If no published class has a device that matches a selector, the
 deployment won't schedule.
 
+## Volumes and init containers
+
+A member's `template.spec` takes `volumes` and `initContainers`, and each
+container takes `volumeMounts`, written as in a Kubernetes pod spec. Use them to
+mount storage on the node, such as a local NVMe drive, or to run a setup step
+before the engine starts. A volume sets one source: `hostPath`, `emptyDir`,
+`persistentVolumeClaim`, `configMap`, `secret`, `csi`, `ephemeral`, `nfs`,
+`image`, `projected`, or `downwardAPI`.
+
+```yaml {nocopy=true}
+template:
+  spec:
+    containers:
+    - name: engine
+      image: vllm/vllm-openai:latest
+      args: ["--model=/mnt/nvme/GLM-5"]
+      volumeMounts:
+      - name: nvme
+        mountPath: /mnt/nvme
+    initContainers:
+    - name: stage-weights
+      image: ghcr.io/example/stage:v1
+      volumeMounts:
+      - name: nvme
+        mountPath: /mnt/nvme
+    volumes:
+    - name: nvme
+      hostPath:
+        path: /mnt/nvme
+        type: Directory
+```
+
+Modelplane adds its own volumes to every engine pod: `dshm`, a memory-backed
+`/dev/shm`, and `model-cache`, the `ModelCache` volume at `/mnt/models` when the
+deployment sets a `modelCacheRef`. You can mount these by name in any container
+or init container, but you can't declare a volume with either name, and the
+`engine` container can't mount anything else at `/dev/shm` or `/mnt/models`.
+Modelplane rejects a deployment that does.
+
 ## Sizing a deployment
 
 A deployment's pod count comes from separate settings that you size

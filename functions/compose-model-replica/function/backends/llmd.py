@@ -81,8 +81,7 @@ class LLMDBackend:
             c = {
                 "name": "engine",
                 "image": engine_container.image,
-                # vLLM tensor parallelism and NIXL KV transfer need a large /dev/shm.
-                "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}, *cache_volume_mounts],
+                "volumeMounts": base.engine_volume_mounts(engine_container, cache_volume_mounts),
             }
             # GPUs per pod bound via DRA through the member's claim. A claimless
             # member (a coordinator-only leader) has no pod-level claim for its
@@ -113,18 +112,13 @@ class LLMDBackend:
         def pod_spec(member: v1alpha1.Member, c: dict) -> dict:
             spec = {
                 "containers": [c, *base.sidecar_containers(member)],
-                "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}, *cache_volumes],
+                "volumes": base.pod_volumes(member, cache_volumes),
+                **base.template_pod_fields(member),
             }
             # Every pod pins to its member's scheduled pool and, if the member
             # claims devices, claims GPUs via the member's DRA template (one
             # fresh claim per pod).
             base.place_pod(spec, replica, engine, member)
-            # The XRD types template.spec as optional, but a member with no spec
-            # defines no pod to serve, so reaching here without one is malformed.
-            assert member.template.spec is not None
-            secrets = member.template.spec.imagePullSecrets
-            if secrets:
-                spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in secrets]
             return spec
 
         # Only the leader serves the OpenAI API → it carries the serving label

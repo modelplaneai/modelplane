@@ -75,8 +75,7 @@ class NativeBackend:
             "image": engine_container.image,
             "args": list(engine_container.args or []),
             "ports": base.engine_ports(engine_container),
-            # vLLM tensor parallelism and NIXL KV transfer need a large /dev/shm.
-            "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}, *cache_volume_mounts],
+            "volumeMounts": base.engine_volume_mounts(engine_container, cache_volume_mounts),
             "readinessProbe": base.readiness_probe(base.engine_http_port(engine_container)),
         }
         # GPUs bind via DRA: the container references the pod-level claim
@@ -102,16 +101,11 @@ class NativeBackend:
 
         pod_spec = {
             "containers": [container, *base.sidecar_containers(member)],
-            "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}, *cache_volumes],
+            "volumes": base.pod_volumes(member, cache_volumes),
+            **base.template_pod_fields(member),
         }
         # Pin to the member's scheduled pool and claim GPUs via DRA.
         base.place_pod(pod_spec, replica, engine, member)
-        tmpl = member.template
-        # The XRD types template.spec as optional, but a member with no spec
-        # defines no pod to serve, so reaching here without one is malformed.
-        assert tmpl.spec is not None
-        if tmpl.spec.imagePullSecrets:
-            pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in tmpl.spec.imagePullSecrets]
 
         deployment = {
             "apiVersion": "apps/v1",

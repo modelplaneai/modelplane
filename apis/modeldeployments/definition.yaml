@@ -567,7 +567,8 @@ spec:
                                     type: object
                                     description: >-
                                       Pod template for this member's engine pods. A
-                                      curated subset of PodTemplateSpec.
+                                      curated subset of PodTemplateSpec: containers,
+                                      init containers, volumes and image pull secrets.
                                     properties:
                                       metadata:
                                         type: object
@@ -618,6 +619,9 @@ spec:
                                         required: [containers]
                                         description: >-
                                           Pod spec for this member's engine pods.
+                                        x-kubernetes-validations:
+                                        - rule: "!has(self.initContainers) || !self.initContainers.exists(i, self.containers.exists(c, c.name == i.name))"
+                                          message: "an init container can't share a name with a container"
                                         properties:
                                           containers:
                                             type: array
@@ -636,6 +640,8 @@ spec:
                                               message: "exactly one container must be named 'engine'"
                                             - rule: "!self.exists(c, c.name == 'engine' && has(c.readinessProbe))"
                                               message: "the engine container can't set readinessProbe; Modelplane probes it on its http port"
+                                            - rule: "!self.exists(c, c.name == 'engine' && has(c.volumeMounts) && c.volumeMounts.exists(m, m.mountPath in ['/dev/shm', '/mnt/models']))"
+                                              message: "the engine container can't mount at /dev/shm or /mnt/models; Modelplane mounts shared memory and the ModelCache there"
                                             items:
                                               type: object
                                               required: [name, image]
@@ -845,6 +851,34 @@ spec:
                                                         minimum: 1
                                                         maximum: 65535
                                                         description: Port number the container listens on.
+                                                volumeMounts:
+                                                  type: array
+                                                  maxItems: 16
+                                                  x-kubernetes-list-type: map
+                                                  x-kubernetes-list-map-keys: [mountPath]
+                                                  description: >-
+                                                    Volumes to mount into the container. A mount names one of the pod's
+                                                    volumes, or a volume Modelplane adds: dshm, and model-cache when the
+                                                    deployment references a ModelCache. The engine container can't mount at
+                                                    /dev/shm or /mnt/models, where Modelplane mounts those two.
+                                                  items:
+                                                    type: object
+                                                    required: [name, mountPath]
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                        minLength: 1
+                                                        description: The volume to mount.
+                                                      mountPath:
+                                                        type: string
+                                                        minLength: 1
+                                                        description: Where to mount the volume in the container.
+                                                      subPath:
+                                                        type: string
+                                                        description: A path within the volume to mount instead of its root.
+                                                      readOnly:
+                                                        type: boolean
+                                                        description: Whether to mount the volume read-only.
                                           imagePullSecrets:
                                             type: array
                                             description: >-
@@ -856,6 +890,199 @@ spec:
                                               properties:
                                                 name:
                                                   type: string
+                                          initContainers:
+                                            type: array
+                                            maxItems: 8
+                                            x-kubernetes-list-type: map
+                                            x-kubernetes-list-map-keys: [name]
+                                            description: >-
+                                              Containers that run to completion, in order, before the pod's containers
+                                              start, such as one that stages weights onto a node-local volume.
+                                              Modelplane passes them through as written.
+                                            items:
+                                              type: object
+                                              required: [name, image]
+                                              properties:
+                                                name:
+                                                  type: string
+                                                  minLength: 1
+                                                  maxLength: 63
+                                                  pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                                                  description: Container name, unique among the pod's containers.
+                                                image:
+                                                  type: string
+                                                  minLength: 1
+                                                  description: Container image.
+                                                command:
+                                                  type: array
+                                                  description: Container entrypoint override.
+                                                  items:
+                                                    type: string
+                                                args:
+                                                  type: array
+                                                  description: Container args.
+                                                  items:
+                                                    type: string
+                                                env:
+                                                  type: array
+                                                  description: >-
+                                                    Environment variables. Supports
+                                                    valueFrom.secretKeyRef /
+                                                    configMapKeyRef for secrets and
+                                                    config (like HF_TOKEN), and
+                                                    valueFrom.fieldRef for pod fields
+                                                    (e.g. status.podIP for vLLM's
+                                                    VLLM_HOST_IP on multi-NIC nodes).
+                                                  items:
+                                                    type: object
+                                                    required: [name]
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                      value:
+                                                        type: string
+                                                      valueFrom:
+                                                        type: object
+                                                        properties:
+                                                          secretKeyRef:
+                                                            type: object
+                                                            required: [name, key]
+                                                            properties:
+                                                              name:
+                                                                type: string
+                                                              key:
+                                                                type: string
+                                                              optional:
+                                                                type: boolean
+                                                          configMapKeyRef:
+                                                            type: object
+                                                            required: [name, key]
+                                                            properties:
+                                                              name:
+                                                                type: string
+                                                              key:
+                                                                type: string
+                                                              optional:
+                                                                type: boolean
+                                                          fieldRef:
+                                                            type: object
+                                                            description: >-
+                                                              Reference a pod field via
+                                                              the downward API, e.g.
+                                                              status.podIP, metadata.name,
+                                                              or metadata.namespace.
+                                                            required: [fieldPath]
+                                                            properties:
+                                                              fieldPath:
+                                                                type: string
+                                                              apiVersion:
+                                                                type: string
+                                                resources:
+                                                  type: object
+                                                  description: CPU and memory requests and limits.
+                                                  x-kubernetes-validations:
+                                                  - rule: "(!has(self.requests) || self.requests.all(k, k in ['cpu', 'memory', 'ephemeral-storage'])) && (!has(self.limits) || self.limits.all(k, k in ['cpu', 'memory', 'ephemeral-storage']))"
+                                                    message: "resources take only cpu, memory and ephemeral-storage; a member gets devices from its node pool's device requests"
+                                                  properties:
+                                                    requests:
+                                                      type: object
+                                                      maxProperties: 3
+                                                      additionalProperties:
+                                                        anyOf: [{type: integer}, {type: string}]
+                                                        x-kubernetes-int-or-string: true
+                                                    limits:
+                                                      type: object
+                                                      maxProperties: 3
+                                                      additionalProperties:
+                                                        anyOf: [{type: integer}, {type: string}]
+                                                        x-kubernetes-int-or-string: true
+                                                volumeMounts:
+                                                  type: array
+                                                  maxItems: 16
+                                                  x-kubernetes-list-type: map
+                                                  x-kubernetes-list-map-keys: [mountPath]
+                                                  description: >-
+                                                    Volumes to mount into the container. A mount names one of the pod's
+                                                    volumes, or a volume Modelplane adds: dshm, and model-cache when the
+                                                    deployment references a ModelCache. The engine container can't mount at
+                                                    /dev/shm or /mnt/models, where Modelplane mounts those two.
+                                                  items:
+                                                    type: object
+                                                    required: [name, mountPath]
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                        minLength: 1
+                                                        description: The volume to mount.
+                                                      mountPath:
+                                                        type: string
+                                                        minLength: 1
+                                                        description: Where to mount the volume in the container.
+                                                      subPath:
+                                                        type: string
+                                                        description: A path within the volume to mount instead of its root.
+                                                      readOnly:
+                                                        type: boolean
+                                                        description: Whether to mount the volume read-only.
+                                          volumes:
+                                            type: array
+                                            maxItems: 16
+                                            x-kubernetes-list-type: map
+                                            x-kubernetes-list-map-keys: [name]
+                                            description: >-
+                                              Volumes the pod's containers and init containers can mount, beside the
+                                              ones Modelplane adds. Each sets a name and one Kubernetes volume source,
+                                              written as in a pod spec, such as a hostPath to a node's local NVMe. The
+                                              names dshm and model-cache are reserved for Modelplane's own volumes.
+                                            x-kubernetes-validations:
+                                            - rule: "self.all(v, !(v.name in ['dshm', 'model-cache']))"
+                                              message: "volume names dshm and model-cache are reserved for the volumes Modelplane adds"
+                                            items:
+                                              type: object
+                                              required: [name]
+                                              x-kubernetes-validations:
+                                              - rule: "[has(self.configMap), has(self.csi), has(self.downwardAPI), has(self.emptyDir), has(self.ephemeral), has(self.hostPath), has(self.image), has(self.nfs), has(self.persistentVolumeClaim), has(self.projected), has(self.secret)].filter(s, s).size() == 1"
+                                                message: "a volume sets exactly one of configMap, csi, downwardAPI, emptyDir, ephemeral, hostPath, image, nfs, persistentVolumeClaim, projected, secret"
+                                              properties:
+                                                name:
+                                                  type: string
+                                                  minLength: 1
+                                                  maxLength: 63
+                                                  pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                                                  description: Volume name, which a container's volumeMounts refer to.
+                                                configMap:
+                                                  type: object
+                                                  x-kubernetes-preserve-unknown-fields: true
+                                                csi:
+                                                  type: object
+                                                  x-kubernetes-preserve-unknown-fields: true
+                                                downwardAPI:
+                                                  type: object
+                                                  x-kubernetes-preserve-unknown-fields: true
+                                                emptyDir:
+                                                  type: object
+                                                  x-kubernetes-preserve-unknown-fields: true
+                                                ephemeral:
+                                                  type: object
+                                                  x-kubernetes-preserve-unknown-fields: true
+                                                hostPath:
+                                                  type: object
+                                                  x-kubernetes-preserve-unknown-fields: true
+                                                image:
+                                                  type: object
+                                                  x-kubernetes-preserve-unknown-fields: true
+                                                nfs:
+                                                  type: object
+                                                  x-kubernetes-preserve-unknown-fields: true
+                                                persistentVolumeClaim:
+                                                  type: object
+                                                  x-kubernetes-preserve-unknown-fields: true
+                                                projected:
+                                                  type: object
+                                                  x-kubernetes-preserve-unknown-fields: true
+                                                secret:
+                                                  type: object
+                                                  x-kubernetes-preserve-unknown-fields: true
           status:
             type: object
             properties:

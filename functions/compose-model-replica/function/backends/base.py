@@ -110,6 +110,49 @@ def cache_mounts(replica: v1alpha1.ModelReplica) -> tuple[list[dict], list[dict]
     )
 
 
+# Every engine pod gets a memory-backed /dev/shm, since vLLM tensor parallelism
+# and NIXL KV transfer need a large one. The XRDs reserve this volume name and
+# _CACHE_VOLUME, and keep the engine container's own mounts off both paths, so
+# the user's volumes and mounts never collide with Modelplane's.
+_SHM_VOLUME = "dshm"
+_SHM_MOUNT_PATH = "/dev/shm"
+
+
+def pod_volumes(member: v1alpha1.Member, cache_volumes: list[dict]) -> list[dict]:
+    """A member's pod volumes: /dev/shm and the cache's, then the user's as written."""
+    assert member.template.spec is not None
+    return [
+        {"name": _SHM_VOLUME, "emptyDir": {"medium": "Memory"}},
+        *cache_volumes,
+        *(v.model_dump(exclude_none=True) for v in member.template.spec.volumes or []),
+    ]
+
+
+def engine_volume_mounts(container: v1alpha1.Container, cache_volume_mounts: list[dict]) -> list[dict]:
+    """The engine container's mounts: /dev/shm and the cache's, then the user's as written."""
+    return [
+        {"name": _SHM_VOLUME, "mountPath": _SHM_MOUNT_PATH},
+        *cache_volume_mounts,
+        *(m.model_dump(exclude_none=True) for m in container.volumeMounts or []),
+    ]
+
+
+def template_pod_fields(member: v1alpha1.Member) -> dict:
+    """The pod spec fields a member's template passes through as written.
+
+    These are its image pull secrets and init containers. Modelplane adds
+    nothing to an init container, just as it adds nothing to a sidecar.
+    """
+    assert member.template.spec is not None
+    spec = member.template.spec
+    fields = {}
+    if spec.imagePullSecrets:
+        fields["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in spec.imagePullSecrets]
+    if spec.initContainers:
+        fields["initContainers"] = [c.model_dump(exclude_none=True) for c in spec.initContainers]
+    return fields
+
+
 def cache_env(replica: v1alpha1.ModelReplica) -> list[dict]:
     """Env that makes the cache mount resolvable by the model's own name, or [].
 
