@@ -1,6 +1,6 @@
 ---
 title: Scale the model
-weight: 50
+weight: 60
 description: Serve the model from two regions behind one endpoint.
 ---
 A `ModelService` can front more than one `ModelDeployment`. Here you add a second

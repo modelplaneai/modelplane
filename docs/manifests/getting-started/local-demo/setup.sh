@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Sets up the Modelplane quickstart on two kind clusters: a control plane, and
-# a workload cluster that stands in for a GPU cluster. It ends with the
-# platform team's side done (hardware published, cluster registered, gateway
-# up) so the reader only deploys models.
+# a workload cluster that stands in for a GPU cluster. It stops before the
+# platform manifest, which the reader applies.
 #
 # Needs: docker (12 GB of memory on Docker Desktop), kind, kubectl, helm.
-#   setup.sh          set everything up
-#   setup.sh --clean  delete both clusters
+#   setup.sh           set up both clusters and install Modelplane
+#   setup.sh --expose  forward localhost:8080 to the InferenceGateway
+#   setup.sh --clean   delete both clusters
 set -euo pipefail
 
 DOCS=https://docs.modelplane.ai/examples
@@ -35,6 +35,21 @@ if [ "${1:-}" = "--clean" ]; then
 	kind delete cluster --name "$CP" || true
 	kind delete cluster --name "$WL" || true
 	docker rm -f modelplane-gateway >/dev/null 2>&1 || true
+	exit 0
+fi
+
+# The gateway's address is on kind's Docker network, which the host can't reach
+# on macOS or Windows. Forward localhost:8080 to it.
+if [ "${1:-}" = "--expose" ]; then
+	GW="$(kubectl --context "$CPCTX" get ig public -o jsonpath='{.status.endpoints.openAI}' | sed -E 's#^https?://##; s#/.*##')"
+	[ -n "$GW" ] || {
+		echo "InferenceGateway public has no address yet" >&2
+		exit 1
+	}
+	docker rm -f modelplane-gateway >/dev/null 2>&1 || true
+	docker run -d --name modelplane-gateway --network kind -p 8080:80 \
+		alpine/socat:1.8.0.3 TCP-LISTEN:80,fork "TCP:${GW}:80" >/dev/null
+	echo "The gateway answers on localhost:8080."
 	exit 0
 fi
 
@@ -107,25 +122,11 @@ kubectl --context "$CPCTX" apply \
 kubectl --context "$CPCTX" wait configuration/modelplane --for=condition=Healthy --timeout=15m
 kubectl --context "$CPCTX" wait xrd --all --for=condition=Established --timeout=5m
 
-# --- The platform team's side ----------------------------------------------
-log "Registering the workload cluster and its hardware"
+# --- Workload cluster credentials ----------------------------------------
+log "Storing the workload cluster's kubeconfig on the control plane"
 kubectl --context "$CPCTX" -n modelplane-system create secret generic local-cluster-kubeconfig \
 	--from-literal=kubeconfig="$(kind get kubeconfig --internal --name "$WL")" \
 	--dry-run=client -o yaml | kubectl --context "$CPCTX" apply -f -
-kubectl --context "$CPCTX" apply -f "${DOCS}/overview/local-demo/platform.yaml"
-# Comment the line above and uncomment the line below for local testing
-# kubectl --context "$CPCTX" apply -f docs/manifests/overview/local-demo/platform.yaml
-log "Installing the serving stack on the workload cluster"
-kubectl --context "$CPCTX" wait ic/local --for=condition=Ready --timeout=15m
-kubectl --context "$CPCTX" wait ig/public --for=condition=Ready --timeout=10m
 kubectl config use-context "$CPCTX" >/dev/null
 
-# The gateway's address is on kind's Docker network, which the host can't reach
-# on macOS or Windows. Forward localhost:8080 to it.
-log "Exposing the gateway on localhost:8080"
-GW="$(kubectl --context "$CPCTX" get ig public -o jsonpath='{.status.endpoints.openAI}' | sed -E 's#^https?://##; s#/.*##')"
-docker rm -f modelplane-gateway >/dev/null 2>&1 || true
-docker run -d --name modelplane-gateway --network kind -p 8080:80 \
-	alpine/socat:1.8.0.3 TCP-LISTEN:80,fork "TCP:${GW}:80" >/dev/null
-
-log "Ready. kubectl points at the control plane, and the gateway answers on localhost:8080."
+log "Ready. kubectl points at the control plane."

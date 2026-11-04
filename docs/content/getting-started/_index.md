@@ -1,9 +1,14 @@
 ---
 title: Get started
 weight: 10
-navLanding: "Start here"
+navLanding: "Tour of Modelplane"
 description: A guided tour of Modelplane, from an empty control plane to a model served across regions.
 ---
+
+{{< hint "tip" >}}
+No cloud account or GPU? [Try Modelplane locally]({{< ref
+"getting-started/local-demo.md" >}}) on two kind clusters instead.
+{{< /hint >}}
 
 Modelplane is an open source control plane for AI inference. It separates two
 concerns: a platform team managing GPU capacity, and ML teams deploying models
@@ -17,7 +22,9 @@ what clusters exist. The control plane places the model on matching hardware
 and moves it only when a change on either side breaks the match.
 
 In this tour, you'll switch between provisioning infrastructure and declaring a
-model to see how they interact. By the end you'll have a GPU fleet across three regions and one OpenAI-compatible endpoint routing to a model served across two of them.
+model to see how they interact. By the end you'll have a GPU fleet across three
+regions and one OpenAI-compatible endpoint routing to a model served across two
+of them.
 
 This is not a production setup and takes around 45 minutes to run.
 
@@ -36,6 +43,7 @@ covers what it needs as you reach it.
 
 ## The tour
 
+0. [Try Modelplane locally]({{< ref "getting-started/local-demo.md" >}}): spin up local clusters and use synthetic GPUs to see the Modelplane workflow.
 1. [Install the control plane]({{< ref "/install" >}}): install Modelplane on a Kubernetes cluster.
 2. [Build the platform]({{< ref "getting-started/build-the-platform.md" >}}): provision your first GPU cluster.
 3. [Deploying a model]({{< ref "getting-started/deploying-a-model.md" >}}): serve a model and send it a request.

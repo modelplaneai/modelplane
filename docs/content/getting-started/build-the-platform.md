@@ -1,6 +1,6 @@
 ---
 title: Build the platform
-weight: 20
+weight: 30
 description: Set up the gateway, give the control plane cloud credentials, and provision your first GPU cluster.
 ---
 This is the platform team's side of Modelplane. You set up the gateway that
@@ -12,6 +12,11 @@ In the next step, the ML team will create a model deployment that schedules
 against this capacity without knowing which cluster it runs on.
 
 ## Prerequisites
+
+This step needs a running control plane. If you haven't [installed
+Modelplane]({{< ref "/install" >}}) yet, do that first.
+
+You also need an account with one of these providers:
 
 {{< tabs >}}
 {{< tab "EKS" >}}
