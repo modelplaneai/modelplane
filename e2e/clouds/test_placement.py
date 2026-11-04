@@ -34,14 +34,13 @@ from e2e import clouds, kube, wait
 
 # Pods expected to carry the NVIDIA GPU toleration and land on the fake GPU
 # nodes: the GPU-reaching DaemonSets from generate.py's TOLERATIONS table -
-# the NFD worker, node-exporter, DRA kubelet plugin, gpu-operator operands
-# and nvsentinel's node monitors (platform-connectors runs on every node; the
-# health monitors select on labels nvsentinel's labeler applies at runtime).
+# the NFD worker, DRA kubelet plugin, gpu-operator operands and nvsentinel's
+# node monitors (platform-connectors runs on every node; the health monitors
+# select on labels nvsentinel's labeler applies at runtime).
 # Unanchored where the generated and hand-written halves name the same
 # workload differently. Per-cloud extras come from Cloud.gpu_workloads.
 GPU_WORKLOADS = (
     "node-feature-discovery-worker",
-    "prometheus-node-exporter",
     "kubelet-plugin",
     "^gpu-feature-discovery",
     "^nvidia-dcgm",
@@ -56,30 +55,25 @@ GPU_WORKLOADS = (
 )
 
 # Pods expected to carry the CPU pool toleration and land on the fake CPU
-# nodes: dra-driver-cpu (its pin's nodeSelector and toleration name exactly
-# this pool) and the node exporter, which reaches every inference pool.
-# NFD is deliberately absent: it exists to label GPU nodes, so it carries
-# the GPU drivers' tags and stays off CPU pools.
-CPU_WORKLOADS = (
-    "dra-driver-cpu",
-    "prometheus-node-exporter",
-)
+# nodes: dra-driver-cpu alone (its pin's nodeSelector and toleration name
+# exactly this pool). NFD is deliberately absent: it exists to label GPU
+# nodes, so it carries the GPU drivers' tags and stays off CPU pools.
+CPU_WORKLOADS = ("dra-driver-cpu",)
 
 # Pods expected to carry the AMD GPU toleration and land on the fake AMD
 # nodes (the Existing leg only): the AMD operator's operands, named for its
 # chart's default DeviceConfig, plus the NFD worker - it labels both GPU
-# vendors' nodes - and the node exporter.
+# vendors' nodes.
 AMD_WORKLOADS = (
     "node-feature-discovery-worker",
-    "prometheus-node-exporter",
     "^default-dra-driver",
     "^default-node-labeller",
     "^default-metrics-exporter",
 )
 
 # Pool-only pods must never run anywhere but their own pool: they'd only
-# land elsewhere by a selector or affinity regression. The NFD worker and
-# node-exporter aren't here - they legitimately run on several pools.
+# land elsewhere by a selector or affinity regression. The NFD worker
+# isn't here - it legitimately runs on both GPU vendors' pools.
 GPU_ONLY = re.compile(
     "|".join(
         (

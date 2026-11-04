@@ -467,19 +467,17 @@ BUNDLE_EXTRA = {
 
 # The bundler stamps a wildcard toleration - a bare {operator: Exists},
 # tolerating every taint - onto every pod it renders, Deployments
-# included. On a Modelplane cluster that puts cert-manager, the
-# Prometheus stack and the rest on GPU nodes: the cluster compositions
-# taint GPU pools (nvidia.com/gpu=true:NoSchedule on EKS and AKS; GKE
-# taints its GPU pools itself) exactly so that only GPU workloads land
-# there, and a tolerate-everything pod squats on accelerated capacity
-# and stalls autoscaler scale-down. So the transform rewrites every
-# wildcard the bundle ships, per the table below: node-scoped workloads
-# that must reach GPU nodes tolerate exactly the GPU taint (GPU,
-# matching the hand-written stacks' NFD worker and the EKS
-# composition's EFA driver), node-scoped workloads that must observe
-# every inference node tolerate every inference pool taint (NODE), and
-# everything else tolerates nothing (SYSTEM) and schedules on the
-# untainted system pool. A toleration the bundle already scoped (AKS's
+# included. On a Modelplane cluster that puts cert-manager and the rest
+# on GPU nodes: the cluster compositions taint GPU pools
+# (nvidia.com/gpu=true:NoSchedule on EKS and AKS; GKE taints its GPU
+# pools itself) exactly so that only GPU workloads land there, and a
+# tolerate-everything pod squats on accelerated capacity and stalls
+# autoscaler scale-down. So the transform rewrites every wildcard the
+# bundle ships, per the table below: node-scoped workloads that must
+# reach GPU nodes tolerate exactly the GPU taint (GPU, matching the
+# hand-written stacks' NFD worker and the EKS composition's EFA
+# driver), and everything else tolerates nothing (SYSTEM) and schedules
+# on the untainted system pool. A toleration the bundle already scoped (AKS's
 # --accelerated-node-toleration form above) passes through untouched. The wildcard doesn't only arrive under keys
 # named tolerations: nvsentinel's bundle puts one under
 # global.systemNodeTolerations, so the walkers match any *Tolerations
@@ -498,14 +496,6 @@ SYSTEM: list[Values] = []
 # Tolerate exactly the GPU taint, whatever its value (true on EKS and
 # AKS; GKE's own taint carries present).
 GPU: list[Values] = [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
-
-# Tolerate every schedulable pool's taint - GPU and CPU alike - for
-# node-reaching DaemonSets that aren't part of any one device stack and
-# must observe every node Modelplane schedules models onto.
-NODE: list[Values] = [
-    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
-    {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
-]
 
 # Recipe component name -> dotted values path -> the tolerations that
 # replace a wildcard found there. Like ALLOW/DROP this fails closed: a
@@ -526,24 +516,6 @@ TOLERATIONS = {
         "topologyUpdater.tolerations": GPU,
         "master.tolerations": SYSTEM,
         "gc.tolerations": SYSTEM,
-    },
-    "kube-prometheus-stack": {
-        "prometheus-node-exporter.tolerations": NODE,
-        "alertmanager.alertmanagerSpec.tolerations": SYSTEM,
-        "grafana.tolerations": SYSTEM,
-        "kube-state-metrics.tolerations": SYSTEM,
-        "prometheus.prometheusSpec.tolerations": SYSTEM,
-        "prometheusOperator.tolerations": SYSTEM,
-        "prometheusOperator.admissionWebhooks.patch.tolerations": SYSTEM,
-        "thanosRuler.thanosRulerSpec.tolerations": SYSTEM,
-    },
-    "prometheus-adapter": {
-        "tolerations": SYSTEM,
-    },
-    "k8s-ephemeral-storage-metrics": {
-        # deploy_type is Deployment: one controller reads every node's
-        # metrics from the API, so it never needs to reach GPU nodes.
-        "tolerations": SYSTEM,
     },
     "gpu-operator": {
         "daemonsets.tolerations": GPU,
@@ -586,10 +558,6 @@ MANIFEST_TOLERATIONS = {
 ALLOW = {
     "nfd": ("node-feature-discovery", ["gpu.nvidia.com"]),
     "cert-manager": ("cert-manager", []),
-    "kube-prometheus-stack": ("kube-prometheus-stack", []),
-    "prometheus-operator-crds": ("prometheus-operator-crds", []),
-    "prometheus-adapter": ("prometheus-adapter", []),
-    "k8s-ephemeral-storage-metrics": ("k8s-ephemeral-storage-metrics", []),
     "gpu-operator": ("gpu-operator", ["gpu.nvidia.com"]),
     "nvidia-dra-driver-gpu": ("nvidia-dra-driver-gpu", ["gpu.nvidia.com"]),
     "nvsentinel": ("nvsentinel", ["gpu.nvidia.com"]),
@@ -612,6 +580,29 @@ DROP = {
         "serves the opt-in DRA driver-upgrade eviction label "
         "(--dra-eviction-node-label), which Modelplane doesn't opt into; the "
         "bundler drops it from the bundle without the flag"
+    ),
+    "kube-prometheus-stack": (
+        "the telemetry collector scrapes the engines, the gateways and the GPU "
+        "exporter and exports to TelemetryDestinations (design/telemetry.md), so "
+        "nothing in Modelplane reads an in-cluster Prometheus - and its PVC "
+        "outlives the cluster (#551)"
+    ),
+    "prometheus-adapter": (
+        "serves Prometheus series as custom metrics for in-cluster autoscaling, "
+        "which Modelplane doesn't run; its source, kube-prometheus-stack, is "
+        "dropped above (#551)"
+    ),
+    "prometheus-operator-crds": (
+        "with every monitoring.coreos.com object in the stack off - DCGM's "
+        "ServiceMonitor and nvsentinel's PodMonitor, see MANAGED - nothing "
+        "renders against these CRDs (#551)"
+    ),
+    "k8s-ephemeral-storage-metrics": (
+        "only its ServiceMonitor exposed it, to the Prometheus dropped above; "
+        "no collector job scrapes it, so nothing would read the exporter. If "
+        "its series are ever wanted, reinstate it with prometheus.io scrape "
+        "annotations (the collector's substrate job discovers those) and a "
+        "MetricMapping (#551)"
     ),
     "aws-efa": "the EKSCluster installs an EFA DRA driver when a pool asks for the fabric",
     "aws-ebs-csi-driver": "Modelplane's only storage need is RWX, which the EKSCluster serves from EFS",
@@ -683,13 +674,24 @@ MANAGED = {
         (("toolkit", "enabled"), False, "the node image provides the container toolkit"),
         (("devicePlugin", "enabled"), False, "the device plugin and DRA ResourceSlices double-advertise GPUs"),
         (("gdrcopy", "enabled"), False, "no operator-managed driver to build the kernel module against"),
+        # Rendering it would fail the install - prometheus-operator-crds
+        # is dropped, so the ServiceMonitor has no CRD - and nothing
+        # would read it anyway: the collector's modelplane-gpu job
+        # scrapes the exporter pods directly, as on Civo.
+        (
+            ("dcgmExporter", "serviceMonitor", "enabled"),
+            False,
+            "its CRD is dropped, and the collector scrapes the exporter pods",
+        ),
     ],
     "nvsentinel": [
         (("labeler", "assumeDriverInstalled"), True, "no driver pod to observe with the operator's driver off"),
-    ],
-    "kube-prometheus-stack": [
-        (("grafana", "enabled"), False, "Modelplane doesn't use Grafana dashboards"),
-        (("alertmanager", "enabled"), False, "Modelplane doesn't route alerts"),
+        # Its one monitoring.coreos.com object (the mongodb and
+        # postgresql subcharts' monitors are off by default), rendered
+        # against the dropped prometheus-operator-crds. Its health
+        # series are remediation-internal; a user who wants them exports
+        # them through the collector and a MetricMapping.
+        (("podMonitor", "enabled"), False, "its CRD is dropped, and no Prometheus would read it"),
     ],
 }
 
@@ -697,9 +699,8 @@ MANAGED = {
 # deep-set into the hydrated bundle after the merge. Unlike MANAGED
 # these aren't --set (a structured value can't ride a --set flag) and
 # need no assertion - the generator writes them itself. They keep the
-# monitoring shape identical on every cloud: the collecting-engine-
-# metrics guide's PodMonitors and the envoy proxy scrape config work
-# the same on a generated cloud as on a hand-written one.
+# monitoring shape identical on every cloud: the GPU series carry the
+# same identity labels on a generated cloud as on a hand-written one.
 MODELPLANE_VALUES = {
     # The device plugin is off (see MANAGED), so the exporter maps
     # pods only in DRA mode; the allowlist limits label cardinality.
@@ -718,52 +719,6 @@ MODELPLANE_VALUES = {
             ("dcgmExporter", "env"),
             [{"name": "KUBERNETES_ENABLE_DRA", "value": "true"}],
             "map DRA ResourceClaim allocations to pods",
-        ),
-    ],
-    "kube-prometheus-stack": [
-        (
-            ("prometheus", "prometheusSpec", "podMonitorSelectorNilUsesHelmValues"),
-            False,
-            "discover user PodMonitors (the collecting-engine-metrics guide) beyond the release's own",
-        ),
-        (
-            ("prometheus", "prometheusSpec", "podMonitorNamespaceSelector"),
-            {},
-            "discover PodMonitors across all namespaces",
-        ),
-        (
-            ("prometheus", "prometheusSpec", "additionalScrapeConfigs"),
-            [
-                {
-                    "job_name": "envoy-gateway-proxy",
-                    "kubernetes_sd_configs": [
-                        {
-                            "role": "pod",
-                            "namespaces": {
-                                "names": ["envoy-gateway-system"],
-                            },
-                        },
-                    ],
-                    "relabel_configs": [
-                        {
-                            "source_labels": [
-                                "__meta_kubernetes_pod_label_app_kubernetes_io_component",
-                            ],
-                            "action": "keep",
-                            "regex": "proxy",
-                        },
-                        {
-                            "source_labels": ["__address__"],
-                            "action": "replace",
-                            "regex": "([^:]+)(?::\\d+)?",
-                            "replacement": "$1:19001",
-                            "target_label": "__address__",
-                        },
-                    ],
-                    "metrics_path": "/stats/prometheus",
-                },
-            ],
-            "scrape envoy proxy pods for in-flight request metrics (envoy_cluster_upstream_rq_active)",
         ),
     ],
 }

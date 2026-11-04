@@ -137,8 +137,8 @@ reruns the tests alone). A session fixture waits for the `ServingStack` to go
 Ready, then the asserts are two-sided:
 
 - **DaemonSet fan-out**: the leg's expected DaemonSets (the NVIDIA DRA
-  kubelet plugin, dra-driver-cpu, NFD worker, node-exporter; the AMD
-  operands on Existing; toolkit-hardening on AKS) reach their ready counts —
+  kubelet plugin, dra-driver-cpu, NFD worker; the AMD operands on
+  Existing; toolkit-hardening on AKS) reach their ready counts —
   a toleration too *narrow* (e.g. the wrong `Equal` value on AKS), a
   selector missing its pool, or a filter that wrongly dropped a claimed
   stack shows up as a shortfall.
@@ -166,8 +166,8 @@ the serving stack), and the model/inference path (covered by the model e2e).
 
 - **Docker** with real headroom — **≥ 16 GB memory** and **plenty of disk**
   (raise Docker Desktop's disk-image size). Two kind clusters, 13 provider
-  packages, the built function images, and the serving stack
-  (kube-prometheus-stack et al.) add up fast; a full Docker disk surfaces as
+  packages, the built function images, and the serving stack (cert-manager,
+  the gateways et al.) add up fast; a full Docker disk surfaces as
   `no space left on device`. Reclaim between runs with `docker builder prune -af`
   and `docker image prune -af`.
 - Everything else — `kind`, `kubectl`, the `docker` CLI, Python and pytest, and
@@ -322,7 +322,7 @@ e2e/
   release still reports Ready. The **dra-example-driver** bring-up installs is the
   active one — it publishes the fake `gpu.example.com` devices the engine binds.
 - **Serving-stack weight.** cert-manager, Envoy Gateway, Envoy AI Gateway, GAIE
-  CRDs, kube-prometheus-stack, LeaderWorkerSet, NFD, DRA driver — all on the
+  CRDs, LeaderWorkerSet, NFD, DRA driver — all on the
   workload node. Give Docker headroom.
 - **Package version.** Installs the **current branch** build (via `crossplane
   project run`), not the published `v0.1.0`, because the `source: Existing` /
