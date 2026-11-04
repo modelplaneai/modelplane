@@ -33,11 +33,11 @@ from e2e import clouds
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-# The cluster composition whose GPU taint each leg copies. No GKE or
-# Existing entry: GKE's managed taint comes from GKE itself, and
-# Modelplane doesn't taint BYO pools.
+# The cluster composition whose GPU and CPU pool taints each leg copies. No
+# Existing entry: Modelplane doesn't taint BYO pools.
 COMPOSITIONS = {
     "eks": "compose-eks-cluster",
+    "gke": "compose-gke-cluster",
     "aks": "compose-aks-cluster",
     "civo": "compose-civo-cluster",
     "nebius": "compose-nebius-cluster",
@@ -82,15 +82,7 @@ def test_taint_matches_composition(leg: str) -> None:
     )
 
 
-# The compositions whose CPU pool label-and-taint the legs' fake CPU nodes
-# copy. GKE is included here, unlike COMPOSITIONS: its GPU taint comes from
-# GKE itself, but compose-gke-cluster sets the CPU taint explicitly, since
-# GKE only auto-taints GPU pools. Still no Existing entry: Modelplane
-# doesn't taint BYO pools.
-CPU_COMPOSITIONS = {**COMPOSITIONS, "gke": "compose-gke-cluster"}
-
-
-@pytest.mark.parametrize("leg", sorted(CPU_COMPOSITIONS))
+@pytest.mark.parametrize("leg", sorted(COMPOSITIONS))
 def test_cpu_taint_matches(leg: str) -> None:
     """The fake CPU pools' label and taint are the ones every cluster composition applies.
 
@@ -98,7 +90,7 @@ def test_cpu_taint_matches(leg: str) -> None:
     rather than faking it per cloud - this pins that assumption. The label
     key is the one dra-driver-cpu's nodeSelector reads.
     """
-    consts = constants(CPU_COMPOSITIONS[leg])
+    consts = constants(COMPOSITIONS[leg])
     if "_CPU_TAINT_VALUE" in consts:
         key, value = consts["_CPU_TAINT_KEY"], consts["_CPU_TAINT_VALUE"]
     else:
@@ -108,9 +100,9 @@ def test_cpu_taint_matches(leg: str) -> None:
         value = rest.split(":", 1)[0]
     assert (key, value) == (clouds.CPU_TAINT["key"], clouds.CPU_TAINT["value"]), (
         f"the legs fake the CPU taint {clouds.CPU_TAINT['key']}={clouds.CPU_TAINT['value']}, "
-        f"but {CPU_COMPOSITIONS[leg]} taints CPU pools with {key}={value}"
+        f"but {COMPOSITIONS[leg]} taints CPU pools with {key}={value}"
     )
     assert clouds.CLOUDS[leg].cpu_labels.get(consts["_LABEL_CPU"]) == "true", (
-        f"{CPU_COMPOSITIONS[leg]} labels CPU pools {consts['_LABEL_CPU']}=true, "
+        f"{COMPOSITIONS[leg]} labels CPU pools {consts['_LABEL_CPU']}=true, "
         f"but the {leg} leg's fake CPU nodes carry {clouds.CLOUDS[leg].cpu_labels}"
     )

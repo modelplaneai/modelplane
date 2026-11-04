@@ -469,17 +469,19 @@ BUNDLE_EXTRA = {
 # tolerating every taint - onto every pod it renders, Deployments
 # included. On a Modelplane cluster that puts cert-manager and the rest
 # on GPU nodes: the cluster compositions taint GPU pools
-# (nvidia.com/gpu=true:NoSchedule on EKS and AKS; GKE taints its GPU
-# pools itself) exactly so that only GPU workloads land there, and a
-# tolerate-everything pod squats on accelerated capacity and stalls
-# autoscaler scale-down. So the transform rewrites every wildcard the
-# bundle ships, per the table below: node-scoped workloads that must
-# reach GPU nodes tolerate exactly the GPU taint (GPU, matching the
-# hand-written stacks' NFD worker and the EKS composition's EFA
-# driver), and everything else tolerates nothing (SYSTEM) and schedules
-# on the untainted system pool. A toleration the bundle already scoped (AKS's
-# --accelerated-node-toleration form above) passes through untouched. The wildcard doesn't only arrive under keys
-# named tolerations: nvsentinel's bundle puts one under
+# (nvidia.com/gpu=true:NoSchedule on EKS and AKS,
+# nvidia.com/gpu=present:NoSchedule on GKE) exactly so that only GPU
+# workloads land there, and a tolerate-everything pod squats on
+# accelerated capacity and stalls autoscaler scale-down. So the
+# transform rewrites every wildcard the bundle ships, per the table
+# below: node-scoped workloads that must reach GPU nodes tolerate
+# exactly the GPU taint (GPU, matching the hand-written stacks' NFD
+# worker and the EKS composition's EFA driver), and everything else
+# tolerates nothing (SYSTEM) and schedules on the untainted system
+# pool. A toleration the bundle already scoped (AKS's
+# --accelerated-node-toleration form above) passes through untouched.
+# The wildcard doesn't only arrive under keys named tolerations:
+# nvsentinel's bundle puts one under
 # global.systemNodeTolerations, so the walkers match any *Tolerations
 # key too.
 WILDCARD_TOLERATION = [{"operator": "Exists"}]
@@ -494,7 +496,7 @@ def tolerations_key(key: str) -> bool:
 SYSTEM: list[Values] = []
 
 # Tolerate exactly the GPU taint, whatever its value (true on EKS and
-# AKS; GKE's own taint carries present).
+# AKS, present on GKE).
 GPU: list[Values] = [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
 
 # Recipe component name -> dotted values path -> the tolerations that

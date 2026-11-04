@@ -185,13 +185,13 @@ CLOUDS: dict[str, Cloud] = {
     # Carries the pool labels the dra gpuStack profile requires
     # (gke-no-default-nvidia-gpu-device-plugin disables GKE's managed device
     # plugin; cloud.google.com/gke-nvidia-gpu-dra-driver is what the
-    # autoscaler models DRA ResourceSlices from). The taint is GKE's own
-    # managed GPU taint (value "present"); the GKE stack tolerates it with
-    # operator: Exists, so the value only matters for fidelity. GKE is the
-    # one cloud whose stack enables the GPU operator's container toolkit
-    # (COS's driver installer ships none), so its daemonset belongs on the
-    # GPU pool - hence the extra expected DaemonSet and gpu_workloads
-    # pattern.
+    # autoscaler models DRA ResourceSlices from). The taint is the one
+    # compose-gke-cluster applies, valued "present" like GKE's own GPU taint;
+    # the GKE stack tolerates it with operator: Exists, so the value only
+    # matters for fidelity. GKE is the one cloud whose stack enables the GPU
+    # operator's container toolkit (COS's driver installer ships none), so
+    # its daemonset belongs on the GPU pool - hence the extra expected
+    # DaemonSet and gpu_workloads pattern.
     "gke": Cloud(
         cloud="GKE",
         labels={

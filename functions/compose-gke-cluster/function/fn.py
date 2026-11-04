@@ -65,12 +65,19 @@ _SYSTEM_POOL_MAX_NODE_COUNT = 2
 _LABEL_GPU = "modelplane.ai/gpu"
 _LABEL_POOL = "modelplane.ai/pool"
 
+# Taint on GPU pools, so only workloads that tolerate it schedule there and
+# the autoscaler doesn't add GPU nodes for pods that don't need one. GKE only
+# adds this taint itself to a GPU pool created while a non-GPU pool already
+# runs, and the system and GPU pools are created together, so it's set
+# explicitly. The value is the one GKE's own taint carries.
+_GPU_TAINT_KEY = "nvidia.com/gpu"
+_GPU_TAINT_VALUE = "present"
+_GPU_TAINT_EFFECT = "NO_SCHEDULE"
+
 # Label and taint on CPU inference pools. The label is what the serving
 # stack's dra-driver-cpu selects its nodes by; the taint keeps system
 # workloads off the pool as the GPU taint does on GPU pools, and engine
-# pods tolerate it (compose-model-replica). GKE auto-taints GPU pools
-# with nvidia.com/gpu but knows nothing of CPU inference pools, so the
-# taint is set explicitly here.
+# pods tolerate it (compose-model-replica).
 _LABEL_CPU = "modelplane.ai/cpu"
 _CPU_TAINT_KEY = "modelplane.ai/cpu"
 _CPU_TAINT_VALUE = "true"
@@ -409,6 +416,9 @@ class Composer:
                     _LABEL_POOL: pool.name,
                     _LABEL_GPU_DRA_DRIVER: "true",
                 }
+                node_config.taint = [
+                    nodepoolv1beta1.TaintItem(key=_GPU_TAINT_KEY, value=_GPU_TAINT_VALUE, effect=_GPU_TAINT_EFFECT),
+                ]
             elif pool.role == "CPU":
                 node_config.labels = {
                     _LABEL_POOL: pool.name,
