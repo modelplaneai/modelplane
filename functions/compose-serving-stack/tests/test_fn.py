@@ -1770,6 +1770,8 @@ def _collector_config(
                             'set(datapoint.attributes["status"], "server_error") where metric.name == "sglang:http_responses_total" and datapoint.attributes["status_code"] == "500"',
                             'set(datapoint.attributes["status"], "server_error") where metric.name == "sglang:http_responses_total" and datapoint.attributes["status_code"] == "503"',
                             'delete_key(datapoint.attributes, "status_code") where metric.name == "sglang:http_responses_total"',
+                            'set(datapoint.attributes["decision"], datapoint.attributes["decision_type"]) where metric.name == "llm_d_epp_disagg_decision_total"',
+                            'delete_key(datapoint.attributes, "decision_type") where metric.name == "llm_d_epp_disagg_decision_total"',
                         ],
                     },
                     {
@@ -1807,6 +1809,7 @@ def _collector_config(
                             'set(metric.name, "modelplane_engine_requests_total") where metric.name == "sglang:prompt_tokens_histogram_count"',
                             'set(metric.name, "modelplane_engine_responses_total") where metric.name == "sglang:http_responses_total"',
                             'set(metric.name, "modelplane_route_decision_seconds") where metric.name == "llm_d_epp_scheduler_e2e_duration_seconds"',
+                            'set(metric.name, "modelplane_route_disagg_decisions_total") where metric.name == "llm_d_epp_disagg_decision_total"',
                             'set(metric.name, "modelplane_gpu_memory_used_bytes") where metric.name == "DCGM_FI_DEV_FB_USED"',
                             'set(metric.name, "modelplane_gpu_memory_free_bytes") where metric.name == "DCGM_FI_DEV_FB_FREE"',
                             'set(metric.name, "modelplane_gpu_compute_active_ratio") where metric.name == "DCGM_FI_PROF_GR_ENGINE_ACTIVE"',
@@ -4885,7 +4888,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="e4e26049f9c409ed",
+                        config_hash="1d97c51c5a2782aa",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5251,7 +5254,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                     ),
                     "collector": _collector(
-                        config_hash="c053b356fa878457",
+                        config_hash="a6551ef49c83377b",
                         volumes=[
                             {"name": "config", "configMap": {"name": "modelplane-collector"}},
                             {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -5585,7 +5588,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="d413599cd033eb66",
+                        config_hash="a4ace46617e3ec38",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5895,7 +5898,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="3361552a8e3ea3fd",
+                        config_hash="19352acdc8dce3e4",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -6233,7 +6236,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="e4e26049f9c409ed",
+                        config_hash="1d97c51c5a2782aa",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,

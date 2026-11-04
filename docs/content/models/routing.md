@@ -466,6 +466,37 @@ schedulingProfiles:
     weight: 1
 ```
 
+## Check that a PrefillDecode deployment is disaggregating
+
+A `PrefillDecode` deployment reports Ready once its engines and its routing are
+up, but the routing is yours, so nothing in its status says whether requests
+actually split across prefill and decode. A wrong decider for your engine, a
+sidecar whose `--kv-connector` doesn't match the engines, a missing
+`llm-d.ai/engine-type` label, or a decode pod without its sidecar all leave
+every request going straight to decode. vLLM serves it, so callers see no
+error, and SGLang rejects each request.
+
+llm-d's picker says so. It counts each scheduling decision in
+`modelplane_route_disagg_decisions_total`, with a `decision` label of
+`prefill-decode` for a request it split across both engines or `decode-only`
+for one it sent straight to a decode pod. The prefill engine only runs when
+the picker sends it work, so a deployment whose picker records traffic and no
+`prefill-decode` decisions isn't disaggregating:
+
+```promql
+sum by (namespace, deployment) (rate(modelplane_route_disagg_decisions_total{decision="prefill-decode"}[10m]))
+  == 0
+  and
+sum by (namespace, deployment) (rate(modelplane_route_disagg_decisions_total{decision="decode-only"}[10m]))
+  > 0
+```
+
+The series arrives only once a picker has made a disaggregation decision, so a
+deployment that has served no traffic has neither series: alert on the pair
+above, which fires only when the decode-only decisions are flowing. If you run
+your own picker rather than llm-d's, it names its decisions its own way; write
+a `MetricMapping` if it publishes a compatible counter.
+
 ## Upgrading a prefill/decode deployment
 
 Before this release, Modelplane wrote the routing for a `PrefillDecode`

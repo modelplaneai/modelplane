@@ -119,6 +119,19 @@ _PICKER = {
     "llm_d_epp_scheduler_e2e_duration_seconds": "modelplane_route_decision_seconds",
 }
 
+# The endpoint picker's disaggregation decisions, by the picker's decision_type
+# renamed to decision: prefill-decode for a request it split across both
+# engines, decode-only for one it sent straight to a decode pod (#552). A
+# PrefillDecode pair whose picker records only decode-only decisions isn't
+# disaggregating, and everything else about it reads as healthy. The docs
+# describe an alert on it. The counter is how a check could read the same
+# signal from the API, the design note on user-authored routing records.
+_PICKER_DISAGG_DECISIONS: dict[str, object] = {
+    "from": "llm_d_epp_disagg_decision_total",
+    "to": "modelplane_route_disagg_decisions_total",
+    "labels": [{"name": "decision", "from": "decision_type"}],
+}
+
 # The GPUs, through whichever vendor's exporter the stack installed. DCGM
 # reports framebuffer memory in MiB and energy in millijoules, and each is
 # renamed onto a name that claims a different unit, so each says so.
@@ -267,7 +280,7 @@ def mappings() -> list[v1alpha1.MetricMapping]:
         _mapping("modelplane-gateway-proxy", _GATEWAY_PROXY),
         _mapping("modelplane-vllm", _VLLM, tokens=_VLLM_TOKENS, extra=(_VLLM_RESPONSES,)),
         _mapping("modelplane-sglang", _SGLANG, tokens=_SGLANG_TOKENS, extra=(_SGLANG_RESPONSES,)),
-        _mapping("modelplane-picker", _PICKER),
+        _mapping("modelplane-picker", _PICKER, extra=(_PICKER_DISAGG_DECISIONS,)),
         _mapping("modelplane-gpu", _GPU, _GPU_UNITS),
         _mapping("modelplane-gpu-amd", _AMD_GPU, _AMD_GPU_UNITS, types=_AMD_GPU_TYPES),
     ]

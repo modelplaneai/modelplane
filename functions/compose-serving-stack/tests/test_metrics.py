@@ -135,10 +135,14 @@ PUBLISHED_CASES = [
     ),
     PublishedCase(
         name="Picker",
-        reason="The llm-d endpoint picker v0.9.0 publishes every name the picker mapping reads.",
+        # The disagg decision counter is a labelled counter, which prometheus_client
+        # writes only once it exists: the scrape's pod ran no disaggregated
+        # profile, so it never decided prefill-decode and the series is absent,
+        # as with SGLang's retraction counter above.
+        reason="The llm-d endpoint picker v0.9.0 publishes every name the picker mapping reads but the disagg decision counter, which is labelled and so written only once incremented.",
         mapping="modelplane-picker",
         file="picker-v0.9.0.json",
-        want=[],
+        want=["llm_d_epp_disagg_decision_total"],
     ),
     PublishedCase(
         name="GKEDCGM",
