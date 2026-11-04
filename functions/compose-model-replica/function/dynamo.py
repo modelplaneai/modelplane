@@ -65,6 +65,8 @@ def _runtime_ports(container: dict) -> None:
     if "ports" not in container and not any(variable in env for _, variable, _ in defaults):
         return
     ports = container.setdefault("ports", [])
+    if len({(p["containerPort"], p.get("protocol", "TCP")) for p in ports}) != len(ports):
+        raise ValueError("Dynamo main container ports must have unique port numbers per protocol")
     for name, variable, default in defaults:
         declared = next((port for port in ports if port.get("name") == name), None)
         configured = env.get(variable)
@@ -84,7 +86,13 @@ def _runtime_ports(container: dict) -> None:
             raise ValueError(f"{variable} must be an integer port") from err
         if not 1 <= port <= _MAX_PORT:
             raise ValueError(f"{variable} must be between 1 and 65535")
-        ports.append({"name": name, "containerPort": port})
+        existing = next((p for p in ports if p["containerPort"] == port and p.get("protocol", "TCP") == "TCP"), None)
+        if existing is None:
+            ports.append({"name": name, "containerPort": port})
+        elif existing.get("name"):
+            raise ValueError(f"Dynamo {name} port {port} conflicts with named port {existing['name']}")
+        else:
+            existing["name"] = name
 
 
 def validate(replica: v1alpha1.ModelReplica) -> str | None:

@@ -181,6 +181,44 @@ RUNTIME_PORTS_CASES = [
         },
     ),
     RuntimePortsCase(
+        name="UnnamedSystem",
+        reason="An unnamed TCP system port acquires its runtime name without a duplicate map key.",
+        container={"ports": [{"containerPort": 9090}]},
+        want={"ports": [{"name": "system", "containerPort": 9090}, {"name": "nixl", "containerPort": 19090}]},
+    ),
+    RuntimePortsCase(
+        name="UnnamedNIXL",
+        reason="An existing unnamed NIXL port keeps its number and becomes the named telemetry port.",
+        container={"ports": [{"containerPort": 19090, "protocol": "TCP"}]},
+        want={
+            "ports": [
+                {"name": "nixl", "containerPort": 19090, "protocol": "TCP"},
+                {"name": "system", "containerPort": 9090},
+            ]
+        },
+    ),
+    RuntimePortsCase(
+        name="DifferentProtocol",
+        reason="UDP and TCP ports have different list-map keys even when their numbers match.",
+        container={"ports": [{"name": "udp", "containerPort": 9090, "protocol": "UDP"}]},
+        want={
+            "ports": [
+                {"name": "udp", "containerPort": 9090, "protocol": "UDP"},
+                {"name": "system", "containerPort": 9090},
+                {"name": "nixl", "containerPort": 19090},
+            ]
+        },
+    ),
+    RuntimePortsCase(
+        name="ConfiguredUnnamedSystem",
+        reason="An unnamed custom system port is reused when its runtime number is configured.",
+        container={"ports": [{"containerPort": 9091}], "env": [{"name": "DYN_SYSTEM_PORT", "value": "9091"}]},
+        want={
+            "ports": [{"name": "system", "containerPort": 9091}, {"name": "nixl", "containerPort": 19090}],
+            "env": [{"name": "DYN_SYSTEM_PORT", "value": "9091"}],
+        },
+    ),
+    RuntimePortsCase(
         name="ExistingSystem",
         reason="An existing system port is retained once and agrees with its runtime environment.",
         container={"ports": [{"name": "system", "containerPort": 9090}]},
@@ -229,6 +267,34 @@ class InvalidRuntimePortsCase:
 
 
 INVALID_RUNTIME_PORTS_CASES = [
+    InvalidRuntimePortsCase(
+        name="DuplicateAuthoredPorts",
+        reason="Explicit runtime names cannot hide duplicate native port-list map keys.",
+        container={
+            "ports": [
+                {"name": "system", "containerPort": 9090},
+                {"name": "nixl", "containerPort": 9090, "protocol": "TCP"},
+            ]
+        },
+        want="Dynamo main container ports must have unique port numbers per protocol",
+    ),
+    InvalidRuntimePortsCase(
+        name="NamedNumberConflict",
+        reason="A differently named TCP port cannot silently be duplicated or lose its authored name.",
+        container={"ports": [{"name": "health", "containerPort": 9090}]},
+        want="Dynamo system port 9090 conflicts with named port health",
+    ),
+    InvalidRuntimePortsCase(
+        name="SharedRuntimeNumber",
+        reason="The system and NIXL runtime ports require distinct TCP list-map keys.",
+        container={
+            "env": [
+                {"name": "DYN_SYSTEM_PORT", "value": "9091"},
+                {"name": "NIXL_TELEMETRY_PROMETHEUS_PORT", "value": "9091"},
+            ]
+        },
+        want="Dynamo nixl port 9091 conflicts with named port system",
+    ),
     InvalidRuntimePortsCase(
         name="ConflictingSystem",
         reason="A declared port and a literal runtime environment override must agree.",
