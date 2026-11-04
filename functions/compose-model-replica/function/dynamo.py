@@ -62,7 +62,7 @@ def _runtime_ports(container: dict) -> None:
     """An explicit port list replaces operator defaults, so retain its runtime ports."""
     env = {entry["name"]: entry for entry in container.get("env", [])}
     defaults = [("system", "DYN_SYSTEM_PORT", 9090), ("nixl", "NIXL_TELEMETRY_PROMETHEUS_PORT", 19090)]
-    if not container.get("ports") and not any(variable in env for _, variable, _ in defaults):
+    if "ports" not in container and not any(variable in env for _, variable, _ in defaults):
         return
     ports = container.setdefault("ports", [])
     for name, variable, default in defaults:

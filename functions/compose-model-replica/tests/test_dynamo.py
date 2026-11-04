@@ -163,6 +163,12 @@ RUNTIME_PORTS_CASES = [
         want={"name": "main"},
     ),
     RuntimePortsCase(
+        name="EmptyDeclaredPorts",
+        reason="An explicit empty port list still replaces defaults and must include named runtime ports.",
+        container={"ports": []},
+        want={"ports": [{"name": "system", "containerPort": 9090}, {"name": "nixl", "containerPort": 19090}]},
+    ),
+    RuntimePortsCase(
         name="DeclaredHTTP",
         reason="An authored HTTP port keeps the named system probe and NIXL telemetry ports.",
         container={"ports": [{"name": "http", "containerPort": 8001}]},
