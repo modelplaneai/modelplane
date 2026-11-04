@@ -48,6 +48,9 @@ jobs:
           LOG_LEVEL: ${{ github.event.inputs.logLevel || env.LOG_LEVEL }}
           RENOVATE_ALLOWED_COMMANDS: '["^modelplane-nix .+"]'
         with:
+          # Pin the Renovate that runs, not just the validator above. Without
+          # this the action falls back to its floating major tag.
+          renovate-version: ${{ env.RENOVATE_VERSION }}
           configurationFile: .github/renovate.json5
           token: '${{ steps.get-github-app-token.outputs.token }}'
           mount-docker-socket: true

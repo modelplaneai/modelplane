@@ -4,6 +4,25 @@
     'config:recommended',
     'helpers:pinGitHubActionDigests',
   ],
+  // config:recommended turns on every default manager, which would also open
+  // PRs for the ~20 pyproject.toml files (rewriting requires-python etc.) that
+  // we don't want Renovate touching. Limit it to exactly what this config
+  // targets: the crossplane-project.yaml custom managers, GitHub Actions, and
+  // the Nix flake (inputs plus flake.lock via lockFileMaintenance below).
+  enabledManagers: [
+    'custom.regex',
+    'github-actions',
+    'nix',
+  ],
+  // The Nix manager is disabled by default. Enable it (together with
+  // lockFileMaintenance) so Renovate keeps flake.lock fresh; the entrypoint
+  // installs its own Nix to apply those updates.
+  nix: {
+    enabled: true,
+  },
+  lockFileMaintenance: {
+    enabled: true,
+  },
   // CONTRIBUTING forbids typed commit prefixes like chore(deps):. Disable
   // explicitly rather than relying on the 'auto' default, which sniffs
   // recent history and could flip on from Dependabot's build(deps): commits.
@@ -49,6 +68,46 @@
         executionMode: 'branch',
       },
     },
+    {
+      // config:recommended leaves separateMajorMinor on, which would split a
+      // provider major bump into its own major- branch. Both PRs rerun the
+      // build and rewrite schemas/, so they would conflict. Collapse them for
+      // the providers (the docker-sourced deps) so everything stays in one
+      // PR. Scoped to docker on purpose: crossplane/crossplane needs its
+      // normal major/minor/patch buckets for the patch-only rule below to
+      // work.
+      matchFileNames: [
+        'crossplane-project.yaml',
+      ],
+      matchDatasources: [
+        'docker',
+      ],
+      separateMajorMinor: false,
+    },
+    {
+      // The CRD ref must not run ahead of the Crossplane we declare support
+      // for. crossplane-project.yaml sets a floor of >=v2.3.0, so generating
+      // models from a newer minor would add fields a v2.3 control plane
+      // lacks. Pin Renovate to the 2.3 line so it only proposes 2.3.x
+      // patches; raising this ceiling is the deliberate, by-hand step we take
+      // alongside bumping the crossplane floor.
+      matchDepNames: [
+        'crossplane/crossplane',
+      ],
+      allowedVersions: '<2.4.0',
+    },
+    {
+      // The cluster-agent is pinned in two places that must move together:
+      // the CRD ref in crossplane-project.yaml and _CLUSTER_AGENT_VERSION in
+      // compose-serving-stack. Group both into a single PR, and keep them
+      // together even across a major bump. The CRD-ref half still inherits
+      // the crossplane-project.yaml build task, so schemas regenerate.
+      matchDepNames: [
+        'modelplaneai/cluster-agent',
+      ],
+      groupName: 'cluster-agent dependencies',
+      separateMajorMinor: false,
+    },
   ],
   customManagers: [
     {
@@ -74,10 +133,57 @@
       managerFilePatterns: [
         '/^crossplane-project\\.yaml$/',
       ],
+      // Anchored to crossplane/crossplane so this manager doesn't also catch
+      // the modelplaneai/cluster-agent CRD ref. The cluster-agent is handled
+      // by its own manager pair below, which bumps its CRD ref and
+      // _CLUSTER_AGENT_VERSION in lockstep.
       matchStrings: [
-        'repository:\\s*https://github\\.com/(?<depName>[^\\s]+?)\\s*\\n\\s*ref:\\s*(?<currentValue>v[0-9][^\\s]*)',
+        'repository:\\s*https://github\\.com/crossplane/crossplane\\s*\\n\\s*ref:\\s*(?<currentValue>v[0-9][^\\s]*)',
       ],
+      depNameTemplate: 'crossplane/crossplane',
       datasourceTemplate: 'github-tags',
+      versioningTemplate: 'semver-coerced',
+    },
+    {
+      customType: 'regex',
+      description: 'Bump the cluster-agent CRD git ref in crossplane-project.yaml',
+      managerFilePatterns: [
+        '/^crossplane-project\\.yaml$/',
+      ],
+      matchStrings: [
+        'repository:\\s*https://github\\.com/modelplaneai/cluster-agent\\s*\\n\\s*ref:\\s*(?<currentValue>v[0-9][^\\s]*)',
+      ],
+      depNameTemplate: 'modelplaneai/cluster-agent',
+      datasourceTemplate: 'github-tags',
+      versioningTemplate: 'semver-coerced',
+    },
+    {
+      customType: 'regex',
+      description: 'Bump the cluster-agent chart/image version in compose-serving-stack',
+      managerFilePatterns: [
+        '/^functions/compose-serving-stack/function/stacks/common\\.py$/',
+      ],
+      matchStrings: [
+        '_CLUSTER_AGENT_VERSION\\s*=\\s*"(?<currentValue>[0-9][^"]*)"',
+      ],
+      // The git tags are v-prefixed (v0.1.0) but this constant is bare
+      // (0.1.0); semver-coerced preserves each site's format on the rewrite,
+      // so the constant stays bare and the CRD ref keeps its v.
+      depNameTemplate: 'modelplaneai/cluster-agent',
+      datasourceTemplate: 'github-tags',
+      versioningTemplate: 'semver-coerced',
+    },
+    {
+      customType: 'regex',
+      description: 'Bump the pinned self-hosted Renovate version in the workflow',
+      managerFilePatterns: [
+        '/^\\.github/workflows/renovate\\.yml$/',
+      ],
+      matchStrings: [
+        'RENOVATE_VERSION:\\s*"(?<currentValue>[0-9][^"]*)"',
+      ],
+      depNameTemplate: 'renovate',
+      datasourceTemplate: 'npm',
       versioningTemplate: 'semver-coerced',
     },
   ],
