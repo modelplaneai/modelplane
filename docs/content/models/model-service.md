@@ -179,13 +179,16 @@ spec:
     idle: 0s
 ```
 
-Tune both from what the gateway measures. AI Gateway's
-`gen_ai.server.time_to_first_token` and `gen_ai.server.request.duration` metrics
-give each model's latencies, and Envoy's
-`envoy_cluster_upstream_rq_per_try_idle_timeout` counts idle timeouts. If that
-count rises while the endpoints' other error counts don't, `idle` is too short.
-A restarting gateway lets requests already in flight run for five minutes, so a
-restart can cut off a response allowed longer than that.
+Tune both from what the gateway measures, as
+[Monitor the Fleet]({{< ref "/platform/telemetry.md" >}}) describes.
+`modelplane_frontend_ttft_seconds` shows how long streaming callers wait for the
+first byte, and `modelplane_frontend_request_duration_seconds` how long whole
+requests take. The gateway's request duration buckets stop at 81.92 seconds, so
+for longer requests read the engine's `modelplane_request_duration_seconds`
+instead. Modelplane doesn't yet export how often the gateway times out; see
+[#536](https://github.com/modelplaneai/modelplane/issues/536). A restarting
+gateway lets requests already in flight run for five minutes, so a restart can
+cut off a response allowed longer than that.
 
 ## Gateways and routes
 
