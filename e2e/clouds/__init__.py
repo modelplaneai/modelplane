@@ -145,7 +145,6 @@ CLOUDS: dict[str, Cloud] = {
             "nvidia-dra-driver/nvidia-dra-driver-gpu-kubelet-plugin": 2,
             "dra-driver-cpu/mp-dra-driver-cpu": 2,
             "node-feature-discovery/mp-node-feature-discovery-worker": 3,
-            "monitoring/prometheus-node-exporter": 5,
         },
     ),
     # The taint VALUE is load-bearing here: the AKS stack's accelerated
@@ -179,7 +178,6 @@ CLOUDS: dict[str, Cloud] = {
             "nvidia-dra-driver/nvidia-dra-driver-gpu-kubelet-plugin": 2,
             "dra-driver-cpu/mp-dra-driver-cpu": 2,
             "node-feature-discovery/mp-node-feature-discovery-worker": 3,
-            "monitoring/prometheus-node-exporter": 5,
             "gpu-operator/nvidia-toolkit-hardening": 2,
         },
         gpu_workloads=("^nvidia-toolkit-hardening", "^nic-health-monitor"),
@@ -221,7 +219,6 @@ CLOUDS: dict[str, Cloud] = {
             "nvidia-dra-driver/nvidia-dra-driver-gpu-kubelet-plugin": 2,
             "dra-driver-cpu/mp-dra-driver-cpu": 2,
             "node-feature-discovery/mp-node-feature-discovery-worker": 3,
-            "monitoring/prometheus-node-exporter": 5,
             "gpu-operator/nvidia-container-toolkit-daemonset": 2,
         },
         gpu_workloads=("^nvidia-container-toolkit",),
@@ -256,7 +253,6 @@ CLOUDS: dict[str, Cloud] = {
             "nvidia-dra-driver/dra-driver-nvidia-gpu-kubelet-plugin": 2,
             "dra-driver-cpu/mp-dra-driver-cpu": 2,
             "node-feature-discovery/mp-node-feature-discovery-worker": 3,
-            "monitoring/mp-kube-prometheus-stack-prometheus-node-exporter": 5,
         },
         gpu_workloads=("^nvidia-driver-daemonset",),
     ),
@@ -288,7 +284,6 @@ CLOUDS: dict[str, Cloud] = {
             "nvidia-dra-driver/dra-driver-nvidia-gpu-kubelet-plugin": 2,
             "dra-driver-cpu/mp-dra-driver-cpu": 2,
             "node-feature-discovery/mp-node-feature-discovery-worker": 3,
-            "monitoring/mp-kube-prometheus-stack-prometheus-node-exporter": 5,
             "dcgm-exporter/mp-dcgm-exporter": 2,
         },
     ),
@@ -324,7 +319,6 @@ CLOUDS: dict[str, Cloud] = {
         expected_daemonsets={
             "nvidia-dra-driver/dra-driver-nvidia-gpu-kubelet-plugin": 2,
             "dra-driver-cpu/mp-dra-driver-cpu": 2,
-            "monitoring/mp-kube-prometheus-stack-prometheus-node-exporter": 5,
         },
     ),
     # The model e2e already installs the Existing stack, but on an untainted
@@ -364,7 +358,6 @@ CLOUDS: dict[str, Cloud] = {
             "kube-amd-gpu/default-node-labeller": 2,
             "kube-amd-gpu/default-metrics-exporter": 2,
             "node-feature-discovery/mp-node-feature-discovery-worker": 5,
-            "monitoring/mp-kube-prometheus-stack-prometheus-node-exporter": 7,
         },
     ),
     # The existing leg with gpu.amd.com left unclaimed: same pools, AMD
@@ -372,9 +365,9 @@ CLOUDS: dict[str, Cloud] = {
     # CPU stacks. Every other leg claims everything its cloud carries, so
     # only this one fails a join that ignored the filter: the AMD operands
     # must not exist even though their pool is there and Existing's list
-    # pins them. NFD and the node exporter still reach the AMD nodes -
-    # their tolerations are static and NFD installs for the NVIDIA claim -
-    # so their counts match the existing leg's.
+    # pins them. NFD still reaches the AMD nodes - it installs for the
+    # NVIDIA claim and labels both vendors' nodes - so its count matches
+    # the existing leg's.
     "existing-filtered": Cloud(
         cloud="Existing",
         labels={
@@ -399,7 +392,6 @@ CLOUDS: dict[str, Cloud] = {
             "nvidia-dra-driver/dra-driver-nvidia-gpu-kubelet-plugin": 2,
             "dra-driver-cpu/mp-dra-driver-cpu": 2,
             "node-feature-discovery/mp-node-feature-discovery-worker": 5,
-            "monitoring/mp-kube-prometheus-stack-prometheus-node-exporter": 7,
         },
         absent_daemonsets=(
             "kube-amd-gpu/default-dra-driver",

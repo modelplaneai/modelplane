@@ -177,72 +177,6 @@ COMPONENTS: list[Component] = [
         values={"crds": {"enabled": True}},
     ),
     Chart(
-        key="kube-prometheus-stack",
-        release="mp-kube-prometheus-stack",
-        namespace="monitoring",
-        chart="kube-prometheus-stack",
-        repository="https://prometheus-community.github.io/helm-charts",
-        version="84.4.0",
-        values={
-            "fullnameOverride": "prometheus",
-            "prometheus": {
-                "prometheusSpec": {
-                    # Discover PodMonitors across all namespaces.
-                    "podMonitorSelectorNilUsesHelmValues": False,
-                    "podMonitorNamespaceSelector": {},
-                    # Scrape Envoy Gateway proxy pods for upstream
-                    # request metrics (envoy_cluster_upstream_rq_active):
-                    # in-flight requests at the proxy level.
-                    "additionalScrapeConfigs": [
-                        {
-                            "job_name": "envoy-gateway-proxy",
-                            "kubernetes_sd_configs": [
-                                {
-                                    "role": "pod",
-                                    "namespaces": {
-                                        "names": ["envoy-gateway-system"],
-                                    },
-                                },
-                            ],
-                            "relabel_configs": [
-                                {
-                                    "source_labels": [
-                                        "__meta_kubernetes_pod_label_app_kubernetes_io_component",
-                                    ],
-                                    "action": "keep",
-                                    "regex": "proxy",
-                                },
-                                {
-                                    "source_labels": ["__address__"],
-                                    "action": "replace",
-                                    "regex": "([^:]+)(?::\\d+)?",
-                                    "replacement": "$1:19001",
-                                    "target_label": "__address__",
-                                },
-                            ],
-                            "metrics_path": "/stats/prometheus",
-                        },
-                    ],
-                },
-            },
-            # The node-exporter chart's default toleration is keyless - it
-            # tolerates every taint, landing the pod on tainted nodes by
-            # accident rather than by intent. Scope it to the GPU and CPU pool
-            # taints, mirroring the generated clouds (TOLERATIONS in
-            # generate.py); as a DaemonSet it still reaches every untainted
-            # node.
-            "prometheus-node-exporter": {
-                "tolerations": [
-                    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
-                    {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
-                ],
-            },
-            # Disable components we don't need for observability.
-            "grafana": {"enabled": False},
-            "alertmanager": {"enabled": False},
-        },
-    ),
-    Chart(
         key="node-feature-discovery",
         release="mp-node-feature-discovery",
         namespace="node-feature-discovery",
@@ -291,12 +225,9 @@ COMPONENTS: list[Component] = [
         repository="https://helm.ngc.nvidia.com/nvidia",
         version="v26.7.1",
         wait=True,
-        # No kube-prometheus-stack edge, unlike the generated clouds': the
-        # DCGM exporter's ServiceMonitor, the one piece that would need
-        # the Prometheus CRDs, stays off below. The exporter itself must
-        # run: without it every modelplane_gpu_* series and
-        # modelplane_energy_joules_total is empty on Civo - the
-        # collector's modelplane-gpu job would find no pod to scrape.
+        # The DCGM exporter must run: without it every modelplane_gpu_*
+        # series and modelplane_energy_joules_total is empty on Civo -
+        # the collector's modelplane-gpu job would find no pod to scrape.
         depends_on=["node-feature-discovery", "cert-manager"],
         dra_drivers=["gpu.nvidia.com"],
         values={
@@ -306,12 +237,10 @@ COMPONENTS: list[Component] = [
             # carry the nvidia.com/gpu taint from compose-civo-cluster.
             "daemonsets": {"tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]},
             # The CSV is the generator's, imported from the shared
-            # generated/aicr/dcgm.py. The ServiceMonitor stays off, unlike
-            # the generated clouds': the collector scrapes the exporter
-            # pods directly and Civo's Prometheus selects only
-            # PodMonitors, so nothing would read it - and off explicitly,
-            # so a chart default flip can't render one whose CRD this
-            # cluster doesn't carry.
+            # generated/aicr/dcgm.py. The ServiceMonitor stays off, as on
+            # the generated clouds: the collector scrapes the exporter
+            # pods directly, and a rendered monitor's CRD isn't on this
+            # cluster.
             "dcgm": {"enabled": True},
             "dcgmExporter": {
                 "config": {"create": True, "data": DCGM_METRICS_CSV, "name": "dcgm-exporter"},

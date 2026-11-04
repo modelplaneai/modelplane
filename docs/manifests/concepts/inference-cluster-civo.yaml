@@ -2,7 +2,7 @@
 #
 # Modelplane provisions the full cluster (network, firewall, control plane,
 # system + GPU node pools) and installs the inference stack (cert-manager,
-# Envoy Gateway, Prometheus, NVIDIA GPU Operator, LeaderWorkerSet, Gateway
+# Envoy Gateway, NVIDIA GPU Operator, LeaderWorkerSet, Gateway
 # API). Civo's default Traefik ingress is removed at creation - Envoy
 # Gateway is the stack's ingress - while the built-in metrics-server stays.
 #

@@ -3,7 +3,7 @@
 # Modelplane provisions the full mk8s cluster (VPC network and subnet,
 # control plane with a public endpoint, system + GPU node groups, GPU
 # clusters for InfiniBand fabrics) and installs the inference stack
-# (cert-manager, Envoy Gateway, Prometheus, LeaderWorkerSet, Gateway
+# (cert-manager, Envoy Gateway, LeaderWorkerSet, Gateway
 # API).
 #
 # The system node group that hosts control-plane components is

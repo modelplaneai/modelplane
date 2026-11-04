@@ -2,7 +2,7 @@ name: E2E
 
 # The local two-cluster e2e in e2e/ is heavy — it stands up two kind clusters
 # and the full serving stack (cert-manager, Envoy Gateway/AI Gateway, GAIE,
-# kube-prometheus-stack, NFD, DRA) and waits for it to reconcile, ~15-20 min. The
+# NFD, DRA) and waits for it to reconcile, ~15-20 min. The
 # time is that install and reconcile, not model weights (the engine is a mock).
 # So it doesn't run on every push: add the `test-e2e` label to a PR to run it (it
 # re-runs on each push while the label is set), or trigger it manually. Unlike
