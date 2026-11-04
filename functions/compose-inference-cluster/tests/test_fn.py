@@ -4871,7 +4871,9 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_inference_cluster(
-                    cluster=v1alpha1.Cluster(source="Vultr", vultr=v1alpha1.Vultr(region="ewr", kubernetesVersion="v1.36.6+1")),
+                    cluster=v1alpha1.Cluster(
+                        source="Vultr", vultr=v1alpha1.Vultr(region="ewr", kubernetesVersion="v1.36.6+1")
+                    ),
                     node_pools=[
                         v1alpha1.NodePool(name="l40s-pool", className="gpu-l40s-vultr", nodeCount=2, maxNodeCount=4),
                     ],
@@ -5071,7 +5073,9 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_inference_cluster(
-                    cluster=v1alpha1.Cluster(source="Vultr", vultr=v1alpha1.Vultr(region="ewr", kubernetesVersion="v1.36.6+1")),
+                    cluster=v1alpha1.Cluster(
+                        source="Vultr", vultr=v1alpha1.Vultr(region="ewr", kubernetesVersion="v1.36.6+1")
+                    ),
                     node_pools=[
                         v1alpha1.NodePool(name="l40s-pool", className="gpu-l40s-vultr", nodeCount=2, maxNodeCount=4),
                     ],
@@ -5219,7 +5223,9 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_inference_cluster(
-                    cluster=v1alpha1.Cluster(source="Vultr", vultr=v1alpha1.Vultr(region="ewr", kubernetesVersion="v1.36.6+1")),
+                    cluster=v1alpha1.Cluster(
+                        source="Vultr", vultr=v1alpha1.Vultr(region="ewr", kubernetesVersion="v1.36.6+1")
+                    ),
                     node_pools=[
                         v1alpha1.NodePool(name="cpu-pool", className="cpu-vultr", nodeCount=2, maxNodeCount=4),
                     ],
