@@ -199,12 +199,13 @@ class Composer:
         for engine in self.xr.spec.engines:
             backend = _BACKENDS[base.select_backend(engine, stack)]()
             composed.update(backend.build(self.xr, engine, pc, label, stack))
-        composed = routing.apply(composed, self.xr, pc)
+        composed = routing.apply(composed, self.xr, pc, stack)
         for key, obj in composed.items():
             resource.update(self.rsp.desired.resources[key], obj)
-        # First-time transition: emit a normal event the first reconcile, before
-        # any workload is observed.
-        if not any(k in self.req.observed.resources for k in base.workload_keys(self.xr)):
+        # First-time transition: emit a normal event while no engine's workload
+        # is observed under its key. That's the first reconcile, and the first
+        # after a one-engine replica's kind changes, which moves the key.
+        if not any(k in self.req.observed.resources for k in base.workload_keys(self.xr, stack)):
             image = base.engine_container(self.xr.spec.engines[0].members[0]).image
             response.normal(self.rsp, f"Composing {image} on {self.xr.spec.clusterName}")
 
@@ -245,21 +246,21 @@ class Composer:
         # composed partway through a serving replica's life, and isn't what
         # serves it, so it's left out.
         keys = (set(self.rsp.desired.resources) or set(observed)) - {observation.KEY}
-        workloads = {base.workload_key(e) for e in engines} | {base.scaling_group_key(e) for e in engines}
+        # resolve_inputs ran first, so the cluster is resolved.
+        assert self.ic
+        stack = self.ic.spec.stack or "Standard"
+        workloads = set(base.workload_keys(self.xr, stack)) | {base.scaling_group_key(e) for e in engines}
         # The endpoint picker, the routing in front of it, and the engines'
         # claim templates.
         others_ready = all(ready(k) for k in keys - workloads)
 
-        # resolve_inputs ran first, so the cluster is resolved.
-        assert self.ic
-        stack = self.ic.spec.stack or "Standard"
         copies = {e.name: int(e.copies or 1) for e in engines}
         ready_copies = {
             e.name: min(_BACKENDS[base.select_backend(e, stack)]().ready_copies(e, observed), copies[e.name])
             for e in engines
         }
 
-        accepted = all(self._workload_accepted(base.workload_key(e)) for e in engines)
+        accepted = all(self._workload_accepted(k) for k in base.workload_keys(self.xr, stack))
         copy_each = all(ready_copies[name] > 0 for name in copies)
         serving = accepted and others_ready and copy_each
         full = serving and all(ready(k) for k in keys)

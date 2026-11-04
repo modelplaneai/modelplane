@@ -131,6 +131,9 @@ class GroveBackend:
             # claims devices, claims GPUs via the member's DRA template (one
             # fresh claim per pod).
             base.place_pod(spec, replica, engine, member)
+            secrets = member.template.spec.imagePullSecrets
+            if secrets:
+                spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in secrets]
             return spec
 
         # Only the leader serves the OpenAI API, so only its clique carries the
@@ -217,7 +220,7 @@ class GroveBackend:
             "metadata": {"name": f"{name}-0-{base.GROVE_PCSG}", "namespace": base.remote_namespace(replica)},
         }
         composed = {
-            base.workload_key(engine): base.wrap_object(
+            base.workload_key(engine, base.GROVE): base.wrap_object(
                 provider_config, pod_clique_set, cel_query=base.GROVE_AVAILABLE_CEL, watch=True
             ),
             base.scaling_group_key(engine): base.wrap_object(
@@ -247,5 +250,5 @@ class GroveBackend:
         group = base.observed_status(observed, base.scaling_group_key(engine))
         if group is not None:
             return int(group.get("availableReplicas") or 0)
-        pcs = observed.get(base.workload_key(engine))
+        pcs = observed.get(base.workload_key(engine, base.GROVE))
         return 1 if resource.get_condition(pcs, "Ready").status == "True" else 0

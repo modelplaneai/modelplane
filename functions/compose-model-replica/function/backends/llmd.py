@@ -120,6 +120,9 @@ class LLMDBackend:
             # claims devices, claims GPUs via the member's DRA template (one
             # fresh claim per pod).
             base.place_pod(spec, replica, engine, member)
+            secrets = member.template.spec.imagePullSecrets
+            if secrets:
+                spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in secrets]
             return spec
 
         # Only the leader serves the OpenAI API → it carries the serving label
@@ -161,7 +164,7 @@ class LLMDBackend:
         }
 
         composed = {
-            base.workload_key(engine): base.wrap_object(
+            base.workload_key(engine, base.LLMD): base.wrap_object(
                 provider_config, leader_worker_set, cel_query=base.LWS_ALL_COPIES_READY_CEL, watch=True
             ),
         }
@@ -177,4 +180,4 @@ class LLMDBackend:
 
     def ready_copies(self, engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource]) -> int:
         """How many copies of the engine are ready, from its observed workload."""
-        return base.ready_replicas(engine, observed)
+        return base.ready_replicas(base.workload_key(engine, base.LLMD), observed)

@@ -390,6 +390,7 @@ spec:
                                 maximum: 63
                           template:
                             type: object
+                            required: [spec]
                             properties:
                               metadata:
                                 type: object

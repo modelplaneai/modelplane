@@ -107,6 +107,9 @@ class NativeBackend:
         }
         # Pin to the member's scheduled pool and claim GPUs via DRA.
         base.place_pod(pod_spec, replica, engine, member)
+        tmpl = member.template
+        if tmpl.spec.imagePullSecrets:
+            pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in tmpl.spec.imagePullSecrets]
 
         deployment = {
             "apiVersion": "apps/v1",
@@ -124,7 +127,7 @@ class NativeBackend:
         }
 
         composed = {
-            base.workload_key(engine): base.wrap_object(
+            base.workload_key(engine, base.NATIVE): base.wrap_object(
                 provider_config, deployment, cel_query=base.DEPLOYMENT_ALL_COPIES_READY_CEL, watch=True
             ),
         }
@@ -137,4 +140,4 @@ class NativeBackend:
 
     def ready_copies(self, engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource]) -> int:
         """How many copies of the engine are ready, from its observed workload."""
-        return base.ready_replicas(engine, observed)
+        return base.ready_replicas(base.workload_key(engine, base.NATIVE), observed)

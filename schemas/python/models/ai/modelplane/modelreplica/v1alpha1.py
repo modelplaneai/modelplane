@@ -238,7 +238,7 @@ class Spec(BaseModel):
 
 class Template(BaseModel):
     metadata: Metadata | None = None
-    spec: Spec | None = None
+    spec: Spec
 
 
 class Worker(BaseModel):
