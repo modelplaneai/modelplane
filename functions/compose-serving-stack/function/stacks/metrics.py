@@ -119,6 +119,21 @@ _PICKER = {
     "llm_d_epp_scheduler_e2e_duration_seconds": "modelplane_route_decision_seconds",
 }
 
+# Each node's ephemeral storage, through the k8s-ephemeral-storage-metrics
+# exporter the generated clouds install (clouds/generated/aicr). A single
+# Deployment reads every node's figures from the kubelet summary API, and the
+# collector's substrate job scrapes it by the prometheus.io annotations the
+# generator stamps - the exporter's ServiceMonitor is off, so this is its only
+# egress. The node's free and total and a pod's usage are the bytes a model
+# sitting on disk is measured against; they carry no unit suffix at the source,
+# so the target names claim bytes. The exporter's percentage and per-container
+# series stay raw for an operator's own MetricMapping.
+_EPHEMERAL_STORAGE = {
+    "ephemeral_storage_node_available": "modelplane_ephemeral_storage_node_available_bytes",
+    "ephemeral_storage_node_capacity": "modelplane_ephemeral_storage_node_capacity_bytes",
+    "ephemeral_storage_pod_usage": "modelplane_ephemeral_storage_pod_used_bytes",
+}
+
 # The GPUs, through whichever vendor's exporter the stack installed. DCGM
 # reports framebuffer memory in MiB and energy in millijoules, and each is
 # renamed onto a name that claims a different unit, so each says so.
@@ -268,6 +283,7 @@ def mappings() -> list[v1alpha1.MetricMapping]:
         _mapping("modelplane-vllm", _VLLM, tokens=_VLLM_TOKENS, extra=(_VLLM_RESPONSES,)),
         _mapping("modelplane-sglang", _SGLANG, tokens=_SGLANG_TOKENS, extra=(_SGLANG_RESPONSES,)),
         _mapping("modelplane-picker", _PICKER),
+        _mapping("modelplane-ephemeral-storage", _EPHEMERAL_STORAGE),
         _mapping("modelplane-gpu", _GPU, _GPU_UNITS),
         _mapping("modelplane-gpu-amd", _AMD_GPU, _AMD_GPU_UNITS, types=_AMD_GPU_TYPES),
     ]

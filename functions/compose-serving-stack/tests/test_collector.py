@@ -527,6 +527,9 @@ def _config(
                             'set(metric.name, "modelplane_engine_requests_total") where metric.name == "sglang:prompt_tokens_histogram_count"',
                             'set(metric.name, "modelplane_engine_responses_total") where metric.name == "sglang:http_responses_total"',
                             'set(metric.name, "modelplane_route_decision_seconds") where metric.name == "llm_d_epp_scheduler_e2e_duration_seconds"',
+                            'set(metric.name, "modelplane_ephemeral_storage_node_available_bytes") where metric.name == "ephemeral_storage_node_available"',
+                            'set(metric.name, "modelplane_ephemeral_storage_node_capacity_bytes") where metric.name == "ephemeral_storage_node_capacity"',
+                            'set(metric.name, "modelplane_ephemeral_storage_pod_used_bytes") where metric.name == "ephemeral_storage_pod_usage"',
                             'set(metric.name, "modelplane_gpu_memory_used_bytes") where metric.name == "DCGM_FI_DEV_FB_USED"',
                             'set(metric.name, "modelplane_gpu_memory_free_bytes") where metric.name == "DCGM_FI_DEV_FB_FREE"',
                             'set(metric.name, "modelplane_gpu_compute_active_ratio") where metric.name == "DCGM_FI_PROF_GR_ENGINE_ACTIVE"',
@@ -1024,6 +1027,9 @@ STATEMENTS_CASES = [
                 'set(metric.name, "modelplane_engine_requests_total") where metric.name == "sglang:prompt_tokens_histogram_count"',
                 'set(metric.name, "modelplane_engine_responses_total") where metric.name == "sglang:http_responses_total"',
                 'set(metric.name, "modelplane_route_decision_seconds") where metric.name == "llm_d_epp_scheduler_e2e_duration_seconds"',
+                'set(metric.name, "modelplane_ephemeral_storage_node_available_bytes") where metric.name == "ephemeral_storage_node_available"',
+                'set(metric.name, "modelplane_ephemeral_storage_node_capacity_bytes") where metric.name == "ephemeral_storage_node_capacity"',
+                'set(metric.name, "modelplane_ephemeral_storage_pod_used_bytes") where metric.name == "ephemeral_storage_pod_usage"',
                 'set(metric.name, "modelplane_gpu_memory_used_bytes") where metric.name == "DCGM_FI_DEV_FB_USED"',
                 'set(metric.name, "modelplane_gpu_memory_free_bytes") where metric.name == "DCGM_FI_DEV_FB_FREE"',
                 'set(metric.name, "modelplane_gpu_compute_active_ratio") where metric.name == "DCGM_FI_PROF_GR_ENGINE_ACTIVE"',
@@ -1240,7 +1246,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="ed6e1a2446fa88db",
+                    config_hash="0209ac34bbb21ed5",
                     volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                     volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                     env_from=None,
@@ -1285,7 +1291,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="01749001b45477d3",
+                    config_hash="a6dc16e17641f1d3",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -1352,7 +1358,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="4abf1d7de91ea0e6",
+                    config_hash="f33592c80fad67c8",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-vendor", "secret": {"secretName": "vendor-token"}},

@@ -167,8 +167,13 @@ def test_mappings_scraped() -> None:
     # The AMD GPU mapping was written against the device-metrics-exporter's
     # documented field list, with no AMD pool to scrape: when one is available,
     # scrape its exporter into a fixture, add its PublishedCase, and take this
-    # exemption out.
-    assert scraped == builtin - {"modelplane-gpu-amd"}, "a built-in mapping has no scrape to check it against"
+    # exemption out. The ephemeral-storage mapping is the same: it's written
+    # against the k8s-ephemeral-storage-metrics exporter's documented metric
+    # names, and the exporter publishes node and pod figures only against a live
+    # kubelet summary API, so there's no pod to scrape here either.
+    assert scraped == builtin - {"modelplane-gpu-amd", "modelplane-ephemeral-storage"}, (
+        "a built-in mapping has no scrape to check it against"
+    )
 
 
 def test_histogram_layouts() -> None:
