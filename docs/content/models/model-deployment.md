@@ -221,6 +221,73 @@ The `describe` output shows each device's driver, attributes (like
 selectors read. If no published class has a device that matches a selector, the
 deployment won't schedule.
 
+## Volumes and init containers
+
+A member's `template.spec` takes `volumes` and `initContainers`, and each
+container takes `volumeMounts`. Use them to give the engine scratch space or
+configuration, or to run a step before the engine starts, such as one that
+copies weights out of the `ModelCache`. They take a subset of the Kubernetes pod
+spec:
+
+| Field | Takes |
+| --- | --- |
+| A volume | `name` and one source: `emptyDir`, `persistentVolumeClaim`, `ephemeral`, `configMap`, `secret`, `projected`, `downwardAPI`, or `csi`. Modelplane passes the source's fields through, and the workload cluster validates them. |
+| A volume mount | `name`, `mountPath`, `subPath`, and `readOnly`. |
+| An init container | `name`, `image`, `command`, `args`, `env`, `resources`, and `volumeMounts`. Modelplane adds nothing to it. |
+| A container probe | `livenessProbe` or `startupProbe`, each with one of `httpGet`, `tcpSocket`, or `grpc` plus timing fields. Modelplane adds the readiness probe itself, but a liveness probe restarts a hung engine and a startup probe holds that liveness probe off while the model loads. |
+
+The deployment doesn't keep other fields, such as a mount's `mountPropagation`
+or an init container's `securityContext`.
+
+This deployment, which sets a `modelCacheRef`, copies the weights from the cache
+to a scratch volume before the engine starts:
+
+```yaml {nocopy=true}
+template:
+  spec:
+    containers:
+    - name: engine
+      image: vllm/vllm-openai:latest
+      args: ["--model=/scratch/GLM-5"]
+      volumeMounts:
+      - name: scratch
+        mountPath: /scratch
+    initContainers:
+    - name: stage-weights
+      image: busybox:1.37
+      command: ["cp", "-rn", "/mnt/models/.", "/scratch/"]
+      volumeMounts:
+      - name: model-cache
+        mountPath: /mnt/models
+        readOnly: true
+      - name: scratch
+        mountPath: /scratch
+    volumes:
+    - name: scratch
+      emptyDir:
+        sizeLimit: 2Ti
+```
+
+Modelplane adds its own volumes to every engine pod: `dshm`, a memory-backed
+`/dev/shm`, and `model-cache`, the `ModelCache` volume at `/mnt/models` when the
+deployment sets a `modelCacheRef`. Any container or init container can mount
+them by name. A volume can't be named `dshm` or `model-cache`, or start with
+`modelplane-`, which Modelplane keeps for volumes it adds. The `engine`
+container can't mount anything else at `/dev/shm` or `/mnt/models`.
+
+Modelplane rejects a deployment that mounts a volume its pod doesn't declare, or
+that mounts `model-cache` without a `modelCacheRef`.
+
+### Node storage
+
+A deployment can't mount a path on the node. Modelplane rejects `hostPath`,
+`nfs`, and other volume sources that reach the node, because the platform team
+decides what each node offers. A disk-backed `emptyDir`, like `scratch` above,
+uses the node's ephemeral storage. If the platform team sets up the node's
+local disks as its ephemeral storage, the `emptyDir` is on those disks.
+Kubernetes deletes an `emptyDir` with its pod, and a replacement pod stages the
+weights again.
+
 ## Sizing a deployment
 
 A deployment's pod count comes from separate settings that you size

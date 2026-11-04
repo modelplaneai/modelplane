@@ -429,6 +429,11 @@ spec:
                               spec:
                                 type: object
                                 required: [containers]
+                                x-kubernetes-validations:
+                                - rule: "!has(self.initContainers) || !self.initContainers.exists(i, self.containers.exists(c, c.name == i.name))"
+                                  message: "an init container can't share a name with a container"
+                                - rule: "self.containers.all(c, !has(c.volumeMounts) || c.volumeMounts.all(m, m.name in ['dshm', 'model-cache'] || (has(self.volumes) && self.volumes.exists(v, v.name == m.name)))) && (!has(self.initContainers) || self.initContainers.all(c, !has(c.volumeMounts) || c.volumeMounts.all(m, m.name in ['dshm', 'model-cache'] || (has(self.volumes) && self.volumes.exists(v, v.name == m.name)))))"
+                                  message: "each volume mount names one of the pod's volumes, dshm, or model-cache"
                                 properties:
                                   containers:
                                     type: array
@@ -441,6 +446,8 @@ spec:
                                       message: "exactly one container must be named 'engine'"
                                     - rule: "!self.exists(c, c.name == 'engine' && has(c.readinessProbe))"
                                       message: "the engine container can't set readinessProbe; Modelplane probes it on its http port"
+                                    - rule: "!self.exists(c, c.name == 'engine' && has(c.volumeMounts) && c.volumeMounts.exists(m, m.mountPath in ['/dev/shm', '/mnt/models']))"
+                                      message: "the engine container can't mount at /dev/shm or /mnt/models; Modelplane mounts shared memory and the ModelCache there"
                                     items:
                                       type: object
                                       required: [name, image]
@@ -577,6 +584,107 @@ spec:
                                             failureThreshold:
                                               type: integer
                                               minimum: 1
+                                        livenessProbe:
+                                          type: object
+                                          description: >-
+                                            How Kubernetes checks that a container is still alive. On the
+                                            engine container this restarts an engine whose process stays up
+                                            while it has hung, such as a TP worker stalled in a collective.
+                                            Pair it with a startupProbe, which holds it off while a large
+                                            model loads.
+                                          x-kubernetes-validations:
+                                          - rule: "[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1"
+                                            message: "livenessProbe sets exactly one of httpGet, tcpSocket and grpc"
+                                          properties:
+                                            httpGet:
+                                              type: object
+                                              required: [port]
+                                              properties:
+                                                path:
+                                                  type: string
+                                                port:
+                                                  anyOf: [{type: integer}, {type: string}]
+                                                  x-kubernetes-int-or-string: true
+                                            tcpSocket:
+                                              type: object
+                                              required: [port]
+                                              properties:
+                                                port:
+                                                  anyOf: [{type: integer}, {type: string}]
+                                                  x-kubernetes-int-or-string: true
+                                            grpc:
+                                              type: object
+                                              required: [port]
+                                              properties:
+                                                port:
+                                                  type: integer
+                                                service:
+                                                  type: string
+                                            initialDelaySeconds:
+                                              type: integer
+                                              minimum: 0
+                                            periodSeconds:
+                                              type: integer
+                                              minimum: 1
+                                            timeoutSeconds:
+                                              type: integer
+                                              minimum: 1
+                                            successThreshold:
+                                              type: integer
+                                              minimum: 1
+                                            failureThreshold:
+                                              type: integer
+                                              minimum: 1
+                                        startupProbe:
+                                          type: object
+                                          description: >-
+                                            How Kubernetes checks that a container has finished starting up.
+                                            Loading a large model takes minutes, so a livenessProbe beside
+                                            this one waits until this first succeeds, and only then restarts
+                                            the container on failure.
+                                          x-kubernetes-validations:
+                                          - rule: "[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1"
+                                            message: "startupProbe sets exactly one of httpGet, tcpSocket and grpc"
+                                          properties:
+                                            httpGet:
+                                              type: object
+                                              required: [port]
+                                              properties:
+                                                path:
+                                                  type: string
+                                                port:
+                                                  anyOf: [{type: integer}, {type: string}]
+                                                  x-kubernetes-int-or-string: true
+                                            tcpSocket:
+                                              type: object
+                                              required: [port]
+                                              properties:
+                                                port:
+                                                  anyOf: [{type: integer}, {type: string}]
+                                                  x-kubernetes-int-or-string: true
+                                            grpc:
+                                              type: object
+                                              required: [port]
+                                              properties:
+                                                port:
+                                                  type: integer
+                                                service:
+                                                  type: string
+                                            initialDelaySeconds:
+                                              type: integer
+                                              minimum: 0
+                                            periodSeconds:
+                                              type: integer
+                                              minimum: 1
+                                            timeoutSeconds:
+                                              type: integer
+                                              minimum: 1
+                                            successThreshold:
+                                              type: integer
+                                              minimum: 1
+                                            failureThreshold:
+                                              type: integer
+                                              minimum: 1
                                         ports:
                                           type: array
                                           maxItems: 8
@@ -598,6 +706,26 @@ spec:
                                                 type: integer
                                                 minimum: 1
                                                 maximum: 65535
+                                        volumeMounts:
+                                          type: array
+                                          maxItems: 16
+                                          x-kubernetes-list-type: map
+                                          x-kubernetes-list-map-keys: [mountPath]
+                                          items:
+                                            type: object
+                                            required: [name, mountPath]
+                                            properties:
+                                              name:
+                                                type: string
+                                                minLength: 1
+                                                maxLength: 63
+                                              mountPath:
+                                                type: string
+                                                minLength: 1
+                                              subPath:
+                                                type: string
+                                              readOnly:
+                                                type: boolean
                                   imagePullSecrets:
                                     type: array
                                     items:
@@ -606,6 +734,160 @@ spec:
                                       properties:
                                         name:
                                           type: string
+                                  initContainers:
+                                    type: array
+                                    maxItems: 8
+                                    x-kubernetes-list-type: map
+                                    x-kubernetes-list-map-keys: [name]
+                                    items:
+                                      type: object
+                                      required: [name, image]
+                                      properties:
+                                        name:
+                                          type: string
+                                          minLength: 1
+                                          maxLength: 63
+                                          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                                        image:
+                                          type: string
+                                          minLength: 1
+                                        command:
+                                          type: array
+                                          items:
+                                            type: string
+                                        args:
+                                          type: array
+                                          items:
+                                            type: string
+                                        env:
+                                          type: array
+                                          items:
+                                            type: object
+                                            required: [name]
+                                            properties:
+                                              name:
+                                                type: string
+                                              value:
+                                                type: string
+                                              valueFrom:
+                                                type: object
+                                                properties:
+                                                  secretKeyRef:
+                                                    type: object
+                                                    required: [name, key]
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                      key:
+                                                        type: string
+                                                      optional:
+                                                        type: boolean
+                                                  configMapKeyRef:
+                                                    type: object
+                                                    required: [name, key]
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                      key:
+                                                        type: string
+                                                      optional:
+                                                        type: boolean
+                                                  fieldRef:
+                                                    type: object
+                                                    description: >-
+                                                      Reference a pod field via
+                                                      the downward API, e.g.
+                                                      status.podIP, metadata.name,
+                                                      or metadata.namespace.
+                                                    required: [fieldPath]
+                                                    properties:
+                                                      fieldPath:
+                                                        type: string
+                                                      apiVersion:
+                                                        type: string
+                                        resources:
+                                          type: object
+                                          description: CPU and memory requests and limits.
+                                          x-kubernetes-validations:
+                                          - rule: "(!has(self.requests) || self.requests.all(k, k in ['cpu', 'memory', 'ephemeral-storage'])) && (!has(self.limits) || self.limits.all(k, k in ['cpu', 'memory', 'ephemeral-storage']))"
+                                            message: "resources take only cpu, memory and ephemeral-storage; a member gets devices from its node pool's device requests"
+                                          properties:
+                                            requests:
+                                              type: object
+                                              maxProperties: 3
+                                              additionalProperties:
+                                                anyOf: [{type: integer}, {type: string}]
+                                                x-kubernetes-int-or-string: true
+                                            limits:
+                                              type: object
+                                              maxProperties: 3
+                                              additionalProperties:
+                                                anyOf: [{type: integer}, {type: string}]
+                                                x-kubernetes-int-or-string: true
+                                        volumeMounts:
+                                          type: array
+                                          maxItems: 16
+                                          x-kubernetes-list-type: map
+                                          x-kubernetes-list-map-keys: [mountPath]
+                                          items:
+                                            type: object
+                                            required: [name, mountPath]
+                                            properties:
+                                              name:
+                                                type: string
+                                                minLength: 1
+                                                maxLength: 63
+                                              mountPath:
+                                                type: string
+                                                minLength: 1
+                                              subPath:
+                                                type: string
+                                              readOnly:
+                                                type: boolean
+                                  volumes:
+                                    type: array
+                                    maxItems: 16
+                                    x-kubernetes-list-type: map
+                                    x-kubernetes-list-map-keys: [name]
+                                    x-kubernetes-validations:
+                                    - rule: "self.all(v, !(v.name in ['dshm', 'model-cache']) && !v.name.startsWith('modelplane-'))"
+                                      message: "volume names dshm, model-cache and modelplane-* are reserved for the volumes Modelplane adds"
+                                    items:
+                                      type: object
+                                      required: [name]
+                                      x-kubernetes-validations:
+                                      - rule: "[has(self.configMap), has(self.csi), has(self.downwardAPI), has(self.emptyDir), has(self.ephemeral), has(self.persistentVolumeClaim), has(self.projected), has(self.secret)].filter(s, s).size() == 1"
+                                        message: "a volume sets exactly one of configMap, csi, downwardAPI, emptyDir, ephemeral, persistentVolumeClaim, projected, secret; hostPath, nfs and other sources that reach the node aren't accepted"
+                                      properties:
+                                        name:
+                                          type: string
+                                          minLength: 1
+                                          maxLength: 63
+                                          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                                        configMap:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        csi:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        downwardAPI:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        emptyDir:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        ephemeral:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        persistentVolumeClaim:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        projected:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
+                                        secret:
+                                          type: object
+                                          x-kubernetes-preserve-unknown-fields: true
           status:
             type: object
             properties:

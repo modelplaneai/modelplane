@@ -101,14 +101,6 @@ class EnvItem(BaseModel):
     valueFrom: ValueFrom | None = None
 
 
-class Port(BaseModel):
-    containerPort: conint(ge=1, le=65535)
-    name: (
-        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
-        | None
-    ) = None
-
-
 class Grpc(BaseModel):
     port: int
     service: str | None = None
@@ -121,6 +113,25 @@ class HttpGet(BaseModel):
 
 class TcpSocket(BaseModel):
     port: int | str
+
+
+class LivenessProbe(BaseModel):
+    failureThreshold: conint(ge=1) | None = None
+    grpc: Grpc | None = None
+    httpGet: HttpGet | None = None
+    initialDelaySeconds: conint(ge=0) | None = None
+    periodSeconds: conint(ge=1) | None = None
+    successThreshold: conint(ge=1) | None = None
+    tcpSocket: TcpSocket | None = None
+    timeoutSeconds: conint(ge=1) | None = None
+
+
+class Port(BaseModel):
+    containerPort: conint(ge=1, le=65535)
+    name: (
+        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
+        | None
+    ) = None
 
 
 class ReadinessProbe(BaseModel):
@@ -139,11 +150,33 @@ class Resources(BaseModel):
     requests: dict[str, int | str] | None = Field(None, max_length=3)
 
 
+class StartupProbe(BaseModel):
+    failureThreshold: conint(ge=1) | None = None
+    grpc: Grpc | None = None
+    httpGet: HttpGet | None = None
+    initialDelaySeconds: conint(ge=0) | None = None
+    periodSeconds: conint(ge=1) | None = None
+    successThreshold: conint(ge=1) | None = None
+    tcpSocket: TcpSocket | None = None
+    timeoutSeconds: conint(ge=1) | None = None
+
+
+class VolumeMount(BaseModel):
+    mountPath: constr(min_length=1)
+    name: constr(min_length=1, max_length=63)
+    readOnly: bool | None = None
+    subPath: str | None = None
+
+
 class Container(BaseModel):
     args: list[str] | None = None
     command: list[str] | None = None
     env: list[EnvItem] | None = None
     image: constr(min_length=1)
+    livenessProbe: LivenessProbe | None = None
+    """
+    How Kubernetes checks that a container is still alive. On the engine container this restarts an engine whose process stays up while it has hung, such as a TP worker stalled in a collective. Pair it with a startupProbe, which holds it off while a large model loads.
+    """
     name: constr(
         pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
     )
@@ -156,15 +189,51 @@ class Container(BaseModel):
     """
     CPU and memory requests and limits. On the engine container, Modelplane adds the member's device claim beside them.
     """
+    startupProbe: StartupProbe | None = None
+    """
+    How Kubernetes checks that a container has finished starting up. Loading a large model takes minutes, so a livenessProbe beside this one waits until this first succeeds, and only then restarts the container on failure.
+    """
+    volumeMounts: list[VolumeMount] | None = Field(None, max_length=16)
 
 
 class ImagePullSecret(BaseModel):
     name: str
 
 
+class InitContainer(BaseModel):
+    args: list[str] | None = None
+    command: list[str] | None = None
+    env: list[EnvItem] | None = None
+    image: constr(min_length=1)
+    name: constr(
+        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
+    )
+    resources: Resources | None = None
+    """
+    CPU and memory requests and limits.
+    """
+    volumeMounts: list[VolumeMount] | None = Field(None, max_length=16)
+
+
+class Volume(BaseModel):
+    configMap: dict[str, Any] | None = None
+    csi: dict[str, Any] | None = None
+    downwardAPI: dict[str, Any] | None = None
+    emptyDir: dict[str, Any] | None = None
+    ephemeral: dict[str, Any] | None = None
+    name: constr(
+        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
+    )
+    persistentVolumeClaim: dict[str, Any] | None = None
+    projected: dict[str, Any] | None = None
+    secret: dict[str, Any] | None = None
+
+
 class Spec(BaseModel):
     containers: list[Container] = Field(..., max_length=8, min_length=1)
     imagePullSecrets: list[ImagePullSecret] | None = None
+    initContainers: list[InitContainer] | None = Field(None, max_length=8)
+    volumes: list[Volume] | None = Field(None, max_length=16)
 
 
 class Template(BaseModel):

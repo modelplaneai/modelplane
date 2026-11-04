@@ -110,6 +110,50 @@ def cache_mounts(replica: v1alpha1.ModelReplica) -> tuple[list[dict], list[dict]
     )
 
 
+# Every engine pod gets a memory-backed /dev/shm, since vLLM tensor parallelism
+# and NIXL KV transfer need a large one. The XRDs reserve this volume name,
+# _CACHE_VOLUME and the modelplane- prefix, and keep the engine container's own
+# mounts off both paths, so the user's volumes and mounts never collide with
+# Modelplane's. Name any volume Modelplane adds later modelplane-<something>.
+_SHM_VOLUME = "dshm"
+_SHM_MOUNT_PATH = "/dev/shm"
+
+
+def pod_volumes(member: v1alpha1.Member, cache_volumes: list[dict]) -> list[dict]:
+    """A member's pod volumes: /dev/shm and the cache's, then the user's as written."""
+    assert member.template.spec is not None
+    return [
+        {"name": _SHM_VOLUME, "emptyDir": {"medium": "Memory"}},
+        *cache_volumes,
+        *(v.model_dump(exclude_none=True) for v in member.template.spec.volumes or []),
+    ]
+
+
+def engine_volume_mounts(container: v1alpha1.Container, cache_volume_mounts: list[dict]) -> list[dict]:
+    """The engine container's mounts: /dev/shm and the cache's, then the user's as written."""
+    return [
+        {"name": _SHM_VOLUME, "mountPath": _SHM_MOUNT_PATH},
+        *cache_volume_mounts,
+        *(m.model_dump(exclude_none=True) for m in container.volumeMounts or []),
+    ]
+
+
+def template_pod_fields(member: v1alpha1.Member) -> dict:
+    """The pod spec fields a member's template passes through as written.
+
+    These are its image pull secrets and init containers. Modelplane adds
+    nothing to an init container, just as it adds nothing to a sidecar.
+    """
+    assert member.template.spec is not None
+    spec = member.template.spec
+    fields = {}
+    if spec.imagePullSecrets:
+        fields["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in spec.imagePullSecrets]
+    if spec.initContainers:
+        fields["initContainers"] = [c.model_dump(exclude_none=True) for c in spec.initContainers]
+    return fields
+
+
 def cache_env(replica: v1alpha1.ModelReplica) -> list[dict]:
     """Env that makes the cache mount resolvable by the model's own name, or [].
 
@@ -700,6 +744,24 @@ def readiness_probe(port: int) -> dict:
         # without masking a real hang.
         "timeoutSeconds": 5,
     }
+
+
+def engine_extra_probes(container: v1alpha1.Container) -> dict[str, dict]:
+    """The engine container's liveness and startup probes, as the user wrote them.
+
+    Both pass through untouched, on every engine pod - including a worker, whose
+    hang a liveness probe should restart too. Modelplane adds the readiness
+    probe itself (the engine can't set one), so these two are the only probes
+    the user needs: a liveness probe restarts an engine whose process stays up
+    while it has hung, and a startup probe holds that liveness probe off while a
+    large model loads.
+    """
+    probes = {}
+    if container.livenessProbe is not None:
+        probes["livenessProbe"] = container.livenessProbe.model_dump(exclude_none=True)
+    if container.startupProbe is not None:
+        probes["startupProbe"] = container.startupProbe.model_dump(exclude_none=True)
+    return probes
 
 
 def engine_member(engine: v1alpha1.Engine, role: str) -> v1alpha1.Member | None:

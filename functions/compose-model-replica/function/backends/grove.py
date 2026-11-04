@@ -82,8 +82,7 @@ class GroveBackend:
             c = {
                 "name": "engine",
                 "image": engine_container.image,
-                # vLLM tensor parallelism and NIXL KV transfer need a large /dev/shm.
-                "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}, *cache_volume_mounts],
+                "volumeMounts": base.engine_volume_mounts(engine_container, cache_volume_mounts),
             }
             # GPUs per pod bound via DRA through the member's claim. A claimless
             # member (a coordinator-only leader) has no pod-level claim for its
@@ -115,12 +114,14 @@ class GroveBackend:
                 c["readinessProbe"] = base.readiness_probe(base.engine_http_port(engine_container))
             elif engine_container.ports:
                 c["ports"] = base.declared_ports(engine_container)
+            c.update(base.engine_extra_probes(engine_container))
             return c
 
         def pod_spec(member: v1alpha1.Member, c: dict) -> dict:
             spec = {
                 "containers": [c, *base.sidecar_containers(member)],
-                "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}, *cache_volumes],
+                "volumes": base.pod_volumes(member, cache_volumes),
+                **base.template_pod_fields(member),
                 # Every clique's pods gang-schedule through KAI: KAI is the
                 # scheduler Grove hands its PodGangs to, and neither Grove nor
                 # KAI sets this for us (see compose-serving-stack).

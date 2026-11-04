@@ -118,20 +118,6 @@ class EnvItem(BaseModel):
     valueFrom: ValueFrom | None = None
 
 
-class Port(BaseModel):
-    containerPort: conint(ge=1, le=65535)
-    """
-    Port number the container listens on.
-    """
-    name: (
-        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
-        | None
-    ) = None
-    """
-    Port name. The engine container's port named "http" is where Modelplane probes the engine and scrapes its metrics.
-    """
-
-
 class Grpc(BaseModel):
     port: int
     service: str | None = None
@@ -144,6 +130,31 @@ class HttpGet(BaseModel):
 
 class TcpSocket(BaseModel):
     port: int | str
+
+
+class LivenessProbe(BaseModel):
+    failureThreshold: conint(ge=1) | None = None
+    grpc: Grpc | None = None
+    httpGet: HttpGet | None = None
+    initialDelaySeconds: conint(ge=0) | None = None
+    periodSeconds: conint(ge=1) | None = None
+    successThreshold: conint(ge=1) | None = None
+    tcpSocket: TcpSocket | None = None
+    timeoutSeconds: conint(ge=1) | None = None
+
+
+class Port(BaseModel):
+    containerPort: conint(ge=1, le=65535)
+    """
+    Port number the container listens on.
+    """
+    name: (
+        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
+        | None
+    ) = None
+    """
+    Port name. The engine container's port named "http" is where Modelplane probes the engine and scrapes its metrics.
+    """
 
 
 class ReadinessProbe(BaseModel):
@@ -160,6 +171,36 @@ class ReadinessProbe(BaseModel):
 class Resources(BaseModel):
     limits: dict[str, int | str] | None = Field(None, max_length=3)
     requests: dict[str, int | str] | None = Field(None, max_length=3)
+
+
+class StartupProbe(BaseModel):
+    failureThreshold: conint(ge=1) | None = None
+    grpc: Grpc | None = None
+    httpGet: HttpGet | None = None
+    initialDelaySeconds: conint(ge=0) | None = None
+    periodSeconds: conint(ge=1) | None = None
+    successThreshold: conint(ge=1) | None = None
+    tcpSocket: TcpSocket | None = None
+    timeoutSeconds: conint(ge=1) | None = None
+
+
+class VolumeMount(BaseModel):
+    mountPath: constr(min_length=1)
+    """
+    Where to mount the volume in the container.
+    """
+    name: constr(min_length=1, max_length=63)
+    """
+    The volume to mount.
+    """
+    readOnly: bool | None = None
+    """
+    Whether to mount the volume read-only.
+    """
+    subPath: str | None = None
+    """
+    A path within the volume to mount instead of its root.
+    """
 
 
 class Container(BaseModel):
@@ -180,6 +221,10 @@ class Container(BaseModel):
     """
     Container image.
     """
+    livenessProbe: LivenessProbe | None = None
+    """
+    How Kubernetes checks that a container is still alive. On the engine container this restarts an engine whose process stays up while it has hung, such as a TP worker stalled in a collective. Pair it with a startupProbe, which holds it off while a large model loads.
+    """
     name: constr(
         pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
     )
@@ -198,10 +243,68 @@ class Container(BaseModel):
     """
     CPU and memory requests and limits. On the engine container, Modelplane adds the member's device claim beside them.
     """
+    startupProbe: StartupProbe | None = None
+    """
+    How Kubernetes checks that a container has finished starting up. Loading a large model takes minutes, so a livenessProbe beside this one waits until this first succeeds, and only then restarts the container on failure.
+    """
+    volumeMounts: list[VolumeMount] | None = Field(None, max_length=16)
+    """
+    Volumes to mount into the container. A mount names one of the pod's volumes, dshm, or model-cache when the deployment sets modelCacheRef, and takes name, mountPath, subPath and readOnly. The engine container can't mount at /dev/shm or /mnt/models, where Modelplane mounts those two.
+    """
 
 
 class ImagePullSecret(BaseModel):
     name: str
+
+
+class InitContainer(BaseModel):
+    args: list[str] | None = None
+    """
+    Container args.
+    """
+    command: list[str] | None = None
+    """
+    Container entrypoint override.
+    """
+    env: list[EnvItem] | None = None
+    """
+    Environment variables. Supports valueFrom.secretKeyRef / configMapKeyRef for secrets and config (like HF_TOKEN), and valueFrom.fieldRef for pod fields.
+    """
+    image: constr(min_length=1)
+    """
+    Container image.
+    """
+    name: constr(
+        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
+    )
+    """
+    Container name, unique among the pod's containers.
+    """
+    resources: Resources | None = None
+    """
+    CPU and memory requests and limits.
+    """
+    volumeMounts: list[VolumeMount] | None = Field(None, max_length=16)
+    """
+    Volumes to mount into the init container. A mount names one of the pod's volumes, dshm, or model-cache when the deployment sets modelCacheRef, and takes name, mountPath, subPath and readOnly.
+    """
+
+
+class Volume(BaseModel):
+    configMap: dict[str, Any] | None = None
+    csi: dict[str, Any] | None = None
+    downwardAPI: dict[str, Any] | None = None
+    emptyDir: dict[str, Any] | None = None
+    ephemeral: dict[str, Any] | None = None
+    name: constr(
+        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
+    )
+    """
+    Volume name, which a container's volumeMounts refer to.
+    """
+    persistentVolumeClaim: dict[str, Any] | None = None
+    projected: dict[str, Any] | None = None
+    secret: dict[str, Any] | None = None
 
 
 class Spec(BaseModel):
@@ -212,6 +315,14 @@ class Spec(BaseModel):
     imagePullSecrets: list[ImagePullSecret] | None = None
     """
     Image pull secrets for private registries (NGC etc.).
+    """
+    initContainers: list[InitContainer] | None = Field(None, max_length=8)
+    """
+    Containers that run to completion, in order, before the pod's containers start, such as one that copies weights from the ModelCache to a scratch volume. Each takes name, image, command, args, env, resources and volumeMounts. Modelplane adds nothing to them.
+    """
+    volumes: list[Volume] | None = Field(None, max_length=16)
+    """
+    Volumes the pod's containers and init containers can mount, beside dshm and model-cache, which Modelplane adds. Each sets a name and one source: configMap, csi, downwardAPI, emptyDir, ephemeral, persistentVolumeClaim, projected or secret. Modelplane passes the source's fields through and the workload cluster validates them. Sources that reach the node, such as hostPath and nfs, aren't accepted. The names dshm and model-cache, and names that start with modelplane-, are reserved for Modelplane's volumes.
     """
 
 
@@ -244,7 +355,7 @@ class Member(BaseModel):
     """
     template: Template
     """
-    Pod template for this member's engine pods. A curated subset of PodTemplateSpec.
+    Pod template for this member's engine pods. A curated subset of PodTemplateSpec: containers, init containers, volumes and image pull secrets.
     """
     worker: Worker | None = None
     """
