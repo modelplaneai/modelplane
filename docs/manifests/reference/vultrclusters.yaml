@@ -5,11 +5,11 @@ metadata:
   namespace: platform
 spec:
   region: ewr
-  kubernetesVersion: "v1.36.2+1"
+  kubernetesVersion: "v1.36.6+1"
   nodePools:
     - name: workers
       role: System
-      plan: vc2-6c-16gb
+      plan: vhp-8c-16gb-intel
       nodeCount: 2
     - name: gpu-l40s
       role: GPU

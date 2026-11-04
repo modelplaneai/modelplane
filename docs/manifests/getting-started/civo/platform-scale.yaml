@@ -1,0 +1,45 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: a100-1x
+spec:
+  # Civo GPU sizes are region-gated: NYC1 offers L40S sizes while LON1
+  # offers A100 and H100. List a region's sizes with the
+  # /v2/sizes?region=<region> API before picking another size.
+  description: "Civo an.g1.a100sxm.kube.x1, 1x NVIDIA A100 SXM 80GB"
+  provisioning:
+    provider: Civo
+    civo:
+      size: an.g1.a100sxm.kube.x1
+      accelerator:
+        type: nvidia-a100
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ampere }
+      cudaComputeCapability: { version: "8.0.0" }
+    capacity:
+      memory: { value: "81920Mi" }
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: civo-lon1
+  labels:
+    modelplane.ai/region: lon1
+spec:
+  cluster:
+    source: Civo
+    civo:
+      region: LON1
+  nodePools:
+  - name: gpu-a100
+    className: a100-1x
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1

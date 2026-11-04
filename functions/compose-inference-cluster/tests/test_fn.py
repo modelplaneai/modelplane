@@ -285,7 +285,7 @@ def _vultr_cluster(*, credentials: dict | None, ready: fnv1.Ready) -> fnv1.Resou
     """The composed VultrCluster with l40s-pool, using credentials unless they're None."""
     spec: dict = {
         "region": "ewr",
-        "kubernetesVersion": "v1.36.2+1",
+        "kubernetesVersion": "v1.36.6+1",
         "nodePools": [
             {
                 "name": "l40s-pool",
@@ -322,7 +322,7 @@ def _vultr_cluster_cpu(*, ready: fnv1.Ready) -> fnv1.Resource:
                 "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
                 "spec": {
                     "region": "ewr",
-                    "kubernetesVersion": "v1.36.2+1",
+                    "kubernetesVersion": "v1.36.6+1",
                     "nodePools": [
                         {
                             "name": "cpu-pool",
@@ -4871,7 +4871,9 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_inference_cluster(
-                    cluster=v1alpha1.Cluster(source="Vultr", vultr=v1alpha1.Vultr(region="ewr")),
+                    cluster=v1alpha1.Cluster(
+                        source="Vultr", vultr=v1alpha1.Vultr(region="ewr", kubernetesVersion="v1.36.6+1")
+                    ),
                     node_pools=[
                         v1alpha1.NodePool(name="l40s-pool", className="gpu-l40s-vultr", nodeCount=2, maxNodeCount=4),
                     ],
@@ -4969,6 +4971,7 @@ COMPOSE_CASES = [
                         source="Vultr",
                         vultr=v1alpha1.Vultr(
                             region="ewr",
+                            kubernetesVersion="v1.36.6+1",
                             credentials=v1alpha1.Credentials(type="ProviderConfig", name="my-vultr-account"),
                         ),
                     ),
@@ -5070,7 +5073,9 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_inference_cluster(
-                    cluster=v1alpha1.Cluster(source="Vultr", vultr=v1alpha1.Vultr(region="ewr")),
+                    cluster=v1alpha1.Cluster(
+                        source="Vultr", vultr=v1alpha1.Vultr(region="ewr", kubernetesVersion="v1.36.6+1")
+                    ),
                     node_pools=[
                         v1alpha1.NodePool(name="l40s-pool", className="gpu-l40s-vultr", nodeCount=2, maxNodeCount=4),
                     ],
@@ -5084,6 +5089,7 @@ COMPOSE_CASES = [
                                 "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
                                 "spec": {
                                     "region": "ewr",
+                                    "kubernetesVersion": "v1.36.6+1",
                                     "nodePools": [
                                         {
                                             "name": "l40s-pool",
@@ -5217,7 +5223,9 @@ COMPOSE_CASES = [
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_inference_cluster(
-                    cluster=v1alpha1.Cluster(source="Vultr", vultr=v1alpha1.Vultr(region="ewr")),
+                    cluster=v1alpha1.Cluster(
+                        source="Vultr", vultr=v1alpha1.Vultr(region="ewr", kubernetesVersion="v1.36.6+1")
+                    ),
                     node_pools=[
                         v1alpha1.NodePool(name="cpu-pool", className="cpu-vultr", nodeCount=2, maxNodeCount=4),
                     ],
@@ -5231,6 +5239,7 @@ COMPOSE_CASES = [
                                 "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
                                 "spec": {
                                     "region": "ewr",
+                                    "kubernetesVersion": "v1.36.6+1",
                                     "nodePools": [
                                         {
                                             "name": "cpu-pool",

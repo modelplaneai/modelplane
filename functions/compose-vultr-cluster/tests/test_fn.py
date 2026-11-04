@@ -49,6 +49,7 @@ def _xr(*, node_pools: list[v1alpha1.NodePool]) -> fnv1.Resource:
         ),
         spec=v1alpha1.Spec(
             region="ewr",
+            kubernetesVersion="v1.36.6+1",
             nodePools=node_pools,
         ),
     )
@@ -86,12 +87,12 @@ def _cluster(*, ready: fnv1.Ready) -> fnv1.Resource:
                     "forProvider": {
                         "label": "test-cluster",
                         "region": "ewr",
-                        "version": "v1.36.2+1",
+                        "version": "v1.36.6+1",
                         "haControlplanes": True,
                         # The system node pool the function adds inline to every cluster.
                         "nodePools": {
                             "label": "system",
-                            "plan": "vc2-6c-16gb",
+                            "plan": "vhp-8c-16gb-intel",
                             "nodeQuantity": 1,
                             "autoScaler": True,
                             "minNodes": 1,
@@ -119,11 +120,11 @@ def _observed_cluster(*, ready: bool) -> fnv1.Resource:
                     "forProvider": {
                         "label": "test-cluster",
                         "region": "ewr",
-                        "version": "v1.36.2+1",
+                        "version": "v1.36.6+1",
                         "haControlplanes": True,
                         "nodePools": {
                             "label": "system",
-                            "plan": "vc2-6c-16gb",
+                            "plan": "vhp-8c-16gb-intel",
                             "nodeQuantity": 1,
                             "autoScaler": True,
                             "minNodes": 1,

@@ -63,6 +63,31 @@ The `H100` cluster costs more per hour than the `L40S` from earlier. Clean up
 when you're done (see [Clean up]({{< ref "getting-started/clean-up.md" >}})).
 {{< /hint >}}
 {{< /tab >}}
+{{< tab "Vultr" >}}
+Vultr GPU plans are region-gated: `ewr` offers only `A16` plans, and the
+`A40` is sold in `lax` and `syd`. Register a cluster with the bigger
+hardware class, `A40` (`48 GB`), in `lax`:
+
+{{< manifests "getting-started/vultr/platform-scale.yaml" >}}
+
+{{< hint "note" >}}
+`vcg-a40-24c-120g-48vram` runs ~$1.70/hr on demand. It plus the `A16` from
+earlier is a few dollars for this tour. Clean up when you're done (see [Clean
+up]({{< ref "getting-started/clean-up.md" >}})).
+{{< /hint >}}
+{{< /tab >}}
+{{< tab "Civo" >}}
+Civo GPU sizes are region-gated: `NYC1` offers `L40S` sizes, and `LON1`
+offers the `A100` and `H100`. Register a cluster with the bigger hardware
+class, `A100` (`80 GB`), in `LON1`:
+
+{{< manifests "getting-started/civo/platform-scale.yaml" >}}
+
+{{< hint "note" >}}
+The `A100` cluster costs more per hour than the `L40S` from earlier. Clean up
+when you're done (see [Clean up]({{< ref "getting-started/clean-up.md" >}})).
+{{< /hint >}}
+{{< /tab >}}
 {{< /tabs >}}
 
 Modelplane provisions the new clusters in parallel:
@@ -74,8 +99,8 @@ kubectl wait --for=condition=Ready ic --all --timeout=20m
 ## Your model keeps running
 
 Growing the fleet doesn't disturb anything already deployed. `qwen-demo` stays
-on its original cluster and the two new clusters add capacity the moment
-they're `Ready` with no interruption for the ML team. A replica only moves if
+on its original cluster and the new capacity comes online the moment it's
+`Ready` with no interruption for the ML team. A replica only moves if
 its deployment changes in a way that no longer fits where it runs. 
 
 ## Next step

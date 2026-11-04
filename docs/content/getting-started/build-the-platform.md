@@ -150,12 +150,13 @@ curl -fsSL {{< manifest-url "getting-started/clusterproviderconfig-nebius.yaml" 
 {{< /tab >}}
 
 {{< tab "Vultr" >}}
-Create a Kubernetes secret from your API key:
+Create a Kubernetes secret from your API key, as the JSON `creds` key
+the provider parses:
 
 {{< editCode >}}
 ```bash
 kubectl create secret generic vultr-credentials \
-  --from-literal=api-key=$@<vultr-api-key>$@ \
+  --from-literal=creds='{"api_key": "$@<vultr-api-key>$@"}' \
   -n crossplane-system
 ```
 {{< /editCode >}}

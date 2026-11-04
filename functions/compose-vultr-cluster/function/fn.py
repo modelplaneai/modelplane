@@ -48,10 +48,10 @@ from models.io.upbound.m.vultr.vke.kubernetesnodepool import v1beta1 as vkenodep
 
 # System pool injected into every VKE cluster to host control-plane
 # components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.). Not part of
-# the user-facing API - compose-inference-cluster only passes GPU pools. The
-# plan matches the Nebius system pool's shape (16 GB memory).
+# the user-facing API - compose-inference-cluster only passes GPU pools.
+# Vultr plans are region-gated.
 _SYSTEM_POOL_NAME = "system"
-_SYSTEM_POOL_PLAN = "vc2-6c-16gb"
+_SYSTEM_POOL_PLAN = "vhp-8c-16gb-intel"
 _SYSTEM_POOL_MIN_NODES = 1
 _SYSTEM_POOL_MAX_NODES = 2
 

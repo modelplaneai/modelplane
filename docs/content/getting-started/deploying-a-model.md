@@ -17,8 +17,9 @@ kubectl create namespace ml-team
 ```
 
 The device selector matches against the capacity declared in the
-`InferenceClass`, not the pod's resource requests. Any L4 node satisfies
-`>= 20Gi`, so this deployment runs on the cluster you just added:
+`InferenceClass`, not the pod's resource requests. Each tab's selector
+matches the class you published, so this deployment runs on the cluster
+you just added:
 
 {{< tabs >}}
 {{< tab "EKS" >}}
@@ -32,6 +33,12 @@ The device selector matches against the capacity declared in the
 {{< /tab >}}
 {{< tab "Nebius" >}}
 {{< manifests "getting-started/nebius/model-deployment.yaml" >}}
+{{< /tab >}}
+{{< tab "Vultr" >}}
+{{< manifests "getting-started/vultr/model-deployment.yaml" >}}
+{{< /tab >}}
+{{< tab "Civo" >}}
+{{< manifests "getting-started/civo/model-deployment.yaml" >}}
 {{< /tab >}}
 {{< /tabs >}}
 
@@ -52,8 +59,8 @@ NAME              CLUSTER       SERVING   SYNCED   READY   COMPOSITION          
 qwen-demo-7323a   eks-us-east   True      True     True    modelreplicas.modelplane.ai   12m
 ```
 
-The ML team never named a cluster. The scheduler matched the GPU requirement
-(`>= 20Gi`) against the `InferenceClass` the platform team published and made
+The ML team never named a cluster. The scheduler matched the deployment's GPU
+requirement against the `InferenceClass` the platform team published and made
 the placement. 
 
 ## Expose the model

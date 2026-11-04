@@ -2,9 +2,7 @@
 # default, so InferenceClusters with a Civo source use it without further
 # configuration. The API key provisions clusters - Civo kubeconfigs embed
 # static client certificates, so consumers never need it to reach the
-# clusters Modelplane provisions. The same Secret's api-key key holds the
-# plain token Modelplane copies to each cluster for the Kubernetes cluster
-# autoscaler (the provider itself parses the JSON creds key).
+# clusters Modelplane provisions.
 apiVersion: civo.m.upbound.io/v1beta1
 kind: ClusterProviderConfig
 metadata:

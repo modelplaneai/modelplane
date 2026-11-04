@@ -52,6 +52,7 @@ spec:
     source: Vultr
     vultr:
       region: ewr
+      kubernetesVersion: "v1.36.6+1"
 
   nodePools:
     - name: gpu-l40s
