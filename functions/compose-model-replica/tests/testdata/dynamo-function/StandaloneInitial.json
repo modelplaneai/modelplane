@@ -101,7 +101,114 @@
     },
     "desired": {
       "resources": {
-        "workload-dynamo": {
+        "model-route": {
+          "resource": {
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object",
+            "spec": {
+              "providerConfigRef": {
+                "kind": "ClusterProviderConfig",
+                "name": "cluster-a-pc"
+              },
+              "readiness": {
+                "policy": "SuccessfulCreate"
+              },
+              "forProvider": {
+                "manifest": {
+                  "apiVersion": "gateway.networking.k8s.io/v1",
+                  "kind": "HTTPRoute",
+                  "metadata": {
+                    "name": "r",
+                    "namespace": "mp-ml-team-51733"
+                  },
+                  "spec": {
+                    "parentRefs": [
+                      {
+                        "name": "cluster-gateway",
+                        "namespace": "modelplane-system"
+                      }
+                    ],
+                    "rules": [
+                      {
+                        "matches": [
+                          {
+                            "path": {
+                              "type": "PathPrefix",
+                              "value": "/ml-team/r/"
+                            }
+                          }
+                        ],
+                        "timeouts": {
+                          "request": "0s"
+                        },
+                        "filters": [
+                          {
+                            "type": "URLRewrite",
+                            "urlRewrite": {
+                              "path": {
+                                "type": "ReplacePrefixMatch",
+                                "replacePrefixMatch": "/"
+                              }
+                            }
+                          }
+                        ],
+                        "backendRefs": [
+                          {
+                            "group": "",
+                            "kind": "Service",
+                            "name": "r-9a9f92bce0-frontend",
+                            "port": 8000
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "resource-claim-main-standalone": {
+          "resource": {
+            "spec": {
+              "providerConfigRef": {
+                "kind": "ClusterProviderConfig",
+                "name": "cluster-a-pc"
+              },
+              "readiness": {
+                "policy": "SuccessfulCreate"
+              },
+              "forProvider": {
+                "manifest": {
+                  "apiVersion": "resource.k8s.io/v1",
+                  "kind": "ResourceClaimTemplate",
+                  "metadata": {
+                    "name": "r-main-standalone-devices-f456f",
+                    "namespace": "mp-ml-team-51733"
+                  },
+                  "spec": {
+                    "spec": {
+                      "devices": {
+                        "requests": [
+                          {
+                            "name": "gpu",
+                            "exactly": {
+                              "deviceClassName": "gpu.nvidia.com",
+                              "count": 1
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object"
+          }
+        },
+        "workload-dynamo-9a9f92bce0": {
           "resource": {
             "spec": {
               "providerConfigRef": {
@@ -118,7 +225,7 @@
                   "apiVersion": "nvidia.com/v1beta1",
                   "kind": "DynamoGraphDeployment",
                   "metadata": {
-                    "name": "r",
+                    "name": "r-9a9f92bce0",
                     "namespace": "mp-ml-team-51733"
                   },
                   "spec": {
@@ -238,113 +345,6 @@
                         "runtimeVersionOverride": "1.7.0"
                       }
                     ]
-                  }
-                }
-              }
-            },
-            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-            "kind": "Object"
-          }
-        },
-        "model-route": {
-          "resource": {
-            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-            "kind": "Object",
-            "spec": {
-              "providerConfigRef": {
-                "kind": "ClusterProviderConfig",
-                "name": "cluster-a-pc"
-              },
-              "readiness": {
-                "policy": "SuccessfulCreate"
-              },
-              "forProvider": {
-                "manifest": {
-                  "apiVersion": "gateway.networking.k8s.io/v1",
-                  "kind": "HTTPRoute",
-                  "metadata": {
-                    "name": "r",
-                    "namespace": "mp-ml-team-51733"
-                  },
-                  "spec": {
-                    "parentRefs": [
-                      {
-                        "name": "cluster-gateway",
-                        "namespace": "modelplane-system"
-                      }
-                    ],
-                    "rules": [
-                      {
-                        "matches": [
-                          {
-                            "path": {
-                              "type": "PathPrefix",
-                              "value": "/ml-team/r/"
-                            }
-                          }
-                        ],
-                        "timeouts": {
-                          "request": "0s"
-                        },
-                        "filters": [
-                          {
-                            "type": "URLRewrite",
-                            "urlRewrite": {
-                              "path": {
-                                "type": "ReplacePrefixMatch",
-                                "replacePrefixMatch": "/"
-                              }
-                            }
-                          }
-                        ],
-                        "backendRefs": [
-                          {
-                            "group": "",
-                            "kind": "Service",
-                            "name": "r-frontend",
-                            "port": 8000
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        },
-        "resource-claim-main-standalone": {
-          "resource": {
-            "spec": {
-              "providerConfigRef": {
-                "kind": "ClusterProviderConfig",
-                "name": "cluster-a-pc"
-              },
-              "readiness": {
-                "policy": "SuccessfulCreate"
-              },
-              "forProvider": {
-                "manifest": {
-                  "apiVersion": "resource.k8s.io/v1",
-                  "kind": "ResourceClaimTemplate",
-                  "metadata": {
-                    "name": "r-main-standalone-devices-f456f",
-                    "namespace": "mp-ml-team-51733"
-                  },
-                  "spec": {
-                    "spec": {
-                      "devices": {
-                        "requests": [
-                          {
-                            "name": "gpu",
-                            "exactly": {
-                              "deviceClassName": "gpu.nvidia.com",
-                              "count": 1
-                            }
-                          }
-                        ]
-                      }
-                    }
                   }
                 }
               }

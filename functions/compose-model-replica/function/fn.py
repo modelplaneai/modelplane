@@ -259,7 +259,7 @@ class Composer:
         copies = {e.name: int(e.copies or 1) for e in engines}
         ready_copies = {
             e.name: min(
-                dynamo.ready_copies(e, observed)
+                dynamo.ready_copies(self.xr, e, observed)
                 if stack == "Dynamo"
                 else _BACKENDS[base.select_backend(e, stack)]().ready_copies(e, observed),
                 copies[e.name],
@@ -271,7 +271,7 @@ class Composer:
         copy_each = all(ready_copies[name] > 0 for name in copies)
         serving = accepted and others_ready and copy_each
         if stack == "Dynamo":
-            serving = serving and dynamo.frontend_ready(observed)
+            serving = serving and dynamo.frontend_ready(self.xr, observed)
         full = serving and all(ready(k) for k in keys)
 
         if serving and sum(ready_copies.values()) < sum(copies.values()):

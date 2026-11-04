@@ -179,7 +179,7 @@
         }
       }
     },
-    "workload-dynamo": {
+    "workload-dynamo-694d196b93": {
       "spec": {
         "providerConfigRef": {
           "kind": "ClusterProviderConfig",
@@ -195,7 +195,7 @@
             "apiVersion": "nvidia.com/v1beta1",
             "kind": "DynamoGraphDeployment",
             "metadata": {
-              "name": "r",
+              "name": "r-694d196b93",
               "namespace": "mp-ml-team-51733"
             },
             "spec": {

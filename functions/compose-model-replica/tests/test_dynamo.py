@@ -29,8 +29,10 @@ import pytest
 from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import dynamo, fn
+from function.backends import base
 from google.protobuf import json_format
 from models.ai.modelplane.modelreplica import v1alpha1
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 
 @pytest.mark.parametrize(
@@ -126,8 +128,12 @@ def test_ready_copies(case: ReadyCopiesCase) -> None:
             )
         ],
     )
+    replica = v1alpha1.ModelReplica(
+        metadata=metav1.ObjectMeta(name="r", namespace="ml-team"),
+        spec=v1alpha1.SpecModel1(clusterName="cluster-a", engines=[engine]),
+    )
     observed = {
-        "workload-dynamo": fnv1.Resource(
+        "workload-dynamo-9a9f92bce0": fnv1.Resource(
             resource=resource.dict_to_struct(
                 {
                     "spec": {"forProvider": {"manifest": {}}},
@@ -136,7 +142,7 @@ def test_ready_copies(case: ReadyCopiesCase) -> None:
             )
         )
     }
-    assert dynamo.ready_copies(engine, observed) == case.want, case.reason
+    assert dynamo.ready_copies(replica, engine, observed) == case.want, case.reason
 
 
 @dataclasses.dataclass
@@ -249,3 +255,14 @@ def test_invalid_runtime_ports(case: InvalidRuntimePortsCase) -> None:
     container = copy.deepcopy(case.container)  # noqa: MPT401  # The helper mutates its fresh container dump.
     with pytest.raises(ValueError, match=case.want):
         dynamo._runtime_ports(container)
+
+
+@pytest.mark.parametrize(
+    "path", sorted((Path(__file__).parent / "testdata" / "dynamo-identity").glob("*.json")), ids=lambda p: p.stem
+)
+def test_graph_identity(path: Path) -> None:
+    """Immutable backend and topology transitions replace both the Object and its remote graph."""
+    case = json.loads(path.read_text())
+    replica = v1alpha1.ModelReplica(**case["replica"])
+    got = {"key": base.dynamo_workload_key(replica), "name": dynamo.graph_name(replica)}
+    assert got == case["want"], case["reason"]

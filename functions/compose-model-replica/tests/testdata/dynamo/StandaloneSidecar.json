@@ -59,7 +59,43 @@
   },
   "provider_config": "cluster-a-pc",
   "want": {
-    "workload-dynamo": {
+    "resource-claim-main-standalone": {
+      "spec": {
+        "providerConfigRef": {
+          "kind": "ClusterProviderConfig",
+          "name": "cluster-a-pc"
+        },
+        "readiness": {
+          "policy": "SuccessfulCreate"
+        },
+        "forProvider": {
+          "manifest": {
+            "apiVersion": "resource.k8s.io/v1",
+            "kind": "ResourceClaimTemplate",
+            "metadata": {
+              "name": "r-main-standalone-devices-f456f",
+              "namespace": "mp-ml-team-51733"
+            },
+            "spec": {
+              "spec": {
+                "devices": {
+                  "requests": [
+                    {
+                      "name": "gpu",
+                      "exactly": {
+                        "deviceClassName": "gpu.nvidia.com",
+                        "count": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "workload-dynamo-9a9f92bce0": {
       "spec": {
         "providerConfigRef": {
           "kind": "ClusterProviderConfig",
@@ -75,7 +111,7 @@
             "apiVersion": "nvidia.com/v1beta1",
             "kind": "DynamoGraphDeployment",
             "metadata": {
-              "name": "r",
+              "name": "r-9a9f92bce0",
               "namespace": "mp-ml-team-51733"
             },
             "spec": {
@@ -195,42 +231,6 @@
                   "runtimeVersionOverride": "1.7.0"
                 }
               ]
-            }
-          }
-        }
-      }
-    },
-    "resource-claim-main-standalone": {
-      "spec": {
-        "providerConfigRef": {
-          "kind": "ClusterProviderConfig",
-          "name": "cluster-a-pc"
-        },
-        "readiness": {
-          "policy": "SuccessfulCreate"
-        },
-        "forProvider": {
-          "manifest": {
-            "apiVersion": "resource.k8s.io/v1",
-            "kind": "ResourceClaimTemplate",
-            "metadata": {
-              "name": "r-main-standalone-devices-f456f",
-              "namespace": "mp-ml-team-51733"
-            },
-            "spec": {
-              "spec": {
-                "devices": {
-                  "requests": [
-                    {
-                      "name": "gpu",
-                      "exactly": {
-                        "deviceClassName": "gpu.nvidia.com",
-                        "count": 1
-                      }
-                    }
-                  ]
-                }
-              }
             }
           }
         }

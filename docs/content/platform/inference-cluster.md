@@ -143,6 +143,13 @@ both Unified and PrefillDecode serving, including KV transfer. On Standard,
 PrefillDecode still requires an endpoint picker and its engine-side KV connector.
 This cluster-dependent requirement is checked during composition.
 
+Changing the backend, component set, roles, or node count replaces the graph:
+these fields are immutable in DGD. The replacement also covers changes to
+GPU power limits and their allocation. Commands, copy counts, and ordinary
+runtime image updates keep the same graph identity. During replacement the old
+graph is deleted so its GPUs can be reassigned; serving can be interrupted until
+the new frontend and engines are ready.
+
 For a multi-node Dynamo engine, `$(MODELPLANE_LEADER_ADDRESS)` and
 `$(MODELPLANE_RANK)` alias the operator's topology variables. Each member keeps
 its own command, sidecars, node pool, and DRA claim. See

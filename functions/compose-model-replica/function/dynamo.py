@@ -27,7 +27,6 @@ from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
 from function.backends import base
 
-KEY = base.DYNAMO_WORKLOAD_KEY
 FRONTEND = "frontend"
 # Match the serving-stack chart pin. NGC nightly tags carry the build date and
 # commit rather than a semantic runtime version, so DGD admission needs this.
@@ -44,23 +43,12 @@ READY_CEL = (
 
 def graph_name(replica: v1alpha1.ModelReplica) -> str:
     """Leave room for the frontend Service suffix."""
-    return base.dns_1035_label(base._name(replica.metadata), "dgd", 52)
+    return base.dns_1035_label(f"{base._name(replica.metadata)}-{base.dynamo_graph_revision(replica)}", "dgd", 52)
 
 
 def component_name(engine: v1alpha1.Engine) -> str:
     """Worker names cannot collide with the graph's frontend component."""
     return base.dns_1035_label(f"engine-{engine.name}", "engine", 16)
-
-
-def _framework(member: v1alpha1.Member) -> str:
-    container = base.engine_container(member)
-    launch = " ".join([*(container.command or []), *(container.args or [])])
-    for framework in ("sglang", "trtllm", "vllm"):
-        if f"dynamo.{framework}" in launch or (
-            "/ai-dynamo/" in container.image and f"{framework}-runtime" in container.image
-        ):
-            return framework
-    raise ValueError("Dynamo engines must use a runtime image and launch dynamo.vllm, dynamo.sglang, or dynamo.trtllm")
 
 
 def _runtime_version(member: v1alpha1.Member) -> dict[str, str]:
@@ -105,7 +93,7 @@ def validate(replica: v1alpha1.ModelReplica) -> str | None:
     for engine in replica.spec.engines:
         for member in engine.members:
             try:
-                frameworks.add(_framework(member))
+                frameworks.add(base.dynamo_framework(member))
                 _runtime_ports(base.engine_container(member).model_dump(exclude_none=True))
             except ValueError as err:
                 return str(err)
@@ -126,7 +114,7 @@ def _pod_template(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine, membe
     container["name"] = "main"
     _runtime_ports(container)
     if not container.get("command"):
-        container["command"] = ["python3", "-m", f"dynamo.{_framework(member)}"]
+        container["command"] = ["python3", "-m", f"dynamo.{base.dynamo_framework(member)}"]
     resources = base.engine_resources(base.engine_container(member), claim=bool(member.deviceRequests))
     if resources:
         container["resources"] = resources
@@ -228,13 +216,13 @@ def build(replica: v1alpha1.ModelReplica, provider_config: str) -> dict[str, k8s
                 composed[base.claim_key(engine, member)] = base.resource_claim_template(
                     replica, engine, member, provider_config
                 )
-    composed[KEY] = base.wrap_object(
+    composed[base.dynamo_workload_key(replica)] = base.wrap_object(
         provider_config,
         {
             "apiVersion": "nvidia.com/v1beta1",
             "kind": "DynamoGraphDeployment",
             "metadata": {"name": graph_name(replica), "namespace": base.remote_namespace(replica)},
-            "spec": {"backendFramework": _framework(first_member), "components": components},
+            "spec": {"backendFramework": base.dynamo_framework(first_member), "components": components},
         },
         cel_query=READY_CEL,
         watch=True,
@@ -242,14 +230,14 @@ def build(replica: v1alpha1.ModelReplica, provider_config: str) -> dict[str, k8s
     return composed
 
 
-def ready_copies(engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource]) -> int:
+def ready_copies(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource]) -> int:
     """Use component counters, which count gang copies rather than individual pods."""
-    status = base.observed_status(observed, KEY) or {}
+    status = base.observed_status(observed, base.dynamo_workload_key(replica)) or {}
     component = status.get("components", {}).get(component_name(engine), {})
     return int(component.get("availableReplicas", component.get("readyReplicas")) or 0)
 
 
-def frontend_ready(observed: Mapping[str, fnv1.Resource]) -> bool:
-    status = base.observed_status(observed, KEY) or {}
+def frontend_ready(replica: v1alpha1.ModelReplica, observed: Mapping[str, fnv1.Resource]) -> bool:
+    status = base.observed_status(observed, base.dynamo_workload_key(replica)) or {}
     component = status.get("components", {}).get(FRONTEND, {})
     return int(component.get("readyReplicas", component.get("availableReplicas")) or 0) > 0
