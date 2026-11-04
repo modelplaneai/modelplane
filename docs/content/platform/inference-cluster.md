@@ -136,8 +136,8 @@ images tagged `20261103-e37f0b9`. For those images Modelplane sets
 `runtimeVersionOverride: 1.7.0` on DGD components because the date tag has no
 semantic version. The component override accounts for every member image,
 independent of member order. Mixing that nightly with semantic tags requires
-all roles to identify runtime version `1.7.0`; incompatible or unversioned role
-images are rejected. Other image tags must identify the Dynamo runtime version
+all roles to identify runtime version `1.7.0`. Other versions and tags without
+a known runtime version are rejected. Other image tags must identify the Dynamo runtime version
 so DGD admission can resolve compatibility. The frontend uses the first engine's runtime image,
 image pull secrets, environment, and model cache.
 
