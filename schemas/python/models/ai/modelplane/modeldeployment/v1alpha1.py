@@ -255,7 +255,7 @@ class Member(BaseModel):
 class Engine(BaseModel):
     copies: conint(ge=1, le=64) | None = 1
     """
-    How many identical copies of this engine to run per ModelReplica. A fixed number, sized once per deployment; scaling happens by adding ModelReplicas (spec.replicas), never by varying copies. Maps to the composed Deployment's or LeaderWorkerSet's replica count, or a Grove PodCliqueSet's podCliqueScalingGroups[].replicas (its spec.replicas stays 1). Defaults to 1.
+    How many identical copies of this engine to run per ModelReplica. A fixed number, sized once per deployment; scaling happens by adding ModelReplicas (spec.replicas), never by varying copies. Maps to the composed Deployment's or LeaderWorkerSet's replica count, or a DynamoGraphDeployment component's replicas. Defaults to 1.
     """
     members: list[Member] = Field(..., max_length=2, min_length=1)
     """
@@ -327,7 +327,7 @@ class Serving(BaseModel):
     """
     router: Literal['EndpointPicker'] | None = None
     """
-    The router the user writes. Required under PrefillDecode. Omitted, under Unified, Modelplane routes the deployment with its default picker configuration. EndpointPicker runs the endpoint picker set in endpointPicker, and the user writes any sidecar the picker needs as a container in the member templates.
+    The router the user writes on Standard clusters. Required under PrefillDecode on Standard; omit on Dynamo, which uses its runtime frontend. Omitted, under Unified, Modelplane routes the deployment with its default picker configuration. EndpointPicker runs the endpoint picker set in endpointPicker, and the user writes any sidecar the picker needs as a container in the member templates.
     """
 
 

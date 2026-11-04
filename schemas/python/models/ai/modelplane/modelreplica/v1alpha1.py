@@ -257,7 +257,7 @@ class SpecModel1(BaseModel):
     """
     serving: Serving | None = None
     """
-    Serving, inherited verbatim from the parent ModelDeployment. Both modes front the serving pods with an InferencePool and an endpoint picker, which endpointPicker can configure. PrefillDecode also role-labels the engine each marks with its phase.
+    Serving, inherited verbatim from the parent ModelDeployment. On Standard, both modes front the serving pods with an InferencePool and an endpoint picker. Dynamo uses a shared runtime frontend instead; omit router and endpointPicker there. PrefillDecode also role-labels the engine each marks with its phase.
     """
 
 

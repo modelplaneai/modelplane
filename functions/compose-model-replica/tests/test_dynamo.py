@@ -20,10 +20,12 @@ snapshots updated by the code under test.
 """
 
 import asyncio
+import dataclasses
 import json
 from pathlib import Path
 
 import pytest
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import dynamo, fn
 from google.protobuf import json_format
@@ -65,3 +67,72 @@ def test_validate(path: Path) -> None:
     case = json.loads(path.read_text())
     replica = v1alpha1.ModelReplica(**case["replica"])
     assert dynamo.validate(replica) == case["want"], case["reason"]
+
+
+@dataclasses.dataclass
+class ReadyCopiesCase:
+    """The operator counts multi-node gangs and single-node pods differently."""
+
+    name: str
+    reason: str
+    components: dict
+    want: int
+
+
+READY_COPIES_CASES = [
+    ReadyCopiesCase(
+        name="UnobservedComponent",
+        reason="A graph without component status contributes no serving capacity.",
+        components={},
+        want=0,
+    ),
+    ReadyCopiesCase(
+        name="MultiNodeGangs",
+        reason="A scaling group's available replicas count whole engine copies, without readyReplicas.",
+        components={"engine-main": {"componentKind": "PodCliqueScalingGroup", "availableReplicas": 2}},
+        want=2,
+    ),
+    ReadyCopiesCase(
+        name="SingleNodeCliques",
+        reason="A single-node Grove component reports readyReplicas rather than availableReplicas.",
+        components={"engine-main": {"componentKind": "PodClique", "readyReplicas": 3}},
+        want=3,
+    ),
+    ReadyCopiesCase(
+        name="UnavailableDeployment",
+        reason="An explicit zero available count takes precedence over ready pods from an older revision.",
+        components={"engine-main": {"componentKind": "Deployment", "availableReplicas": 0, "readyReplicas": 3}},
+        want=0,
+    ),
+]
+
+
+@pytest.mark.parametrize("case", READY_COPIES_CASES, ids=lambda case: case.name)
+def test_ready_copies(case: ReadyCopiesCase) -> None:
+    """Read graph counters in component-replica units."""
+    engine = v1alpha1.Engine(
+        name="main",
+        members=[
+            v1alpha1.Member(
+                nodePoolName="frontier",
+                template=v1alpha1.Template(
+                    spec=v1alpha1.Spec(
+                        containers=[
+                            v1alpha1.Container(name="engine", image="nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.6.1")
+                        ]
+                    )
+                ),
+            )
+        ],
+    )
+    observed = {
+        "workload-dynamo": fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {
+                    "spec": {"forProvider": {"manifest": {}}},
+                    "status": {"atProvider": {"manifest": {"status": {"components": case.components}}}},
+                }
+            )
+        )
+    }
+    assert dynamo.ready_copies(engine, observed) == case.want, case.reason
