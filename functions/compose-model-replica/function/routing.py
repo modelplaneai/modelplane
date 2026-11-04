@@ -66,7 +66,7 @@ def _namespace(meta: metav1.ObjectMeta | None) -> str:
 
 
 # The picker image a replica runs when it doesn't set serving.router.
-_EPP_IMAGE = "ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0"
+_EPP_IMAGE = "ghcr.io/llm-d/llm-d-router-endpoint-picker:v1.0.0"
 
 # The picker's gRPC ports: ext-proc for the gateway, and the health service its
 # readiness probe calls. Every picker serves these, whatever it's called with.
@@ -131,6 +131,7 @@ _LABEL_ROLE = "llm-d.ai/role"
 _UNIFIED_EPP_CONFIG_TEMPLATE = """\
 apiVersion: llm-d.ai/v1alpha1
 kind: EndpointPickerConfig
+FEATURE_GATES_LINE
 plugins:
 - type: approx-prefix-cache-producer
   parameters:
@@ -149,7 +150,7 @@ schedulingProfiles:
     weight: 2
   - pluginRef: queue-scorer
     weight: 1
-"""
+FLOW_CONTROL_YAML"""
 
 _DEFAULT_KV_BLOCK_SIZE = 16
 
@@ -161,9 +162,70 @@ _DEFAULT_KV_BLOCK_SIZE = 16
 _MIN_BLOCK_SIZE_TOKENS = 64
 
 
-def _unified_epp_config_yaml(block_size: int) -> str:
-    """Render the unified EPP config with the engine's KV block size, at least _MIN_BLOCK_SIZE_TOKENS."""
-    return _UNIFIED_EPP_CONFIG_TEMPLATE.replace("BLOCK_SIZE_TOKENS", str(max(block_size, _MIN_BLOCK_SIZE_TOKENS)))
+# Flow control: the picker queues requests per flow (fairness ID) and serves
+# the highest priority band first, so one caller's burst can't set every
+# caller's latency (#614). Off by default, like llm-d-router's feature gate:
+# a replica turns it on with serving.endpointPicker.flowControl.enabled.
+# The gate line is a placeholder replaced at render time, because the gate is
+# set only when flow control is on; the observed config then equals the one
+# the picker reports, the same reasoning as _MIN_BLOCK_SIZE_TOKENS.
+_FEATURE_GATES_LINE = "featureGates: [flowControl]\n"
+
+
+def _unified_epp_config_yaml(
+    block_size: int, flow_control: dict[str, Any] | None
+) -> str:
+    """Render the unified EPP config with the engine's KV block size and flow control."""
+    config = _UNIFIED_EPP_CONFIG_TEMPLATE.replace(
+        "BLOCK_SIZE_TOKENS", str(max(block_size, _MIN_BLOCK_SIZE_TOKENS))
+    )
+    if flow_control is not None and flow_control.get("enabled"):
+        # The config reaches the function as a protobuf Struct, which stores
+        # every number as a float; whole floats go back to ints or the picker
+        # rejects them, the same as a user config.
+        removed = _render_picker_config(flow_control)
+        flow_control_yaml = json.loads(removed)
+        flow_control_options = flow_control_yaml.get("config")
+        if not isinstance(flow_control_options, dict):
+            raise ValueError("serving.endpointPicker.flowControl.config must be an object")
+        del flow_control_yaml["enabled"]
+        if flow_control_yaml:
+            raise ValueError(
+                "serving.endpointPicker.flowControl takes only enabled and config"
+            )
+        gate_line = _FEATURE_GATES_LINE
+        flow_control_section = "flowControl:\n" + _indent_yaml(
+            json.dumps(flow_control_options, indent=2), 2
+        ) + "\n"
+    else:
+        gate_line = ""
+        flow_control_section = ""
+    return (
+        config.replace("FEATURE_GATES_LINE\n", gate_line)
+        .replace("FLOW_CONTROL_YAML", flow_control_section)
+        .rstrip("\n")
+        + "\n"
+    )
+
+
+def _indent_yaml(text: str, spaces: int) -> str:
+    """Indent every non-empty line, so a rendered object nests under its key."""
+    pad = " " * spaces
+    return "\n".join(pad + line if line else line for line in text.splitlines())
+
+
+def _flow_control(replica: v1alpha1.ModelReplica) -> dict[str, Any] | None:
+    """The serving.flowControl block, which only the default picker consumes.
+
+    A user-routed replica replaces the whole picker config, so its flow
+    control, if any, belongs there; Modelplane reads none of it.
+    """
+    if _user_routed(replica):
+        return None
+    serving = replica.spec.serving
+    if serving is None:
+        return None
+    return serving.flowControl.model_dump(exclude_none=True) if serving.flowControl else None
 
 
 def _flag_value(args: list, *flags: str) -> str | None:
@@ -359,7 +421,9 @@ def _unified(
     # The prefix-cache producer must chunk prefixes at the engine's KV block
     # size; derive it from the first engine's flags (HACK, #179).
     block_size = _kv_block_size(_engine_args(out[base.workload_key(replica.spec.engines[0])]))
-    container, config_yaml, secrets = _picker(replica, _unified_epp_config_yaml(block_size))
+    container, config_yaml, secrets = _picker(
+        replica, _unified_epp_config_yaml(block_size, _flow_control(replica))
+    )
     selector = {base.LABEL_SERVING: base.serving_label(replica)}
     ns = base.remote_namespace(replica)
     out["inference-pool"] = base.wrap_object(provider_config, _inference_pool(name, ns, selector))
@@ -528,10 +592,12 @@ def _epp_objects(
                 "resources": ["inferencepools"],
                 "verbs": ["get", "watch", "list"],
             },
-            # The picker also watches InferenceObjectives (GIE x-k8s.io group);
-            # without this rule it logs a forbidden error.
+            # The picker also watches InferenceObjectives, which give requests
+            # a priority and a fairness ID; without this rule it logs a
+            # forbidden error. llm-d-router v1.0.0 serves them from the llm-d.ai
+            # group; v0.9.0 read them from GIE's inference.networking.x-k8s.io.
             {
-                "apiGroups": ["inference.networking.x-k8s.io"],
+                "apiGroups": ["llm-d.ai"],
                 "resources": ["inferenceobjectives"],
                 "verbs": ["get", "watch", "list"],
             },

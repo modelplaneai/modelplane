@@ -94,6 +94,23 @@ spec:
                   router:
                     type: string
                     enum: [EndpointPicker]
+                  flowControl:
+                    type: object
+                    required: [enabled]
+                    description: >-
+                      The picker's flow control: requests queue at the picker
+                      by priority and fairness instead of in each engine's
+                      first-come-first-served queue. Off by default, like
+                      llm-d-router's feature gate. Applies only to the default
+                      picker; under router EndpointPicker the user writes the
+                      whole picker config, flow control included.
+                    properties:
+                      enabled:
+                        type: boolean
+                      config:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                        minProperties: 1
                   endpointPicker:
                     type: object
                     required: [template]
