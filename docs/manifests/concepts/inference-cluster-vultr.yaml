@@ -2,7 +2,7 @@
 #
 # Modelplane provisions the full VKE cluster (VPC, control plane, system + GPU
 # node pools) and installs the inference stack (cert-manager, Envoy Gateway,
-# Prometheus, LeaderWorkerSet, Gateway API).
+# LeaderWorkerSet, Gateway API).
 #
 # The system node pool that hosts control-plane components is provisioned
 # automatically and is not declared here. Only GPU node pools - each

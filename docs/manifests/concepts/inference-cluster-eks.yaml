@@ -3,7 +3,7 @@
 # Modelplane provisions the full EKS cluster (VPC, subnets, internet
 # gateway, IAM roles for the cluster and nodes, system + GPU node
 # groups, vpc-cni / kube-proxy / coredns addons) and installs the
-# inference stack (cert-manager, Envoy Gateway, Prometheus,
+# inference stack (cert-manager, Envoy Gateway,
 # LeaderWorkerSet, Gateway API).
 #
 # The system node group that hosts control-plane components is

@@ -585,7 +585,12 @@ DROP = {
         "the telemetry collector scrapes the engines, the gateways and the GPU "
         "exporter and exports to TelemetryDestinations (design/telemetry.md), so "
         "nothing in Modelplane reads an in-cluster Prometheus - and its PVC "
-        "outlives the cluster (#551)"
+        "outlives the cluster. This takes with it the only kube-state-metrics "
+        "any cloud installs; nothing scrapes it today, so no series is lost, but "
+        "the substrate metrics design/telemetry.md plans on it "
+        "(modelplane_gang_incomplete, modelplane_engine_restarts_total) will need "
+        "it reinstated as its own component, the way the collector scrapes the "
+        "other exporters (#551)"
     ),
     "prometheus-adapter": (
         "serves Prometheus series as custom metrics for in-cluster autoscaling, "
