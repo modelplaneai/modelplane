@@ -37,6 +37,7 @@ staged weights.
 """
 
 from collections.abc import Mapping
+from typing import Any
 
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from models.ai.modelplane.modelreplica import v1alpha1
@@ -151,18 +152,28 @@ class LLMDBackend:
             worker_pod["metadata"] = worker_metadata
 
         # LeaderWorkerSet: spec.replicas gangs, each of `size` pods (leader+workers).
-        leader_worker_set = {
+        # Unset rolloutStrategy, LWS's default applies (maxSurge 0, maxUnavailable
+        # 1): copies roll one at a time, which on a full node needs no idle
+        # capacity.
+        lws_spec: dict[str, Any] = {
+            "replicas": int(engine.copies or 1),
+            "leaderWorkerTemplate": {
+                "size": size,
+                "leaderTemplate": leader_pod,
+                "workerTemplate": worker_pod,
+            },
+        }
+        strategy = base.rollout_strategy(engine)
+        if strategy:
+            lws_spec["rolloutStrategy"] = {
+                "type": "RollingUpdate",
+                "rollingUpdateConfiguration": strategy,
+            }
+        leader_worker_set: dict[str, Any] = {
             "apiVersion": "leaderworkerset.x-k8s.io/v1",
             "kind": "LeaderWorkerSet",
             "metadata": {"name": name, "namespace": base.remote_namespace(replica)},
-            "spec": {
-                "replicas": int(engine.copies or 1),
-                "leaderWorkerTemplate": {
-                    "size": size,
-                    "leaderTemplate": leader_pod,
-                    "workerTemplate": worker_pod,
-                },
-            },
+            "spec": lws_spec,
         }
 
         composed = {

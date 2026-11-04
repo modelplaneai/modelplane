@@ -590,6 +590,22 @@ def ready_replicas(engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource
     return int(status.get("readyReplicas") or 0)
 
 
+def rollout_strategy(engine: v1alpha1.Engine) -> dict | None:
+    """The engine's rollout strategy as the workload kind's schema spells it.
+
+    Both the LeaderWorkerSet's spec.rolloutStrategy and the Deployment's
+    spec.strategy take rollingUpdateConfiguration or rollingUpdate with the
+    same maxSurge/maxUnavailable pair. None when the user set no strategy, so
+    each backend's own default applies.
+    """
+    if engine.rolloutStrategy is None or engine.rolloutStrategy.rollingUpdate is None:
+        return None
+    return {
+        "maxSurge": engine.rolloutStrategy.rollingUpdate.maxSurge,
+        "maxUnavailable": engine.rolloutStrategy.rollingUpdate.maxUnavailable,
+    }
+
+
 def serving_label(replica: v1alpha1.ModelReplica) -> str:
     """The serving label value a replica's serving pods share.
 

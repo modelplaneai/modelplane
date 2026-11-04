@@ -535,6 +535,12 @@ class Composer:
         # doesn't serialize a null into the composed ModelReplica.
         if engine.phase is not None:
             replica_engine.phase = engine.phase
+        # rolloutStrategy is a user setting the replica backend passes through
+        # to its workload; omitted, the backend's default applies.
+        if engine.rolloutStrategy is not None:
+            replica_engine.rolloutStrategy = mrv1alpha1.RolloutStrategy.model_validate(
+                engine.rolloutStrategy.model_dump(exclude_unset=True)
+            )
         return replica_engine
 
     def compose_endpoints(self, matched: list[scheduling.Candidate]) -> None:

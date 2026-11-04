@@ -26,6 +26,7 @@ engines are composed once by fn.py, not here.
 """
 
 from collections.abc import Mapping
+from typing import Any
 
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from models.ai.modelplane.modelreplica import v1alpha1
@@ -103,18 +104,27 @@ class NativeBackend:
         if tmpl.spec.imagePullSecrets:
             pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in tmpl.spec.imagePullSecrets]
 
-        deployment = {
+        # Unset, the API server defaults apply. Like the LWS backend, the
+        # user's strategy maps onto strategy.rollingUpdate.
+        deployment_spec: dict[str, Any] = {
+            "replicas": int(engine.copies or 1),
+            "selector": {"matchLabels": selector},
+            "template": {
+                "metadata": base.pod_metadata(member, pod_labels, replica=replica, engine=engine),
+                "spec": pod_spec,
+            },
+        }
+        strategy = base.rollout_strategy(engine)
+        if strategy:
+            deployment_spec["strategy"] = {
+                "type": "RollingUpdate",
+                "rollingUpdate": strategy,
+            }
+        deployment: dict[str, Any] = {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
             "metadata": {"name": name, "namespace": base.remote_namespace(replica)},
-            "spec": {
-                "replicas": int(engine.copies or 1),
-                "selector": {"matchLabels": selector},
-                "template": {
-                    "metadata": base.pod_metadata(member, pod_labels, replica=replica, engine=engine),
-                    "spec": pod_spec,
-                },
-            },
+            "spec": deployment_spec,
         }
 
         composed = {

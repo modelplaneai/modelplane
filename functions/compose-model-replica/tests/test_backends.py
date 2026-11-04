@@ -449,6 +449,7 @@ def _deployment(
     pod_metadata: dict,
     containers: list[dict],
     volumes: list[dict],
+    strategy: dict,
 ) -> dict:
     """The Object composing a Standalone engine's Deployment."""
     return {
@@ -468,6 +469,7 @@ def _deployment(
                     "kind": "Deployment",
                     "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
                     "spec": {
+                        **({"strategy": strategy} if strategy else {}),
                         "replicas": replicas,
                         "selector": {"matchLabels": {"modelplane.ai/workload": name}},
                         "template": {
@@ -508,6 +510,7 @@ def _leader_worker_set(
     leader_volumes: list[dict],
     worker_containers: list[dict],
     worker_volumes: list[dict],
+    rollout_strategy: dict,
 ) -> dict:
     """The Object composing the main engine's LeaderWorkerSet."""
     return {
@@ -527,6 +530,7 @@ def _leader_worker_set(
                     "kind": "LeaderWorkerSet",
                     "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
                     "spec": {
+                        **({"rolloutStrategy": rollout_strategy} if rollout_strategy else {}),
                         "replicas": replicas,
                         "leaderWorkerTemplate": {
                             "size": size,
@@ -808,6 +812,101 @@ BUILD_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
+            ),
+            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+        },
+    ),
+    # rolloutStrategy maps straight onto the workload kinds' own fields: the
+    # LWS takes rollingUpdateConfiguration, the Deployment takes rollingUpdate.
+    # Unset, neither carries a strategy, so each backend's default applies
+    # (every other case above).
+    BuildCase(
+        name="StandaloneRolloutStrategy",
+        reason=(
+            "A Standalone engine with a rollout strategy composes a Deployment carrying it as strategy.rollingUpdate."
+        ),
+        backend=native.NativeBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=1,
+                    rolloutStrategy=v1alpha1.RolloutStrategy(
+                        rollingUpdate=v1alpha1.RollingUpdate(maxSurge="25%", maxUnavailable=0)
+                    ),
+                    members=[
+                        v1alpha1.Member(
+                            role="Standalone",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=1,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[
+                                        v1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:latest",
+                                            args=["--model=Qwen/Qwen3-0.6B"],
+                                        )
+                                    ]
+                                )
+                            ),
+                        )
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": _deployment(
+                name="r-main-bb4e3",
+                claim_template_name="r-main-standalone-devices-f456f",
+                replicas=1,
+                pod_metadata={
+                    "labels": {
+                        "modelplane.ai/engine": "main",
+                        "modelplane.ai/role": "Standalone",
+                        "modelplane.ai/serving": "r",
+                        "modelplane.ai/workload": "r-main-bb4e3",
+                    }
+                },
+                containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "args": ["--model=Qwen/Qwen3-0.6B"],
+                        "ports": [{"name": "http", "containerPort": 8000}],
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                        "resources": {"claims": [{"name": "devices"}]},
+                    }
+                ],
+                volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={"type": "RollingUpdate", "rollingUpdate": {"maxSurge": "25%", "maxUnavailable": 0}},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -911,6 +1010,7 @@ BUILD_CASES = [
                     },
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -1026,6 +1126,7 @@ BUILD_CASES = [
                     },
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -1116,6 +1217,7 @@ BUILD_CASES = [
                     {"name": "log-tail", "image": "busybox:1.36"},
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -1210,6 +1312,7 @@ BUILD_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -1296,6 +1399,7 @@ BUILD_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(
                 name="dep-clusterA-main-standalone-devices-145eb", count=1
@@ -1385,6 +1489,7 @@ BUILD_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(
                 name="dep-clusterB-main-standalone-devices-5a8a8", count=1
@@ -1509,6 +1614,7 @@ BUILD_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "model-serving-decode": _deployment(
@@ -1540,6 +1646,7 @@ BUILD_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
         },
@@ -1621,6 +1728,7 @@ BUILD_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             # Written out because it's the only claim template that asks for
             # more than GPUs, which is all _claim_template builds.
@@ -1750,6 +1858,7 @@ BUILD_CASES = [
                         "persistentVolumeClaim": {"claimName": "modelcache-ml-team-qwen-17db2"},
                     },
                 ],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -1850,6 +1959,7 @@ BUILD_CASES = [
                         "persistentVolumeClaim": {"claimName": "modelcache-ml-team-qwen-17db2"},
                     },
                 ],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -1981,6 +2091,7 @@ BUILD_CASES = [
                         "persistentVolumeClaim": {"claimName": "modelcache-ml-team-qwen-17db2"},
                     },
                 ],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -4622,6 +4733,137 @@ BUILD_CASES = [
                     }
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                rollout_strategy={},
+            ),
+            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
+            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+        },
+    ),
+    # The gang sibling of StandaloneRolloutStrategy: the same engine fields,
+    # landed on the LWS's rolloutStrategy.rollingUpdateConfiguration.
+    BuildCase(
+        name="GangRolloutStrategy",
+        reason=(
+            "A Leader/Worker engine with a rollout strategy composes a LeaderWorkerSet carrying it as a "
+            "rollingUpdateConfiguration."
+        ),
+        backend=llmd.LLMDBackend(),
+        replica=_replica(
+            name="r",
+            namespace="ml-team",
+            cluster_name="cluster-a",
+            labels=None,
+            model_cache_ref=None,
+            serving=None,
+            engines=[
+                v1alpha1.Engine(
+                    name="main",
+                    copies=2,
+                    rolloutStrategy=v1alpha1.RolloutStrategy(
+                        rollingUpdate=v1alpha1.RollingUpdate(maxSurge=1, maxUnavailable=0)
+                    ),
+                    members=[
+                        v1alpha1.Member(
+                            role="Leader",
+                            nodePoolName="frontier",
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                        v1alpha1.Member(
+                            role="Worker",
+                            nodePoolName="frontier",
+                            worker=v1alpha1.Worker(nodes=1),
+                            deviceRequests=[
+                                v1alpha1.DeviceRequest(
+                                    name="gpu",
+                                    deviceClassName="gpu.nvidia.com",
+                                    count=8,
+                                    selectors=[
+                                        v1alpha1.Selector(
+                                            cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                        )
+                                    ],
+                                )
+                            ],
+                            template=v1alpha1.Template(
+                                spec=v1alpha1.Spec(
+                                    containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                                )
+                            ),
+                        ),
+                    ],
+                )
+            ],
+        ),
+        provider_config="cluster-a-pc",
+        serving_label="r",
+        stack="Standard",
+        want={
+            "model-serving-main": _leader_worker_set(
+                name="r-main-bb4e3",
+                serving="r",
+                leader_claim_template_name="r-main-leader-devices-f58c6",
+                worker_claim_template_name="r-main-worker-devices-99b8a",
+                replicas=2,
+                size=2,
+                leader_containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "resources": {"claims": [{"name": "devices"}]},
+                        "env": [
+                            {
+                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                "value": "$(LWS_LEADER_ADDRESS)",
+                            },
+                            {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                        ],
+                        "ports": [{"name": "http", "containerPort": 8000}],
+                        "readinessProbe": {
+                            "httpGet": {"path": "/health", "port": 8000},
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 10,
+                            "timeoutSeconds": 5,
+                        },
+                    }
+                ],
+                leader_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                worker_containers=[
+                    {
+                        "name": "engine",
+                        "image": "vllm/vllm-openai:latest",
+                        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                        "resources": {"claims": [{"name": "devices"}]},
+                        "env": [
+                            {
+                                "name": "MODELPLANE_LEADER_ADDRESS",
+                                "value": "$(LWS_LEADER_ADDRESS)",
+                            },
+                            {"name": "MODELPLANE_RANK", "value": "$(LWS_WORKER_INDEX)"},
+                        ],
+                    }
+                ],
+                worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                rollout_strategy={
+                    "type": "RollingUpdate",
+                    "rollingUpdateConfiguration": {"maxSurge": 1, "maxUnavailable": 0},
+                },
             ),
             "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
@@ -4746,6 +4988,7 @@ BUILD_CASES = [
                     }
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                rollout_strategy={},
             ),
             "resource-claim-main-leader": _claim_template(name="qwen2.5-main-leader-devices-5743a", count=8),
             "resource-claim-main-worker": _claim_template(name="qwen2.5-main-worker-devices-4d4ac", count=8),
@@ -4874,6 +5117,7 @@ BUILD_CASES = [
                     }
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                rollout_strategy={},
             ),
             "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
@@ -5004,6 +5248,7 @@ BUILD_CASES = [
                     {"name": "log-tail", "image": "busybox:1.36"},
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                rollout_strategy={},
             ),
             "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
@@ -5158,6 +5403,7 @@ BUILD_CASES = [
                     }
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                rollout_strategy={},
             ),
             "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
@@ -5276,6 +5522,7 @@ BUILD_CASES = [
                     }
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                rollout_strategy={},
             ),
             "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
@@ -5417,6 +5664,7 @@ BUILD_CASES = [
                         "persistentVolumeClaim": {"claimName": "modelcache-ml-team-c-c5cc6"},
                     },
                 ],
+                rollout_strategy={},
             ),
             "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
@@ -6049,6 +6297,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "model-serving-decode": _deployment(
@@ -6080,6 +6329,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
         },
@@ -6221,6 +6471,7 @@ APPLY_CASES = [
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                 ],
+                strategy={},
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "model-serving-decode": _deployment(
@@ -6255,6 +6506,7 @@ APPLY_CASES = [
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                 ],
+                strategy={},
             ),
             "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
@@ -6313,6 +6565,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "model-serving-decode": _deployment(
@@ -6344,6 +6597,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
         },
@@ -6492,6 +6746,7 @@ APPLY_CASES = [
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                 ],
+                strategy={},
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "model-serving-decode": _deployment(
@@ -6526,6 +6781,7 @@ APPLY_CASES = [
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                 ],
+                strategy={},
             ),
             "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
@@ -6647,6 +6903,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-alpha-standalone": _claim_template(name="r-alpha-standalone-devices-9ec1c", count=1),
             "model-serving-beta": _deployment(
@@ -6678,6 +6935,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-beta-standalone": _claim_template(name="r-beta-standalone-devices-9d8b1", count=1),
         },
@@ -6819,6 +7077,7 @@ APPLY_CASES = [
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                 ],
+                strategy={},
             ),
             "resource-claim-alpha-standalone": _claim_template(name="r-alpha-standalone-devices-9ec1c", count=1),
             "model-serving-beta": _deployment(
@@ -6853,6 +7112,7 @@ APPLY_CASES = [
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                 ],
+                strategy={},
             ),
             "resource-claim-beta-standalone": _claim_template(name="r-beta-standalone-devices-9d8b1", count=1),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
@@ -6913,6 +7173,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "scaling-group-decode": _scaling_group(pcs_name="r-decode-4b27b"),
@@ -7227,6 +7488,7 @@ APPLY_CASES = [
                 volumes=[
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                 ],
+                strategy={},
             ),
             "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
             "scaling-group-decode": _scaling_group(pcs_name="r-decode-4b27b"),
@@ -7437,6 +7699,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -7514,6 +7777,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
@@ -7591,6 +7855,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -7668,6 +7933,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
@@ -7745,6 +8011,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -7822,6 +8089,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
@@ -7902,6 +8170,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -8010,6 +8279,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
@@ -8113,6 +8383,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -8206,6 +8477,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
@@ -8285,6 +8557,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -8364,6 +8637,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
@@ -8448,6 +8722,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
         },
@@ -8525,6 +8800,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
@@ -8635,6 +8911,7 @@ APPLY_CASES = [
                     }
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                rollout_strategy={},
             ),
             "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
@@ -8776,6 +9053,7 @@ APPLY_CASES = [
                     }
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                rollout_strategy={},
             ),
             "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
             "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
@@ -8861,6 +9139,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(
                 name="qwen2.5-7b-abcde-main-standalone-devices-771a9", count=1
@@ -8940,6 +9219,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(
                 name="qwen2.5-7b-abcde-main-standalone-devices-771a9", count=1
@@ -9030,6 +9310,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="a" * 57 + "-05ced", count=1),
         },
@@ -9107,6 +9388,7 @@ APPLY_CASES = [
                     }
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                strategy={},
             ),
             "resource-claim-main-standalone": _claim_template(name="a" * 57 + "-05ced", count=1),
             "inference-pool": _inference_pool(
