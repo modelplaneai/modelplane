@@ -424,11 +424,11 @@ GROVE_QUEUE = "modelplane"
 
 
 # Response resource keys. A replica's HTTPRoute keeps a stable key; each engine's
-# workload gets an engine-scoped key and each member's claim a member-scoped one
-# (the engine name plus the member role) so a multi-engine replica's resources
-# don't collide in the response map.
+# workload gets a key scoped by its backend and engine, and each member's claim
+# a member-scoped one (the engine name plus the member role) so a multi-engine
+# replica's resources don't collide in the response map.
 ROUTE_KEY = "model-route"
-_WORKLOAD_KEY = "model-serving"
+_WORKLOAD_KEY = "workload"
 _SCALING_GROUP_KEY = "scaling-group"
 _CLAIM_KEY = "resource-claim"
 
@@ -442,9 +442,26 @@ _CLAIM_KEY = "resource-claim"
 REQUEST_TIMEOUT = "0s"
 
 
-def workload_key(engine: v1alpha1.Engine) -> str:
-    """Response key for an engine's workload (Deployment, LeaderWorkerSet, or PodCliqueSet)."""
-    return f"{_WORKLOAD_KEY}-{engine.name}"
+def workload_key(engine: v1alpha1.Engine, backend: str) -> str:
+    """Response key for an engine's workload (Deployment, LeaderWorkerSet, or PodCliqueSet).
+
+    Each backend composes one kind of workload, so the key changes when the
+    engine's kind does. provider-kubernetes reads and deletes only the resource
+    an Object's manifest names, so an Object whose manifest changed kind would
+    leave the old workload running, still holding its devices. Under a new key
+    Crossplane deletes the old Object, which deletes the old workload.
+    """
+    return f"{_WORKLOAD_KEY}-{backend}-{engine.name}"
+
+
+def engine_workload_key(engine: v1alpha1.Engine, stack: str) -> str:
+    """workload_key of an engine under the cluster's stack.
+
+    Each backend composes its engines' workloads under its own key, and the
+    stack picks the backend, so one call settles the key instead of every
+    caller repeating select_backend.
+    """
+    return workload_key(engine, select_backend(engine, stack))
 
 
 def scaling_group_key(engine: v1alpha1.Engine) -> str:
@@ -474,9 +491,9 @@ def claim_key(engine: v1alpha1.Engine, member: v1alpha1.Member) -> str:
     return f"{_CLAIM_KEY}-{engine.name}-{member_role(member)}"
 
 
-def workload_keys(replica: v1alpha1.ModelReplica) -> list[str]:
+def workload_keys(replica: v1alpha1.ModelReplica, stack: str) -> list[str]:
     """Response keys of every engine's workload, in engine order."""
-    return [workload_key(g) for g in replica.spec.engines]
+    return [engine_workload_key(g, stack) for g in replica.spec.engines]
 
 
 # DRA API the ResourceClaimTemplate targets. The manifest is a raw dict wrapped
@@ -606,10 +623,11 @@ def observed_status(observed: Mapping[str, fnv1.Resource], key: str) -> dict | N
     return status if isinstance(status, dict) else {}
 
 
-def ready_replicas(engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource]) -> int:
+def ready_replicas(key: str, observed: Mapping[str, fnv1.Resource]) -> int:
     """An engine's ready copies from its Deployment's ready pods or its
-    LeaderWorkerSet's ready groups. Both leave readyReplicas out at 0."""
-    status = observed_status(observed, workload_key(engine)) or {}
+    LeaderWorkerSet's ready groups, observed under key. Both leave
+    readyReplicas out at 0."""
+    status = observed_status(observed, key) or {}
     return int(status.get("readyReplicas") or 0)
 
 

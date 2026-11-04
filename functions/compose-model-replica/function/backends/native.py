@@ -126,7 +126,7 @@ class NativeBackend:
         }
 
         composed = {
-            base.workload_key(engine): base.wrap_object(
+            base.workload_key(engine, base.NATIVE): base.wrap_object(
                 provider_config, deployment, cel_query=base.DEPLOYMENT_ALL_COPIES_READY_CEL, watch=True
             ),
         }
@@ -139,4 +139,4 @@ class NativeBackend:
 
     def ready_copies(self, engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource]) -> int:
         """How many copies of the engine are ready, from its observed workload."""
-        return base.ready_replicas(engine, observed)
+        return base.ready_replicas(base.workload_key(engine, base.NATIVE), observed)

@@ -163,7 +163,7 @@ class LLMDBackend:
         }
 
         composed = {
-            base.workload_key(engine): base.wrap_object(
+            base.workload_key(engine, base.LLMD): base.wrap_object(
                 provider_config, leader_worker_set, cel_query=base.LWS_ALL_COPIES_READY_CEL, watch=True
             ),
         }
@@ -179,4 +179,4 @@ class LLMDBackend:
 
     def ready_copies(self, engine: v1alpha1.Engine, observed: Mapping[str, fnv1.Resource]) -> int:
         """How many copies of the engine are ready, from its observed workload."""
-        return base.ready_replicas(engine, observed)
+        return base.ready_replicas(base.workload_key(engine, base.LLMD), observed)
