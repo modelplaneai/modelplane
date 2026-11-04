@@ -240,6 +240,38 @@ independently:
 - **`worker.nodes`** sets how many nodes one gang spans: a `Leader` plus that
   many `Worker` pods. It's how big one multi-node engine is.
 
+## Controlling how engine copies update
+
+When a member template changes, the engine's copies of one replica roll to the
+new revision. By default they roll one at a time: the composed workload starts
+from `maxSurge: 0` and `maxUnavailable: 1`, so a copy stops and updates while
+the rest keep serving, and no copy goes down unless another is already serving.
+That suits a full node, where there is no spare capacity for a new copy.
+
+Set `engines[].rolloutStrategy.rollingUpdate` to change it:
+
+```yaml
+engines:
+- name: qwen3-8b
+  copies: 2
+  rolloutStrategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+```
+
+`maxSurge` is how many extra copies may exist above `copies` during the update,
+and `maxUnavailable` how many may be down. Each is a count or a percentage,
+like a Deployment's. `maxSurge: 1` with `maxUnavailable: 0` starts the updated
+copy before stopping an old one, keeping full capacity, but the node pool needs
+room for one extra copy: on a single-copy engine on a pool that can grow, that
+combination is the only zero-downtime option; on a full node it just stalls the
+rollout.
+
+The field reaches the LeaderWorkerSet of a Leader/Worker engine and the
+Deployment of a Standalone one. Engines on a Grove stack ignore it, since
+PodCliqueSet has no rollout strategy.
+
 ## Scaling
 
 `spec.replicas` is the only scaling axis. Each replica is a complete,
