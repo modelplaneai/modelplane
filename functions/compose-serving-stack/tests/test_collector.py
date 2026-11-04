@@ -186,14 +186,12 @@ def _config(
                                 # 8000, and another container may name a port
                                 # http.
                                 {
-                                    "source_labels": ["__meta_kubernetes_pod_container_port_name"],
+                                    "source_labels": [
+                                        "__meta_kubernetes_pod_container_name",
+                                        "__meta_kubernetes_pod_container_port_name",
+                                    ],
                                     "action": "keep",
-                                    "regex": "http",
-                                },
-                                {
-                                    "source_labels": ["__meta_kubernetes_pod_container_name"],
-                                    "action": "keep",
-                                    "regex": "engine|epp",
+                                    "regex": "(engine|epp);http|main;system",
                                 },
                                 {
                                     "source_labels": ["__meta_kubernetes_pod_label_modelplane_ai_deployment"],
@@ -1240,7 +1238,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="ed6e1a2446fa88db",
+                    config_hash="0fa998e125d0ab67",
                     volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                     volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                     env_from=None,
@@ -1285,7 +1283,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="01749001b45477d3",
+                    config_hash="44e8725f569955e3",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -1352,7 +1350,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="4abf1d7de91ea0e6",
+                    config_hash="99bdd45bc618f16e",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-vendor", "secret": {"secretName": "vendor-token"}},

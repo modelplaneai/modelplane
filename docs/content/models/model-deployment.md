@@ -72,11 +72,9 @@ Modelplane injects the gang's coordination env, so a worker's command can find
 the leader and its own rank. `$(MODELPLANE_LEADER_ADDRESS)` is the leader's
 address on either [serving stack]({{< ref "/platform/inference-cluster.md#serving-stack" >}}).
 `$(MODELPLANE_RANK)` is the pod's node rank (0 on the leader, `1..N` on the
-workers) on Standard, but isn't injected on Dynamo yet
-([#418](https://github.com/modelplaneai/modelplane/issues/418)). A gang on Dynamo
-derives its rank from Grove's `GROVE_PCLQ_POD_INDEX` instead,
-`$$((GROVE_PCLQ_POD_INDEX + 1))` on the workers (`$$` escapes Kubernetes' own
-expansion, leaving `$((...))` for the shell).
+workers) on both stacks. On Dynamo these alias the DGD operator's topology
+variables; use Dynamo runtime images and commands as shown in
+[multi-node serving on Dynamo]({{< ref "/guides/serving-multi-node-on-dynamo.md" >}}).
 
 A member's `env` can read pod fields through `valueFrom.fieldRef`, like setting
 vLLM's `VLLM_HOST_IP` from `status.podIP`, which multi-NIC RDMA nodes need so the
@@ -94,7 +92,7 @@ can sit on the GPU class that suits it.
 ```yaml {nocopy=true}
 serving:
   mode: PrefillDecode       # the two engines below are one P/D pair
-  router: EndpointPicker    # required under PrefillDecode
+  router: EndpointPicker    # required on Standard; omit on Dynamo
   endpointPicker:           # required with router
     template: {...}         # the picker container
     config: {...}           # the picker configuration
@@ -105,11 +103,16 @@ engines:
   phase: Decode
 ```
 
-A `PrefillDecode` deployment writes its own routing. The endpoint picker's
+A `PrefillDecode` deployment on Standard writes its own routing. The endpoint picker's
 configuration must suit your engines, and the llm-d sidecar in the decode pod
 must match their KV connector. Set `serving.router: EndpointPicker` and
 `serving.endpointPicker`, as [Configure Routing]({{< ref "routing.md" >}})
 describes. The disaggregated example below is a complete vLLM pair.
+
+On Dynamo, omit `serving.router` and `serving.endpointPicker`. The DGD frontend
+routes between the prefill and decode components. Launch both with the Dynamo
+runtime and the backend's disaggregation and KV-transfer flags; application
+sidecars remain in their member templates.
 
 Disaggregation pays off for large models under load with strict latency targets
 and long context. For small models or low traffic, the KV-transfer overhead

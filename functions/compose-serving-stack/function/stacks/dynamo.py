@@ -16,7 +16,8 @@
 
 Grove gang-schedules a multi-node engine as a PodCliqueSet, handing the
 gang decision to the KAI Scheduler, and the shared ModelExpress server
-coordinates P2P weight transfer between engine pods.
+coordinates P2P weight transfer between engine pods. The Dynamo operator owns
+DGD admission, runtime discovery, and lowering graphs into Grove workloads.
 
 kai-scheduler lives here, not in the cloud halves, because it is
 contract surface, not hardware surface: compose-model-replica names it
@@ -96,7 +97,8 @@ COMPONENTS: list[Component] = [
         namespace="grove-system",
         chart="grove-charts",
         repository="oci://ghcr.io/ai-dynamo/grove",
-        version="v0.1.0-alpha.12-rc2",
+        version="v0.1.0-alpha.15",
+        wait=True,
     ),
     Chart(
         key="kai-scheduler",
@@ -104,10 +106,21 @@ COMPONENTS: list[Component] = [
         namespace="kai-scheduler",
         chart="kai-scheduler",
         repository="oci://ghcr.io/kai-scheduler/kai-scheduler",
-        version="v0.16.8",
+        version="v0.17.0",
         # The Queue CRs below depend on this chart: KAI must serve the
         # Queue CRD and its webhook before they are first applied.
         wait=True,
+    ),
+    Chart(
+        key="dynamo-operator",
+        release="mp-dynamo-platform-nightly",
+        namespace="dynamo-system",
+        chart="dynamo-platform-nightly",
+        repository="https://helm.ngc.nvidia.com/nvidia/ai-dynamo",
+        version="1.7.0-dev.20261103.ge37f0b9",
+        depends_on=["grove", "kai-scheduler"],
+        wait=True,
+        values={"global": {"grove": {"enabled": True}, "kai-scheduler": {"enabled": True}}},
     ),
     # KAI refuses to schedule a pod whose queue doesn't exist. Its chart
     # installs a default hierarchy, but nothing ties Modelplane's

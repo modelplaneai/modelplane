@@ -113,39 +113,41 @@ must meet what Modelplane would otherwise set up for you:
 `spec.stack` selects the serving layer the cluster runs: `Standard` (the default)
 or `Dynamo`. The field is immutable, so recreate the cluster to change it.
 
-Both stacks compose a single-node engine the same way, as a Deployment, and front
-it the same way, with Gateway API and an endpoint picker. They differ in how they
-run a multi-node gang and distribute its weights:
+Standard composes a single-node engine as a Deployment and a multi-node gang as
+a LeaderWorkerSet. An InferencePool and endpoint picker route requests to the
+engines.
 
-- **Standard** composes a gang as a LeaderWorkerSet. It has no gang scheduler, so
-  the pods schedule independently.
-- **Dynamo** installs NVIDIA's [Grove](https://github.com/ai-dynamo/grove) and the
-  [KAI Scheduler](https://github.com/NVIDIA/KAI-Scheduler) in place of the
-  LeaderWorkerSet controller, and composes a gang as a Grove `PodCliqueSet` that
-  they gang-schedule all-or-nothing and topology-aware. It also runs a
-  [ModelExpress](https://github.com/ai-dynamo/modelexpress) server that moves
-  weights between replicas over the fabric. A later replica pulls a model from a
-  peer's GPU rather than reading storage again.
+Dynamo installs the Dynamo operator, [Grove](https://github.com/ai-dynamo/grove),
+the [KAI Scheduler](https://github.com/NVIDIA/KAI-Scheduler), and
+[ModelExpress](https://github.com/ai-dynamo/modelexpress). Modelplane composes one
+`DynamoGraphDeployment` per `ModelReplica`, including a shared frontend and a
+component for every engine. The operator owns runtime discovery, workloads,
+probes, and Grove gang scheduling. Modelplane owns device claims and placement.
 
-A `ModelDeployment` looks the same on either stack. On `Dynamo` an engine can
-opt into peer-to-peer weight loading with `--load-format modelexpress`. An
-engine that does this will work on `Standard` too, but won't load weights
-peer-to-peer. See
-[model caching]({{< ref "/models/model-cache.md#accelerating-with-modelexpress" >}})
-for more details.
+Dynamo engines must use a Dynamo runtime image and launch `dynamo.vllm`,
+`dynamo.sglang`, or `dynamo.trtllm`. All engines in one graph use the same backend.
+Commands, arguments, environment, and existing sidecars pass through; the engine
+container becomes `main` in the DGD. `main` is reserved and cannot name a sidecar.
+The stack pins the 1.7 nightly chart `1.7.0-dev.20261103.ge37f0b9`, with runtime
+images tagged `20261103-e37f0b9`. For those images Modelplane sets
+`runtimeVersionOverride: 1.7.0` on DGD components because the date tag has no
+semantic version. Other image tags must identify the Dynamo runtime version so
+DGD admission can resolve compatibility. The frontend uses the first engine's runtime image,
+image pull secrets, environment, and model cache.
 
-{{< hint "note" >}}
-A multi-node gang on `Dynamo` derives its node rank from Grove's
-`GROVE_PCLQ_POD_INDEX`, because Modelplane doesn't inject `$(MODELPLANE_RANK)`
-there yet. This is a temporary gap, not by design:
-[#418](https://github.com/modelplaneai/modelplane/issues/418) tracks closing it,
-so a gang command reads the same on both stacks.
-[Multi-node deployments]({{< ref "/models/model-deployment.md#multi-node" >}}) show
-the rank a gang computes until then.
-{{< /hint >}}
+Omit `serving.router` and `serving.endpointPicker` on Dynamo. Its frontend handles
+both Unified and PrefillDecode serving, including KV transfer. On Standard,
+PrefillDecode still requires an endpoint picker and its engine-side KV connector.
+This cluster-dependent requirement is checked during composition.
 
-Composing a full Dynamo graph deployment, for its frontend and request routing,
-is planned.
+For a multi-node Dynamo engine, `$(MODELPLANE_LEADER_ADDRESS)` and
+`$(MODELPLANE_RANK)` alias the operator's topology variables. Each member keeps
+its own command, sidecars, node pool, and DRA claim. See
+[multi-node serving on Dynamo]({{< ref "/guides/serving-multi-node-on-dynamo.md" >}}).
+
+Dynamo engines can opt into peer-to-peer weight loading with
+`--load-format modelexpress`. See
+[model caching]({{< ref "/models/model-cache.md#accelerating-with-modelexpress" >}}).
 
 ## Capacity reservations
 

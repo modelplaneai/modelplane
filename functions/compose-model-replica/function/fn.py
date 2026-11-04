@@ -18,9 +18,9 @@ This function reads the referenced InferenceCluster via required resources, then
 composes the cluster-level serving resources for each of the replica's worker
 engines. An engine's member roles select its backend: a Standalone member composes
 to a Deployment (native), a Leader plus Worker to the cluster's chosen multi-node
-backend - a LeaderWorkerSet (llm-d) or a PodCliqueSet (Grove), per the
-InferenceCluster's stack. One HTTPRoute, InferencePool and endpoint picker
-front all of a replica's engines.
+backend - a LeaderWorkerSet (llm-d) or a DynamoGraphDeployment (Dynamo), per the
+InferenceCluster's stack. Standard uses an InferencePool and endpoint picker. Dynamo composes one graph
+with a shared runtime frontend. Both expose an HTTPRoute.
 
 Each member's template is a curated subset of PodTemplateSpec. The container
 named "engine" is the inference engine; its image, command, and args are passed
@@ -36,8 +36,8 @@ from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
-from function import observation, routing
-from function.backends import base, grove, llmd, native
+from function import dynamo, observation, routing
+from function.backends import base, llmd, native
 
 # Condition types and reasons for the ModelReplica XR.
 CONDITION_TYPE_MODEL_ACCEPTED = "ModelAccepted"
@@ -60,7 +60,6 @@ CONDITION_REASON_MODEL_STARTING = "ModelStarting"
 _BACKENDS = {
     base.NATIVE: native.NativeBackend,
     base.LLMD: llmd.LLMDBackend,
-    base.GROVE: grove.GroveBackend,
 }
 
 
@@ -157,13 +156,10 @@ class Composer:
     def compose_model_serving(self) -> None:
         """Compose each engine's workload, then the replica's routing surface.
 
-        Every engine composes to a Deployment, LeaderWorkerSet, or PodCliqueSet (with its
-        members' ResourceClaimTemplates) via the backend its roles select; the
-        backends build no routing. routing.apply then fronts the engines with an
-        InferencePool and endpoint picker, whose scoring serving.mode selects.
-        Everything lands in the namespace mirroring the replica's own. A
-        PrefillDecode replica that lacks its routing gets a fatal result and
-        composes nothing.
+        Standard engines use Deployments or LeaderWorkerSets, fronted by an
+        InferencePool and endpoint picker. Dynamo engines share one graph and
+        runtime frontend. Each member keeps its device claims and placement.
+        All resources land in the namespace mirroring the replica's own.
         """
         # resolve_inputs runs first and returns False unless the cluster's
         # status.providerConfigRef.name is set, so it's present here.
@@ -173,7 +169,7 @@ class Composer:
         # its value (Standard or Dynamo). Coalesce for the type checker, which
         # sees the field as optional.
         stack = self.ic.spec.stack or "Standard"
-        if routing.prefill_decode_routing_missing(self.xr):
+        if stack != "Dynamo" and routing.prefill_decode_routing_missing(self.xr):
             # Stop rather than compose a router the engines can't use. A fatal
             # result leaves the replica's existing resources as they are, so an
             # existing pair keeps serving until its ModelDeployment writes its
@@ -188,17 +184,23 @@ class Composer:
             # for the same reason as above: existing resources hold.
             response.fatal(self.rsp, invalid)
             return
-        if routing.decode_without_sidecar(self.xr):
+        if stack != "Dynamo" and routing.decode_without_sidecar(self.xr):
             response.warning(
                 self.rsp,
                 "The Decode engine's serving pod has no container beside the engine. llm-d's picker sends "
                 "prefill through a sidecar in the decode pod, so without one every request skips prefill.",
             )
-        label = base.serving_label(self.xr)
-        composed: dict[str, k8sobjv1alpha1.Object] = {}
-        for engine in self.xr.spec.engines:
-            backend = _BACKENDS[base.select_backend(engine, stack)]()
-            composed.update(backend.build(self.xr, engine, pc, label, stack))
+        if stack == "Dynamo":
+            if invalid := dynamo.validate(self.xr):
+                response.fatal(self.rsp, invalid)
+                return
+            composed = dynamo.build(self.xr, pc)
+        else:
+            label = base.serving_label(self.xr)
+            composed: dict[str, k8sobjv1alpha1.Object] = {}
+            for engine in self.xr.spec.engines:
+                backend = _BACKENDS[base.select_backend(engine, stack)]()
+                composed.update(backend.build(self.xr, engine, pc, label, stack))
         composed = routing.apply(composed, self.xr, pc, stack)
         for key, obj in composed.items():
             resource.update(self.rsp.desired.resources[key], obj)
@@ -249,20 +251,27 @@ class Composer:
         # resolve_inputs ran first, so the cluster is resolved.
         assert self.ic
         stack = self.ic.spec.stack or "Standard"
-        workloads = set(base.workload_keys(self.xr, stack)) | {base.scaling_group_key(e) for e in engines}
+        workloads = set(base.workload_keys(self.xr, stack))
         # The endpoint picker, the routing in front of it, and the engines'
         # claim templates.
         others_ready = all(ready(k) for k in keys - workloads)
 
         copies = {e.name: int(e.copies or 1) for e in engines}
         ready_copies = {
-            e.name: min(_BACKENDS[base.select_backend(e, stack)]().ready_copies(e, observed), copies[e.name])
+            e.name: min(
+                dynamo.ready_copies(e, observed)
+                if stack == "Dynamo"
+                else _BACKENDS[base.select_backend(e, stack)]().ready_copies(e, observed),
+                copies[e.name],
+            )
             for e in engines
         }
 
         accepted = all(self._workload_accepted(k) for k in base.workload_keys(self.xr, stack))
         copy_each = all(ready_copies[name] > 0 for name in copies)
         serving = accepted and others_ready and copy_each
+        if stack == "Dynamo":
+            serving = serving and dynamo.frontend_ready(observed)
         full = serving and all(ready(k) for k in keys)
 
         if serving and sum(ready_copies.values()) < sum(copies.values()):

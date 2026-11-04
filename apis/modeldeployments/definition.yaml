@@ -142,8 +142,6 @@ spec:
                           message: "serving.endpointPicker may only be set when serving.router is EndpointPicker"
                         - rule: "!has(self.router) || has(self.endpointPicker)"
                           message: "serving.router EndpointPicker requires serving.endpointPicker with its template"
-                        - rule: "self.mode != 'PrefillDecode' || (has(self.router) && self.router == 'EndpointPicker')"
-                          message: "PrefillDecode serving requires serving.router EndpointPicker and serving.endpointPicker"
                         description: >-
                           How the deployment is served from the cluster edge to its
                           engines. Modelplane fronts the serving pods with an
@@ -166,7 +164,8 @@ spec:
                             type: string
                             enum: [EndpointPicker]
                             description: >-
-                              The router the user writes. Required under PrefillDecode.
+                              The router the user writes on Standard clusters. Required under PrefillDecode
+                              on Standard; omit on Dynamo, which uses its runtime frontend.
                               Omitted, under Unified, Modelplane routes the deployment with
                               its default picker configuration. EndpointPicker runs the
                               endpoint picker set in endpointPicker, and the user writes any
@@ -398,8 +397,7 @@ spec:
                                 scaling happens by adding ModelReplicas
                                 (spec.replicas), never by varying copies. Maps to the
                                 composed Deployment's or LeaderWorkerSet's replica count,
-                                or a Grove PodCliqueSet's podCliqueScalingGroups[].replicas
-                                (its spec.replicas stays 1). Defaults to 1.
+                                or a DynamoGraphDeployment component's replicas. Defaults to 1.
                               default: 1
                               minimum: 1
                               maximum: 64

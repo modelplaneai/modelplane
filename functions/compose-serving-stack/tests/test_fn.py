@@ -1394,14 +1394,12 @@ def _collector_config(
                                     "regex": ".+",
                                 },
                                 {
-                                    "source_labels": ["__meta_kubernetes_pod_container_port_name"],
+                                    "source_labels": [
+                                        "__meta_kubernetes_pod_container_name",
+                                        "__meta_kubernetes_pod_container_port_name",
+                                    ],
                                     "action": "keep",
-                                    "regex": "http",
-                                },
-                                {
-                                    "source_labels": ["__meta_kubernetes_pod_container_name"],
-                                    "action": "keep",
-                                    "regex": "engine|epp",
+                                    "regex": "(engine|epp);http|main;system",
                                 },
                                 {
                                     "source_labels": ["__meta_kubernetes_pod_label_modelplane_ai_deployment"],
@@ -1971,6 +1969,22 @@ COMPOSE_CASES = [
                         by_kind="Object",
                         by_key="kai-queue-root",
                     ),
+                    "usage-grove-by-dynamo-operator": _usage(
+                        of_api_version="helm.m.crossplane.io/v1beta1",
+                        of_kind="Release",
+                        of_key="grove",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="dynamo-operator",
+                    ),
+                    "usage-kai-scheduler-by-dynamo-operator": _usage(
+                        of_api_version="helm.m.crossplane.io/v1beta1",
+                        of_kind="Release",
+                        of_key="kai-scheduler",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="dynamo-operator",
+                    ),
                     "usage-kai-scheduler-by-kai-queue": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
                         of_kind="Release",
@@ -2123,9 +2137,11 @@ COMPOSE_CASES = [
                                         "chart": {
                                             "name": "grove-charts",
                                             "repository": "oci://ghcr.io/ai-dynamo/grove",
-                                            "version": "v0.1.0-alpha.12-rc2",
+                                            "version": "v0.1.0-alpha.15",
                                         },
                                         "namespace": "grove-system",
+                                        "wait": True,
+                                        "waitTimeout": "10m",
                                     },
                                 },
                             }
@@ -2149,7 +2165,7 @@ COMPOSE_CASES = [
                                         "chart": {
                                             "name": "kai-scheduler",
                                             "repository": "oci://ghcr.io/kai-scheduler/kai-scheduler",
-                                            "version": "v0.16.8",
+                                            "version": "v0.17.0",
                                         },
                                         "namespace": "kai-scheduler",
                                         "wait": True,
@@ -2410,6 +2426,22 @@ COMPOSE_CASES = [
                         by_kind="Object",
                         by_key="kai-queue-root",
                     ),
+                    "usage-grove-by-dynamo-operator": _usage(
+                        of_api_version="helm.m.crossplane.io/v1beta1",
+                        of_kind="Release",
+                        of_key="grove",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="dynamo-operator",
+                    ),
+                    "usage-kai-scheduler-by-dynamo-operator": _usage(
+                        of_api_version="helm.m.crossplane.io/v1beta1",
+                        of_kind="Release",
+                        of_key="kai-scheduler",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="dynamo-operator",
+                    ),
                     "usage-kai-scheduler-by-kai-queue": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
                         of_kind="Release",
@@ -2508,6 +2540,7 @@ COMPOSE_CASES = [
                     "trust-manager": _observed_ready(),
                     "dra-driver-critical-pods-quota": _observed_ready(),
                     "grove": _observed_ready(),
+                    "dynamo-operator": _observed_ready(),
                     "kai-scheduler": _observed_ready(),
                     "kai-queue-root": _observed_ready(),
                     "kai-queue": _observed_ready(),
@@ -2710,6 +2743,38 @@ COMPOSE_CASES = [
                     "trust-manager": _trust_manager(ready=fnv1.READY_TRUE),
                     "cluster-agent": _cluster_agent(ready=fnv1.READY_TRUE),
                     "dra-driver-critical-pods-quota": _dra_driver_critical_pods_quota(ready=fnv1.READY_TRUE),
+                    "dynamo-operator": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                                "kind": "Release",
+                                "metadata": {
+                                    "annotations": {"crossplane.io/external-name": "mp-dynamo-platform-nightly"},
+                                    "labels": {"modelplane.ai/resource": "dynamo-operator"},
+                                },
+                                "spec": {
+                                    "providerConfigRef": {
+                                        "kind": "ProviderConfig",
+                                        "name": "test-backend-cluster-63fde",
+                                    },
+                                    "forProvider": {
+                                        "chart": {
+                                            "name": "dynamo-platform-nightly",
+                                            "repository": "https://helm.ngc.nvidia.com/nvidia/ai-dynamo",
+                                            "version": "1.7.0-dev.20261103.ge37f0b9",
+                                        },
+                                        "namespace": "dynamo-system",
+                                        "wait": True,
+                                        "waitTimeout": "10m",
+                                        "values": {
+                                            "global": {"grove": {"enabled": True}, "kai-scheduler": {"enabled": True}}
+                                        },
+                                    },
+                                },
+                            }
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
                     "grove": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
@@ -2728,9 +2793,11 @@ COMPOSE_CASES = [
                                         "chart": {
                                             "name": "grove-charts",
                                             "repository": "oci://ghcr.io/ai-dynamo/grove",
-                                            "version": "v0.1.0-alpha.12-rc2",
+                                            "version": "v0.1.0-alpha.15",
                                         },
                                         "namespace": "grove-system",
+                                        "wait": True,
+                                        "waitTimeout": "10m",
                                     },
                                 },
                             }
@@ -2755,7 +2822,7 @@ COMPOSE_CASES = [
                                         "chart": {
                                             "name": "kai-scheduler",
                                             "repository": "oci://ghcr.io/kai-scheduler/kai-scheduler",
-                                            "version": "v0.16.8",
+                                            "version": "v0.17.0",
                                         },
                                         "namespace": "kai-scheduler",
                                         "wait": True,
@@ -3160,6 +3227,22 @@ COMPOSE_CASES = [
                         by_api_version="kubernetes.m.crossplane.io/v1alpha1",
                         by_kind="Object",
                         by_key="kai-queue-root",
+                    ),
+                    "usage-grove-by-dynamo-operator": _usage(
+                        of_api_version="helm.m.crossplane.io/v1beta1",
+                        of_kind="Release",
+                        of_key="grove",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="dynamo-operator",
+                    ),
+                    "usage-kai-scheduler-by-dynamo-operator": _usage(
+                        of_api_version="helm.m.crossplane.io/v1beta1",
+                        of_kind="Release",
+                        of_key="kai-scheduler",
+                        by_api_version="helm.m.crossplane.io/v1beta1",
+                        by_kind="Release",
+                        by_key="dynamo-operator",
                     ),
                     "usage-kai-scheduler-by-kai-queue": _usage(
                         of_api_version="helm.m.crossplane.io/v1beta1",
@@ -4726,7 +4809,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="e4e26049f9c409ed",
+                        config_hash="6e63064cdb998d52",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5043,7 +5126,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                     ),
                     "collector": _collector(
-                        config_hash="c053b356fa878457",
+                        config_hash="d840617aef4c245b",
                         volumes=[
                             {"name": "config", "configMap": {"name": "modelplane-collector"}},
                             {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -5328,7 +5411,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="d413599cd033eb66",
+                        config_hash="ab1ecbf8210e72e2",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5589,7 +5672,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="3361552a8e3ea3fd",
+                        config_hash="e7149eefe60a8b73",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5878,7 +5961,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="e4e26049f9c409ed",
+                        config_hash="6e63064cdb998d52",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -6259,6 +6342,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-gpu-operator-by-nvsentinel": _observed_ready(),
                     "usage-node-feature-discovery-by-gpu-operator": _observed_ready(),
                     "grove": _observed_ready(),
+                    "dynamo-operator": _observed_ready(),
                     "kai-queue": _observed_ready(),
                     "kai-queue-root": _observed_ready(),
                     "kai-scheduler": _observed_ready(),
@@ -6328,6 +6412,9 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gpu-operator-by-dcgm-exporter-clusterrolebinding",
             "usage-node-feature-discovery-by-gpu-operator",
             # The Dynamo stack.
+            "dynamo-operator",
+            "usage-grove-by-dynamo-operator",
+            "usage-kai-scheduler-by-dynamo-operator",
             "grove",
             "kai-queue",
             "kai-queue-root",
@@ -6554,6 +6641,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "gpu-operator-manifests": _observed_ready(),
                     "usage-gpu-operator-by-gpu-operator-manifests": _observed_ready(),
                     "grove": _observed_ready(),
+                    "dynamo-operator": _observed_ready(),
                     "kai-queue": _observed_ready(),
                     "kai-queue-root": _observed_ready(),
                     "kai-scheduler": _observed_ready(),
@@ -6626,6 +6714,9 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "gpu-operator-manifests",
             "usage-gpu-operator-by-gpu-operator-manifests",
             # The Dynamo stack.
+            "dynamo-operator",
+            "usage-grove-by-dynamo-operator",
+            "usage-kai-scheduler-by-dynamo-operator",
             "grove",
             "kai-queue",
             "kai-queue-root",
@@ -6856,6 +6947,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-gpu-operator-pre-manifests-aicr-gke-critical-pods-by-gpu-operator": _observed_ready(),
                     "usage-gpu-operator-pre-manifests-gpu-operator-by-gpu-operator": _observed_ready(),
                     "grove": _observed_ready(),
+                    "dynamo-operator": _observed_ready(),
                     "kai-queue": _observed_ready(),
                     "kai-queue-root": _observed_ready(),
                     "kai-scheduler": _observed_ready(),
@@ -6928,6 +7020,9 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gpu-operator-pre-manifests-aicr-gke-critical-pods-by-gpu-operator",
             "usage-gpu-operator-pre-manifests-gpu-operator-by-gpu-operator",
             # The Dynamo stack.
+            "dynamo-operator",
+            "usage-grove-by-dynamo-operator",
+            "usage-kai-scheduler-by-dynamo-operator",
             "grove",
             "kai-queue",
             "kai-queue-root",
@@ -7122,6 +7217,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "nvidia-dra-driver-gpu": _observed_ready(),
                     "dcgm-exporter": _observed_ready(),
                     "grove": _observed_ready(),
+                    "dynamo-operator": _observed_ready(),
                     "kai-queue": _observed_ready(),
                     "kai-queue-root": _observed_ready(),
                     "kai-scheduler": _observed_ready(),
@@ -7180,6 +7276,9 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "nvidia-dra-driver-gpu",
             "dcgm-exporter",
             # The Dynamo stack.
+            "dynamo-operator",
+            "usage-grove-by-dynamo-operator",
+            "usage-kai-scheduler-by-dynamo-operator",
             "grove",
             "kai-queue",
             "kai-queue-root",
@@ -7369,6 +7468,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "cert-manager": _observed_ready(),
                     "nvidia-dra-driver-gpu": _observed_ready(),
                     "grove": _observed_ready(),
+                    "dynamo-operator": _observed_ready(),
                     "kai-queue": _observed_ready(),
                     "kai-queue-root": _observed_ready(),
                     "kai-scheduler": _observed_ready(),
@@ -7426,6 +7526,9 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "cert-manager",
             "nvidia-dra-driver-gpu",
             # The Dynamo stack.
+            "dynamo-operator",
+            "usage-grove-by-dynamo-operator",
+            "usage-kai-scheduler-by-dynamo-operator",
             "grove",
             "kai-queue",
             "kai-queue-root",
@@ -7636,6 +7739,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-node-feature-discovery-by-gpu-operator": _observed_ready(),
                     "usage-gpu-operator-by-nvidia-dra-driver-gpu": _observed_ready(),
                     "grove": _observed_ready(),
+                    "dynamo-operator": _observed_ready(),
                     "kai-queue": _observed_ready(),
                     "kai-queue-root": _observed_ready(),
                     "kai-scheduler": _observed_ready(),
@@ -7704,6 +7808,9 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gpu-operator-by-dcgm-exporter-clusterrolebinding",
             "usage-gpu-operator-by-nvidia-dra-driver-gpu",
             # The Dynamo stack.
+            "dynamo-operator",
+            "usage-grove-by-dynamo-operator",
+            "usage-kai-scheduler-by-dynamo-operator",
             "grove",
             "kai-queue",
             "kai-queue-root",
@@ -7895,6 +8002,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "node-feature-discovery": _observed_ready(),
                     "nvidia-dra-driver-gpu": _observed_ready(),
                     "grove": _observed_ready(),
+                    "dynamo-operator": _observed_ready(),
                     "kai-queue": _observed_ready(),
                     "kai-queue-root": _observed_ready(),
                     "kai-scheduler": _observed_ready(),
@@ -7952,6 +8060,9 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
             # The Dynamo stack.
+            "dynamo-operator",
+            "usage-grove-by-dynamo-operator",
+            "usage-kai-scheduler-by-dynamo-operator",
             "grove",
             "kai-queue",
             "kai-queue-root",

@@ -48,6 +48,7 @@ from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
+from function import dynamo
 from function.backends import base
 
 
@@ -344,6 +345,19 @@ def apply(
     stack is the cluster's serving stack, which picks each engine's backend and
     so its workload's key in composed.
     """
+    if stack == "Dynamo":
+        out = dict(composed)
+        route = _http_route(replica, _name(replica.metadata))
+        route["spec"]["rules"][0]["backendRefs"] = [
+            {
+                "group": "",
+                "kind": "Service",
+                "name": f"{dynamo.graph_name(replica)}-frontend",
+                "port": 8000,
+            }
+        ]
+        out[base.ROUTE_KEY] = base.wrap_object(provider_config, route)
+        return out
     serving = replica.spec.serving
     if serving and serving.mode == "PrefillDecode":
         return _disaggregated(composed, replica, provider_config, stack)
@@ -426,15 +440,12 @@ def _disaggregated(
 def _serving_pod_templates(manifest: dict) -> list[dict]:
     """The serving pod target(s) of a workload that actually serve the API.
 
-    Normalizes the three workload shapes to {"labels": ..., "spec": ...}, a
+    Normalizes the Standard workload shapes to {"labels": ..., "spec": ...}, a
     mutable reference to the pod's labels and a mutable reference to its
     corev1.PodSpec, so callers don't need to know which workload kind they're
     decorating. A Deployment carries a PodTemplateSpec at spec.template and a
     LeaderWorkerSet one at spec.leaderWorkerTemplate.leaderTemplate (its
-    followers never serve) - both with labels under metadata. A Grove
-    PodCliqueSet's leader clique (the only clique that serves) is different: its
-    podSpec is a bare corev1.PodSpec with no metadata of its own, so its labels
-    live one level up, on the clique itself.
+    followers never serve) - both with labels under metadata.
     """
     spec = manifest["spec"]
     kind = manifest["kind"]
@@ -444,10 +455,7 @@ def _serving_pod_templates(manifest: dict) -> list[dict]:
     if kind == "LeaderWorkerSet":
         tmpl = spec["leaderWorkerTemplate"]["leaderTemplate"]
         return [{"labels": tmpl.setdefault("metadata", {}).setdefault("labels", {}), "spec": tmpl["spec"]}]
-    for clique in spec["template"]["cliques"]:
-        if clique["name"] == base.GROVE_LEADER_CLIQUE:
-            return [{"labels": clique.setdefault("labels", {}), "spec": clique["spec"]["podSpec"]}]
-    raise ValueError("PodCliqueSet manifest has no leader clique")
+    raise ValueError(f"Unsupported serving workload {kind}")
 
 
 def _label_role(obj: k8sobjv1alpha1.Object, *, role: str) -> None:
