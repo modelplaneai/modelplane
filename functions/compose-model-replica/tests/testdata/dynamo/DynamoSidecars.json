@@ -308,6 +308,14 @@
                                 {
                                   "name": "http",
                                   "containerPort": 8001
+                                },
+                                {
+                                  "name": "system",
+                                  "containerPort": 9090
+                                },
+                                {
+                                  "name": "nixl",
+                                  "containerPort": 19090
                                 }
                               ]
                             },
@@ -389,12 +397,20 @@
                                 {
                                   "name": "MODELPLANE_RANK",
                                   "value": "$(DYNAMO_RANK)"
+                                },
+                                {
+                                  "name": "NIXL_TELEMETRY_PROMETHEUS_PORT",
+                                  "value": "5557"
                                 }
                               ],
                               "ports": [
                                 {
                                   "name": "nixl",
                                   "containerPort": 5557
+                                },
+                                {
+                                  "name": "system",
+                                  "containerPort": 9090
                                 }
                               ]
                             },

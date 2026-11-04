@@ -20,6 +20,7 @@ snapshots updated by the code under test.
 """
 
 import asyncio
+import copy
 import dataclasses
 import json
 from pathlib import Path
@@ -136,3 +137,115 @@ def test_ready_copies(case: ReadyCopiesCase) -> None:
         )
     }
     assert dynamo.ready_copies(engine, observed) == case.want, case.reason
+
+
+@dataclasses.dataclass
+class RuntimePortsCase:
+    """Declared ports must retain the operator's runtime probe and telemetry contracts."""
+
+    name: str
+    reason: str
+    container: dict
+    want: dict
+
+
+RUNTIME_PORTS_CASES = [
+    RuntimePortsCase(
+        name="InheritedDefaults",
+        reason="Without authored ports or overrides, the operator supplies the default ports.",
+        container={"name": "main"},
+        want={"name": "main"},
+    ),
+    RuntimePortsCase(
+        name="DeclaredHTTP",
+        reason="An authored HTTP port keeps the named system probe and NIXL telemetry ports.",
+        container={"ports": [{"name": "http", "containerPort": 8001}]},
+        want={
+            "ports": [
+                {"name": "http", "containerPort": 8001},
+                {"name": "system", "containerPort": 9090},
+                {"name": "nixl", "containerPort": 19090},
+            ]
+        },
+    ),
+    RuntimePortsCase(
+        name="ExistingSystem",
+        reason="An existing system port is retained once and agrees with its runtime environment.",
+        container={"ports": [{"name": "system", "containerPort": 9090}]},
+        want={
+            "ports": [{"name": "system", "containerPort": 9090}, {"name": "nixl", "containerPort": 19090}],
+            "env": [{"name": "DYN_SYSTEM_PORT", "value": "9090"}],
+        },
+    ),
+    RuntimePortsCase(
+        name="ConfiguredSystem",
+        reason="A configured runtime system port becomes the named probe target.",
+        container={"env": [{"name": "DYN_SYSTEM_PORT", "value": "9091"}]},
+        want={
+            "env": [{"name": "DYN_SYSTEM_PORT", "value": "9091"}],
+            "ports": [{"name": "system", "containerPort": 9091}, {"name": "nixl", "containerPort": 19090}],
+        },
+    ),
+    RuntimePortsCase(
+        name="CustomDeclaredSystem",
+        reason="A custom named system port configures the runtime to listen on the same port.",
+        container={"ports": [{"name": "system", "containerPort": 9091}]},
+        want={
+            "ports": [{"name": "system", "containerPort": 9091}, {"name": "nixl", "containerPort": 19090}],
+            "env": [{"name": "DYN_SYSTEM_PORT", "value": "9091"}],
+        },
+    ),
+]
+
+
+@pytest.mark.parametrize("case", RUNTIME_PORTS_CASES, ids=lambda case: case.name)
+def test_runtime_ports(case: RuntimePortsCase) -> None:
+    """Preserve named probe targets when the operator replaces its port list."""
+    got = copy.deepcopy(case.container)  # noqa: MPT401  # The helper mutates its fresh container dump.
+    dynamo._runtime_ports(got)
+    assert got == case.want, case.reason
+
+
+@dataclasses.dataclass
+class InvalidRuntimePortsCase:
+    """Reject runtime settings that cannot agree with a Kubernetes named probe port."""
+
+    name: str
+    reason: str
+    container: dict
+    want: str
+
+
+INVALID_RUNTIME_PORTS_CASES = [
+    InvalidRuntimePortsCase(
+        name="ConflictingSystem",
+        reason="A declared port and a literal runtime environment override must agree.",
+        container={
+            "ports": [{"name": "system", "containerPort": 9090}],
+            "env": [{"name": "DYN_SYSTEM_PORT", "value": "9091"}],
+        },
+        want="Dynamo runtime port system must match DYN_SYSTEM_PORT",
+    ),
+    InvalidRuntimePortsCase(
+        name="DynamicSystem",
+        reason="An environment reference needs an explicit named port because its value is unknown at composition.",
+        container={
+            "env": [{"name": "DYN_SYSTEM_PORT", "valueFrom": {"secretKeyRef": {"name": "settings", "key": "port"}}}]
+        },
+        want="Declare the named system port when DYN_SYSTEM_PORT uses valueFrom",
+    ),
+    InvalidRuntimePortsCase(
+        name="NonTCPSystem",
+        reason="HTTP runtime probes require the named system port to use TCP.",
+        container={"ports": [{"name": "system", "containerPort": 9090, "protocol": "UDP"}]},
+        want="Dynamo runtime port system must use TCP",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", INVALID_RUNTIME_PORTS_CASES, ids=lambda case: case.name)
+def test_invalid_runtime_ports(case: InvalidRuntimePortsCase) -> None:
+    """Fail before composing a graph whose runtime probes cannot resolve correctly."""
+    container = copy.deepcopy(case.container)  # noqa: MPT401  # The helper mutates its fresh container dump.
+    with pytest.raises(ValueError, match=case.want):
+        dynamo._runtime_ports(container)

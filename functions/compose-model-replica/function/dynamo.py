@@ -33,6 +33,7 @@ FRONTEND = "frontend"
 # commit rather than a semantic runtime version, so DGD admission needs this.
 NIGHTLY_TAG = "20261103-e37f0b9"
 NIGHTLY_RUNTIME_VERSION = "1.7.0"
+_MAX_PORT = 65535
 READY_CEL = (
     "has(object.status) && has(object.status.observedGeneration) && "
     "object.status.observedGeneration == object.metadata.generation && "
@@ -69,6 +70,35 @@ def _runtime_version(member: v1alpha1.Member) -> dict[str, str]:
     return {}
 
 
+def _runtime_ports(container: dict) -> None:
+    """An explicit port list replaces operator defaults, so retain its runtime ports."""
+    env = {entry["name"]: entry for entry in container.get("env", [])}
+    defaults = [("system", "DYN_SYSTEM_PORT", 9090), ("nixl", "NIXL_TELEMETRY_PROMETHEUS_PORT", 19090)]
+    if not container.get("ports") and not any(variable in env for _, variable, _ in defaults):
+        return
+    ports = container.setdefault("ports", [])
+    for name, variable, default in defaults:
+        declared = next((port for port in ports if port.get("name") == name), None)
+        configured = env.get(variable)
+        if declared is not None:
+            if declared.get("protocol", "TCP") != "TCP":
+                raise ValueError(f"Dynamo runtime port {name} must use TCP")
+            if configured is None:
+                container.setdefault("env", []).append({"name": variable, "value": str(declared["containerPort"])})
+            elif "value" in configured and configured["value"] != str(declared["containerPort"]):
+                raise ValueError(f"Dynamo runtime port {name} must match {variable}")
+            continue
+        if configured is not None and "valueFrom" in configured:
+            raise ValueError(f"Declare the named {name} port when {variable} uses valueFrom")
+        try:
+            port = int(configured["value"]) if configured else default
+        except (ValueError, KeyError) as err:
+            raise ValueError(f"{variable} must be an integer port") from err
+        if not 1 <= port <= _MAX_PORT:
+            raise ValueError(f"{variable} must be between 1 and 65535")
+        ports.append({"name": name, "containerPort": port})
+
+
 def validate(replica: v1alpha1.ModelReplica) -> str | None:
     """Reject graph shapes that would lose user configuration or be rejected by DGD admission."""
     frameworks = set()
@@ -76,6 +106,7 @@ def validate(replica: v1alpha1.ModelReplica) -> str | None:
         for member in engine.members:
             try:
                 frameworks.add(_framework(member))
+                _runtime_ports(base.engine_container(member).model_dump(exclude_none=True))
             except ValueError as err:
                 return str(err)
             if any(c.name == "main" for c in member.template.spec.containers):
@@ -90,6 +121,7 @@ def validate(replica: v1alpha1.ModelReplica) -> str | None:
 def _pod_template(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine, member: v1alpha1.Member) -> dict:
     container = base.engine_container(member).model_dump(exclude_none=True)
     container["name"] = "main"
+    _runtime_ports(container)
     resources = base.engine_resources(base.engine_container(member), claim=bool(member.deviceRequests))
     if resources:
         container["resources"] = resources
