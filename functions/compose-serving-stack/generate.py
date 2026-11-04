@@ -700,6 +700,13 @@ MANAGED = {
         # them through the collector and a MetricMapping.
         (("podMonitor", "enabled"), False, "its CRD is dropped, and no Prometheus would read it"),
     ],
+    "nodewright-operator": [
+        (
+            ("controllerManager", "manager", "resources", "requests", "cpu"),
+            "500m",
+            "the chart's default; two replicas at the recipe's 1000m leave no room on the system pool",
+        ),
+    ],
 }
 
 # Values Modelplane adds that AICR's recipes carry no opinion on,
