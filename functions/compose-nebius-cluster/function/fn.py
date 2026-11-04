@@ -111,6 +111,9 @@ _CPU_TAINT_KEY = "modelplane.ai/cpu"
 _CPU_TAINT_VALUE = "true"
 _CPU_TAINT_EFFECT = "NO_SCHEDULE"
 
+# Annotation the provider sets on a managed resource with its external name.
+_ANNOTATION_EXTERNAL_NAME = "crossplane.io/external-name"
+
 # Management policies that exclude Delete, used for resources installed on the
 # workload cluster (the RWX StorageClass Object and the CSI driver Helm
 # Release). These exist only to configure the cluster and are only ever
@@ -154,6 +157,10 @@ runcmd:
 _CSI_CHART_REPO = "oci://cr.eu-north1.nebius.cloud/mk8s/helm"
 _CSI_CHART_NAME = "csi-mounted-fs-path"
 _CSI_CHART_VERSION = "0.1.6"
+# provider-helm installs a Release under its external name, which otherwise
+# defaults to the Release's generated name: a long XR name pushes that past
+# Helm's 53-character limit.
+_CSI_RELEASE_NAME = "mp-csi-mounted-fs-path"
 _CSI_NAMESPACE = "kube-system"
 
 # The driver name the chart registers (its values.yaml driverName default).
@@ -462,7 +469,10 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-csi-mounted-fs-path"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
+                metadata=metav1.ObjectMeta(
+                    namespace=_namespace(self.xr.metadata),
+                    annotations={_ANNOTATION_EXTERNAL_NAME: _CSI_RELEASE_NAME},
+                ),
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(

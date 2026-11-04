@@ -1194,7 +1194,10 @@ COMPOSE_CASES = [
                             {
                                 "apiVersion": "helm.m.crossplane.io/v1beta1",
                                 "kind": "Release",
-                                "metadata": {"namespace": "modelplane-system"},
+                                "metadata": {
+                                    "namespace": "modelplane-system",
+                                    "annotations": {"crossplane.io/external-name": "mp-csi-mounted-fs-path"},
+                                },
                                 "spec": {
                                     "managementPolicies": ["Observe", "Create", "Update"],
                                     "providerConfigRef": {

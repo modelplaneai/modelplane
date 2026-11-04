@@ -220,6 +220,10 @@ _EFA_DRA_DRIVER_NAMESPACE = "kube-system"
 _EFA_DRA_DRIVER_CHART_REPO = "https://aws.github.io/eks-charts"
 _EFA_DRA_DRIVER_CHART_NAME = "aws-dranet"
 _EFA_DRA_DRIVER_CHART_VERSION = "1.0.0"
+# provider-helm installs a Release under its external name, which otherwise
+# defaults to the Release's generated name: a long XR name pushes that past
+# Helm's 53-character limit.
+_EFA_DRA_DRIVER_RELEASE_NAME = "mp-aws-dranet"
 
 # GPU taint applied to GPU node groups so non-GPU pods don't land on
 # expensive GPU nodes.
@@ -288,6 +292,7 @@ _AUTOSCALER_SERVICE_ACCOUNT = "cluster-autoscaler"
 _AUTOSCALER_CHART_REPO = "https://kubernetes.github.io/autoscaler"
 _AUTOSCALER_CHART_NAME = "cluster-autoscaler"
 _AUTOSCALER_CHART_VERSION = "9.57.0"
+_AUTOSCALER_RELEASE_NAME = "mp-cluster-autoscaler"
 
 # IAM permissions the autoscaler needs to discover node groups and adjust their
 # ASGs' desired capacity. The Full Cluster Autoscaler Features policy from
@@ -1575,7 +1580,10 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-cluster-autoscaler"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
+                metadata=metav1.ObjectMeta(
+                    namespace=_namespace(self.xr.metadata),
+                    annotations={_ANNOTATION_EXTERNAL_NAME: _AUTOSCALER_RELEASE_NAME},
+                ),
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
@@ -1621,7 +1629,10 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-efa-dra-driver"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
+                metadata=metav1.ObjectMeta(
+                    namespace=_namespace(self.xr.metadata),
+                    annotations={_ANNOTATION_EXTERNAL_NAME: _EFA_DRA_DRIVER_RELEASE_NAME},
+                ),
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
