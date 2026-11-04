@@ -262,6 +262,25 @@ spec:
                       default: 1
                       minimum: 1
                       maximum: 64
+                    rolloutStrategy:
+                      type: object
+                      description: >-
+                        How updates roll out across this engine's copies, copied
+                        down from the parent ModelDeployment's engine. Omitted, the
+                        composed workload keeps its backend's default (maxSurge 0,
+                        maxUnavailable 1). Grove's PodCliqueSet has no rollout
+                        strategy, so an engine on a Grove stack ignores it.
+                      properties:
+                        rollingUpdate:
+                          type: object
+                          required: [maxSurge, maxUnavailable]
+                          properties:
+                            maxSurge:
+                              x-kubernetes-int-or-string: true
+                              anyOf: [{type: integer}, {type: string}]
+                            maxUnavailable:
+                              x-kubernetes-int-or-string: true
+                              anyOf: [{type: integer}, {type: string}]
                     phase:
                       type: string
                       enum: [Prefill, Decode]

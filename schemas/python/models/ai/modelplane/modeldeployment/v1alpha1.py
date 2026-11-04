@@ -252,6 +252,24 @@ class Member(BaseModel):
     """
 
 
+class RollingUpdate(BaseModel):
+    maxSurge: int | str | None = None
+    """
+    How many copies may exist above engines[].copies during an update: an absolute count or a percentage.
+    """
+    maxUnavailable: int | str | None = None
+    """
+    How many copies may be unavailable during an update: an absolute count or a percentage.
+    """
+
+
+class RolloutStrategy(BaseModel):
+    rollingUpdate: RollingUpdate | None = None
+    """
+    Omitted, the composed workload keeps its backend's default (maxSurge 0, maxUnavailable 1). Grove's PodCliqueSet has no rollout strategy, so an engine on a Grove stack ignores it.
+    """
+
+
 class Engine(BaseModel):
     copies: conint(ge=1, le=64) | None = 1
     """
@@ -264,6 +282,10 @@ class Engine(BaseModel):
     name: constr(min_length=1, max_length=63)
     """
     Identifies the engine within the deployment. Becomes part of the composed workload names, so it must be a DNS label.
+    """
+    rolloutStrategy: RolloutStrategy | None = None
+    """
+    How updates roll out across this engine's copies.
     """
     phase: Literal['Prefill', 'Decode'] | None = None
     """

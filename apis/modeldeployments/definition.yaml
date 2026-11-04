@@ -403,6 +403,38 @@ spec:
                               default: 1
                               minimum: 1
                               maximum: 64
+                            rolloutStrategy:
+                              type: object
+                              description: >-
+                                How updates roll out across this engine's copies.
+                                Omitted, the composed workload keeps its backend's
+                                default: a LeaderWorkerSet or Deployment rolls copies
+                                one at a time (maxSurge 0, maxUnavailable 1), serving
+                                from the rest while one updates. Set maxSurge to 1 to
+                                start the updated copy before stopping an old one, which
+                                keeps full capacity during an update but needs a spare
+                                slot on a pool that can grow; pair it with
+                                maxUnavailable 0 for an engine of a single copy. Grove's
+                                PodCliqueSet has no rollout strategy, so an engine on a
+                                Grove stack ignores this field.
+                              properties:
+                                rollingUpdate:
+                                  type: object
+                                  required: [maxSurge, maxUnavailable]
+                                  properties:
+                                    maxSurge:
+                                      description: >-
+                                        How many copies may exist above engines[].copies
+                                        during an update: an absolute count or a
+                                        percentage.
+                                      x-kubernetes-int-or-string: true
+                                      anyOf: [{type: integer}, {type: string}]
+                                    maxUnavailable:
+                                      description: >-
+                                        How many copies may be unavailable during an
+                                        update: an absolute count or a percentage.
+                                      x-kubernetes-int-or-string: true
+                                      anyOf: [{type: integer}, {type: string}]
                             phase:
                               type: string
                               enum: [Prefill, Decode]

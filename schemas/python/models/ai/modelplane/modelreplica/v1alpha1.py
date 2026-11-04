@@ -192,10 +192,20 @@ class Member(BaseModel):
     worker: Worker | None = None
 
 
+class RollingUpdate(BaseModel):
+    maxSurge: int | str | None = None
+    maxUnavailable: int | str | None = None
+
+
+class RolloutStrategy(BaseModel):
+    rollingUpdate: RollingUpdate | None = None
+
+
 class Engine(BaseModel):
     copies: conint(ge=1, le=64) | None = 1
     members: list[Member] = Field(..., max_length=2, min_length=1)
     name: constr(min_length=1, max_length=63)
+    rolloutStrategy: RolloutStrategy | None = None
     phase: Literal['Prefill', 'Decode'] | None = None
 
 
