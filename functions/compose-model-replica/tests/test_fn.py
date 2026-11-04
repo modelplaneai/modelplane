@@ -1715,6 +1715,7 @@ COMPOSE_CASES = [
                     "epp-rolebinding": _epp_role_binding(ready=fnv1.READY_UNSPECIFIED),
                     "epp-serviceaccount": _epp_service_account(ready=fnv1.READY_UNSPECIFIED),
                     "epp-service": _epp_service(ready=fnv1.READY_UNSPECIFIED),
+                    "epp-disruption-budget": _epp_disruption_budget(ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             results=[
