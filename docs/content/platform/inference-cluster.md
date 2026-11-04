@@ -126,7 +126,10 @@ probes, and Grove gang scheduling. Modelplane owns device claims and placement.
 
 Dynamo engines must use a Dynamo runtime image and launch `dynamo.vllm`,
 `dynamo.sglang`, or `dynamo.trtllm`. All engines in one graph use the same backend.
-Commands, arguments, environment, and existing sidecars pass through; the engine
+Explicit commands, arguments, environment, and existing sidecars pass through.
+When command is omitted, Modelplane supplies `python3 -m dynamo.<backend>`;
+the member must provide its runtime arguments. An image without command or
+arguments is rejected. The engine
 container becomes `main` in the DGD. Do not use `main` as a sidecar's name.
 The stack pins the 1.7 nightly chart `1.7.0-dev.20261103.ge37f0b9`, with runtime
 images tagged `20261103-e37f0b9`. For those images Modelplane sets

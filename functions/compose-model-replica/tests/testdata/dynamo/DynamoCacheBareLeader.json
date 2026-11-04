@@ -1,6 +1,6 @@
 {
   "name": "DynamoCacheBareLeader",
-  "reason": "A cached Dynamo gang whose leader has no command or args mounts the cache on both cliques and points HF_HUB_CACHE at it, injecting no --model.",
+  "reason": "A cached args-only leader gets an explicit Dynamo launcher while preserving its role arguments and cache.",
   "replica": {
     "apiVersion": "modelplane.ai/v1alpha1",
     "kind": "ModelReplica",
@@ -33,7 +33,16 @@
                 "spec": {
                   "containers": [
                     {
-                      "args": [],
+                      "args": [
+                        "--model",
+                        "Qwen/Qwen3-0.6B",
+                        "--nnodes",
+                        "2",
+                        "--node-rank",
+                        "0",
+                        "--master-addr",
+                        "$(MODELPLANE_LEADER_ADDRESS)"
+                      ],
                       "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
                       "name": "engine"
                     }
@@ -346,7 +355,21 @@
                                   ]
                                 }
                               },
-                              "args": []
+                              "args": [
+                                "--model",
+                                "Qwen/Qwen3-0.6B",
+                                "--nnodes",
+                                "2",
+                                "--node-rank",
+                                "0",
+                                "--master-addr",
+                                "$(MODELPLANE_LEADER_ADDRESS)"
+                              ],
+                              "command": [
+                                "python3",
+                                "-m",
+                                "dynamo.vllm"
+                              ]
                             }
                           ],
                           "volumes": [

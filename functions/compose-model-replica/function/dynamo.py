@@ -109,6 +109,9 @@ def validate(replica: v1alpha1.ModelReplica) -> str | None:
                 _runtime_ports(base.engine_container(member).model_dump(exclude_none=True))
             except ValueError as err:
                 return str(err)
+            container = base.engine_container(member)
+            if not container.command and not container.args:
+                return f"Dynamo member {engine.name}/{base.member_role(member)} requires a command or runtime args"
             if any(c.name == "main" for c in member.template.spec.containers):
                 return "Dynamo reserves container name main for the engine; rename the sidecar named main"
     if len(frameworks) != 1:
@@ -122,6 +125,8 @@ def _pod_template(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine, membe
     container = base.engine_container(member).model_dump(exclude_none=True)
     container["name"] = "main"
     _runtime_ports(container)
+    if not container.get("command"):
+        container["command"] = ["python3", "-m", f"dynamo.{_framework(member)}"]
     resources = base.engine_resources(base.engine_container(member), claim=bool(member.deviceRequests))
     if resources:
         container["resources"] = resources
