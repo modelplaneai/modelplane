@@ -58,6 +58,19 @@ def _runtime_version(member: v1alpha1.Member) -> dict[str, str]:
     return {}
 
 
+def _runtime_port_number(name: str, variable: str, configured: dict | None, default: int) -> int:
+    """Resolve a static runtime port, requiring a named port for dynamic configuration."""
+    if configured is not None and "valueFrom" in configured:
+        raise ValueError(f"Declare the named {name} port when {variable} uses valueFrom")
+    try:
+        port = int(configured["value"]) if configured else default
+    except (ValueError, KeyError) as err:
+        raise ValueError(f"{variable} must be an integer port") from err
+    if not 1 <= port <= _MAX_PORT:
+        raise ValueError(f"{variable} must be between 1 and 65535")
+    return port
+
+
 def _runtime_ports(container: dict) -> None:
     """An explicit port list replaces operator defaults, so retain its runtime ports."""
     env = {entry["name"]: entry for entry in container.get("env", [])}
@@ -78,14 +91,7 @@ def _runtime_ports(container: dict) -> None:
             elif "value" in configured and configured["value"] != str(declared["containerPort"]):
                 raise ValueError(f"Dynamo runtime port {name} must match {variable}")
             continue
-        if configured is not None and "valueFrom" in configured:
-            raise ValueError(f"Declare the named {name} port when {variable} uses valueFrom")
-        try:
-            port = int(configured["value"]) if configured else default
-        except (ValueError, KeyError) as err:
-            raise ValueError(f"{variable} must be an integer port") from err
-        if not 1 <= port <= _MAX_PORT:
-            raise ValueError(f"{variable} must be between 1 and 65535")
+        port = _runtime_port_number(name, variable, configured, default)
         existing = next((p for p in ports if p["containerPort"] == port and p.get("protocol", "TCP") == "TCP"), None)
         if existing is None:
             ports.append({"name": name, "containerPort": port})
