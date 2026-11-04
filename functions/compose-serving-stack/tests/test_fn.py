@@ -232,6 +232,57 @@ def _cert_manager(*, ready: fnv1.Ready) -> fnv1.Resource:
     )
 
 
+def _k8s_ephemeral_storage_metrics() -> fnv1.Resource:
+    """The composed k8s-ephemeral-storage-metrics Release, on every cloud (generated and hand-written).
+
+    Never in these cases' observed state, so the function never marks it ready.
+    The values are restated here independent of the shared
+    generated/aicr/ephemeral_storage.py, so a drift there breaks the cases.
+    """
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                "kind": "Release",
+                "metadata": {
+                    "annotations": {"crossplane.io/external-name": "mp-k8s-ephemeral-storage-metrics"},
+                    "labels": {"modelplane.ai/resource": "k8s-ephemeral-storage-metrics"},
+                },
+                "spec": {
+                    "providerConfigRef": {"kind": "ProviderConfig", "name": "test-backend-cluster-63fde"},
+                    "forProvider": {
+                        "chart": {
+                            "name": "k8s-ephemeral-storage-metrics",
+                            "repository": "https://jmcgrath207.github.io/k8s-ephemeral-storage-metrics/chart",
+                            "version": "1.19.2",
+                        },
+                        "namespace": "monitoring",
+                        "values": {
+                            "deploy_type": "Deployment",
+                            "log_level": "info",
+                            "metrics": {
+                                "adjusted_polling_rate": False,
+                                "ephemeral_storage_container_limit_percentage": True,
+                                "ephemeral_storage_container_volume_limit_percentage": True,
+                                "ephemeral_storage_container_volume_usage": True,
+                                "ephemeral_storage_node_available": True,
+                                "ephemeral_storage_node_capacity": True,
+                                "ephemeral_storage_node_percentage": True,
+                                "ephemeral_storage_pod_usage": True,
+                                "port": 9100,
+                            },
+                            "prometheus": {"enable": False, "release": "kube-prometheus-stack"},
+                            "serviceMonitor": {"enable": False},
+                            "tolerations": [],
+                            "podAnnotations": {"prometheus.io/scrape": "true", "prometheus.io/port": "9100"},
+                        },
+                    },
+                },
+            }
+        ),
+    )
+
+
 # Civo's DCGM exporter metrics CSV, restated once: both NvLink wants carry
 # it verbatim, and it is too long to repeat beside each. Still a literal
 # independent of civo.py, so a drift there breaks the cases.
@@ -1703,6 +1754,9 @@ def _collector_config(
                             'set(metric.name, "modelplane_engine_requests_total") where metric.name == "sglang:prompt_tokens_histogram_count"',
                             'set(metric.name, "modelplane_engine_responses_total") where metric.name == "sglang:http_responses_total"',
                             'set(metric.name, "modelplane_route_decision_seconds") where metric.name == "llm_d_epp_scheduler_e2e_duration_seconds"',
+                            'set(metric.name, "modelplane_ephemeral_storage_node_available_bytes") where metric.name == "ephemeral_storage_node_available"',
+                            'set(metric.name, "modelplane_ephemeral_storage_node_capacity_bytes") where metric.name == "ephemeral_storage_node_capacity"',
+                            'set(metric.name, "modelplane_ephemeral_storage_pod_used_bytes") where metric.name == "ephemeral_storage_pod_usage"',
                             'set(metric.name, "modelplane_gpu_memory_used_bytes") where metric.name == "DCGM_FI_DEV_FB_USED"',
                             'set(metric.name, "modelplane_gpu_memory_free_bytes") where metric.name == "DCGM_FI_DEV_FB_FREE"',
                             'set(metric.name, "modelplane_gpu_compute_active_ratio") where metric.name == "DCGM_FI_PROF_GR_ENGINE_ACTIVE"',
@@ -2066,6 +2120,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_serving_stack(gateway=None),
                 resources={
+                    "k8s-ephemeral-storage-metrics": _k8s_ephemeral_storage_metrics(),
                     "provider-config-kubernetes": _kubernetes_provider_config(
                         identity={
                             "type": "GoogleApplicationCredentials",
@@ -2547,6 +2602,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_serving_stack(gateway={"address": "203.0.113.7"}),
                 resources={
+                    "k8s-ephemeral-storage-metrics": _k8s_ephemeral_storage_metrics(),
                     "provider-config-kubernetes": _kubernetes_provider_config(
                         identity={
                             "type": "GoogleApplicationCredentials",
@@ -3385,6 +3441,7 @@ COMPOSE_CASES = [
                 # The cluster's CA, published for InferenceGateways to trust.
                 composite=_desired_serving_stack(gateway={"caCertificate": "CLUSTERCA"}),
                 resources={
+                    "k8s-ephemeral-storage-metrics": _k8s_ephemeral_storage_metrics(),
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
@@ -3571,6 +3628,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_serving_stack(gateway={"caCertificate": "CLUSTERCA"}),
                 resources={
+                    "k8s-ephemeral-storage-metrics": _k8s_ephemeral_storage_metrics(),
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
@@ -3728,6 +3786,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_serving_stack(gateway=None),
                 resources={
+                    "k8s-ephemeral-storage-metrics": _k8s_ephemeral_storage_metrics(),
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
@@ -3884,6 +3943,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_serving_stack(gateway=None),
                 resources={
+                    "k8s-ephemeral-storage-metrics": _k8s_ephemeral_storage_metrics(),
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_TRUE),
@@ -4337,6 +4397,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_serving_stack(gateway=None),
                 resources={
+                    "k8s-ephemeral-storage-metrics": _k8s_ephemeral_storage_metrics(),
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
@@ -4664,6 +4725,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_serving_stack(gateway=None),
                 resources={
+                    "k8s-ephemeral-storage-metrics": _k8s_ephemeral_storage_metrics(),
                     "provider-config-kubernetes": _kubernetes_provider_config(
                         identity={
                             "type": "GoogleApplicationCredentials",
@@ -4725,7 +4787,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="e4e26049f9c409ed",
+                        config_hash="11b54c22e09dcd7e",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -4949,6 +5011,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_serving_stack(gateway=None),
                 resources={
+                    "k8s-ephemeral-storage-metrics": _k8s_ephemeral_storage_metrics(),
                     "provider-config-kubernetes": _kubernetes_provider_config(
                         identity={
                             "type": "GoogleApplicationCredentials",
@@ -5042,7 +5105,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                     ),
                     "collector": _collector(
-                        config_hash="c053b356fa878457",
+                        config_hash="fcebc8bdc907e44d",
                         volumes=[
                             {"name": "config", "configMap": {"name": "modelplane-collector"}},
                             {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -5260,6 +5323,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_serving_stack(gateway=None),
                 resources={
+                    "k8s-ephemeral-storage-metrics": _k8s_ephemeral_storage_metrics(),
                     "provider-config-kubernetes": _kubernetes_provider_config(
                         identity={
                             "type": "GoogleApplicationCredentials",
@@ -5327,7 +5391,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="d413599cd033eb66",
+                        config_hash="aea2b9f67af99df5",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5527,6 +5591,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_serving_stack(gateway=None),
                 resources={
+                    "k8s-ephemeral-storage-metrics": _k8s_ephemeral_storage_metrics(),
                     "provider-config-kubernetes": _kubernetes_provider_config(
                         identity={
                             "type": "GoogleApplicationCredentials",
@@ -5588,7 +5653,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="3361552a8e3ea3fd",
+                        config_hash="0f380cfde4eec1b2",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5816,6 +5881,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_serving_stack(gateway=None),
                 resources={
+                    "k8s-ephemeral-storage-metrics": _k8s_ephemeral_storage_metrics(),
                     "provider-config-kubernetes": _kubernetes_provider_config(
                         identity={
                             "type": "GoogleApplicationCredentials",
@@ -5877,7 +5943,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="e4e26049f9c409ed",
+                        config_hash="11b54c22e09dcd7e",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -6168,6 +6234,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The EKS half, generated from aicr.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "gpu-operator",
             "dcgm-exporter-clusterrole",
             "dcgm-exporter-clusterrolebinding",
@@ -6312,6 +6379,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The EKS half, generated from aicr.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "gpu-operator",
             "dcgm-exporter-clusterrole",
             "dcgm-exporter-clusterrolebinding",
@@ -6458,6 +6526,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The AKS half, generated from aicr.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "gpu-operator",
             "dcgm-exporter-clusterrole",
             "dcgm-exporter-clusterrolebinding",
@@ -6607,6 +6676,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The AKS half, generated from aicr.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "gpu-operator",
             "dcgm-exporter-clusterrole",
             "dcgm-exporter-clusterrolebinding",
@@ -6758,6 +6828,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The GKE half, generated from aicr.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "gpu-operator",
             "node-feature-discovery",
             "nodewright-operator",
@@ -6909,6 +6980,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The GKE half, generated from aicr.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "gpu-operator",
             "node-feature-discovery",
             "nodewright-operator",
@@ -7049,6 +7121,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Nebius half.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
             "dcgm-exporter",
@@ -7175,6 +7248,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Nebius half.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
             "dcgm-exporter",
@@ -7300,6 +7374,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The hand-written Vultr half. VKE pre-installs NFD via its managed GPU
             # Operator add-on, so it carries no node-feature-discovery of its own.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "nvidia-dra-driver-gpu",
             # The Standard stack.
             "leader-worker-set",
@@ -7423,6 +7498,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # The hand-written Vultr half. VKE pre-installs NFD via its managed GPU
             # Operator add-on, so it carries no node-feature-discovery of its own.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "nvidia-dra-driver-gpu",
             # The Dynamo stack.
             "grove",
@@ -7553,6 +7629,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # with the Usages for its depends_on edges and the DRA driver's edge
             # onto it.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
             "gpu-operator",
@@ -7692,6 +7769,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             # with the Usages for its depends_on edges and the DRA driver's edge
             # onto it.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
             "gpu-operator",
@@ -7824,6 +7902,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Existing half.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
             # The Standard stack.
@@ -7948,6 +8027,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Existing half.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
             # The Dynamo stack.
@@ -8073,6 +8153,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Existing half, less its GPU stacks.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             # The Standard stack.
             "leader-worker-set",
         },
@@ -8185,6 +8266,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written Existing half, less its GPU stacks.
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             # The Standard stack.
             "leader-worker-set",
         },
@@ -8309,6 +8391,7 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "amd-gpu-operator",
             "amd-metrics-exporter-config",
             "cert-manager",
+            "k8s-ephemeral-storage-metrics",
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
             "usage-cert-manager-by-amd-gpu-operator",

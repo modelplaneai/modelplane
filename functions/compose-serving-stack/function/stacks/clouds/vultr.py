@@ -31,6 +31,7 @@ which the operator respects, leaving the DRA driver the sole allocator
 on those nodes.
 """
 
+from function.stacks.clouds.generated.aicr.ephemeral_storage import EPHEMERAL_STORAGE_VALUES
 from function.stacks.components import Chart, Component
 
 # DRA drivers this cloud supports that arrive outside the serving
@@ -54,6 +55,24 @@ COMPONENTS: list[Component] = [
         # Objects, and removing their CRDs would stop provider-kubernetes
         # observing them to release their finalizers.
         values={"crds": {"enabled": True}},
+    ),
+    # Reports each node's ephemeral-storage headroom and each pod's
+    # usage, so modelplane_ephemeral_storage_* is populated here as on
+    # the generated clouds (stacks/metrics.py renames the series). A
+    # single Deployment reads every node's figures from the kubelet
+    # summary API, so it needs no GPU toleration and stays on the system
+    # pool. The values are the generator's, imported from the shared
+    # generated/aicr/ephemeral_storage.py: the ServiceMonitor stays off,
+    # as on the generated clouds, and the collector's substrate job
+    # scrapes the exporter by the prometheus.io annotations they carry.
+    Chart(
+        key="k8s-ephemeral-storage-metrics",
+        release="mp-k8s-ephemeral-storage-metrics",
+        namespace="monitoring",
+        chart="k8s-ephemeral-storage-metrics",
+        repository="https://jmcgrath207.github.io/k8s-ephemeral-storage-metrics/chart",
+        version="1.19.2",
+        values=EPHEMERAL_STORAGE_VALUES,
     ),
     # Publishes each GPU node's devices as DRA ResourceSlices and
     # registers the gpu.nvidia.com DeviceClass ModelReplica

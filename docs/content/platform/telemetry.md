@@ -90,6 +90,8 @@ Some examples of the available metrics:
 | `modelplane_engine_requests_total` | Requests the engine finished |
 | `modelplane_gpu_memory_used_bytes` | Framebuffer memory in use, per GPU |
 | `modelplane_energy_joules_total` | Energy drawn since the driver last reloaded |
+| `modelplane_ephemeral_storage_node_available_bytes` | Ephemeral storage free on a node, against `modelplane_ephemeral_storage_node_capacity_bytes` for the total |
+| `modelplane_ephemeral_storage_pod_used_bytes` | Ephemeral storage a pod is using, model weights and scratch included |
 
 Latency appears twice on purpose. The `frontend_` series are what your caller experienced,
 measured at the gateway. The engine's own series are what the engine spent. For
