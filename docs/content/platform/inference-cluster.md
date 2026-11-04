@@ -114,8 +114,8 @@ must meet what Modelplane would otherwise set up for you:
 or `Dynamo`. The field is immutable, so recreate the cluster to change it.
 
 Standard composes a single-node engine as a Deployment and a multi-node gang as
-a LeaderWorkerSet. An InferencePool and endpoint picker route requests to the
-engines.
+a LeaderWorkerSet. An endpoint picker selects an engine for each request
+through an InferencePool.
 
 Dynamo installs the Dynamo operator, [Grove](https://github.com/ai-dynamo/grove),
 the [KAI Scheduler](https://github.com/NVIDIA/KAI-Scheduler), and
@@ -127,7 +127,7 @@ probes, and Grove gang scheduling. Modelplane owns device claims and placement.
 Dynamo engines must use a Dynamo runtime image and launch `dynamo.vllm`,
 `dynamo.sglang`, or `dynamo.trtllm`. All engines in one graph use the same backend.
 Commands, arguments, environment, and existing sidecars pass through; the engine
-container becomes `main` in the DGD. `main` is reserved and cannot name a sidecar.
+container becomes `main` in the DGD. Do not use `main` as a sidecar's name.
 The stack pins the 1.7 nightly chart `1.7.0-dev.20261103.ge37f0b9`, with runtime
 images tagged `20261103-e37f0b9`. For those images Modelplane sets
 `runtimeVersionOverride: 1.7.0` on DGD components because the date tag has no

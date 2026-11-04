@@ -111,7 +111,7 @@ describes. The disaggregated example below is a complete vLLM pair.
 
 On Dynamo, omit `serving.router` and `serving.endpointPicker`. The DGD frontend
 routes between the prefill and decode components. Launch both with the Dynamo
-runtime and the backend's disaggregation and KV-transfer flags; application
+runtime and the backend's disaggregation and KV-transfer flags; app
 sidecars remain in their member templates.
 
 Disaggregation pays off for large models under load with strict latency targets
