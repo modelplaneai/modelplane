@@ -7,9 +7,10 @@
   // config:recommended turns on every default manager, which would also open
   // PRs for the ~20 pyproject.toml files (rewriting requires-python etc.) that
   // we don't want Renovate touching. Limit it to exactly what this config
-  // targets: the custom managers for crossplane-project.yaml and the Renovate
-  // version in renovate.yml, GitHub Actions, and the Nix flakes (inputs plus
-  // flake.lock via lockFileMaintenance below).
+  // targets: the custom managers for crossplane-project.yaml, the Renovate
+  // version in renovate.yml and the Nix version in renovate-entrypoint.sh,
+  // GitHub Actions, and the Nix flakes (inputs plus flake.lock via
+  // lockFileMaintenance below).
   enabledManagers: [
     'custom.regex',
     'github-actions',
@@ -139,6 +140,20 @@
       depNameTemplate: 'renovate',
       datasourceTemplate: 'npm',
       versioningTemplate: 'semver-coerced',
+    },
+    {
+      customType: 'regex',
+      description: 'Bump the Nix version renovate-entrypoint.sh installs',
+      managerFilePatterns: [
+        '/^\\.github/renovate-entrypoint\\.sh$/',
+      ],
+      matchStrings: [
+        'NIX_VERSION=(?<currentValue>[0-9][^\\s]*)',
+      ],
+      // containerbase's install-tool fetches its static Nix builds from here.
+      depNameTemplate: 'containerbase/nix-prebuild',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
     },
   ],
 }
