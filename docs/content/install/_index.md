@@ -4,6 +4,11 @@ weight: 8
 navLanding: "Install the control plane"
 description: Install the Modelplane control plane on a Kubernetes cluster you run.
 ---
+{{< hint "tip" >}}
+No cloud account or GPU? [Try Modelplane locally]({{< ref
+"getting-started/local-demo.md" >}}) on two kind clusters instead.
+{{< /hint >}}
+
 Modelplane's control plane is where everything runs: the Crossplane runtime, the
 providers it provisions infrastructure through, and the composition functions
 that reconcile the Modelplane APIs. You install it on a Kubernetes cluster that
@@ -79,6 +84,7 @@ kubectl wait configuration/modelplane --for=condition=Healthy --timeout=5m
 
 ## Next step
 
-With the control plane running, [take the tour]({{< ref "/getting-started" >}}) to
-provision a GPU cluster and serve a model, or [register a cluster]({{< ref
-"platform/inference-cluster.md" >}}) you already run.
+If you're taking the tour, continue to [Build the platform]({{< ref
+"getting-started/build-the-platform.md" >}}) to provision your first GPU cluster.
+To use a cluster you already run, [register it]({{< ref
+"platform/inference-cluster.md" >}}).

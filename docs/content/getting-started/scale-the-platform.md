@@ -1,6 +1,6 @@
 ---
 title: Scale the platform
-weight: 40
+weight: 50
 description: Grow from one cluster to a multi-region fleet.
 ---
 

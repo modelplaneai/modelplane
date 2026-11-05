@@ -1,6 +1,6 @@
 ---
 title: Clean up
-weight: 60
+weight: 70
 description: Tear down everything you created during the tour.
 ---
 Delete the model resources, the gateway, the clusters, and finally the control

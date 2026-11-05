@@ -1,6 +1,6 @@
 ---
 title: Deploying a model
-weight: 30
+weight: 40
 description: Declare what your model needs and serve it behind an OpenAI-compatible endpoint.
 ---
 
