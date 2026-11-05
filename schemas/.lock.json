@@ -10,6 +10,7 @@
     "xpkg://xpkg.upbound.io/upbound/provider-azure-containerservice:v2.8.4": "sha256:20ac5475f94c449b8c2a689760d0defb412943901ffb203f8716bfaf65e188d4",
     "xpkg://xpkg.upbound.io/upbound/provider-azure-network:v2.8.4": "sha256:ab757668f87d4a80c7c2b8b9fb12705f51ade907ba24f09417de92c698eb74fb",
     "xpkg://xpkg.upbound.io/upbound/provider-civo:v1.0.1": "sha256:d7f4d8d340597e190cc6efb0a9f4a1e16c813df955c7d999d5f49ab30277bfec",
+    "xpkg://xpkg.upbound.io/upbound/provider-coreweave:v0.1.0": "sha256:bcb3d48c873d3b906b3d1e0343952855e70e1b5a9044fb21b6e30f82299172e2",
     "xpkg://xpkg.upbound.io/upbound/provider-family-aws:v2.9.4": "sha256:bbaac0fedaf80e088d7536ccc3936a998bbd006ca676c434344e8b761e388441",
     "xpkg://xpkg.upbound.io/upbound/provider-family-azure:v2.8.4": "sha256:b3497267266a4561e5204a3036101178e672905fceaabe0e89f0565604b7e54f",
     "xpkg://xpkg.upbound.io/upbound/provider-family-gcp:v3.1.3": "sha256:bc7c1ccc324acf29bd4648ec3a8262d24d6954402f9649e5a912cb7b73f9277f",
