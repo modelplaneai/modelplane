@@ -483,10 +483,10 @@ spec:
 ## GPUs
 
 The GPU series come from a vendor's GPU exporter, not from the engine: a GPU
-belongs to a node, and its series have a `node` label. On EKS, AKS, Civo and
-Nebius a GPU series also has the `deployment`, `replica`, `role` and `engine`
-labels of the pod using the GPU, so it joins that deployment's engine series
-on those labels. GKE serves GPU telemetry with Google's managed exporter,
+belongs to a node, and its series have a `node` label. On EKS, AKS, Civo,
+Nebius and CoreWeave a GPU series also has the `deployment`, `replica`,
+`role` and `engine` labels of the pod using the GPU, so it joins that
+deployment's engine series on those labels. GKE serves GPU telemetry with Google's managed exporter,
 which Modelplane doesn't configure, so its GPU series don't carry these
 labels. On an existing cluster it depends on your exporter. On NVIDIA pools the exporter is a [DCGM
 exporter](https://github.com/NVIDIA/dcgm-exporter). On AMD pools it's the AMD
@@ -500,7 +500,9 @@ either by its pod - an `app` or `app.kubernetes.io/name` label containing
 Where the exporter comes from depends on the cluster:
 
 - **A cluster Modelplane provisions** runs one already: the serving stack
-  installs an exporter wherever the cloud doesn't provide its own.
+  installs an exporter on clouds that don't run their own. CoreWeave runs one,
+  but it can't attribute DRA-allocated GPUs to pods. On CoreWeave the serving
+  stack installs a second exporter, and the collector skips CoreWeave's.
 - **An existing cluster provides its own DCGM exporter**, as
   [Requirements for an existing
   cluster]({{< ref "/platform/inference-cluster.md#requirements-for-an-existing-cluster" >}})

@@ -11,8 +11,8 @@ across two regions.
 ```mermaid
 graph LR
     subgraph fleet ["Fleet"]
-        IC1["cluster-a\nsmall GPU"]
-        IC2["cluster-b\nlarger GPU"]
+        IC1["cluster-a\nfirst cluster"]
+        IC2["cluster-b\nadded cluster"]
     end
 
     subgraph ml ["ML team"]
@@ -29,10 +29,11 @@ graph LR
 
 ## Add a second deployment
 
-The new deployment targets a larger-GPU cluster you added in the last step. On
+The new deployment targets the cluster you added in the last step. On
 EKS, GKE, AKS, Vultr, and Civo it pins to a second region with a
-`clusterSelector`. On Nebius, which runs one region per project, the capacity
-selector alone routes it to the `H100` tier:
+`clusterSelector`, and on CoreWeave it pins to the second cluster the same
+way. On Nebius, which runs one region per project, the capacity selector
+alone routes it to the `H100` tier:
 
 {{< tabs >}}
 {{< tab "EKS" >}}
@@ -52,6 +53,9 @@ selector alone routes it to the `H100` tier:
 {{< /tab >}}
 {{< tab "Civo" >}}
 {{< manifests "getting-started/civo/model-deployment-west.yaml" >}}
+{{< /tab >}}
+{{< tab "CoreWeave" >}}
+{{< manifests "getting-started/coreweave/model-deployment-scale.yaml" >}}
 {{< /tab >}}
 {{< /tabs >}}
 

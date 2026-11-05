@@ -1,0 +1,36 @@
+# A second ModelDeployment, pinned with clusterSelector to the second cluster
+# you added in "Scale the fleet". It carries its own deployment name, so the
+# ModelService can front it alongside qwen-demo and serve both from one
+# endpoint.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-west
+  namespace: ml-team
+spec:
+  replicas: 1
+  template:
+    spec:
+      clusterSelector:
+        matchLabels:
+          modelplane.ai/tier: b
+      engines:
+      - name: qwen
+        members:
+        - role: Standalone
+          nodeSelector:
+            devices:
+            - name: gpu
+              count: 1
+              selectors:
+              - cel: |
+                  device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+          template:
+            spec:
+              containers:
+              - name: engine
+                image: vllm/vllm-openai:v0.23.0
+                args:
+                - --model=Qwen/Qwen2.5-0.5B-Instruct
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
+                - --dtype=half

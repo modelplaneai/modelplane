@@ -1,0 +1,17 @@
+# Points the CoreWeave provider at the API access token Secret you created.
+# Named default, so InferenceClusters with a CoreWeave source use it
+# without further configuration. The token provisions clusters and also
+# authenticates Modelplane to them: CKS publishes no kubeconfig, so
+# Modelplane renders one from each cluster's managed API endpoint and this
+# token. The token must belong to a user who can administer CKS clusters.
+apiVersion: coreweave.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: coreweave-credentials
+      key: creds

@@ -56,6 +56,12 @@ You also need an account with one of these providers:
 - A Civo account with access to GPU node sizes
 - A Civo API key
 {{< /tab >}}
+{{< tab "CoreWeave" >}}
+- A CoreWeave account with quota in `US-EAST-04A` for two `rtxp6000-8x` GPU
+  nodes and two `turin-gp` CPU nodes
+- A CoreWeave API access token belonging to a user who can administer CKS
+  clusters
+{{< /tab >}}
 {{< /tabs >}}
 
 ## Configure cloud credentials
@@ -187,6 +193,29 @@ Apply the `ClusterProviderConfig` referencing your secret:
 
 {{< manifests "getting-started/clusterproviderconfig-civo.yaml" >}}
 {{< /tab >}}
+
+{{< tab "CoreWeave" >}}
+Create a Kubernetes secret from your API access token, as the JSON `creds`
+key the provider parses:
+
+{{< editCode >}}
+```bash
+kubectl create secret generic coreweave-credentials \
+  --from-literal=creds='{"token": "$@<coreweave-api-token>$@"}' \
+  -n crossplane-system
+```
+{{< /editCode >}}
+
+Apply the `ClusterProviderConfig` referencing your secret:
+
+{{< manifests "getting-started/clusterproviderconfig-coreweave.yaml" >}}
+
+{{< hint "note" >}}
+The token also authenticates Modelplane to each CKS cluster, and each
+cluster's kubeconfig Secret in `modelplane-system` holds a copy of it. Limit
+who can read Secrets there.
+{{< /hint >}}
+{{< /tab >}}
 {{</tabs>}}
 
 ## Publish hardware and register the cluster
@@ -262,6 +291,16 @@ GPU Operator installs it on first boot):
 kubectl wait --for=condition=Ready ic/civo-nyc1 --timeout=20m
 ```
 {{< /tab >}}
+
+{{< tab "CoreWeave" >}}
+{{< manifests "getting-started/coreweave/platform.yaml" >}}
+
+Modelplane provisions the cluster:
+
+```bash
+kubectl wait --for=condition=Ready ic/coreweave-us-east-04 --timeout=45m
+```
+{{< /tab >}}
 {{< /tabs >}}
 
 {{< hint "note" >}}
@@ -317,6 +356,9 @@ for an example with TLS and authentication.
 {{< /tab >}}
 {{< tab "Civo" >}}
 {{< manifests "getting-started/civo/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< tab "CoreWeave" >}}
+{{< manifests "getting-started/coreweave/inference-gateway.yaml" >}}
 {{< /tab >}}
 {{< /tabs >}}
 

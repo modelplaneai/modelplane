@@ -1,0 +1,35 @@
+# An InferenceClass describing CoreWeave's rtxp6000-8x instance type with
+# 8x NVIDIA RTX PRO 6000 Blackwell.
+#
+# The provisioning block tells Modelplane how to create a node pool of
+# this class on CKS, where the instance type determines the GPU model and
+# count. The devices block describes what hardware a node of this class
+# has, DRA-style - used by the scheduler to match models to clusters, and
+# to form DRA ResourceClaims for claim: DRA devices.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: coreweave-rtxp6000-8x
+spec:
+  description: "CoreWeave rtxp6000-8x, 8x NVIDIA RTX PRO 6000 Blackwell 96GB"
+  provisioning:
+    provider: CoreWeave
+    coreweave:
+      # Instance types vary by zone.
+      instanceType: rtxp6000-8x
+      accelerator:
+        type: nvidia-rtx-pro-6000
+        count: 8
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 8
+    attributes:
+      architecture: { string: Blackwell }
+      cudaComputeCapability: { version: "12.0.0" }
+    capacity:
+      # The real usable VRAM the NVIDIA DRA driver reports, not the nominal
+      # 96GB. A nodeSelector asking for >= 96Gi would never bind.
+      memory: { value: "97887Mi" }

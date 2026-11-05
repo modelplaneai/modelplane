@@ -1,0 +1,16 @@
+apiVersion: infrastructure.modelplane.ai/v1alpha1
+kind: CoreWeaveCluster
+metadata:
+  name: inference-us-east-04
+  namespace: platform
+spec:
+  zone: US-EAST-04A
+  kubernetesVersion: "1.37"
+  nodePools:
+    - name: gpu-rtxp6000
+      role: GPU
+      instanceType: rtxp6000-8x
+      nodeCount: 1
+      maxNodeCount: 2
+      gpu:
+        acceleratorType: nvidia-rtx-pro-6000
