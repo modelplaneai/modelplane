@@ -20,8 +20,13 @@
   nix: {
     enabled: true,
   },
+  // Lock file maintenance defaults to 'before 4am on monday', which the
+  // workflow's daily 08:00 UTC run never falls in.
   lockFileMaintenance: {
     enabled: true,
+    schedule: [
+      '* * * * 1',
+    ],
   },
   // CONTRIBUTING forbids typed commit prefixes like chore(deps):. Disable
   // explicitly rather than relying on the 'auto' default, which sniffs
