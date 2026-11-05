@@ -7,15 +7,16 @@
   // config:recommended turns on every default manager, which would also open
   // PRs for the ~20 pyproject.toml files (rewriting requires-python etc.) that
   // we don't want Renovate touching. Limit it to exactly what this config
-  // targets: the crossplane-project.yaml custom managers, GitHub Actions, and
-  // the Nix flake (inputs plus flake.lock via lockFileMaintenance below).
+  // targets: the custom managers for crossplane-project.yaml and the Renovate
+  // version in renovate.yml, GitHub Actions, and the Nix flakes (inputs plus
+  // flake.lock via lockFileMaintenance below).
   enabledManagers: [
     'custom.regex',
     'github-actions',
     'nix',
   ],
   // The Nix manager is disabled by default. Enable it (together with
-  // lockFileMaintenance) so Renovate keeps flake.lock fresh; the entrypoint
+  // lockFileMaintenance) so Renovate keeps flake.lock fresh. Renovate
   // installs its own Nix to apply those updates.
   nix: {
     enabled: true,
