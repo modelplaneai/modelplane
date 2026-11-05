@@ -15,8 +15,7 @@
 """The OpenTelemetry collector each inference cluster runs.
 
 It scrapes everything Modelplane installs, renames what it scraped onto the
-modelplane_* surface, merges each deployment's replicas into one series, and
-exports to the destination.
+modelplane_* surface, and exports to the destination.
 
 Rendered here rather than through the OpenTelemetry Operator: its
 OpenTelemetryCollector CRD would be one more operator on every GPU cluster to
@@ -76,12 +75,10 @@ _FLEET_GATEWAY = "inference-gateway"
 _MODEL_ROUTE = r"httproute/(mp-[^/]+)/([^/]+)/rule/0"
 
 # What a series is attributed to, and the only resource attributes that survive
-# to the exporter. The merge across replicas groups on exactly these, so a
-# series differing in nothing else is one series.
+# to the exporter.
 #
 # node is here for the GPU job, whose series belong to hardware rather than to
-# a deployment; an engine's series carry no node, which is what lets replicas on
-# different nodes merge.
+# a deployment.
 _IDENTITY = (
     "cluster",
     "namespace",
@@ -555,9 +552,8 @@ def _transform(mappings: list[mmv1alpha1.MetricMapping]) -> dict[str, Any]:
 # Exporters that flatten a series into labels, losing anything held as a
 # resource attribute unless told otherwise. Modelplane's identity - the
 # cluster, deployment, engine and role a series belongs to - is all held there,
-# because that is what the merge across replicas groups on, so without this a
-# Prometheus backend receives every series stripped of everything that says
-# what it measures.
+# where groupbyattrs/identity lifts it, so without this a Prometheus backend
+# receives every series stripped of everything that says what it measures.
 #
 # Applied under an operator's own config rather than over it: this is a default,
 # and a sink that sets it wins.
@@ -652,11 +648,7 @@ def config(
         "resource/cluster": {"attributes": [{"key": "cluster", "value": cluster, "action": "upsert"}]},
         # Everything a replica carries that is the replica's rather than the
         # deployment's. Discovery attaches the pod's name, uid and replicaset,
-        # and the scrape its address, and all of it lands on the resource -
-        # where it does two kinds of damage.
-        #
-        # The merge below groups on the resource, so a pod name on it keeps
-        # every replica in a resource of its own and nothing merges. And an
+        # and the scrape its address, and all of it lands on the resource. An
         # exporter that flattens resources into labels then publishes a pod
         # label, which a rolling update mints afresh on every deploy and a
         # billing backend counts as active for half an hour after it dies.
