@@ -1,0 +1,159 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    'helpers:pinGitHubActionDigests',
+  ],
+  // config:recommended turns on every default manager, which would also open
+  // PRs for the ~20 pyproject.toml files (rewriting requires-python etc.) that
+  // we don't want Renovate touching. Limit it to exactly what this config
+  // targets: the custom managers for crossplane-project.yaml, the Renovate
+  // version in renovate.yml and the Nix version in renovate-entrypoint.sh,
+  // GitHub Actions, and the Nix flakes (inputs plus flake.lock via
+  // lockFileMaintenance below).
+  enabledManagers: [
+    'custom.regex',
+    'github-actions',
+    'nix',
+  ],
+  // The Nix manager is disabled by default. Enable it (together with
+  // lockFileMaintenance) so Renovate keeps flake.lock fresh. Renovate
+  // installs its own Nix to apply those updates.
+  nix: {
+    enabled: true,
+  },
+  // Lock file maintenance defaults to 'before 4am on monday', which the
+  // workflow's daily 08:00 UTC run never falls in.
+  lockFileMaintenance: {
+    enabled: true,
+    schedule: [
+      '* * * * 1',
+    ],
+  },
+  // CONTRIBUTING forbids typed commit prefixes like chore(deps):. Disable
+  // explicitly rather than relying on the 'auto' default, which sniffs
+  // recent history and could flip on from Dependabot's build(deps): commits.
+  semanticCommits: 'disabled',
+  rebaseWhen: 'auto',
+  rebaseLabel: 'rebase',
+  prConcurrentLimit: 5,
+  baseBranches: [
+    'main',
+  ],
+  labels: [
+    'automated',
+  ],
+  packageRules: [
+    {
+      matchFileNames: [
+        '.github/**',
+      ],
+      groupName: 'github-actions dependencies',
+    },
+    {
+      // One PR for every package dependency in crossplane-project.yaml.
+      // Family providers (aws-*, gcp-*, azure-*) release in lockstep and
+      // must move together; grouping keeps them on one version.
+      //
+      // config:recommended leaves separateMajorMinor on, which would split
+      // a major bump into its own major- branch. Both PRs would rerun the
+      // build and rewrite schemas/, so they would conflict.
+      //
+      // A dependency bump changes the generated Pydantic models, so the
+      // build regenerates schemas/python/ into the same PR and CI judges
+      // the complete change. Runs once per branch, after all grouped
+      // updates are applied. modelplane-nix is the pinned Nix launcher
+      // from renovate-entrypoint.sh; it must match the workflow's
+      // RENOVATE_ALLOWED_COMMANDS.
+      matchFileNames: [
+        'crossplane-project.yaml',
+      ],
+      groupName: 'crossplane dependencies',
+      separateMajorMinor: false,
+      postUpgradeTasks: {
+        commands: [
+          'modelplane-nix run .#build',
+        ],
+        fileFilters: [
+          'schemas/**',
+        ],
+        executionMode: 'branch',
+      },
+    },
+    {
+      // The CRD ref must not run ahead of the Crossplane we declare support
+      // for. crossplane-project.yaml sets a Crossplane version floor, so
+      // generating models from a newer minor would add fields a control
+      // plane at that floor lacks. Hold Renovate to patches of the committed
+      // ref's minor; moving to a new minor is the deliberate, by-hand step we
+      // take alongside bumping the crossplane floor.
+      matchDepNames: [
+        'crossplane/crossplane',
+      ],
+      allowedVersions: '<{{major}}.{{add minor 1}}.0',
+    },
+  ],
+  customManagers: [
+    {
+      customType: 'regex',
+      description: 'Bump xpkg dependencies (providers/functions/configurations) in crossplane-project.yaml',
+      managerFilePatterns: [
+        '/^crossplane-project\\.yaml$/',
+      ],
+      // Matches the Project schema's two-line form:
+      //   package: xpkg.upbound.io/upbound/provider-helm
+      //   version: v1.5.1
+      // The registry serves anonymous pulls for public packages, so the
+      // docker datasource needs no credentials.
+      matchStrings: [
+        'package:\\s*(?<depName>xpkg\\.upbound\\.io/[^\\s]+)\\s*\\n\\s*version:\\s*(?<currentValue>v[0-9][^\\s]*)',
+      ],
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'semver-coerced',
+    },
+    {
+      customType: 'regex',
+      description: 'Bump the crossplane/crossplane CRD git ref in crossplane-project.yaml',
+      managerFilePatterns: [
+        '/^crossplane-project\\.yaml$/',
+      ],
+      // Anchored to crossplane/crossplane so this manager doesn't also catch
+      // the modelplaneai/cluster-agent CRD ref. We bump that by hand, along
+      // with the chart version compose-serving-stack installs, like every
+      // other chart in the serving stack.
+      matchStrings: [
+        'repository:\\s*https://github\\.com/crossplane/crossplane\\s*\\n\\s*ref:\\s*(?<currentValue>v[0-9][^\\s]*)',
+      ],
+      depNameTemplate: 'crossplane/crossplane',
+      datasourceTemplate: 'github-tags',
+      versioningTemplate: 'semver-coerced',
+    },
+    {
+      customType: 'regex',
+      description: 'Bump the pinned self-hosted Renovate version in the workflow',
+      managerFilePatterns: [
+        '/^\\.github/workflows/renovate\\.yml$/',
+      ],
+      matchStrings: [
+        'RENOVATE_VERSION:\\s*"(?<currentValue>[0-9][^"]*)"',
+      ],
+      depNameTemplate: 'renovate',
+      datasourceTemplate: 'npm',
+      versioningTemplate: 'semver-coerced',
+    },
+    {
+      customType: 'regex',
+      description: 'Bump the Nix version renovate-entrypoint.sh installs',
+      managerFilePatterns: [
+        '/^\\.github/renovate-entrypoint\\.sh$/',
+      ],
+      matchStrings: [
+        'NIX_VERSION=(?<currentValue>[0-9][^\\s]*)',
+      ],
+      // containerbase's install-tool fetches its static Nix builds from here.
+      depNameTemplate: 'containerbase/nix-prebuild',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+    },
+  ],
+}
