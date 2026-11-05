@@ -1829,8 +1829,8 @@ COMPOSE_CASES = [
         ),
     ),
     ComposeCase(
-        name="ExistingCPUPoolUnobserved",
-        reason="Once its ServingStack is Ready, an Existing cluster composes a PoolObservation for its NVIDIA GPU pool but not its CPU pool, whose tainted nodes the agent can't count, and doesn't publish a leftover observation of the CPU pool.",
+        name="ExistingCPUPoolObserved",
+        reason="Once its ServingStack is Ready, an Existing cluster composes a PoolObservation for its CPU pool as well as its NVIDIA GPU pool, and publishes the agent's observation of the CPU pool.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_inference_cluster(
@@ -1845,8 +1845,8 @@ COMPOSE_CASES = [
                 ),
                 resources={
                     "serving-stack": _observed_serving_stack(gateway={"address": "34.55.100.10"}),
-                    # What the agent reports of a CPU pool: its node, which it
-                    # leaves out of the histogram for its modelplane.ai/cpu taint.
+                    # The agent counts the CPU pool's node, tainted
+                    # modelplane.ai/cpu, as schedulable.
                     "pool-observation-cpu-pool": _observed_pool_observation(
                         pool="cpu-pool",
                         status={
@@ -1861,10 +1861,12 @@ COMPOSE_CASES = [
                                     "observedGeneration": 1,
                                 },
                             ],
-                            "nodes": {"total": 1, "ready": 1, "schedulable": 0},
+                            "nodes": {"total": 1, "ready": 1, "schedulable": 1},
                             "unschedulablePods": 0,
-                            "devices": [],
-                            "nodesByFreeDevices": [],
+                            "devices": [
+                                {"deviceClassName": "dra.cpu", "nodes": 1, "allocatable": 1, "allocated": 0},
+                            ],
+                            "nodesByFreeDevices": [{"freeDevices": {"dra.cpu": 1}, "nodes": 1}],
                         },
                     ),
                 },
@@ -1920,6 +1922,8 @@ COMPOSE_CASES = [
                         {
                             "name": "cpu-pool",
                             "nodes": 2,
+                            "observedNodes": 1,
+                            "nodesByFreeDevices": [{"freeDevices": {"dra.cpu": 1}, "nodes": 1}],
                             "devices": [
                                 {
                                     "name": "cpu",
@@ -1950,6 +1954,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                     ),
                     "pool-observation-l4-pool": _pool_observation(pool="l4-pool"),
+                    "pool-observation-cpu-pool": _pool_observation(pool="cpu-pool"),
                 },
             ),
             context=structpb.Struct(),

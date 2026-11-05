@@ -106,10 +106,6 @@ _SUPPORTED_DRA_DRIVERS: dict[Cloud, frozenset[str]] = {
     CLUSTER_SOURCE_CIVO: frozenset({"gpu.nvidia.com", "dra.cpu"}),
 }
 
-# The only driver whose pools the cluster agent can observe (see
-# compose_pool_observations).
-_NVIDIA_GPU_DRIVER = "gpu.nvidia.com"
-
 # InferenceClass device claim values. An unset claim means DRA.
 _CLAIM_DRA = "DRA"
 
@@ -261,17 +257,6 @@ def _namespace(meta: metav1.ObjectMeta | None) -> str:
     if meta is None or meta.namespace is None:
         raise ValueError("metadata.namespace is unexpectedly absent")
     return meta.namespace
-
-
-def _agent_observable(cls: iclv1alpha1.InferenceClass) -> bool:
-    """Whether the cluster agent can observe a pool of this class.
-
-    Only NVIDIA GPU pools. The agent counts a node only if every NoSchedule
-    taint on it is nvidia.com/gpu, so it would report a CPU or AMD pool as
-    having no free devices and the scheduler would never place a replica
-    there. Unobserved, they get whole-node accounting.
-    """
-    return any(d.driver == _NVIDIA_GPU_DRIVER and (d.claim or _CLAIM_DRA) == _CLAIM_DRA for d in cls.spec.devices or [])
 
 
 def _gateway_hostname(cluster_name: str) -> str:
@@ -638,7 +623,7 @@ class Composer:
             self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
 
     def compose_pool_observations(self) -> None:
-        """Compose a PoolObservation on the cluster for each of its NVIDIA GPU pools.
+        """Compose a PoolObservation on the cluster for each of its pools.
 
         The cluster agent reports each pool's nodes and free devices in the
         status of its PoolObservation, which schedulable_pools publishes. The
@@ -662,8 +647,9 @@ class Composer:
         )
         pc = resource.child_name(_name(self.xr.metadata), "cluster-kubeconfig")
         for pool in self.xr.spec.nodePools or []:
+            # Skip the pools schedulable_pools doesn't publish.
             cls = self.classes.get(pool.className)
-            if not cls or not _agent_observable(cls):
+            if not cls or not cls.spec.devices:
                 continue
             key = f"pool-observation-{pool.name}"
             if not (backend_ready or key in self.req.observed.resources):
@@ -2172,9 +2158,7 @@ class Composer:
                     for d in cls.spec.devices
                 ],
             )
-            # A pool that has stopped being observable may still have an
-            # observation until Crossplane deletes it. Don't publish it.
-            observed = self.observed_pool(pool.name) if _agent_observable(cls) else None
+            observed = self.observed_pool(pool.name)
             if observed is not None:
                 schedulable.observedNodes = observed.nodes.total
                 schedulable.nodesByFreeDevices = [

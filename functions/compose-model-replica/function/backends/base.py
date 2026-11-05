@@ -895,7 +895,8 @@ def invalid_cpu_claim(replica: v1alpha1.ModelReplica) -> str | None:
 # resource requests, which DRA pods don't make. Every engine pod tolerates the
 # whole list: tolerating a taint its pool never carries is harmless, and the
 # pool nodeSelector is what places the pod, so the accelerator needn't thread
-# through placement.
+# through placement. compose-serving-stack passes the cluster agent the same
+# taints as its toleratedTaints.
 _POOL_TOLERATIONS = [
     {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
     {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
