@@ -158,8 +158,7 @@ class Nodes(BaseModel):
     schedulable: conint(ge=0)
     """
     Schedulable counts the ready nodes that aren't cordoned, and carry no
-    NoSchedule or NoExecute taint but nvidia.com/gpu with NoSchedule, which
-    Modelplane's GPU pods tolerate.
+    NoSchedule or NoExecute taint that Modelplane's pods don't tolerate.
     """
     total: conint(ge=0)
     """
