@@ -1121,7 +1121,8 @@ def schedule(
     fewer if not enough capacity exists.
 
     Existing replicas are retained while their cluster stack and pinned pools
-    still match the deployment. fill gates only the placement of NEW replicas: with fill=False the schedule is retain-only, holding steady at the
+    still match the deployment. fill gates only the placement of NEW replicas:
+    with fill=False the schedule is retain-only, holding steady at the
     current placement and adding nothing. A caller passes fill=False when it
     can't yet trust the candidate set - for instance when an input that narrows
     the candidate clusters is unresolved, so placing new replicas now risks
