@@ -614,6 +614,7 @@ separate those from a slow model.
 | `modelplane_requests_total{status}` | counter | fleet gateway |
 | `modelplane_tokens_total{direction}` | counter | fleet gateway |
 | `modelplane_requests_throttled_total` | counter | Envoy rate limits |
+| `modelplane_tool_calls_total{outcome}` | counter | fleet gateway, requests with tools |
 
 **Why it served that way.**
 
@@ -703,7 +704,10 @@ Two labels have closed value sets: `status` on `modelplane_requests_total` is `o
 `client_error` or `server_error`, and `direction` on `modelplane_tokens_total` and
 `modelplane_engine_tokens_total` is `input` or `output`. `status` on
 `modelplane_engine_responses_total` uses the same three classes for the codes an
-OpenAI-compatible server returns, and a rarer code keeps its number.
+OpenAI-compatible server returns, and a rarer code keeps its number. `outcome` has a closed
+value set of its own: `valid`, `unknown_tool`, `invalid_json` and `schema_mismatch` on
+`modelplane_tool_calls_total`, and the engine's own vocabulary on
+`modelplane_tool_call_parses_total`.
 
 Cardinality is bounded by construction, and deliberately. Every label above is something
 Modelplane created, so the series count is the number of deployments times the clusters they
@@ -736,6 +740,22 @@ rest is the signal, and it is not derivable from a status code anywhere.
 same quiet way. It returns text with the call left unparsed inside it rather than an error,
 so an agentic caller sees a model that stopped calling tools and the serving side sees
 nothing at all.
+
+`modelplane_tool_calls_total{outcome}` is the fleet gateway's answer to the same failure,
+and it catches what the engine's counter cannot. The gateway sees both halves of a call:
+the `tools` a request declared, each with a JSON Schema for its arguments, and the
+`tool_calls` a response carried. It checks each call against the schema the request named
+it under and counts the outcome: `valid` when the arguments match, `unknown_tool` when the
+name is not among the request's tools, `invalid_json` when the arguments don't parse, and
+`schema_mismatch` when they parse but fail the schema. A streamed response is checked once
+its call's argument deltas are assembled. Only requests carrying `tools` pay for the check,
+and the call is counted and forwarded unchanged: whether to fail or retry a bad call is a
+later decision. An engine's parser counts a call it silently emptied as a success (#565 and
+vllm-project/vllm#49248), so a gate on this counter is what a missing required argument
+otherwise never reaches. The check needs a counter the ext-proc next to the fleet gateway
+exports, which Modelplane composes rather than owns, so the series arrives with the
+upstream support for it (envoyproxy/ai-gateway), and the collector renames it onto the
+`modelplane_` surface the way every gateway series is renamed.
 
 The gateway and the engines both count requests and tokens, and only the gateway's counts
 are renamed onto `modelplane_requests_total` and `modelplane_tokens_total`. It counts the

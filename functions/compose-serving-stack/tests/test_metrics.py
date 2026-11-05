@@ -86,6 +86,18 @@ PUBLISHED_CASES = [
         file="envoy-v1.38.4.json",
         want=[],
     ),
+    # The ext-proc adds the tool-call schema counter with the upstream support
+    # for validating a response's tool_calls against the request's tools
+    # (design/telemetry.md, modelplane_tool_calls_total). v1.1.0 predates it; a
+    # released ext-proc with support would publish the name, and removing this
+    # case's expected miss is the first thing a bump to it changes.
+    PublishedCase(
+        name="GatewayTools",
+        reason="Envoy AI Gateway v1.1.0 publishes every name the gateway tools mapping reads but its tool-call schema counter, which arrives with the upstream support for it.",
+        mapping="modelplane-gateway-tools",
+        file="gateway-v1.1.0.json",
+        want=["gen_ai_client_tool_call_schema_validations"],
+    ),
     # The vLLM versions the recipes pin.
     PublishedCase(
         name="VLLM092",

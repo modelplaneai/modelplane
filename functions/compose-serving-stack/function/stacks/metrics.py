@@ -61,6 +61,24 @@ _GATEWAY_PROXY = {
     "envoy_cluster_upstream_rq_active": "modelplane_frontend_requests_active",
 }
 
+# Whether the tool_calls forwarding left in a response match the tools the
+# request declared. The ext-proc beside the fleet gateway sees both halves, so
+# it checks each call against the JSON Schema of the tool the request named it
+# under (#565). modelplane_tool_call_parses_total catches a parser it couldn't
+# take apart; this catches the calls that parse cleanly yet are wrong, which an
+# engine's parser repairs or empties into {} and returns as a success
+# (vllm-project/vllm#49248), and which only an agentic caller otherwise notices.
+# The outcome values are a closed set: valid, unknown_tool, invalid_json and
+# schema_mismatch, which the ext-proc labels each datapoint with, so the
+# mapping is a rename alone. The counter doesn't exist yet: the name is the
+# one the ext-proc's GenAI metrics would publish, the way
+# gen_ai.client.token.usage publishes as gen_ai_client_token_usage, and the
+# mapping is inert until a release carries it.
+_GATEWAY_TOOLS: dict[str, object] = {
+    "from": "gen_ai_client_tool_call_schema_validations",
+    "to": "modelplane_tool_calls_total",
+}
+
 # The engines, which explain what the gateway measured. vLLM publishes these
 # names from v0.9.2.
 _VLLM = {
@@ -265,6 +283,7 @@ def mappings() -> list[v1alpha1.MetricMapping]:
     return [
         _mapping("modelplane-gateway", _GATEWAY),
         _mapping("modelplane-gateway-proxy", _GATEWAY_PROXY),
+        _mapping("modelplane-gateway-tools", {}, extra=(_GATEWAY_TOOLS,)),
         _mapping("modelplane-vllm", _VLLM, tokens=_VLLM_TOKENS, extra=(_VLLM_RESPONSES,)),
         _mapping("modelplane-sglang", _SGLANG, tokens=_SGLANG_TOKENS, extra=(_SGLANG_RESPONSES,)),
         _mapping("modelplane-picker", _PICKER),
