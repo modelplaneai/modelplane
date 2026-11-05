@@ -243,6 +243,12 @@ SUPPORTED_DRIVERS_CASES = [
         want=frozenset({"gpu.nvidia.com", "dra.cpu"}),
     ),
     SupportedDriversCase(
+        name="CoreWeave",
+        reason="CoreWeave tags the NVIDIA and CPU stacks.",
+        cloud="CoreWeave",
+        want=frozenset({"gpu.nvidia.com", "dra.cpu"}),
+    ),
+    SupportedDriversCase(
         name="Existing",
         reason="Existing is the one cloud that tags the AMD stack, beside NVIDIA and CPU.",
         cloud="Existing",
@@ -462,31 +468,38 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
 """
 
 
-def test_nebius_dcgm_exporter() -> None:
-    """Nebius's dcgm-exporter exports the generated clouds' DCGM fields.
+# The clouds that install NVIDIA's standalone dcgm-exporter chart rather
+# than the gpu-operator.
+STANDALONE_EXPORTER_CLOUDS = ("Nebius", "CoreWeave")
 
-    Nebius installs NVIDIA's standalone dcgm-exporter chart rather than the
-    GPU Operator, so the CSV goes in the chart's customMetrics rather than
+
+@pytest.mark.parametrize("cloud", STANDALONE_EXPORTER_CLOUDS)
+def test_standalone_dcgm_exporter(cloud: str) -> None:
+    """A standalone dcgm-exporter exports the generated clouds' DCGM fields.
+
+    These clouds install NVIDIA's standalone dcgm-exporter chart rather than
+    the GPU Operator, so the CSV goes in the chart's customMetrics rather than
     dcgmExporter.config.data. Left unset, the chart falls back to its own
-    shorter default list and Nebius silently exports fewer fields than every
+    shorter default list and the cloud silently exports fewer fields than every
     other cloud. Compared against the same literal as Civo's cases, so a
     generator-moved CSV fails here until a human confirms the change.
     """
-    joined = stacks.join("Nebius", "Standard")
+    joined = stacks.join(cloud, "Standard")  # ty: ignore[invalid-argument-type]  # parametrize erases the Literal
     exporter = next(c for c in joined if isinstance(c, stacks.Chart) and c.key == "dcgm-exporter")
     assert exporter.values is not None
     assert exporter.values["customMetrics"] == _DCGM_METRICS_CSV
 
 
-def test_nebius_exporter_affinity() -> None:
-    """Nebius's dcgm-exporter schedules by the DRA kubelet plugin's PCI terms.
+@pytest.mark.parametrize("cloud", STANDALONE_EXPORTER_CLOUDS)
+def test_standalone_exporter_affinity(cloud: str) -> None:
+    """A standalone dcgm-exporter schedules by the DRA kubelet plugin's PCI terms.
 
-    Nebius GPU nodes carry pci-0302_10de but not pci-10de, so dropping the
-    0302 term would leave the exporter on no node with every unit test still
-    passing. Spelled out as a literal so a changed term fails here rather
-    than only on a real cluster.
+    Nebius and CKS GPU nodes carry pci-0302_10de but not pci-10de, so dropping
+    the 0302 term would leave the exporter on no node with every unit test
+    still passing. Spelled out as a literal so a changed term fails here
+    rather than only on a real cluster.
     """
-    joined = stacks.join("Nebius", "Standard")
+    joined = stacks.join(cloud, "Standard")  # ty: ignore[invalid-argument-type]  # parametrize erases the Literal
     exporter = next(c for c in joined if isinstance(c, stacks.Chart) and c.key == "dcgm-exporter")
     assert exporter.values is not None
     required = exporter.values["affinity"]["nodeAffinity"]["requiredDuringSchedulingIgnoredDuringExecution"]
@@ -496,14 +509,15 @@ def test_nebius_exporter_affinity() -> None:
     ]
 
 
-def test_nebius_exporter_dra() -> None:
-    """Nebius's dcgm-exporter attributes GPU series to DRA-allocated pods.
+@pytest.mark.parametrize("cloud", STANDALONE_EXPORTER_CLOUDS)
+def test_standalone_exporter_dra(cloud: str) -> None:
+    """A standalone dcgm-exporter attributes GPU series to DRA-allocated pods.
 
-    Nebius allocates GPUs through DRA ResourceClaims, not the device plugin.
-    Without kubernetesDRA the exporter still exports every GPU's fields, but
-    can't say which pod holds the GPU, and nothing else fails.
+    Modelplane allocates GPUs through DRA ResourceClaims, not the device
+    plugin. Without kubernetesDRA the exporter still exports every GPU's
+    fields, but can't say which pod holds the GPU, and nothing else fails.
     """
-    joined = stacks.join("Nebius", "Standard")
+    joined = stacks.join(cloud, "Standard")  # ty: ignore[invalid-argument-type]  # parametrize erases the Literal
     exporter = next(c for c in joined if isinstance(c, stacks.Chart) and c.key == "dcgm-exporter")
     assert exporter.values is not None
     assert exporter.values["kubernetesDRA"] == {"enabled": True}

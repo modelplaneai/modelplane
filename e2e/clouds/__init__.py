@@ -321,6 +321,36 @@ CLOUDS: dict[str, Cloud] = {
             "dra-driver-cpu/mp-dra-driver-cpu": 2,
         },
     ),
+    # CoreWeave's half of the stack doesn't install NFD, because CoreWeave
+    # runs its own on every CKS cluster. Its NFD would set the GPU labels on
+    # real nodes, and here they're set up front as on the other clouds. The
+    # device-plugin label is the one compose-coreweave-cluster sets to keep
+    # CoreWeave's device plugin off GPU nodes.
+    "coreweave": Cloud(
+        cloud="CoreWeave",
+        labels={
+            "node.kubernetes.io/instance-type": "rtxp6000-8x",
+            "nvidia.com/gpu.deploy.device-plugin": "false",
+            "modelplane.ai/pool": "gpu-fake",
+            "modelplane.ai/gpu": "nvidia-rtx-pro-6000",
+            "nvidia.com/gpu.present": "true",
+            "feature.node.kubernetes.io/pci-10de.present": "true",
+            # CKS GPU nodes run Ubuntu 24.04, and CoreWeave's NFD sets these.
+            "feature.node.kubernetes.io/system-os_release.ID": "ubuntu",
+            "feature.node.kubernetes.io/system-os_release.VERSION_ID": "24.04",
+        },
+        taint_value="true",
+        cpu_labels={
+            "node.kubernetes.io/instance-type": "turin-gp",
+            "modelplane.ai/pool": "cpu-fake",
+            "modelplane.ai/cpu": "true",
+        },
+        dra_drivers=("dra.cpu", "gpu.nvidia.com"),
+        expected_daemonsets={
+            "nvidia-dra-driver/dra-driver-nvidia-gpu-kubelet-plugin": 2,
+            "dra-driver-cpu/mp-dra-driver-cpu": 2,
+        },
+    ),
     # The model e2e already installs the Existing stack, but on an untainted
     # single node - this leg adds what it can't check: tainted GPU pools, so
     # the placement and toleration audits have teeth. Modelplane doesn't

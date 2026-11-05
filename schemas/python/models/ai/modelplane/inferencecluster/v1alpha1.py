@@ -47,6 +47,21 @@ class Civo(BaseModel):
     """
 
 
+class Coreweave(BaseModel):
+    credentials: Credentials | None = None
+    """
+    CoreWeave ProviderConfig or ClusterProviderConfig used to authenticate to the CoreWeave API. Its API access token also authenticates Modelplane to the cluster. Defaults to the ClusterProviderConfig named default.
+    """
+    kubernetesVersion: constr(pattern=r'^[0-9]+\.[0-9]+$') | None = None
+    """
+    CKS Kubernetes minor version, in the form X.Y. CKS applies patch versions itself.
+    """
+    zone: constr(min_length=1, max_length=32)
+    """
+    CoreWeave Availability Zone for the cluster (e.g. US-EAST-04A). Instance types vary by zone.
+    """
+
+
 class Eks(BaseModel):
     credentials: Credentials | None = None
     """
@@ -152,6 +167,10 @@ class Cluster(BaseModel):
     """
     Civo Kubernetes (k3s) cluster configuration. Required when source is Civo.
     """
+    coreweave: Coreweave | None = None
+    """
+    CoreWeave Kubernetes Service (CKS) cluster configuration. Required when source is CoreWeave.
+    """
     eks: Eks | None = None
     """
     EKS cluster configuration. Required when source is EKS.
@@ -168,7 +187,9 @@ class Cluster(BaseModel):
     """
     Nebius mk8s cluster configuration. Required when source is Nebius; may be empty, since every field has a default. The cluster is created in the project the referenced ProviderConfig or ClusterProviderConfig sets as its projectID; Nebius projects are bound to a region, so the project also determines where the cluster runs.
     """
-    source: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Civo', 'Existing']
+    source: Literal[
+        'GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Civo', 'CoreWeave', 'Existing'
+    ]
     """
     Cluster provisioning method.
     """
@@ -242,7 +263,7 @@ class NodePool(BaseModel):
     """
     fabric: Fabric | None = None
     """
-    High-performance node-to-node fabric for multi-node engines, so a gang's tensor-parallel traffic isn't capped by TCP. Omit for standard VPC networking.
+    High-performance node-to-node fabric for multi-node engines, so a gang's tensor-parallel traffic isn't capped by TCP. Omit for standard VPC networking. Ignored on CoreWeave, where a CKS instance type either includes InfiniBand or doesn't.
     """
     maxNodeCount: conint(ge=1) | None = None
     """

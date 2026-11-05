@@ -322,6 +322,11 @@ def _config(
                                     "regex": ".*dcgm.*|.*metrics-exporter.*",
                                 },
                                 {
+                                    "source_labels": ["__meta_kubernetes_namespace"],
+                                    "action": "drop",
+                                    "regex": "cw-exporters",
+                                },
+                                {
                                     "source_labels": ["__meta_kubernetes_pod_container_port_name"],
                                     "action": "keep",
                                     "regex": "metrics|exporter-port",
@@ -1240,7 +1245,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="ed6e1a2446fa88db",
+                    config_hash="522e31c7cedc07c5",
                     volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                     volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                     env_from=None,
@@ -1285,7 +1290,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="01749001b45477d3",
+                    config_hash="1f03e323432223be",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -1352,7 +1357,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="4abf1d7de91ea0e6",
+                    config_hash="b1539f5a25d85bfc",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-vendor", "secret": {"secretName": "vendor-token"}},

@@ -117,6 +117,20 @@ spec:
               message: >-
                 spec.provisioning.civo.accelerator must be omitted when no
                 device claims a DRA driver other than dra.cpu.
+            - rule: >-
+                !has(self.provisioning) || !has(self.provisioning.coreweave) ||
+                has(self.provisioning.coreweave.accelerator) ||
+                !(has(self.devices) && self.devices.exists(d, (!has(d.claim) || d.claim == 'DRA') && d.driver != 'dra.cpu'))
+              message: >-
+                spec.provisioning.coreweave.accelerator is required when a
+                device claims a DRA driver other than dra.cpu.
+            - rule: >-
+                !has(self.provisioning) || !has(self.provisioning.coreweave) ||
+                !has(self.provisioning.coreweave.accelerator) ||
+                (has(self.devices) && self.devices.exists(d, (!has(d.claim) || d.claim == 'DRA') && d.driver != 'dra.cpu'))
+              message: >-
+                spec.provisioning.coreweave.accelerator must be omitted when no
+                device claims a DRA driver other than dra.cpu.
             # dra-driver-cpu runs only on CPU pools, so a provisioned GPU
             # pool never publishes dra.cpu devices for a claim to allocate.
             - rule: >-
@@ -151,10 +165,12 @@ spec:
                   message: spec.provisioning.vultr is required when spec.provisioning.provider is Vultr.
                 - rule: "self.provider != 'Civo' || has(self.civo)"
                   message: spec.provisioning.civo is required when spec.provisioning.provider is Civo.
+                - rule: "self.provider != 'CoreWeave' || has(self.coreweave)"
+                  message: spec.provisioning.coreweave is required when spec.provisioning.provider is CoreWeave.
                 properties:
                   provider:
                     type: string
-                    enum: [GKE, EKS, AKS, Nebius, Vultr, Civo]
+                    enum: [GKE, EKS, AKS, Nebius, Vultr, Civo, CoreWeave]
                   gke:
                     type: object
                     required: [machineType]
@@ -416,6 +432,46 @@ spec:
                             description: >-
                               GPU accelerator type (e.g. nvidia-l40s,
                               nvidia-a100). Informational - reported on
+                              the consuming InferenceCluster's status.
+                            minLength: 1
+                            maxLength: 63
+                          count:
+                            type: integer
+                            minimum: 1
+                            maximum: 16
+                  coreweave:
+                    type: object
+                    required: [instanceType]
+                    properties:
+                      instanceType:
+                        type: string
+                        description: >-
+                          CKS instance type (e.g. rtxp6000-8x, turin-gp).
+                          The instance type determines
+                          the GPU model and count, if any. The accelerator
+                          block below doesn't change the hardware, but
+                          whether it's set decides whether the pool is
+                          provisioned as a GPU or a CPU pool.
+                        minLength: 1
+                        maxLength: 63
+                      accelerator:
+                        type: object
+                        description: >-
+                          GPU accelerator to attach when provisioning the node
+                          pool. Provisioning input only: the scheduler matches
+                          against spec.devices, not this block. Set this when
+                          and only when a device claims a DRA driver other
+                          than dra.cpu; the API rejects a mismatch.
+                          Omitted, Modelplane provisions a CPU pool: the
+                          modelplane.ai/cpu label and taint, and no GPU
+                          stack.
+                        required: [type, count]
+                        properties:
+                          type:
+                            type: string
+                            description: >-
+                              GPU accelerator type (e.g. nvidia-h100,
+                              nvidia-l40s). Informational - reported on
                               the consuming InferenceCluster's status.
                             minLength: 1
                             maxLength: 63

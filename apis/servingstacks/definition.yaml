@@ -62,6 +62,7 @@ spec:
                 - Nebius
                 - Vultr
                 - Civo
+                - CoreWeave
                 - Existing
               draDrivers:
                 type: array

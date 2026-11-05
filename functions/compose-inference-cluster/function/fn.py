@@ -45,6 +45,7 @@ from models.ai.modelplane.inferencecluster import v1alpha1
 from models.ai.modelplane.inferencegateway import v1alpha1 as igv1alpha1
 from models.ai.modelplane.infrastructure.akscluster import v1alpha1 as aksv1alpha1
 from models.ai.modelplane.infrastructure.civocluster import v1alpha1 as civov1alpha1
+from models.ai.modelplane.infrastructure.coreweavecluster import v1alpha1 as coreweavev1alpha1
 from models.ai.modelplane.infrastructure.ekscluster import v1alpha1 as eksv1alpha1
 from models.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from models.ai.modelplane.infrastructure.nebiuscluster import v1alpha1 as nebiusv1alpha1
@@ -65,13 +66,14 @@ from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 # Cluster source discriminator values from the XRD enum. The Literal
 # mirrors ServingStack spec.cloud, so passing a wrong or unsupported
 # cloud fails type checking; Final makes each constant a literal type.
-Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "Civo", "Existing"]
+Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "Civo", "CoreWeave", "Existing"]
 CLUSTER_SOURCE_GKE: Final = "GKE"
 CLUSTER_SOURCE_EKS: Final = "EKS"
 CLUSTER_SOURCE_AKS: Final = "AKS"
 CLUSTER_SOURCE_NEBIUS: Final = "Nebius"
 CLUSTER_SOURCE_VULTR: Final = "Vultr"
 CLUSTER_SOURCE_CIVO: Final = "Civo"
+CLUSTER_SOURCE_COREWEAVE: Final = "CoreWeave"
 CLUSTER_SOURCE_EXISTING: Final = "Existing"
 
 # Condition types and reasons for the InferenceCluster XR.
@@ -104,6 +106,7 @@ _SUPPORTED_DRA_DRIVERS: dict[Cloud, frozenset[str]] = {
     CLUSTER_SOURCE_NEBIUS: frozenset({"gpu.nvidia.com", "dra.cpu"}),
     CLUSTER_SOURCE_VULTR: frozenset({"gpu.nvidia.com", "dra.cpu"}),
     CLUSTER_SOURCE_CIVO: frozenset({"gpu.nvidia.com", "dra.cpu"}),
+    CLUSTER_SOURCE_COREWEAVE: frozenset({"gpu.nvidia.com", "dra.cpu"}),
 }
 
 # InferenceClass device claim values. An unset claim means DRA.
@@ -243,6 +246,10 @@ _ACTIVATE_CIVO = (
     "networks.vpc.civo.m.upbound.io",
     "firewalls.vpc.civo.m.upbound.io",
 )
+_ACTIVATE_COREWEAVE = (
+    "clusters.cks.coreweave.m.upbound.io",
+    "vpcs.networking.coreweave.m.upbound.io",
+)
 
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
@@ -363,6 +370,8 @@ class Composer:
             self.compose_vultr(cluster.vultr)
         elif source == CLUSTER_SOURCE_CIVO:
             self.compose_civo(cluster.civo)
+        elif source == CLUSTER_SOURCE_COREWEAVE:
+            self.compose_coreweave(cluster.coreweave)
         elif source == CLUSTER_SOURCE_EXISTING:
             self.compose_existing(cluster.existing)
         else:
@@ -1093,6 +1102,47 @@ class Composer:
 
         self.write_status(self.schedulable_pools())
         self.derive_conditions(cluster_ready=civo_ready)
+
+    def compose_coreweave(self, coreweave: v1alpha1.Coreweave | None) -> None:
+        """Compose an InferenceCluster backed by a Modelplane-provisioned
+        CKS cluster. Its kubeconfig authenticates with a CoreWeave API access
+        token, which means the ClusterProviderConfig doesn't need an
+        identity.
+        """
+        if not coreweave:
+            response.warning(self.rsp, "CoreWeave configuration is required when source is CoreWeave")
+            return
+
+        self.compose_activation(_ACTIVATE_COREWEAVE)
+        if self._activation_ready(_ACTIVATE_COREWEAVE) or "coreweave-cluster" in self.req.observed.resources:
+            self.rsp.desired.resources["activation"].ready = fnv1.READY_TRUE
+            if not self.compose_coreweave_cluster(coreweave):
+                return
+
+        coreweave_ready = (
+            resource.get_condition(self.req.observed.resources.get("coreweave-cluster"), "Ready").status == "True"
+        )
+        kubeconfig = self.observed_coreweave_secret(_SECRET_TYPE_KUBECONFIG)
+        backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
+
+        if coreweave_ready and kubeconfig:
+            self.compose_cluster_provider_config(kubeconfig.name, kubeconfig.key)
+
+        backend_secrets = self.resolve_coreweave_backend_secrets(
+            coreweave_ready=coreweave_ready, backend_exists=backend_exists
+        )
+        if backend_secrets or backend_exists:
+            if backend_secrets:
+                self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_COREWEAVE)
+            self.compose_coreweave_usage()
+
+        if coreweave_ready:
+            self.rsp.desired.resources["coreweave-cluster"].ready = fnv1.READY_TRUE
+            if not backend_exists:
+                response.normal(self.rsp, "CoreWeave cluster ready, composing backend")
+
+        self.write_status(self.schedulable_pools())
+        self.derive_conditions(cluster_ready=coreweave_ready)
 
     def compose_existing(self, existing: v1alpha1.Existing | None) -> None:
         """Compose an InferenceCluster backed by a user-supplied cluster.
@@ -1963,6 +2013,129 @@ class Composer:
             return None
         return next((s for s in civo_secrets if s.type == secret_type), None)
 
+    def compose_coreweave_cluster(self, coreweave: v1alpha1.Coreweave) -> bool:
+        """Compose a CoreWeaveCluster XR from the zone and the node pools'
+        classes. compose-coreweave-cluster adds the system pool. Returns
+        False, having failed the reconcile, if a node pool is invalid.
+        """
+        coreweave_node_pools: list[coreweavev1alpha1.NodePool] = []
+
+        for pool in self.xr.spec.nodePools or []:
+            cls = self.classes[pool.className]
+            if not cls.spec.provisioning or not cls.spec.provisioning.coreweave:
+                msg = f"InferenceClass {pool.className} has no CoreWeave provisioning block"
+                self.fail(CONDITION_REASON_INVALID_NODE_POOL, msg)
+                return False
+            prov = cls.spec.provisioning.coreweave
+            # A class with no accelerator describes a CPU pool (see the GKE
+            # builder above). Fabric isn't mapped, because CKS instance types
+            # with InfiniBand include it.
+            node_pool = coreweavev1alpha1.NodePool(
+                name=pool.name,
+                role="GPU" if prov.accelerator else "CPU",
+                instanceType=prov.instanceType,
+                nodeCount=pool.nodeCount,
+            )
+            if prov.accelerator:
+                node_pool.gpu = coreweavev1alpha1.Gpu(
+                    acceleratorType=prov.accelerator.type,
+                )
+            # Set only when given. resource.update serializes with
+            # exclude_unset, and assigning None would emit maxNodeCount: null.
+            if pool.maxNodeCount is not None:
+                node_pool.maxNodeCount = pool.maxNodeCount
+            if pool.minNodeCount is not None:
+                node_pool.minNodeCount = pool.minNodeCount
+            coreweave_node_pools.append(node_pool)
+
+        coreweave_spec = coreweavev1alpha1.Spec(
+            zone=coreweave.zone,
+            nodePools=coreweave_node_pools,
+        )
+        # Left unset unless specified, so the CoreWeaveCluster's default
+        # version applies.
+        if coreweave.kubernetesVersion is not None:
+            coreweave_spec.kubernetesVersion = coreweave.kubernetesVersion
+        if coreweave.credentials:
+            coreweave_spec.credentials = coreweavev1alpha1.Credentials(
+                type=coreweave.credentials.type,
+                name=coreweave.credentials.name,
+            )
+        resource.update(
+            self.rsp.desired.resources["coreweave-cluster"],
+            coreweavev1alpha1.CoreWeaveCluster(
+                metadata=metav1.ObjectMeta(
+                    name=_name(self.xr.metadata),
+                    namespace=_NAMESPACE_SYSTEM,
+                ),
+                spec=coreweave_spec,
+            ),
+        )
+        return True
+
+    def compose_coreweave_usage(self) -> None:
+        """Block CoreWeaveCluster deletion until the backend is deleted."""
+        resource.update(
+            self.rsp.desired.resources["usage-coreweave-by-backend"],
+            usagev1beta1.Usage(
+                metadata=metav1.ObjectMeta(namespace=_NAMESPACE_SYSTEM),
+                spec=usagev1beta1.Spec(
+                    of=usagev1beta1.Of(
+                        apiVersion="infrastructure.modelplane.ai/v1alpha1",
+                        kind="CoreWeaveCluster",
+                        resourceSelector=usagev1beta1.ResourceSelectorModel(matchControllerRef=True),
+                    ),
+                    by=usagev1beta1.By(
+                        apiVersion="infrastructure.modelplane.ai/v1alpha1",
+                        kind="ServingStack",
+                        resourceSelector=usagev1beta1.ResourceSelector(matchControllerRef=True),
+                    ),
+                    replayDeletion=True,
+                ),
+            ),
+        )
+        self.rsp.desired.resources["usage-coreweave-by-backend"].ready = fnv1.READY_TRUE
+
+    def resolve_coreweave_backend_secrets(
+        self, *, coreweave_ready: bool, backend_exists: bool
+    ) -> list[ssv1alpha1.Secret] | None:
+        """Resolve secrets for the backend from CoreWeaveCluster status.
+        Falls back to the observed backend's spec.secrets if CoreWeaveCluster
+        secrets aren't available but the backend already exists."""
+        coreweave_secrets = self.observed_coreweave_secrets()
+
+        if coreweave_ready and coreweave_secrets:
+            return [ssv1alpha1.Secret(type=s.type, name=s.name, key=s.key) for s in coreweave_secrets]
+
+        if backend_exists:
+            observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
+            if observed:
+                d = resource.struct_to_dict(observed.resource)
+                observed_secrets = d.get("spec", {}).get("secrets", [])
+                if observed_secrets:
+                    return [ssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in observed_secrets]
+
+        return None
+
+    def observed_coreweave_secrets(self) -> list[coreweavev1alpha1.Secret] | None:
+        """Read the CoreWeaveCluster's status.secrets from observed state."""
+        coreweave_observed = self.req.observed.resources.get("coreweave-cluster")
+        if not coreweave_observed:
+            return None
+        observed_coreweave = coreweavev1alpha1.CoreWeaveCluster.model_validate(
+            resource.struct_to_dict(coreweave_observed.resource)
+        )
+        if not observed_coreweave.status:
+            return None
+        return observed_coreweave.status.secrets
+
+    def observed_coreweave_secret(self, secret_type: str) -> coreweavev1alpha1.Secret | None:
+        """Read a specific secret from the observed CoreWeaveCluster status."""
+        coreweave_secrets = self.observed_coreweave_secrets()
+        if not coreweave_secrets:
+            return None
+        return next((s for s in coreweave_secrets if s.type == secret_type), None)
+
     def compose_eks_usage(self) -> None:
         """Block EKSCluster deletion until the backend is deleted."""
         resource.update(
@@ -2210,7 +2383,7 @@ class Composer:
 
         For provisioned clusters it comes from the backing cluster's
         status.cache.storageClassName, which reports the Modelplane-managed
-        class. Vultr and Civo are absent: their cluster XRs compose no
+        class. Vultr and Civo are absent: their cluster XRs report no
         cache StorageClass (neither cloud has usable RWX storage).
         For Existing clusters there is no cluster XR, so it's the
         user-supplied name. None until the cluster XR reports it."""
@@ -2219,6 +2392,7 @@ class Composer:
             CLUSTER_SOURCE_EKS: ("eks-cluster", eksv1alpha1.EKSCluster),
             CLUSTER_SOURCE_AKS: ("aks-cluster", aksv1alpha1.AKSCluster),
             CLUSTER_SOURCE_NEBIUS: ("nebius-cluster", nebiusv1alpha1.NebiusCluster),
+            CLUSTER_SOURCE_COREWEAVE: ("coreweave-cluster", coreweavev1alpha1.CoreWeaveCluster),
         }
         cluster = self.xr.spec.cluster
         if cluster.source in provisioned:
@@ -2234,7 +2408,8 @@ class Composer:
         model: type[gkev1alpha1.GKECluster]
         | type[eksv1alpha1.EKSCluster]
         | type[aksv1alpha1.AKSCluster]
-        | type[nebiusv1alpha1.NebiusCluster],
+        | type[nebiusv1alpha1.NebiusCluster]
+        | type[coreweavev1alpha1.CoreWeaveCluster],
     ) -> str | None:
         """Read status.cache.storageClassName from an observed cluster XR."""
         observed = self.req.observed.resources.get(key)

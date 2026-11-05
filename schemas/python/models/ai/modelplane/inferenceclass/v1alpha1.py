@@ -133,12 +133,31 @@ class AcceleratorModel1(BaseModel):
     count: conint(ge=1, le=16)
     type: constr(min_length=1, max_length=63)
     """
+    GPU accelerator type (e.g. nvidia-h100, nvidia-l40s). Informational - reported on the consuming InferenceCluster's status.
+    """
+
+
+class Coreweave(BaseModel):
+    accelerator: AcceleratorModel1 | None = None
+    """
+    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU pool: the modelplane.ai/cpu label and taint, and no GPU stack.
+    """
+    instanceType: constr(min_length=1, max_length=63)
+    """
+    CKS instance type (e.g. rtxp6000-8x, turin-gp). The instance type determines the GPU model and count, if any. The accelerator block below doesn't change the hardware, but whether it's set decides whether the pool is provisioned as a GPU or a CPU pool.
+    """
+
+
+class AcceleratorModel2(BaseModel):
+    count: conint(ge=1, le=16)
+    type: constr(min_length=1, max_length=63)
+    """
     GPU accelerator type (e.g. nvidia-a10g, nvidia-h100). Informational - reported on the consuming InferenceCluster's status.
     """
 
 
 class Eks(BaseModel):
-    accelerator: AcceleratorModel1 | None = None
+    accelerator: AcceleratorModel2 | None = None
     """
     GPU accelerator to attach when provisioning the node group. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU group: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
     """
@@ -149,7 +168,7 @@ class Eks(BaseModel):
     """
 
 
-class AcceleratorModel2(BaseModel):
+class AcceleratorModel3(BaseModel):
     count: conint(ge=1, le=16)
     type: constr(min_length=1, max_length=63)
     """
@@ -158,7 +177,7 @@ class AcceleratorModel2(BaseModel):
 
 
 class Gke(BaseModel):
-    accelerator: AcceleratorModel2 | None = None
+    accelerator: AcceleratorModel3 | None = None
     """
     GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block, so count here is the GCP machine's GPU count and need not be restated in devices. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU pool: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
     """
@@ -166,7 +185,7 @@ class Gke(BaseModel):
     machineType: constr(min_length=1)
 
 
-class AcceleratorModel3(BaseModel):
+class AcceleratorModel4(BaseModel):
     count: conint(ge=1, le=16)
     type: constr(min_length=1, max_length=63)
     """
@@ -175,7 +194,7 @@ class AcceleratorModel3(BaseModel):
 
 
 class Nebius(BaseModel):
-    accelerator: AcceleratorModel3 | None = None
+    accelerator: AcceleratorModel4 | None = None
     """
     GPU accelerator to attach when provisioning the node group. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU group: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
     """
@@ -194,7 +213,7 @@ class Nebius(BaseModel):
     """
 
 
-class AcceleratorModel4(BaseModel):
+class AcceleratorModel5(BaseModel):
     count: conint(ge=1, le=16)
     type: constr(min_length=1, max_length=63)
     """
@@ -203,7 +222,7 @@ class AcceleratorModel4(BaseModel):
 
 
 class Vultr(BaseModel):
-    accelerator: AcceleratorModel4 | None = None
+    accelerator: AcceleratorModel5 | None = None
     """
     GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU pool: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
     """
@@ -216,10 +235,11 @@ class Vultr(BaseModel):
 class Provisioning(BaseModel):
     aks: Aks | None = None
     civo: Civo | None = None
+    coreweave: Coreweave | None = None
     eks: Eks | None = None
     gke: Gke | None = None
     nebius: Nebius | None = None
-    provider: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Civo']
+    provider: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Civo', 'CoreWeave']
     vultr: Vultr | None = None
 
 
