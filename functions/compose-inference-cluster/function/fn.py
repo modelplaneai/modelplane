@@ -647,10 +647,6 @@ class Composer:
         )
         pc = resource.child_name(_name(self.xr.metadata), "cluster-kubeconfig")
         for pool in self.xr.spec.nodePools or []:
-            # Skip the pools schedulable_pools doesn't publish.
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.devices:
-                continue
             key = f"pool-observation-{pool.name}"
             if not (backend_ready or key in self.req.observed.resources):
                 continue
@@ -788,7 +784,7 @@ class Composer:
         """
         drivers: set[str] = set()
         for cls in self.classes.values():
-            for device in cls.spec.devices or []:
+            for device in cls.spec.devices:
                 if (device.claim or _CLAIM_DRA) == _CLAIM_DRA:
                     drivers.add(device.driver)
         return sorted(drivers)
@@ -809,9 +805,7 @@ class Composer:
         supported = _SUPPORTED_DRA_DRIVERS[source]
         offending = []
         for name in sorted(self.classes):
-            claimed = {
-                d.driver for d in (self.classes[name].spec.devices or []) if (d.claim or _CLAIM_DRA) == _CLAIM_DRA
-            }
+            claimed = {d.driver for d in self.classes[name].spec.devices if (d.claim or _CLAIM_DRA) == _CLAIM_DRA}
             unsupported = claimed - supported
             if unsupported:
                 offending.append(f"class {name} claims {', '.join(sorted(unsupported))}")
@@ -1318,8 +1312,8 @@ class Composer:
         gke_node_pools: list[gkev1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.gke:
+            cls = self.classes[pool.className]
+            if not cls.spec.provisioning or not cls.spec.provisioning.gke:
                 msg = f"InferenceClass {pool.className} has no GKE provisioning block"
                 self.fail(CONDITION_REASON_INVALID_NODE_POOL, msg)
                 return False
@@ -1403,8 +1397,8 @@ class Composer:
         eks_node_pools: list[eksv1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.eks:
+            cls = self.classes[pool.className]
+            if not cls.spec.provisioning or not cls.spec.provisioning.eks:
                 msg = f"InferenceClass {pool.className} has no EKS provisioning block"
                 self.fail(CONDITION_REASON_INVALID_NODE_POOL, msg)
                 return False
@@ -1489,8 +1483,8 @@ class Composer:
         aks_node_pools: list[aksv1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.aks:
+            cls = self.classes[pool.className]
+            if not cls.spec.provisioning or not cls.spec.provisioning.aks:
                 msg = f"InferenceClass {pool.className} has no AKS provisioning block"
                 self.fail(CONDITION_REASON_INVALID_NODE_POOL, msg)
                 return False
@@ -1557,8 +1551,8 @@ class Composer:
         nebius_node_pools: list[nebiusv1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.nebius:
+            cls = self.classes[pool.className]
+            if not cls.spec.provisioning or not cls.spec.provisioning.nebius:
                 msg = f"InferenceClass {pool.className} has no Nebius provisioning block"
                 self.fail(CONDITION_REASON_INVALID_NODE_POOL, msg)
                 return False
@@ -1712,8 +1706,8 @@ class Composer:
         vultr_node_pools: list[vultrv1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.vultr:
+            cls = self.classes[pool.className]
+            if not cls.spec.provisioning or not cls.spec.provisioning.vultr:
                 msg = f"InferenceClass {pool.className} has no Vultr provisioning block"
                 self.fail(CONDITION_REASON_INVALID_NODE_POOL, msg)
                 return False
@@ -1836,8 +1830,8 @@ class Composer:
         skipped here and reported by compose_civo_cluster."""
         pools: list[str] = []
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.civo:
+            cls = self.classes[pool.className]
+            if not cls.spec.provisioning or not cls.spec.provisioning.civo:
                 continue
             accelerator = cls.spec.provisioning.civo.accelerator
             if accelerator and accelerator.type == _ACCELERATOR_H100 and accelerator.count == 1:
@@ -1856,8 +1850,8 @@ class Composer:
         civo_node_pools: list[civov1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.civo:
+            cls = self.classes[pool.className]
+            if not cls.spec.provisioning or not cls.spec.provisioning.civo:
                 msg = f"InferenceClass {pool.className} has no Civo provisioning block"
                 self.fail(CONDITION_REASON_INVALID_NODE_POOL, msg)
                 return False
@@ -2142,9 +2136,7 @@ class Composer:
         """
         pools = []
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.devices:
-                continue
+            cls = self.classes[pool.className]
             # Copy the class's devices verbatim, from the InferenceClass's model
             # to the InferenceCluster's. model_dump drops None fields, keeping
             # the typed attribute value objects (string/version/bool/int) one-of
