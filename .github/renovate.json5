@@ -96,18 +96,6 @@
       ],
       allowedVersions: '<2.4.0',
     },
-    {
-      // The cluster-agent is pinned in two places that must move together:
-      // the CRD ref in crossplane-project.yaml and _CLUSTER_AGENT_VERSION in
-      // compose-serving-stack. Group both into a single PR, and keep them
-      // together even across a major bump. The CRD-ref half still inherits
-      // the crossplane-project.yaml build task, so schemas regenerate.
-      matchDepNames: [
-        'modelplaneai/cluster-agent',
-      ],
-      groupName: 'cluster-agent dependencies',
-      separateMajorMinor: false,
-    },
   ],
   customManagers: [
     {
@@ -134,42 +122,13 @@
         '/^crossplane-project\\.yaml$/',
       ],
       // Anchored to crossplane/crossplane so this manager doesn't also catch
-      // the modelplaneai/cluster-agent CRD ref. The cluster-agent is handled
-      // by its own manager pair below, which bumps its CRD ref and
-      // _CLUSTER_AGENT_VERSION in lockstep.
+      // the modelplaneai/cluster-agent CRD ref. We bump that by hand, along
+      // with the chart version compose-serving-stack installs, like every
+      // other chart in the serving stack.
       matchStrings: [
         'repository:\\s*https://github\\.com/crossplane/crossplane\\s*\\n\\s*ref:\\s*(?<currentValue>v[0-9][^\\s]*)',
       ],
       depNameTemplate: 'crossplane/crossplane',
-      datasourceTemplate: 'github-tags',
-      versioningTemplate: 'semver-coerced',
-    },
-    {
-      customType: 'regex',
-      description: 'Bump the cluster-agent CRD git ref in crossplane-project.yaml',
-      managerFilePatterns: [
-        '/^crossplane-project\\.yaml$/',
-      ],
-      matchStrings: [
-        'repository:\\s*https://github\\.com/modelplaneai/cluster-agent\\s*\\n\\s*ref:\\s*(?<currentValue>v[0-9][^\\s]*)',
-      ],
-      depNameTemplate: 'modelplaneai/cluster-agent',
-      datasourceTemplate: 'github-tags',
-      versioningTemplate: 'semver-coerced',
-    },
-    {
-      customType: 'regex',
-      description: 'Bump the cluster-agent chart/image version in compose-serving-stack',
-      managerFilePatterns: [
-        '/^functions/compose-serving-stack/function/stacks/common\\.py$/',
-      ],
-      matchStrings: [
-        '_CLUSTER_AGENT_VERSION\\s*=\\s*"(?<currentValue>[0-9][^"]*)"',
-      ],
-      // The git tags are v-prefixed (v0.1.0) but this constant is bare
-      // (0.1.0); semver-coerced preserves each site's format on the rewrite,
-      // so the constant stays bare and the CRD ref keeps its v.
-      depNameTemplate: 'modelplaneai/cluster-agent',
       datasourceTemplate: 'github-tags',
       versioningTemplate: 'semver-coerced',
     },
