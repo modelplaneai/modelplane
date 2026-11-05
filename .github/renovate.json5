@@ -80,15 +80,15 @@
     },
     {
       // The CRD ref must not run ahead of the Crossplane we declare support
-      // for. crossplane-project.yaml sets a floor of >=v2.3.0, so generating
-      // models from a newer minor would add fields a v2.3 control plane
-      // lacks. Pin Renovate to the 2.3 line so it only proposes 2.3.x
-      // patches; raising this ceiling is the deliberate, by-hand step we take
-      // alongside bumping the crossplane floor.
+      // for. crossplane-project.yaml sets a Crossplane version floor, so
+      // generating models from a newer minor would add fields a control
+      // plane at that floor lacks. Hold Renovate to patches of the committed
+      // ref's minor; moving to a new minor is the deliberate, by-hand step we
+      // take alongside bumping the crossplane floor.
       matchDepNames: [
         'crossplane/crossplane',
       ],
-      allowedVersions: '<2.4.0',
+      allowedVersions: '<{{major}}.{{add minor 1}}.0',
     },
   ],
   customManagers: [
