@@ -25,6 +25,19 @@ jobs:
       !github.event.repository.fork &&
       !github.event.pull_request.head.repo.fork
     steps:
+      # The postUpgradeTask builds the whole project, which needs more disk
+      # than the runner has free by default, so reclaim space we don't use.
+      - name: Cleanup Disk
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          tool-cache: true
+          swap-storage: false
+          large-packages: false
+          docker-images: false
+
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -47,6 +60,10 @@ jobs:
           RENOVATE_PLATFORM_COMMIT: "true"
           LOG_LEVEL: ${{ github.event.inputs.logLevel || env.LOG_LEVEL }}
           RENOVATE_ALLOWED_COMMANDS: '["^modelplane-nix .+"]'
+          # The postUpgradeTask builds the whole project from an empty Nix
+          # store, which can outlast Renovate's default 15 minute limit on the
+          # commands it runs.
+          RENOVATE_EXECUTION_TIMEOUT: "60"
         with:
           # Pin the Renovate that runs, not just the validator above. Without
           # this the action falls back to its floating major tag.
