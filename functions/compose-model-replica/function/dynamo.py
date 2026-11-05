@@ -251,7 +251,12 @@ def build(replica: v1alpha1.ModelReplica, provider_config: str) -> dict[str, k8s
         {
             "apiVersion": "nvidia.com/v1beta1",
             "kind": "DynamoGraphDeployment",
-            "metadata": {"name": graph_name(replica), "namespace": base.remote_namespace(replica)},
+            "metadata": {
+                "name": graph_name(replica),
+                "namespace": base.remote_namespace(replica),
+                # The pinned operator selects Grove's strategy through this annotation.
+                "annotations": {"nvidia.com/grove-update-strategy": "Coherent"},
+            },
             "spec": {"backendFramework": base.dynamo_framework(first_member), "components": components},
         },
         cel_query=READY_CEL,

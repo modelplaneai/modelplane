@@ -193,7 +193,10 @@
             "kind": "DynamoGraphDeployment",
             "metadata": {
               "name": "r-b5624d4c4a",
-              "namespace": "mp-ml-team-51733"
+              "namespace": "mp-ml-team-51733",
+              "annotations": {
+                "nvidia.com/grove-update-strategy": "Coherent"
+              }
             },
             "spec": {
               "backendFramework": "sglang",

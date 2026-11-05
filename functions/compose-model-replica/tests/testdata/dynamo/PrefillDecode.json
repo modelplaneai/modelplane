@@ -1,6 +1,6 @@
 {
   "name": "PrefillDecode",
-  "reason": "All engine copies share one runtime frontend, retaining application sidecars and phase identity.",
+  "reason": "Prefill and decode share one graph with Coherent Grove rollouts, retaining application sidecars and phase identity.",
   "replica": {
     "apiVersion": "modelplane.ai/v1alpha1",
     "kind": "ModelReplica",
@@ -204,7 +204,10 @@
             "kind": "DynamoGraphDeployment",
             "metadata": {
               "name": "r-23adbcbdf1",
-              "namespace": "mp-ml-team-51733"
+              "namespace": "mp-ml-team-51733",
+              "annotations": {
+                "nvidia.com/grove-update-strategy": "Coherent"
+              }
             },
             "spec": {
               "backendFramework": "vllm",

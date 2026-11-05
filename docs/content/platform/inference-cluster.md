@@ -124,6 +124,13 @@ the [KAI Scheduler](https://github.com/NVIDIA/KAI-Scheduler), and
 component for every engine. The operator owns runtime discovery, workloads,
 probes, and Grove gang scheduling. Modelplane owns device claims and placement.
 
+Grove schedules the minimum available prefill and decode capacity together in
+the graph's base gang. Capacity above each component's minimum is scheduled
+independently. Modelplane selects Grove's `Coherent` update strategy so rolling
+updates coordinate availability across prefill and decode. The pinned operator
+accepts this through the DGD annotation
+`nvidia.com/grove-update-strategy: Coherent`.
+
 Dynamo engines must use a Dynamo runtime image and launch `dynamo.vllm`,
 `dynamo.sglang`, or `dynamo.trtllm`. All engines in one graph use the same backend.
 Explicit commands, arguments, environment, and existing sidecars pass through.
