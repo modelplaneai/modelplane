@@ -29,7 +29,7 @@ spec:
   nodePools:
   - name: gpu-synthetic
     className: synthetic-gpu
-    # Two nodeCount allows both models to schedule on a single node
+    # Pretend the cluster has two nodes, one per model. It really has one.
     nodeCount: 2
 ---
 apiVersion: modelplane.ai/v1alpha1
