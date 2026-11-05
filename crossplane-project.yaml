@@ -106,7 +106,7 @@ spec:
   - type: crd
     git:
       repository: https://github.com/modelplaneai/cluster-agent
-      ref: v0.1.0
+      ref: v0.2.0
       path: cluster/charts/cluster-agent/files/crds
   - type: xpkg
     xpkg:

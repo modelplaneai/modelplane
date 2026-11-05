@@ -75,11 +75,11 @@ _NVIDIA_DRA_DRIVER_NAMESPACE = "nvidia-dra-driver"
 _CPU_DRA_DRIVER_NAMESPACE = "dra-driver-cpu"
 
 # The cluster agent is Modelplane's own. Its chart and image share one
-# repository, tagged 0.1.0 and v0.1.0 respectively, and the chart's default
+# repository, tagged 0.2.0 and v0.2.0 respectively, and the chart's default
 # image tag is its appVersion. The schema dependency on the agent's CRDs in
 # crossplane-project.yaml pins the same version.
 _CLUSTER_AGENT_REPO = "oci://xpkg.upbound.io/modelplane"
-_CLUSTER_AGENT_VERSION = "0.1.0"
+_CLUSTER_AGENT_VERSION = "0.2.0"
 
 _CRDS_DIR = pathlib.Path(__file__).parent / "crds"
 
@@ -383,11 +383,14 @@ COMPONENTS: list[Component] = [
             },
         ],
     ),
-    # The cluster agent reports the free devices on each GPU pool's nodes,
+    # The cluster agent reports the free devices on each pool's nodes,
     # and whether each replica's pods have scheduled, in the status of the
     # PoolObservations compose-inference-cluster creates and the
     # ReplicaObservations compose-model-replica creates. The fleet scheduler
-    # places replicas by what it reports.
+    # places replicas by what it reports. It counts a node with a
+    # NoSchedule or NoExecute taint not in toleratedTaints as
+    # unschedulable, so the list must match the taints engine pods
+    # tolerate: compose-model-replica's _POOL_TOLERATIONS.
     Chart(
         key="cluster-agent",
         release="mp-cluster-agent",
@@ -395,6 +398,13 @@ COMPONENTS: list[Component] = [
         chart="cluster-agent",
         repository=_CLUSTER_AGENT_REPO,
         version=_CLUSTER_AGENT_VERSION,
+        values={
+            "toleratedTaints": [
+                "nvidia.com/gpu:NoSchedule",
+                "amd.com/gpu:NoSchedule",
+                "modelplane.ai/cpu:NoSchedule",
+            ],
+        },
         depends_on=["gateway-namespace"],
     ),
 ]

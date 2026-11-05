@@ -594,9 +594,16 @@ def _cluster_agent(*, ready: fnv1.Ready) -> fnv1.Resource:
                         "chart": {
                             "name": "cluster-agent",
                             "repository": "oci://xpkg.upbound.io/modelplane",
-                            "version": "0.1.0",
+                            "version": "0.2.0",
                         },
                         "namespace": "modelplane-system",
+                        "values": {
+                            "toleratedTaints": [
+                                "nvidia.com/gpu:NoSchedule",
+                                "amd.com/gpu:NoSchedule",
+                                "modelplane.ai/cpu:NoSchedule",
+                            ],
+                        },
                     },
                 },
             }
