@@ -53,6 +53,10 @@
       // Family providers (aws-*, gcp-*, azure-*) release in lockstep and
       // must move together; grouping keeps them on one version.
       //
+      // config:recommended leaves separateMajorMinor on, which would split
+      // a major bump into its own major- branch. Both PRs would rerun the
+      // build and rewrite schemas/, so they would conflict.
+      //
       // A dependency bump changes the generated Pydantic models, so the
       // build regenerates schemas/python/ into the same PR and CI judges
       // the complete change. Runs once per branch, after all grouped
@@ -63,6 +67,7 @@
         'crossplane-project.yaml',
       ],
       groupName: 'crossplane dependencies',
+      separateMajorMinor: false,
       postUpgradeTasks: {
         commands: [
           'modelplane-nix run .#build',
@@ -72,22 +77,6 @@
         ],
         executionMode: 'branch',
       },
-    },
-    {
-      // config:recommended leaves separateMajorMinor on, which would split a
-      // provider major bump into its own major- branch. Both PRs rerun the
-      // build and rewrite schemas/, so they would conflict. Collapse them for
-      // the providers (the docker-sourced deps) so everything stays in one
-      // PR. Scoped to docker on purpose: crossplane/crossplane needs its
-      // normal major/minor/patch buckets for the patch-only rule below to
-      // work.
-      matchFileNames: [
-        'crossplane-project.yaml',
-      ],
-      matchDatasources: [
-        'docker',
-      ],
-      separateMajorMinor: false,
     },
     {
       // The CRD ref must not run ahead of the Crossplane we declare support
