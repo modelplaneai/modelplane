@@ -251,7 +251,7 @@ class NodePool(BaseModel):
     minNodeCount: conint(ge=0) | None = None
     name: constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', max_length=40)
     """
-    Name of the pool. Its nodes carry it as the value of the modelplane.ai/pool label, and the cluster agent observes an NVIDIA GPU pool through an object of this name.
+    Name of the pool. Its nodes carry it as the value of the modelplane.ai/pool label, and the cluster agent observes the pool through an object of this name.
     """
     nodeCount: conint(ge=0) | None = 1
     reservationRef: ReservationRef | None = None
@@ -402,7 +402,7 @@ class SchedulablePool(BaseModel):
     """
     observedNodes: conint(ge=0) | None = None
     """
-    The nodes this pool has now, ready or not, as the cluster agent observes them. Absent until the agent reports on the pool, and while it can't observe it. Always absent on a pool that isn't an NVIDIA GPU pool, which the agent doesn't observe.
+    The nodes this pool has now, ready or not, as the cluster agent observes them. Absent until the agent reports on the pool, and while it can't observe it.
     """
 
 
