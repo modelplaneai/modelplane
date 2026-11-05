@@ -17,6 +17,7 @@
 import asyncio
 import dataclasses
 import json
+from pathlib import Path
 from typing import Any, Literal
 
 import pytest
@@ -115,11 +116,11 @@ def _model_deployment(
     )
     xr = v1alpha1.ModelDeployment(
         metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-        spec=v1alpha1.SpecModel2(
+        spec=v1alpha1.SpecModel3(
             replicas=replicas,
-            template=v1alpha1.TemplateModel1(
+            template=v1alpha1.TemplateModel2(
                 metadata=v1alpha1.Metadata(labels=template_labels) if template_labels is not None else None,
-                spec=v1alpha1.SpecModel1(
+                spec=v1alpha1.SpecModel2(
                     clusterSelector=cluster_selector,
                     modelCacheRef=v1alpha1.ModelCacheRef(name=model_cache) if model_cache is not None else None,
                     serving=v1alpha1.Serving(
@@ -2880,3 +2881,13 @@ SERVED_MODEL_NAME_CASES = [
 def test_served_model_name(case: ServedModelNameCase) -> None:
     """served_model_name prefixes the deployment's name with its namespace."""
     assert fn.served_model_name(case.namespace, case.deployment) == case.want, case.reason
+
+
+@pytest.mark.parametrize("path", sorted((Path(__file__).parent / "testdata").glob("*.json")), ids=lambda p: p.stem)
+def test_dynamo_templates(path: Path) -> None:
+    """The parent's complete response retains explicit router, frontend and sidecar configuration."""
+    case = json.loads(path.read_text())
+    req = json_format.ParseDict(case["request"], fnv1.RunFunctionRequest())
+    want = json_format.ParseDict(case["want"], fnv1.RunFunctionResponse())
+    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
+    assert got == want, case["reason"]

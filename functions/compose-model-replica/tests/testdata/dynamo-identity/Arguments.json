@@ -23,17 +23,22 @@
                   "containers": [
                     {
                       "name": "engine",
-                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                      "image": "vllm/vllm-openai:v0.32.0",
                       "command": [
-                        "python3",
-                        "-m",
-                        "dynamo.vllm"
+                        "vllm",
+                        "serve"
                       ],
                       "args": [
                         "--model",
                         "Qwen/Qwen3-0.6B",
                         "--enforce-eager"
-                      ]
+                      ],
+                      "readinessProbe": {
+                        "grpc": {
+                          "port": 30001
+                        },
+                        "periodSeconds": 5
+                      }
                     },
                     {
                       "name": "logging",
@@ -41,6 +46,20 @@
                       "args": [
                         "--stdout"
                       ]
+                    }
+                  ],
+                  "initContainers": [
+                    {
+                      "name": "runtime",
+                      "image": "example/dynamo-sidecar:1.7.0",
+                      "command": [
+                        "dynamo-vllm-sidecar"
+                      ],
+                      "args": [
+                        "--grpc-endpoint",
+                        "127.0.0.1:30001"
+                      ],
+                      "restartPolicy": "Always"
                     }
                   ]
                 }
@@ -55,11 +74,54 @@
             }
           ]
         }
-      ]
+      ],
+      "serving": {
+        "mode": "Unified",
+        "router": "Dynamo",
+        "dynamo": {
+          "backendFramework": "vllm",
+          "frontend": {
+            "replicas": 2,
+            "template": {
+              "metadata": {
+                "labels": {
+                  "routing": "user-authored"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "main",
+                    "image": "example/dynamo-frontend:1.7.0",
+                    "command": [
+                      "dynamo-frontend"
+                    ],
+                    "args": [
+                      "--router-mode",
+                      "round-robin"
+                    ],
+                    "env": [
+                      {
+                        "name": "FRONTEND_SETTING",
+                        "value": "user-value"
+                      }
+                    ]
+                  }
+                ],
+                "imagePullSecrets": [
+                  {
+                    "name": "frontend-registry"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   },
   "want": {
-    "key": "workload-dynamo-9a9f92bce0",
-    "name": "r-9a9f92bce0"
+    "key": "workload-dynamo-5e03f93660",
+    "name": "r-5e03f93660"
   }
 }

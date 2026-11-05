@@ -1,0 +1,301 @@
+{
+  "name": "NativeInitSidecar",
+  "reason": "Standard preserves ordered init containers, native sidecars, and all explicitly authored engine probes.",
+  "backend": "native",
+  "replica": {
+    "apiVersion": "modelplane.ai/v1alpha1",
+    "kind": "ModelReplica",
+    "metadata": {
+      "name": "r",
+      "namespace": "ml-team"
+    },
+    "spec": {
+      "clusterName": "cluster-a",
+      "engines": [
+        {
+          "copies": 1,
+          "members": [
+            {
+              "deviceRequests": [
+                {
+                  "count": 1,
+                  "deviceClassName": "gpu.nvidia.com",
+                  "name": "gpu",
+                  "selectors": [
+                    {
+                      "cel": "device.capacity[\"gpu.nvidia.com\"].memory.compareTo(quantity(\"80Gi\")) >= 0"
+                    }
+                  ]
+                }
+              ],
+              "nodePoolName": "frontier",
+              "role": "Standalone",
+              "template": {
+                "spec": {
+                  "containers": [
+                    {
+                      "args": [
+                        "--model=Qwen/Qwen3-0.6B"
+                      ],
+                      "image": "vllm/vllm-openai:latest",
+                      "name": "engine",
+                      "startupProbe": {
+                        "tcpSocket": {
+                          "port": 7000
+                        },
+                        "periodSeconds": 3
+                      },
+                      "readinessProbe": {
+                        "tcpSocket": {
+                          "port": 7000
+                        },
+                        "periodSeconds": 3
+                      },
+                      "livenessProbe": {
+                        "tcpSocket": {
+                          "port": 7000
+                        },
+                        "periodSeconds": 3
+                      }
+                    }
+                  ],
+                  "initContainers": [
+                    {
+                      "name": "prepare",
+                      "image": "example/prepare:1",
+                      "command": [
+                        "prepare"
+                      ],
+                      "args": [
+                        "--once"
+                      ]
+                    },
+                    {
+                      "name": "watcher",
+                      "image": "example/watch:2",
+                      "command": [
+                        "watch"
+                      ],
+                      "restartPolicy": "Always",
+                      "readinessProbe": {
+                        "httpGet": {
+                          "port": 8181,
+                          "path": "/ready"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "name": "main"
+        }
+      ]
+    }
+  },
+  "provider_config": "cluster-a-pc",
+  "serving_label": "r",
+  "stack": "Standard",
+  "want": {
+    "workload-native-main": {
+      "spec": {
+        "providerConfigRef": {
+          "kind": "ClusterProviderConfig",
+          "name": "cluster-a-pc"
+        },
+        "readiness": {
+          "policy": "DeriveFromCelQuery",
+          "celQuery": "has(object.status) && has(object.status.conditions) && object.status.conditions.exists(c, c.type == \"Available\" && c.status == \"True\") && has(object.status.readyReplicas) && object.status.readyReplicas >= object.spec.replicas && has(object.status.observedGeneration) && object.status.observedGeneration == object.metadata.generation && has(object.status.updatedReplicas) && object.status.updatedReplicas >= object.spec.replicas && has(object.status.replicas) && object.status.replicas == object.status.updatedReplicas"
+        },
+        "watch": true,
+        "forProvider": {
+          "manifest": {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {
+              "name": "r-main-bb4e3",
+              "namespace": "mp-ml-team-51733"
+            },
+            "spec": {
+              "replicas": 1,
+              "selector": {
+                "matchLabels": {
+                  "modelplane.ai/workload": "r-main-bb4e3"
+                }
+              },
+              "strategy": {
+                "type": "RollingUpdate",
+                "rollingUpdate": {
+                  "maxSurge": 0,
+                  "maxUnavailable": 1
+                }
+              },
+              "template": {
+                "metadata": {
+                  "labels": {
+                    "modelplane.ai/engine": "main",
+                    "modelplane.ai/role": "Standalone",
+                    "modelplane.ai/serving": "r",
+                    "modelplane.ai/workload": "r-main-bb4e3"
+                  }
+                },
+                "spec": {
+                  "containers": [
+                    {
+                      "name": "engine",
+                      "image": "vllm/vllm-openai:latest",
+                      "args": [
+                        "--model=Qwen/Qwen3-0.6B"
+                      ],
+                      "ports": [
+                        {
+                          "name": "http",
+                          "containerPort": 8000
+                        }
+                      ],
+                      "volumeMounts": [
+                        {
+                          "name": "dshm",
+                          "mountPath": "/dev/shm"
+                        }
+                      ],
+                      "readinessProbe": {
+                        "tcpSocket": {
+                          "port": 7000
+                        },
+                        "periodSeconds": 3
+                      },
+                      "resources": {
+                        "claims": [
+                          {
+                            "name": "devices"
+                          }
+                        ]
+                      },
+                      "startupProbe": {
+                        "tcpSocket": {
+                          "port": 7000
+                        },
+                        "periodSeconds": 3
+                      },
+                      "livenessProbe": {
+                        "tcpSocket": {
+                          "port": 7000
+                        },
+                        "periodSeconds": 3
+                      }
+                    }
+                  ],
+                  "volumes": [
+                    {
+                      "name": "dshm",
+                      "emptyDir": {
+                        "medium": "Memory"
+                      }
+                    }
+                  ],
+                  "nodeSelector": {
+                    "modelplane.ai/pool": "frontier"
+                  },
+                  "resourceClaims": [
+                    {
+                      "name": "devices",
+                      "resourceClaimTemplateName": "r-main-standalone-devices-f456f"
+                    }
+                  ],
+                  "tolerations": [
+                    {
+                      "key": "nvidia.com/gpu",
+                      "operator": "Exists",
+                      "effect": "NoSchedule"
+                    },
+                    {
+                      "key": "amd.com/gpu",
+                      "operator": "Exists",
+                      "effect": "NoSchedule"
+                    },
+                    {
+                      "key": "modelplane.ai/cpu",
+                      "operator": "Exists",
+                      "effect": "NoSchedule"
+                    }
+                  ],
+                  "initContainers": [
+                    {
+                      "name": "prepare",
+                      "image": "example/prepare:1",
+                      "command": [
+                        "prepare"
+                      ],
+                      "args": [
+                        "--once"
+                      ]
+                    },
+                    {
+                      "name": "watcher",
+                      "image": "example/watch:2",
+                      "command": [
+                        "watch"
+                      ],
+                      "restartPolicy": "Always",
+                      "readinessProbe": {
+                        "httpGet": {
+                          "port": 8181,
+                          "path": "/ready"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "resource-claim-main-standalone": {
+      "spec": {
+        "providerConfigRef": {
+          "kind": "ClusterProviderConfig",
+          "name": "cluster-a-pc"
+        },
+        "readiness": {
+          "policy": "SuccessfulCreate"
+        },
+        "forProvider": {
+          "manifest": {
+            "apiVersion": "resource.k8s.io/v1",
+            "kind": "ResourceClaimTemplate",
+            "metadata": {
+              "name": "r-main-standalone-devices-f456f",
+              "namespace": "mp-ml-team-51733"
+            },
+            "spec": {
+              "spec": {
+                "devices": {
+                  "requests": [
+                    {
+                      "name": "gpu",
+                      "exactly": {
+                        "deviceClassName": "gpu.nvidia.com",
+                        "count": 1,
+                        "selectors": [
+                          {
+                            "cel": {
+                              "expression": "device.capacity[\"gpu.nvidia.com\"].memory.compareTo(quantity(\"80Gi\")) >= 0"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

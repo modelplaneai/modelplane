@@ -1,6 +1,6 @@
 {
-  "name": "PowerAllocation",
-  "reason": "Immutable graph settings replace both identities while mutable changes and list ordering retain them.",
+  "name": "DeviceAllocation",
+  "reason": "Runtime versions and device allocations are mutable and do not replace a native-sidecar graph.",
   "replica": {
     "apiVersion": "modelplane.ai/v1alpha1",
     "kind": "ModelReplica",
@@ -38,15 +38,33 @@
                         "-c",
                         "ray start --head --port=6379; exec python3 -m dynamo.vllm --model --model=meta-llama/Llama-3.1-405B --tensor-parallel-size=8 --pipeline-parallel-size=2 --port=8000"
                       ],
-                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
-                      "name": "engine"
+                      "image": "vllm/vllm-openai:v0.32.0",
+                      "name": "engine",
+                      "readinessProbe": {
+                        "grpc": {
+                          "port": 30001
+                        },
+                        "periodSeconds": 5
+                      }
+                    }
+                  ],
+                  "initContainers": [
+                    {
+                      "name": "runtime",
+                      "image": "example/dynamo-sidecar:1.7.0",
+                      "command": [
+                        "dynamo-vllm-sidecar"
+                      ],
+                      "args": [
+                        "--grpc-endpoint",
+                        "127.0.0.1:30001"
+                      ],
+                      "restartPolicy": "Always"
                     }
                   ]
                 },
                 "metadata": {
-                  "annotations": {
-                    "dynamo.nvidia.com/gpu-power-limit": "300"
-                  }
+                  "annotations": {}
                 }
               }
             },
@@ -74,7 +92,7 @@
                         "-c",
                         "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block"
                       ],
-                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                      "image": "vllm/vllm-openai:v0.32.0",
                       "name": "engine"
                     }
                   ]
@@ -87,11 +105,54 @@
           ],
           "name": "main"
         }
-      ]
+      ],
+      "serving": {
+        "mode": "Unified",
+        "router": "Dynamo",
+        "dynamo": {
+          "backendFramework": "vllm",
+          "frontend": {
+            "replicas": 2,
+            "template": {
+              "metadata": {
+                "labels": {
+                  "routing": "user-authored"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "main",
+                    "image": "example/dynamo-frontend:1.7.0",
+                    "command": [
+                      "dynamo-frontend"
+                    ],
+                    "args": [
+                      "--router-mode",
+                      "round-robin"
+                    ],
+                    "env": [
+                      {
+                        "name": "FRONTEND_SETTING",
+                        "value": "user-value"
+                      }
+                    ]
+                  }
+                ],
+                "imagePullSecrets": [
+                  {
+                    "name": "frontend-registry"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   },
   "want": {
-    "key": "workload-dynamo-fa7c8f331e",
-    "name": "r-fa7c8f331e"
+    "key": "workload-dynamo-1ca5699aff",
+    "name": "r-1ca5699aff"
   }
 }

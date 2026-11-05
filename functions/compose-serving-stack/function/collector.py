@@ -265,7 +265,7 @@ def _scrape_configs() -> list[dict[str, Any]]:
                         "__meta_kubernetes_pod_container_port_name",
                     ],
                     "action": "keep",
-                    "regex": "(engine|epp);http|main;system",
+                    "regex": "(engine|epp|main);http|(main|runtime);system",
                 },
                 *_relabel_pod_identity(),
             ],

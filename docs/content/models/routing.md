@@ -1,7 +1,7 @@
 ---
 title: Configure Routing
 weight: 15
-description: Write the endpoint picker and the prefill/decode sidecar for your engines.
+description: Select the serving stack and write its endpoint picker or Dynamo frontend.
 ---
 <!-- vale write-good.Passive = NO -->
 **API:** [`modelplane.ai/v1alpha1` · ModelDeployment]({{< ref "/reference/modeldeployments" >}})
@@ -17,7 +17,7 @@ This page uses these terms:
 | The sidecar | A container in each decode pod that sends the prefill half of a request to the prefill pod the picker chose |
 | KV connector | The engine setting that moves the KV cache between pods, such as vLLM's `NixlConnector` |
 
-How much you write depends on the serving mode:
+On Standard clusters, how much you write depends on the serving mode:
 
 - **`Unified`.** Modelplane routes your deployment with llm-d's endpoint
   picker, which picks a pod by prefix cache and load. You don't write anything.
@@ -29,6 +29,39 @@ How much you write depends on the serving mode:
   rejects a `PrefillDecode` deployment without `router` and `endpointPicker`.
   It warns when the decode pod has no container beside the engine, but it
   can't tell whether that container is the sidecar.
+
+## Dynamo routing
+
+Set `serving.router: Dynamo` to place the deployment only on Dynamo clusters.
+Both Unified and PrefillDecode use the frontend supplied in
+`serving.dynamo.frontend`. This path has no endpoint picker. The template sets
+the frontend image, command, arguments, environment and probes; its replica
+count is independent of engine copies.
+
+```yaml {nocopy=true}
+serving:
+  mode: Unified
+  router: Dynamo
+  dynamo:
+    runtimeVersionOverride: "1.7.0"
+    frontend:
+      replicas: 2
+      template:
+        spec:
+          containers:
+          - name: main
+            image: nvcr.io/nvidia/ai-dynamo/dynamo-frontend-nightly:20261103-e37f0b9
+            command: [python3, -m, dynamo.frontend]
+            args: [--http-port, "8000", --router-mode, kv]
+```
+
+Each serving member also declares a Dynamo native init sidecar named `runtime`
+with `restartPolicy: Always`. The native engine exposes the sidecar's gRPC
+endpoint and supplies its readiness probe. Compute-only workers may omit the
+sidecar. Modelplane does not replace engine images or infer engine flags.
+See the [Dynamo multi-node example]({{< ref "/guides/serving-multi-node-on-dynamo.md" >}})
+for the member templates. Sidecars and multi-node gRPC support are experimental
+in the pinned nightly.
 
 ## What you write for prefill/decode
 

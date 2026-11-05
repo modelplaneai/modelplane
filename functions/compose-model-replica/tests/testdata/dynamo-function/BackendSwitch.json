@@ -26,16 +26,22 @@
                         "containers": [
                           {
                             "name": "engine",
-                            "image": "nvcr.io/nvidia/ai-dynamo/sglang-runtime-nightly:20261103-e37f0b9",
+                            "image": "lmsysorg/sglang:v0.5.0",
                             "command": [
                               "python3",
                               "-m",
-                              "dynamo.sglang"
+                              "sglang.launch_server"
                             ],
                             "args": [
                               "--model",
                               "Qwen/Qwen3-0.6B"
-                            ]
+                            ],
+                            "readinessProbe": {
+                              "grpc": {
+                                "port": 30001
+                              },
+                              "periodSeconds": 5
+                            }
                           },
                           {
                             "name": "logging",
@@ -43,6 +49,20 @@
                             "args": [
                               "--stdout"
                             ]
+                          }
+                        ],
+                        "initContainers": [
+                          {
+                            "name": "runtime",
+                            "image": "example/dynamo-sidecar:1.7.0",
+                            "command": [
+                              "dynamo-vllm-sidecar"
+                            ],
+                            "args": [
+                              "--grpc-endpoint",
+                              "127.0.0.1:30001"
+                            ],
+                            "restartPolicy": "Always"
                           }
                         ]
                       }
@@ -57,7 +77,50 @@
                   }
                 ]
               }
-            ]
+            ],
+            "serving": {
+              "mode": "Unified",
+              "router": "Dynamo",
+              "dynamo": {
+                "backendFramework": "sglang",
+                "frontend": {
+                  "replicas": 2,
+                  "template": {
+                    "metadata": {
+                      "labels": {
+                        "routing": "user-authored"
+                      }
+                    },
+                    "spec": {
+                      "containers": [
+                        {
+                          "name": "main",
+                          "image": "example/dynamo-frontend:1.7.0",
+                          "command": [
+                            "dynamo-frontend"
+                          ],
+                          "args": [
+                            "--router-mode",
+                            "round-robin"
+                          ],
+                          "env": [
+                            {
+                              "name": "FRONTEND_SETTING",
+                              "value": "user-value"
+                            }
+                          ]
+                        }
+                      ],
+                      "imagePullSecrets": [
+                        {
+                          "name": "frontend-registry"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -448,7 +511,7 @@
                           {
                             "group": "",
                             "kind": "Service",
-                            "name": "r-05e85da9e3-frontend",
+                            "name": "r-f439734bf9-frontend",
                             "port": 8000
                           }
                         ]
@@ -502,7 +565,7 @@
           },
           "ready": "READY_TRUE"
         },
-        "workload-dynamo-05e85da9e3": {
+        "workload-dynamo-f439734bf9": {
           "resource": {
             "spec": {
               "providerConfigRef": {
@@ -519,10 +582,11 @@
                   "apiVersion": "nvidia.com/v1beta1",
                   "kind": "DynamoGraphDeployment",
                   "metadata": {
-                    "name": "r-05e85da9e3",
+                    "name": "r-f439734bf9",
                     "namespace": "mp-ml-team-51733",
                     "annotations": {
-                      "nvidia.com/grove-update-strategy": "Coherent"
+                      "nvidia.com/grove-update-strategy": "Coherent",
+                      "nvidia.com/kai-scheduler-queue": "modelplane"
                     }
                   },
                   "spec": {
@@ -531,39 +595,41 @@
                       {
                         "name": "frontend",
                         "type": "frontend",
-                        "replicas": 1,
+                        "replicas": 2,
                         "podTemplate": {
                           "metadata": {
                             "labels": {
-                              "modelplane.ai/serving": "r",
-                              "modelplane.ai/replica": "r",
-                              "modelplane.ai/deployment": "r"
+                              "routing": "user-authored",
+                              "modelplane.ai/role": "frontend"
                             }
                           },
                           "spec": {
                             "containers": [
                               {
                                 "name": "main",
-                                "image": "nvcr.io/nvidia/ai-dynamo/sglang-runtime-nightly:20261103-e37f0b9",
+                                "image": "example/dynamo-frontend:1.7.0",
                                 "command": [
-                                  "python3",
-                                  "-m",
-                                  "dynamo.frontend"
+                                  "dynamo-frontend"
                                 ],
                                 "args": [
-                                  "--http-port",
-                                  "8000",
                                   "--router-mode",
-                                  "kv"
+                                  "round-robin"
                                 ],
-                                "env": [],
-                                "volumeMounts": []
+                                "env": [
+                                  {
+                                    "name": "FRONTEND_SETTING",
+                                    "value": "user-value"
+                                  }
+                                ]
                               }
                             ],
-                            "volumes": []
+                            "imagePullSecrets": [
+                              {
+                                "name": "frontend-registry"
+                              }
+                            ]
                           }
-                        },
-                        "runtimeVersionOverride": "1.7.0"
+                        }
                       },
                       {
                         "name": "engine-main",
@@ -573,33 +639,43 @@
                           "metadata": {
                             "labels": {
                               "modelplane.ai/engine": "main",
-                              "modelplane.ai/role": "Standalone",
-                              "kai.scheduler/queue": "modelplane"
+                              "modelplane.ai/role": "Standalone"
                             }
                           },
                           "spec": {
                             "containers": [
                               {
                                 "name": "main",
-                                "image": "nvcr.io/nvidia/ai-dynamo/sglang-runtime-nightly:20261103-e37f0b9",
+                                "image": "lmsysorg/sglang:v0.5.0",
                                 "command": [
                                   "python3",
                                   "-m",
-                                  "dynamo.sglang"
+                                  "sglang.launch_server"
                                 ],
                                 "args": [
                                   "--model",
                                   "Qwen/Qwen3-0.6B"
                                 ],
-                                "volumeMounts": [],
-                                "env": [],
+                                "readinessProbe": {
+                                  "grpc": {
+                                    "port": 30001
+                                  },
+                                  "periodSeconds": 5
+                                },
                                 "resources": {
                                   "claims": [
                                     {
                                       "name": "devices"
                                     }
                                   ]
-                                }
+                                },
+                                "volumeMounts": [
+                                  {
+                                    "name": "dshm",
+                                    "mountPath": "/dev/shm"
+                                  }
+                                ],
+                                "env": []
                               },
                               {
                                 "name": "logging",
@@ -609,7 +685,14 @@
                                 ]
                               }
                             ],
-                            "volumes": [],
+                            "volumes": [
+                              {
+                                "name": "dshm",
+                                "emptyDir": {
+                                  "medium": "Memory"
+                                }
+                              }
+                            ],
                             "schedulerName": "kai-scheduler",
                             "nodeSelector": {
                               "modelplane.ai/pool": "frontier"
@@ -636,10 +719,23 @@
                                 "name": "devices",
                                 "resourceClaimTemplateName": "r-main-standalone-devices-f456f"
                               }
+                            ],
+                            "initContainers": [
+                              {
+                                "name": "runtime",
+                                "image": "example/dynamo-sidecar:1.7.0",
+                                "command": [
+                                  "dynamo-vllm-sidecar"
+                                ],
+                                "args": [
+                                  "--grpc-endpoint",
+                                  "127.0.0.1:30001"
+                                ],
+                                "restartPolicy": "Always"
+                              }
                             ]
                           }
-                        },
-                        "runtimeVersionOverride": "1.7.0"
+                        }
                       }
                     ]
                   }
@@ -683,7 +779,7 @@
     "results": [
       {
         "severity": "SEVERITY_NORMAL",
-        "message": "Composing nvcr.io/nvidia/ai-dynamo/sglang-runtime-nightly:20261103-e37f0b9 on cluster-a"
+        "message": "Composing lmsysorg/sglang:v0.5.0 on cluster-a"
       }
     ]
   }

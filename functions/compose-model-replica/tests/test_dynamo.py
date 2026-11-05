@@ -30,6 +30,8 @@ from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import dynamo, fn
 from function.backends import base
+from function.backends.llmd import LLMDBackend
+from function.backends.native import NativeBackend
 from google.protobuf import json_format
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -70,6 +72,23 @@ def test_validate(path: Path) -> None:
     case = json.loads(path.read_text())
     replica = v1alpha1.ModelReplica(**case["replica"])
     assert dynamo.validate(replica) == case["want"], case["reason"]
+
+
+@pytest.mark.parametrize(
+    "path", sorted((Path(__file__).parent / "testdata" / "standard-templates").glob("*.json")), ids=lambda p: p.stem
+)
+def test_standard_templates(path: Path) -> None:
+    """Standard preserves the same user-authored native sidecars and engine probes."""
+    case = json.loads(path.read_text())
+    replica = v1alpha1.ModelReplica(**case["replica"])
+    backend = NativeBackend() if case["backend"] == "native" else LLMDBackend()
+    got = {
+        key: obj.model_dump(exclude_unset=True, by_alias=True)
+        for key, obj in backend.build(
+            replica, replica.spec.engines[0], case["provider_config"], case["serving_label"], case["stack"]
+        ).items()
+    }
+    assert got == case["want"], case["reason"]
 
 
 @dataclasses.dataclass
@@ -130,10 +149,10 @@ def test_ready_copies(case: ReadyCopiesCase) -> None:
     )
     replica = v1alpha1.ModelReplica(
         metadata=metav1.ObjectMeta(name="r", namespace="ml-team"),
-        spec=v1alpha1.SpecModel1(clusterName="cluster-a", engines=[engine]),
+        spec=v1alpha1.SpecModel2(clusterName="cluster-a", engines=[engine]),
     )
     observed = {
-        "workload-dynamo-9a9f92bce0": fnv1.Resource(
+        "workload-dynamo-f66c7d7533": fnv1.Resource(
             resource=resource.dict_to_struct(
                 {
                     "spec": {"forProvider": {"manifest": {}}},
@@ -166,17 +185,16 @@ RUNTIME_PORTS_CASES = [
         name="EmptyDeclaredPorts",
         reason="An explicit empty port list still replaces defaults and must include named runtime ports.",
         container={"ports": []},
-        want={"ports": [{"name": "system", "containerPort": 9090}, {"name": "nixl", "containerPort": 19090}]},
+        want={"ports": [{"name": "system", "containerPort": 9090}]},
     ),
     RuntimePortsCase(
         name="DeclaredHTTP",
-        reason="An authored HTTP port keeps the named system probe and NIXL telemetry ports.",
+        reason="An authored HTTP port keeps the named system probe port.",
         container={"ports": [{"name": "http", "containerPort": 8001}]},
         want={
             "ports": [
                 {"name": "http", "containerPort": 8001},
                 {"name": "system", "containerPort": 9090},
-                {"name": "nixl", "containerPort": 19090},
             ]
         },
     ),
@@ -184,15 +202,15 @@ RUNTIME_PORTS_CASES = [
         name="UnnamedSystem",
         reason="An unnamed TCP system port acquires its runtime name without a duplicate map key.",
         container={"ports": [{"containerPort": 9090}]},
-        want={"ports": [{"name": "system", "containerPort": 9090}, {"name": "nixl", "containerPort": 19090}]},
+        want={"ports": [{"name": "system", "containerPort": 9090}]},
     ),
     RuntimePortsCase(
         name="UnnamedNIXL",
-        reason="An existing unnamed NIXL port keeps its number and becomes the named telemetry port.",
+        reason="An existing unnamed NIXL port keeps its number and name.",
         container={"ports": [{"containerPort": 19090, "protocol": "TCP"}]},
         want={
             "ports": [
-                {"name": "nixl", "containerPort": 19090, "protocol": "TCP"},
+                {"containerPort": 19090, "protocol": "TCP"},
                 {"name": "system", "containerPort": 9090},
             ]
         },
@@ -205,7 +223,6 @@ RUNTIME_PORTS_CASES = [
             "ports": [
                 {"name": "udp", "containerPort": 9090, "protocol": "UDP"},
                 {"name": "system", "containerPort": 9090},
-                {"name": "nixl", "containerPort": 19090},
             ]
         },
     ),
@@ -214,7 +231,7 @@ RUNTIME_PORTS_CASES = [
         reason="An unnamed custom system port is reused when its runtime number is configured.",
         container={"ports": [{"containerPort": 9091}], "env": [{"name": "DYN_SYSTEM_PORT", "value": "9091"}]},
         want={
-            "ports": [{"name": "system", "containerPort": 9091}, {"name": "nixl", "containerPort": 19090}],
+            "ports": [{"name": "system", "containerPort": 9091}],
             "env": [{"name": "DYN_SYSTEM_PORT", "value": "9091"}],
         },
     ),
@@ -223,7 +240,7 @@ RUNTIME_PORTS_CASES = [
         reason="An existing system port is retained once and agrees with its runtime environment.",
         container={"ports": [{"name": "system", "containerPort": 9090}]},
         want={
-            "ports": [{"name": "system", "containerPort": 9090}, {"name": "nixl", "containerPort": 19090}],
+            "ports": [{"name": "system", "containerPort": 9090}],
             "env": [{"name": "DYN_SYSTEM_PORT", "value": "9090"}],
         },
     ),
@@ -233,7 +250,7 @@ RUNTIME_PORTS_CASES = [
         container={"env": [{"name": "DYN_SYSTEM_PORT", "value": "9091"}]},
         want={
             "env": [{"name": "DYN_SYSTEM_PORT", "value": "9091"}],
-            "ports": [{"name": "system", "containerPort": 9091}, {"name": "nixl", "containerPort": 19090}],
+            "ports": [{"name": "system", "containerPort": 9091}],
         },
     ),
     RuntimePortsCase(
@@ -241,7 +258,7 @@ RUNTIME_PORTS_CASES = [
         reason="A custom named system port configures the runtime to listen on the same port.",
         container={"ports": [{"name": "system", "containerPort": 9091}]},
         want={
-            "ports": [{"name": "system", "containerPort": 9091}, {"name": "nixl", "containerPort": 19090}],
+            "ports": [{"name": "system", "containerPort": 9091}],
             "env": [{"name": "DYN_SYSTEM_PORT", "value": "9091"}],
         },
     ),
@@ -276,7 +293,7 @@ INVALID_RUNTIME_PORTS_CASES = [
                 {"name": "nixl", "containerPort": 9090, "protocol": "TCP"},
             ]
         },
-        want="Dynamo main container ports must have unique port numbers per protocol",
+        want="Dynamo runtime container ports must have unique port numbers per protocol",
     ),
     InvalidRuntimePortsCase(
         name="NamedNumberConflict",
@@ -285,15 +302,10 @@ INVALID_RUNTIME_PORTS_CASES = [
         want="Dynamo system port 9090 conflicts with named port health",
     ),
     InvalidRuntimePortsCase(
-        name="SharedRuntimeNumber",
-        reason="The system and NIXL runtime ports require distinct TCP list-map keys.",
-        container={
-            "env": [
-                {"name": "DYN_SYSTEM_PORT", "value": "9091"},
-                {"name": "NIXL_TELEMETRY_PROMETHEUS_PORT", "value": "9091"},
-            ]
-        },
-        want="Dynamo nixl port 9091 conflicts with named port system",
+        name="InvalidSystemNumber",
+        reason="A runtime system port outside the TCP port range cannot be probed.",
+        container={"env": [{"name": "DYN_SYSTEM_PORT", "value": "65536"}]},
+        want="DYN_SYSTEM_PORT must be between 1 and 65535",
     ),
     InvalidRuntimePortsCase(
         name="ConflictingSystem",

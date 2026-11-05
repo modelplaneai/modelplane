@@ -126,9 +126,9 @@ provider resources and plain Kubernetes objects. A `ModelDeployment` is the
 clearest example. Its function schedules the replicas, then composes a
 `ModelReplica` for each, and a `ModelEndpoint` for each replica that's ready to
 serve. Each `ModelReplica` function composes the serving workload onto its target
-workload cluster through provider-kubernetes: a Deployment for single-node, or,
-for multi-node, a LeaderWorkerSet or a Grove PodCliqueSet depending on the
-cluster's [serving stack]({{< ref "/platform/inference-cluster.md#serving-stack" >}}).
+workload cluster through provider-kubernetes: a Deployment or LeaderWorkerSet on
+Standard, or one `DynamoGraphDeployment` per replica on Dynamo. The router
+constrains placement to the matching [serving stack]({{< ref "/platform/inference-cluster.md#serving-stack" >}}).
 
 ```mermaid
 flowchart TD

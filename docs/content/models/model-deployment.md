@@ -73,7 +73,8 @@ the leader and its own rank. `$(MODELPLANE_LEADER_ADDRESS)` is the leader's
 address on either [serving stack]({{< ref "/platform/inference-cluster.md#serving-stack" >}}).
 `$(MODELPLANE_RANK)` is the pod's node rank (0 on the leader, `1..N` on the
 workers) on both stacks. On Dynamo these alias the DGD operator's topology
-variables; use Dynamo runtime images and commands as shown in
+variables. Select `router: Dynamo`, provide a frontend template and declare
+the native runtime init sidecar as shown in
 [multi-node serving on Dynamo]({{< ref "/guides/serving-multi-node-on-dynamo.md" >}}).
 
 A member's `env` can read pod fields through `valueFrom.fieldRef`, like setting
@@ -92,8 +93,8 @@ can sit on the GPU class that suits it.
 ```yaml {nocopy=true}
 serving:
   mode: PrefillDecode       # the two engines below are one P/D pair
-  router: EndpointPicker    # required on Standard; omit on Dynamo
-  endpointPicker:           # required with router
+  router: EndpointPicker    # Standard; Dynamo uses router: Dynamo
+  endpointPicker:           # required with EndpointPicker
     template: {...}         # the picker container
     config: {...}           # the picker configuration
 engines:
@@ -109,10 +110,10 @@ must match their KV connector. Set `serving.router: EndpointPicker` and
 `serving.endpointPicker`, as [Configure Routing]({{< ref "routing.md" >}})
 describes. The disaggregated example below is a complete vLLM pair.
 
-On Dynamo, omit `serving.router` and `serving.endpointPicker`. The DGD frontend
-routes between the prefill and decode components. Launch both with the Dynamo
-runtime and the backend's disaggregation and KV-transfer flags; app
-sidecars remain in their member templates.
+On Dynamo, set `serving.router: Dynamo` and supply `serving.dynamo.frontend`.
+The DGD frontend routes between prefill and decode components. Native engines
+connect through their `runtime` init sidecars. The user writes their
+disaggregation and KV-transfer flags. Application sidecars stay in their member templates.
 
 Disaggregation pays off for large models under load with strict latency targets
 and long context. For small models or low traffic, the KV-transfer overhead

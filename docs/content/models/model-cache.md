@@ -113,7 +113,8 @@ from a peer over RDMA rather than reading storage again. A replica that finds no
 compatible peer, or no fabric connecting it to one, falls back to the PVC, so
 the cache still has to be sized and kept for every replica. Because the env is
 inert unless the engine opts in, a cache still works unchanged on a Standard
-cluster and a deployment is portable between the two.
+cluster. A deployment's router and engine-side integration still select its
+serving stack. The cache format does not make a deployment portable.
 
 Modelplane injects no `--load-format` flag: the ML team's engine command decides
 whether to use ModelExpress's loader, the same as it decides

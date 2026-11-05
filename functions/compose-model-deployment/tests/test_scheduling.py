@@ -27,6 +27,8 @@ counted in whole nodes.
 
 import dataclasses
 import datetime
+import json
+from pathlib import Path
 from typing import Literal
 
 import pytest
@@ -85,10 +87,10 @@ def _deployment(
     """The ModelDeployment my-model, whose one engine, main, runs copies of the given members."""
     return mdv1alpha1.ModelDeployment(
         metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-        spec=mdv1alpha1.SpecModel2(
+        spec=mdv1alpha1.SpecModel3(
             replicas=replicas,
-            template=mdv1alpha1.TemplateModel1(
-                spec=mdv1alpha1.SpecModel1(
+            template=mdv1alpha1.TemplateModel2(
+                spec=mdv1alpha1.SpecModel2(
                     engines=[mdv1alpha1.Engine(name="main", copies=copies, members=members)],
                     tolerations=tolerations,
                 ),
@@ -208,7 +210,7 @@ def _replica(
                 "modelplane.ai/replica-index": str(index),
             },
         ),
-        spec=mrv1alpha1.SpecModel1(
+        spec=mrv1alpha1.SpecModel2(
             clusterName=cluster, engines=[mrv1alpha1.Engine(name="main", copies=copies, members=members)]
         ),
         status=(
@@ -5852,10 +5854,10 @@ SCHEDULE_CASES = [
         reason="Prefill and decode engines claiming four GPUs each share an observed pool's one node with eight GPUs free.",
         deployment=mdv1alpha1.ModelDeployment(
             metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=mdv1alpha1.SpecModel2(
+            spec=mdv1alpha1.SpecModel3(
                 replicas=1,
-                template=mdv1alpha1.TemplateModel1(
-                    spec=mdv1alpha1.SpecModel1(
+                template=mdv1alpha1.TemplateModel2(
+                    spec=mdv1alpha1.SpecModel2(
                         engines=[
                             mdv1alpha1.Engine(
                                 name="prefill",
@@ -5964,10 +5966,10 @@ SCHEDULE_CASES = [
         reason="A replica's engines are placed smallest pod first, so a one-GPU decode takes the node with four GPUs free and the four-GPU prefill declared before it doesn't fit.",
         deployment=mdv1alpha1.ModelDeployment(
             metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=mdv1alpha1.SpecModel2(
+            spec=mdv1alpha1.SpecModel3(
                 replicas=1,
-                template=mdv1alpha1.TemplateModel1(
-                    spec=mdv1alpha1.SpecModel1(
+                template=mdv1alpha1.TemplateModel2(
+                    spec=mdv1alpha1.SpecModel2(
                         engines=[
                             mdv1alpha1.Engine(
                                 name="prefill",
@@ -6998,6 +7000,20 @@ def test_schedule(case: Case) -> None:
     """schedule() retains existing replicas and places new ones on clusters that can host them."""
     got = scheduling.schedule(case.deployment, case.clusters, case.all_replicas, fill=case.fill)
     assert got == case.want, case.reason
+
+
+@pytest.mark.parametrize(
+    "path", sorted((Path(__file__).parent / "testdata" / "stacks").glob("*.json")), ids=lambda p: p.stem
+)
+def test_stack_scheduling(path: Path) -> None:
+    """Both initial placement and retained replicas honor the router's stack."""
+    case = json.loads(path.read_text())
+    got = scheduling.schedule(
+        mdv1alpha1.ModelDeployment(**case["deployment"]),
+        [icv1alpha1.InferenceCluster(**c) for c in case["clusters"]],
+        [mrv1alpha1.ModelReplica(**r) for r in case["all_replicas"]],
+    )
+    assert [dataclasses.asdict(candidate) for candidate in got] == case["want"], case["reason"]
 
 
 # SCHEDULE_CASES' want is a list of Candidates, so the one call that raises is

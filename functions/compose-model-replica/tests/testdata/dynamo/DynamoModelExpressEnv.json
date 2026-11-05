@@ -38,8 +38,28 @@
                         "-c",
                         "ray start --head --port=6379; exec python3 -m dynamo.vllm --model --model=meta-llama/Llama-3.1-405B --tensor-parallel-size=8 --pipeline-parallel-size=2 --port=8000"
                       ],
-                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
-                      "name": "engine"
+                      "image": "vllm/vllm-openai:v0.32.0",
+                      "name": "engine",
+                      "readinessProbe": {
+                        "grpc": {
+                          "port": 30001
+                        },
+                        "periodSeconds": 5
+                      }
+                    }
+                  ],
+                  "initContainers": [
+                    {
+                      "name": "runtime",
+                      "image": "example/dynamo-sidecar:1.7.0",
+                      "command": [
+                        "dynamo-vllm-sidecar"
+                      ],
+                      "args": [
+                        "--grpc-endpoint",
+                        "127.0.0.1:30001"
+                      ],
+                      "restartPolicy": "Always"
                     }
                   ]
                 }
@@ -69,7 +89,7 @@
                         "-c",
                         "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block"
                       ],
-                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                      "image": "vllm/vllm-openai:v0.32.0",
                       "name": "engine"
                     }
                   ]
@@ -85,6 +105,49 @@
       ],
       "modelCacheRef": {
         "name": "qwen"
+      },
+      "serving": {
+        "mode": "Unified",
+        "router": "Dynamo",
+        "dynamo": {
+          "backendFramework": "vllm",
+          "frontend": {
+            "replicas": 2,
+            "template": {
+              "metadata": {
+                "labels": {
+                  "routing": "user-authored"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "main",
+                    "image": "example/dynamo-frontend:1.7.0",
+                    "command": [
+                      "dynamo-frontend"
+                    ],
+                    "args": [
+                      "--router-mode",
+                      "round-robin"
+                    ],
+                    "env": [
+                      {
+                        "name": "FRONTEND_SETTING",
+                        "value": "user-value"
+                      }
+                    ]
+                  }
+                ],
+                "imagePullSecrets": [
+                  {
+                    "name": "frontend-registry"
+                  }
+                ]
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -176,7 +239,7 @@
         }
       }
     },
-    "workload-dynamo-694d196b93": {
+    "workload-dynamo-1ca5699aff": {
       "spec": {
         "providerConfigRef": {
           "kind": "ClusterProviderConfig",
@@ -192,10 +255,11 @@
             "apiVersion": "nvidia.com/v1beta1",
             "kind": "DynamoGraphDeployment",
             "metadata": {
-              "name": "r-694d196b93",
+              "name": "r-1ca5699aff",
               "namespace": "mp-ml-team-51733",
               "annotations": {
-                "nvidia.com/grove-update-strategy": "Coherent"
+                "nvidia.com/grove-update-strategy": "Coherent",
+                "nvidia.com/kai-scheduler-queue": "modelplane"
               }
             },
             "spec": {
@@ -204,35 +268,34 @@
                 {
                   "name": "frontend",
                   "type": "frontend",
-                  "replicas": 1,
+                  "replicas": 2,
                   "podTemplate": {
                     "metadata": {
                       "labels": {
-                        "modelplane.ai/serving": "r",
-                        "modelplane.ai/replica": "r",
-                        "modelplane.ai/deployment": "r"
+                        "routing": "user-authored",
+                        "modelplane.ai/role": "frontend"
                       }
                     },
                     "spec": {
                       "containers": [
                         {
                           "name": "main",
-                          "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                          "image": "example/dynamo-frontend:1.7.0",
                           "command": [
-                            "python3",
-                            "-m",
-                            "dynamo.frontend"
+                            "dynamo-frontend"
                           ],
                           "args": [
-                            "--http-port",
-                            "8000",
                             "--router-mode",
-                            "kv"
+                            "round-robin"
                           ],
                           "env": [
                             {
                               "name": "HF_HUB_CACHE",
                               "value": "/mnt/models"
+                            },
+                            {
+                              "name": "FRONTEND_SETTING",
+                              "value": "user-value"
                             }
                           ],
                           "volumeMounts": [
@@ -241,6 +304,11 @@
                               "mountPath": "/mnt/models"
                             }
                           ]
+                        }
+                      ],
+                      "imagePullSecrets": [
+                        {
+                          "name": "frontend-registry"
                         }
                       ],
                       "volumes": [
@@ -252,8 +320,7 @@
                         }
                       ]
                     }
-                  },
-                  "runtimeVersionOverride": "1.7.0"
+                  }
                 },
                 {
                   "name": "engine-main",
@@ -270,21 +337,25 @@
                         "metadata": {
                           "labels": {
                             "modelplane.ai/engine": "main",
-                            "modelplane.ai/role": "Leader",
-                            "kai.scheduler/queue": "modelplane"
+                            "modelplane.ai/role": "Leader"
                           }
                         },
                         "spec": {
                           "containers": [
                             {
-                              "name": "main",
-                              "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
-                              "volumeMounts": [
-                                {
-                                  "name": "model-cache",
-                                  "mountPath": "/mnt/models"
-                                }
+                              "command": [
+                                "/bin/sh",
+                                "-c",
+                                "ray start --head --port=6379; exec python3 -m dynamo.vllm --model --model=meta-llama/Llama-3.1-405B --tensor-parallel-size=8 --pipeline-parallel-size=2 --port=8000"
                               ],
+                              "image": "vllm/vllm-openai:v0.32.0",
+                              "name": "main",
+                              "readinessProbe": {
+                                "grpc": {
+                                  "port": 30001
+                                },
+                                "periodSeconds": 5
+                              },
                               "resources": {
                                 "claims": [
                                   {
@@ -292,10 +363,15 @@
                                   }
                                 ]
                               },
-                              "command": [
-                                "/bin/sh",
-                                "-c",
-                                "ray start --head --port=6379; exec python3 -m dynamo.vllm --model --model=meta-llama/Llama-3.1-405B --tensor-parallel-size=8 --pipeline-parallel-size=2 --port=8000"
+                              "volumeMounts": [
+                                {
+                                  "name": "dshm",
+                                  "mountPath": "/dev/shm"
+                                },
+                                {
+                                  "name": "model-cache",
+                                  "mountPath": "/mnt/models"
+                                }
                               ],
                               "env": [
                                 {
@@ -361,6 +437,12 @@
                             }
                           ],
                           "volumes": [
+                            {
+                              "name": "dshm",
+                              "emptyDir": {
+                                "medium": "Memory"
+                              }
+                            },
                             {
                               "name": "model-cache",
                               "persistentVolumeClaim": {
@@ -394,6 +476,20 @@
                               "operator": "Exists",
                               "effect": "NoSchedule"
                             }
+                          ],
+                          "initContainers": [
+                            {
+                              "name": "runtime",
+                              "image": "example/dynamo-sidecar:1.7.0",
+                              "command": [
+                                "dynamo-vllm-sidecar"
+                              ],
+                              "args": [
+                                "--grpc-endpoint",
+                                "127.0.0.1:30001"
+                              ],
+                              "restartPolicy": "Always"
+                            }
                           ]
                         }
                       }
@@ -405,21 +501,19 @@
                         "metadata": {
                           "labels": {
                             "modelplane.ai/engine": "main",
-                            "modelplane.ai/role": "Worker",
-                            "kai.scheduler/queue": "modelplane"
+                            "modelplane.ai/role": "Worker"
                           }
                         },
                         "spec": {
                           "containers": [
                             {
-                              "name": "main",
-                              "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
-                              "volumeMounts": [
-                                {
-                                  "name": "model-cache",
-                                  "mountPath": "/mnt/models"
-                                }
+                              "command": [
+                                "/bin/sh",
+                                "-c",
+                                "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block"
                               ],
+                              "image": "vllm/vllm-openai:v0.32.0",
+                              "name": "main",
                               "resources": {
                                 "claims": [
                                   {
@@ -427,10 +521,15 @@
                                   }
                                 ]
                               },
-                              "command": [
-                                "/bin/sh",
-                                "-c",
-                                "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block"
+                              "volumeMounts": [
+                                {
+                                  "name": "dshm",
+                                  "mountPath": "/dev/shm"
+                                },
+                                {
+                                  "name": "model-cache",
+                                  "mountPath": "/mnt/models"
+                                }
                               ],
                               "env": [
                                 {
@@ -496,6 +595,12 @@
                             }
                           ],
                           "volumes": [
+                            {
+                              "name": "dshm",
+                              "emptyDir": {
+                                "medium": "Memory"
+                              }
+                            },
                             {
                               "name": "model-cache",
                               "persistentVolumeClaim": {
@@ -533,8 +638,7 @@
                         }
                       }
                     }
-                  ],
-                  "runtimeVersionOverride": "1.7.0"
+                  ]
                 }
               ]
             }

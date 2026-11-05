@@ -1,0 +1,158 @@
+{
+  "name": "TopologyEnvReference",
+  "reason": "Reject TopologyEnvReference before applying a Dynamo graph.",
+  "replica": {
+    "apiVersion": "modelplane.ai/v1alpha1",
+    "kind": "ModelReplica",
+    "metadata": {
+      "name": "r",
+      "namespace": "ml-team"
+    },
+    "spec": {
+      "clusterName": "cluster-a",
+      "engines": [
+        {
+          "copies": 1,
+          "members": [
+            {
+              "deviceRequests": [
+                {
+                  "count": 8,
+                  "deviceClassName": "gpu.nvidia.com",
+                  "name": "gpu",
+                  "selectors": [
+                    {
+                      "cel": "device.capacity[\"gpu.nvidia.com\"].memory.compareTo(quantity(\"80Gi\")) >= 0"
+                    }
+                  ]
+                }
+              ],
+              "nodePoolName": "frontier",
+              "role": "Leader",
+              "template": {
+                "spec": {
+                  "containers": [
+                    {
+                      "command": [
+                        "/bin/sh",
+                        "-c",
+                        "ray start --head --port=6379; exec python3 -m dynamo.vllm --model --model=meta-llama/Llama-3.1-405B --tensor-parallel-size=8 --pipeline-parallel-size=2 --port=8000"
+                      ],
+                      "image": "vllm/vllm-openai:v0.32.0",
+                      "name": "engine",
+                      "readinessProbe": {
+                        "grpc": {
+                          "port": 30001
+                        },
+                        "periodSeconds": 5
+                      },
+                      "env": [
+                        {
+                          "name": "MASTER_ADDR",
+                          "value": "$(MODELPLANE_LEADER_ADDRESS)"
+                        }
+                      ]
+                    }
+                  ],
+                  "initContainers": [
+                    {
+                      "name": "runtime",
+                      "image": "example/dynamo-sidecar:1.7.0",
+                      "command": [
+                        "dynamo-vllm-sidecar"
+                      ],
+                      "args": [
+                        "--grpc-endpoint",
+                        "127.0.0.1:30001"
+                      ],
+                      "restartPolicy": "Always"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "deviceRequests": [
+                {
+                  "count": 8,
+                  "deviceClassName": "gpu.nvidia.com",
+                  "name": "gpu",
+                  "selectors": [
+                    {
+                      "cel": "device.capacity[\"gpu.nvidia.com\"].memory.compareTo(quantity(\"80Gi\")) >= 0"
+                    }
+                  ]
+                }
+              ],
+              "nodePoolName": "frontier",
+              "role": "Worker",
+              "template": {
+                "spec": {
+                  "containers": [
+                    {
+                      "command": [
+                        "/bin/sh",
+                        "-c",
+                        "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block"
+                      ],
+                      "image": "vllm/vllm-openai:v0.32.0",
+                      "name": "engine"
+                    }
+                  ]
+                }
+              },
+              "worker": {
+                "nodes": 1
+              }
+            }
+          ],
+          "name": "main"
+        }
+      ],
+      "serving": {
+        "mode": "Unified",
+        "router": "Dynamo",
+        "dynamo": {
+          "backendFramework": "vllm",
+          "frontend": {
+            "replicas": 2,
+            "template": {
+              "metadata": {
+                "labels": {
+                  "routing": "user-authored"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "main",
+                    "image": "example/dynamo-frontend:1.7.0",
+                    "command": [
+                      "dynamo-frontend"
+                    ],
+                    "args": [
+                      "--router-mode",
+                      "round-robin"
+                    ],
+                    "env": [
+                      {
+                        "name": "FRONTEND_SETTING",
+                        "value": "user-value"
+                      }
+                    ]
+                  }
+                ],
+                "imagePullSecrets": [
+                  {
+                    "name": "frontend-registry"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "want": "Use Dynamo topology aliases in command or args, not dependent env values"
+}

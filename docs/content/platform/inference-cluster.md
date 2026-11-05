@@ -131,39 +131,50 @@ updates coordinate availability across prefill and decode. The pinned operator
 accepts this through the DGD annotation
 `nvidia.com/grove-update-strategy: Coherent`.
 
-Dynamo engines must use a Dynamo runtime image and launch `dynamo.vllm`,
-`dynamo.sglang`, or `dynamo.trtllm`. All engines in one graph use the same backend.
-Explicit commands, arguments, environment, and existing sidecars pass through.
-When command is omitted, Modelplane supplies `python3 -m dynamo.<backend>`;
-the member must provide its runtime arguments. An image without command or
-arguments is rejected. The engine
-container becomes `main` in the DGD. Do not use `main` as a sidecar's name.
-The stack pins the 1.7 nightly chart `1.7.0-dev.20261103.ge37f0b9`, with runtime
-images tagged `20261103-e37f0b9`. For those images Modelplane sets
-`runtimeVersionOverride: 1.7.0` on DGD components because the date tag has no
-semantic version. The component override accounts for every member image,
-independent of member order. Mixing that nightly with semantic tags requires
-all roles to identify runtime version `1.7.0`. Other versions and tags without
-a known runtime version are rejected. Other image tags must identify the Dynamo runtime version
-so DGD admission can resolve compatibility. The frontend uses the first engine's runtime image,
-image pull secrets, environment, and model cache.
+A deployment selects this stack with `serving.router: Dynamo`. Placement considers
+only Dynamo clusters for that router; `EndpointPicker` and the default Unified
+picker select Standard clusters. Switching the router re-places replicas whose
+cluster no longer matches. Engine images and routing configuration are part of
+the stack contract. Deployments are not automatically portable between stacks.
 
-Omit `serving.router` and `serving.endpointPicker` on Dynamo. Its frontend handles
-both Unified and PrefillDecode serving, including KV transfer. On Standard,
-PrefillDecode still requires an endpoint picker and its engine-side KV connector.
-This cluster-dependent requirement is checked during composition.
+Dynamo engines keep their native images, commands and arguments. The serving
+member (Standalone or Leader) declares a native init sidecar named `runtime`,
+with `restartPolicy: Always`, and an engine readiness probe. A compute-only
+Worker may omit the sidecar. The engine must expose the native gRPC API its
+sidecar expects; Modelplane neither enables it nor supplies engine flags.
+The engine container becomes `main` in the DGD, so reserve that name across
+regular and init containers. Existing application sidecars pass through.
 
-Changing the backend, component set, roles, or node count replaces the graph:
-these fields are immutable in DGD. The replacement also covers changes to
-GPU power limits and their allocation. Commands, copy counts, and ordinary
-runtime image updates keep the same graph identity. During replacement the old
-graph is deleted so its GPUs can be reassigned; serving can be interrupted until
-the new frontend and engines are ready.
+The user supplies `serving.dynamo.frontend.template`, including its image,
+command, arguments, environment and optional probes. Its replicas default to
+one and can be set through `serving.dynamo.frontend.replicas`. Frontend settings
+are independent of engine settings. The frontend serves HTTP on port 8000 by
+default. An explicit port list must include a port named `http`, which the
+operator's Service targets. The user must configure the frontend to listen on
+that port. Do not set `serving.endpointPicker` with `router: Dynamo`.
+
+The stack pins operator chart `1.7.0-dev.20261103.ge37f0b9`. Matching frontend
+and sidecar images are in `dynamo-frontend-nightly` and `dynamo-sidecar-nightly`,
+with tag `20261103-e37f0b9`. For these dated tags, set
+`serving.dynamo.runtimeVersionOverride: 1.7.0`; Modelplane passes that value to
+every DGD component. It does not parse image tags or infer the engine backend.
+An optional `serving.dynamo.backendFramework` passes through to the operator for
+backend-specific startup ordering and compilation-cache defaults.
+
+Changing the backend hint, component set, roles, or node count replaces the
+graph because those fields are immutable in DGD. Commands, copy counts and
+image updates keep the graph identity. Replacement releases the old graph's
+GPUs and can interrupt serving until the new frontend and engines are ready.
+`Coherent` coordinates ordinary rolling updates within one graph; it does not
+coordinate replacement of two different graphs. GPU power-limit annotations
+are rejected because Modelplane binds devices through DRA claims.
 
 For a multi-node Dynamo engine, `$(MODELPLANE_LEADER_ADDRESS)` and
-`$(MODELPLANE_RANK)` alias the operator's topology variables. Each member keeps
-its own command, sidecars, node pool, and DRA claim. See
-[multi-node serving on Dynamo]({{< ref "/guides/serving-multi-node-on-dynamo.md" >}}).
+`$(MODELPLANE_RANK)` alias the operator's topology variables. Use the aliases in
+`command` or `args`, not dependent `env` values: the operator sorts environment
+entries by name. Each member template defines its command, probes and sidecars, with a separate
+node pool and DRA claim. Multi-node sidecar support in the pinned nightly is experimental.
+See [multi-node serving on Dynamo]({{< ref "/guides/serving-multi-node-on-dynamo.md" >}}).
 
 Dynamo engines can opt into peer-to-peer weight loading with
 `--load-format modelexpress`. See

@@ -12,32 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Routing: front a replica's engine workloads with a serving surface.
+"""Front a replica's engines with the router selected by its deployment.
 
-The workload backends (native, llm-d, Grove) compose engines only; this layer
-decorates them with the routing the replica's serving.mode selects. apply picks
-the strategy:
+On Standard, Unified uses a default endpoint picker unless the user supplies
+one. PrefillDecode requires the user's picker and engine-side KV connector.
+This layer composes their InferencePool, HTTPRoute and picker resources.
 
-- Unified fronts the serving pods with a GAIE InferencePool + endpoint picker,
-  so requests route by prefix cache and load rather than round-robin. One path
-  whether the replica serves from a single pod or many: the picker is vestigial
-  for one pod, but the alternative is swapping a Service + HTTPRoute for a pool
-  the moment a second pod appears, which would drop in-flight requests.
-- PrefillDecode (disaggregated) role-labels the two phase engines and fronts
-  both with a GAIE InferencePool + endpoint picker, routed to in place of a
-  Service.
-
-serving.router says who writes the router's behaviour. PrefillDecode requires
-router: EndpointPicker and a picker (the XRD enforces it), because a wrong
-prefill/decode default reports Ready and rejects requests. The user writes the
-picker's container, its configuration and, as a container in the decode pod,
-the disaggregation sidecar with the --kv-connector that matches their engines;
-this layer injects nothing into their pods. Unified has a default: without a
-router, the cluster routes the replica with llm-d's picker and Modelplane's
-configuration, which reads --block-size from the engine's args (#179).
-
-The backends build no routing of their own, so a strategy only adds resources
-(and decorates the serving pods) - nothing is removed.
+On Dynamo, the graph contains the user-authored frontend. This layer points the
+HTTPRoute at that component's Service, without an endpoint picker. The router
+also constrains placement to clusters with the matching serving stack.
 """
 
 import hashlib
@@ -229,19 +212,18 @@ def _user_routed(replica: v1alpha1.ModelReplica) -> bool:
 
 
 def prefill_decode_routing_missing(replica: v1alpha1.ModelReplica) -> bool:
-    """Whether a PrefillDecode replica lacks the routing the XRD requires.
+    """Defend the explicit-router contract when serving a function request.
 
-    The XRD rejects a PrefillDecode replica without router: EndpointPicker and
-    a picker, but CEL rules don't apply to an object stored before them
-    and left unchanged, so such a replica can still reach the function.
-    Composing it would leave its decode pods without a sidecar, a pair that
-    reports Ready and serves decode alone, so the caller stops instead and
-    leaves what's running in place.
+    Admission requires a router and its corresponding template. Checking here
+    also avoids composing incomplete requests supplied directly to the function.
     """
     serving = replica.spec.serving
     if not serving or serving.mode != "PrefillDecode":
         return False
-    return not (_user_routed(replica) and serving.endpointPicker is not None)
+    return not (
+        (serving.router == "EndpointPicker" and serving.endpointPicker is not None)
+        or (serving.router == "Dynamo" and serving.dynamo is not None)
+    )
 
 
 def decode_without_sidecar(replica: v1alpha1.ModelReplica) -> bool:
@@ -261,7 +243,9 @@ def decode_without_sidecar(replica: v1alpha1.ModelReplica) -> bool:
     member = base.engine_member(decode, base.ROLE_LEADER) or base.engine_member(decode, base.ROLE_STANDALONE)
     if member is None:
         return False
-    return all(c.name == "engine" for c in member.template.spec.containers)
+    return all(c.name == "engine" for c in member.template.spec.containers) and not any(
+        c.restartPolicy == "Always" for c in member.template.spec.initContainers or []
+    )
 
 
 def _default_unified_picker() -> dict[str, Any]:

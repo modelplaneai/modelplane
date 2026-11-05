@@ -13,19 +13,15 @@ across clusters and clouds. A serving stack owns what happens inside one
 cluster, turning a stock engine into a routable serving instance. I propose we
 add support for NVIDIA Dynamo as a serving stack.
 
-The proposal is phased, so we deliver value now rather than waiting on one large
-integration:
+The Dynamo stack composes one `DynamoGraphDeployment` per ModelReplica. Engines
+keep their native images and launches, with a user-authored Dynamo native init
+sidecar beside each serving member. The deployment selects `router: Dynamo`
+and supplies its frontend template. The scheduler selects compatible Dynamo
+clusters; Standard routers select Standard clusters.
 
-1. **Now — à la carte.** A platform team opts a cluster into a `Dynamo` serving
-   stack, and Modelplane drives stock engines with Dynamo's standalone
-   components: Grove + kai-scheduler for multi-node placement, ModelExpress for
-   weight distribution. No change to the ML-facing API.
-2. **In parallel — the gaps.** Two changes Dynamo already has in flight let a
-   `ModelDeployment` land on a full `DynamoGraphDeployment` (DGD) without
-   changing that API or what the engine runs.
-3. **Then — the DGD.** The same `Dynamo` cluster opt-in graduates to composing
-   full DGDs, so Modelplane's users get Dynamo's frontend and routing while the
-   API they write stays exactly what it is today.
+This updates the original staged integration: explicit Leader/Worker templates
+and native sidecars are available in the pinned 1.7 nightly. The sidecar path is
+experimental; Modelplane does not substitute the in-process Dynamo engine runtime.
 
 ## Background
 
@@ -96,9 +92,10 @@ and faster cold starts now; failover, checkpoint restore, and mid-stream
 migration as they follow. Adopting a serving stack that has them beats building
 each one ourselves.
 
-**No ML-facing API change.** A `ModelDeployment` reads the same whichever stack
-it lands on. That gives a fleet one portable API, and turning a cluster over to
-Dynamo costs a developer nothing to learn.
+**Make the stack contract explicit.** A ModelDeployment is not independent of
+its routing stack. `router: Dynamo` selects a Dynamo frontend and compatible
+clusters; EndpointPicker and the default Unified picker select Standard.
+Native engine launch and KV-transfer settings remain the user's responsibility.
 
 **Keep the engine opaque.** The user writes one container named `engine` with
 its `image`, `command`, and `args`, and what they write is what runs. We inject
@@ -118,8 +115,8 @@ adopt them under the model it already has.
 ### The cluster opt-in
 
 A cluster runs one serving stack, set on its `InferenceCluster`: `Standard`
-(today's Modelplane-composed stack) or `Dynamo`, which turns on the à la carte
-components below now and the composed DGD as it lands. Because the choice is
+(the Modelplane-composed stack) or `Dynamo`, which installs the Dynamo operator,
+Grove, KAI Scheduler and ModelExpress. Because the choice is
 per-cluster, a fleet can take on Dynamo incrementally, standing up Dynamo
 clusters and shifting deployments onto them cluster by cluster.
 
@@ -134,10 +131,8 @@ spec:
   #
   #   Standard — Modelplane composes a Deployment or a LeaderWorkerSet and
   #     fronts it with Gateway API + an endpoint picker.
-  #   Dynamo   — Modelplane uses Dynamo's components: Grove + kai-scheduler for
-  #     multi-node, ModelExpress for weight distribution (and, as it lands, a
-  #     composed DGD). Installs the Dynamo platform (operator + NATS + Grove +
-  #     kai-scheduler).
+  #   Dynamo   — Modelplane composes DGDs with native engine sidecars and the
+  #     user-authored frontend. The operator owns Grove workloads and runtime wiring.
   stack: Dynamo
   cluster:
     source: EKS
@@ -150,18 +145,20 @@ spec:
 
 ### Grove and kai-scheduler
 
-On a Dynamo cluster, Grove and kai-scheduler are the multi-node backend. A
-`Standalone` engine stays a Deployment; a `Leader`+`Worker` gang becomes a Grove
-`PodCliqueSet` with a leader clique and a worker clique. Each carries its own
-command, and is gang-scheduled all-or-nothing by kai. `compose-model-replica`
-composes the `PodCliqueSet` in place of the LeaderWorkerSet. Grove's per-clique
-pod specs map onto our separate Leader and Worker commands, which a DGD's single
-pod template can't.
+On a Dynamo cluster the operator lowers each DGD component into Grove workloads.
+A multi-node engine declares distinct leader and worker role PodTemplates and
+becomes a PodCliqueScalingGroup; single-node components use PodCliques. Minimum
+available capacity joins the graph's base gang; capacity above each minimum
+schedules independently. The DGD selects `Coherent` rolling updates, coordinating
+prefill/decode availability across components without permanently coupling every copy.
 
-The gang's coordination env comes across unchanged, so a command reads the same
-on either stack. `MODELPLANE_LEADER_ADDRESS` aliases Grove's deterministic pod
-DNS rather than LWS's, and `MODELPLANE_RANK` aliases the gang-wide pod index
-[grove#755](https://github.com/ai-dynamo/grove/pull/755) adds.
+Modelplane composes the DGD and device claim templates, not the underlying Grove
+objects. It sets `nvidia.com/kai-scheduler-queue: modelplane` on the DGD so the
+operator assigns generated cliques to Modelplane's queue.
+
+`MODELPLANE_LEADER_ADDRESS` and `MODELPLANE_RANK` alias the operator's
+`DYNAMO_LEADER_ADDRESS` and `DYNAMO_RANK`. Use them in command/args; dependent env
+references are rejected because the operator sorts environment entries.
 
 ### ModelExpress
 
@@ -262,37 +259,27 @@ spec:
     count: 16
 ```
 
-## Future improvements
+## The composed DGD contract
 
-### A composed DGD
+The pinned operator accepts separate role PodTemplates and selects native engine
+sidecar mode from `initContainers[name=runtime]` with `restartPolicy: Always` in
+the serving member. Compute-only workers may omit it. The operator preserves
+native engine image entrypoints, commands, arguments and probes and skips engine
+backend launch hooks. Modelplane renames `engine` to DGD's `main` and adds its
+placement, device claims, topology aliases and cache mounts. Other containers
+and init containers pass through.
 
-Nothing about the cluster opt-in changes: the same `stack: Dynamo` graduates from
-composing components to composing a `DynamoGraphDeployment`, and an ML developer
-writes the `Standalone`/`Leader`/`Worker` engines they'd write anywhere else.
+`serving.dynamo.frontend` owns replicas and a PodTemplate with a `main` container
+and explicit command. Modelplane neither copies engine configuration to that
+frontend nor chooses a router mode. `serving.dynamo.backendFramework` and
+`runtimeVersionOverride` are optional, explicit values passed to DGD admission.
+Modelplane does not infer either from images. Dated nightly runtime images need
+the explicit version override; the author selects compatible runtime versions.
 
-A DGD can't preserve the opaque engine today, for three reasons. A multi-node
-component has one `podTemplate` that the operator expands into a leader and a
-worker, so there's nowhere to put a distinct worker command. The operator then
-appends its own launch flags to whatever the user wrote: `backend_vllm.go`
-injects `--nnodes`, `--node-rank`, `--master-addr` and `--headless`, SGLang gets
-`--dist-init-addr`, and TRT-LLM is wrapped in `mpirun`. And the engine runs as
-`python3 -m dynamo.<backend>` in a Dynamo runtime image rather than as `vllm
-serve`.
-
-Dynamo is working on all three.
-[#10835](https://github.com/ai-dynamo/dynamo/issues/10835) moves the runtime
-wrapper's logic into a sidecar, so a stock engine image serves:
-
-> Operator preference. We see signals that users prefer each engine's native
-> `xxx serve` experience over a Dynamo-specific `dynamo.xxx` entrypoint, largely
-> because CLI behavior and options diverge.
-
-For the other two we need a worker's pod spec to be able to differ from its
-leader's, and a way to tell the operator not to generate launch flags, leaving
-the commands the user wrote. Dynamo is working on both in
-[#12696](https://github.com/ai-dynamo/dynamo/issues/12696), whose motivation
-names our case: integrations "that provide different Leader and Worker commands,
-environment, DRA references, or placement."
+Backend and graph-topology edits replace the graph, releasing old GPUs rather
+than requiring spare capacity before deletion. That can interrupt this replica.
+Coherent rollout applies to mutable changes within one graph, not replacement.
+GPU power-limit annotations conflict with Modelplane's DRA binding and are rejected.
 
 ## Alternatives considered
 
@@ -342,14 +329,7 @@ engines:
           - --pipeline-parallel-size=2
 ```
 
-This maps cleanly onto the DGD as it exists today because it accepts the DGD's
-single-template, roles-inferred model and its runtime image. Modelplane would
-compose a single DGD (a synthesized frontend plus one component per engine) and
-point the replica's route at Dynamo's frontend.
-
-I'm not proposing it, because it gives up both goals at once. `Delegated` is a
-new role and a Dynamo-specific block, so a `ModelDeployment` reads differently
-depending on which cluster it lands on. And the engine must be a
-`dynamo.<backend>` runtime image rather than the stock `vllm serve` the user
-writes everywhere else. The end state above reaches the same DGD backend without
-giving up either.
+That alternative accepted the old DGD's single-template launch generation and
+in-process runtime. It is not the chosen contract: native sidecars and explicit
+role PodTemplates preserve user-authored engine launches without a new member
+role. Routing still has an explicit stack choice through `router: Dynamo`.

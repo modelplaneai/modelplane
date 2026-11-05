@@ -1,0 +1,348 @@
+{
+  "name": "DynamoTemplatesPropagate",
+  "reason": "A parent deployment preserves sidecar startup order, engine probes and independent frontend settings in its resolved ModelReplica.",
+  "request": {
+    "observed": {
+      "composite": {
+        "resource": {
+          "spec": {
+            "template": {
+              "spec": {
+                "engines": [
+                  {
+                    "name": "main",
+                    "members": [
+                      {
+                        "template": {
+                          "spec": {
+                            "containers": [
+                              {
+                                "args": [
+                                  "--model=Qwen/Qwen3-0.6B"
+                                ],
+                                "image": "vllm/vllm-openai:latest",
+                                "name": "engine",
+                                "readinessProbe": {
+                                  "grpc": {
+                                    "port": 30001
+                                  },
+                                  "periodSeconds": 3
+                                }
+                              }
+                            ],
+                            "initContainers": [
+                              {
+                                "name": "runtime",
+                                "image": "example/runtime:nightly",
+                                "command": [
+                                  "dynamo-vllm-sidecar"
+                                ],
+                                "args": [
+                                  "--grpc-endpoint",
+                                  "127.0.0.1:30001"
+                                ],
+                                "restartPolicy": "Always"
+                              }
+                            ]
+                          }
+                        },
+                        "nodeSelector": {
+                          "devices": [
+                            {
+                              "selectors": [
+                                {
+                                  "cel": "device.driver == \"gpu.nvidia.com\""
+                                }
+                              ],
+                              "count": 1.0,
+                              "name": "gpu"
+                            }
+                          ]
+                        },
+                        "role": "Standalone"
+                      }
+                    ],
+                    "copies": 1.0
+                  }
+                ],
+                "serving": {
+                  "mode": "Unified",
+                  "router": "Dynamo",
+                  "dynamo": {
+                    "runtimeVersionOverride": "1.7.0",
+                    "frontend": {
+                      "replicas": 3,
+                      "template": {
+                        "spec": {
+                          "containers": [
+                            {
+                              "name": "main",
+                              "image": "example/frontend:nightly",
+                              "command": [
+                                "frontend"
+                              ],
+                              "args": [
+                                "--router-mode",
+                                "round-robin"
+                              ],
+                              "env": [
+                                {
+                                  "name": "FRONTEND_ONLY",
+                                  "value": "true"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "replicas": 1.0
+          },
+          "apiVersion": "modelplane.ai/v1alpha1",
+          "kind": "ModelDeployment",
+          "metadata": {
+            "namespace": "ml-team",
+            "name": "my-model"
+          }
+        }
+      }
+    },
+    "requiredResources": {
+      "clusters": {
+        "items": [
+          {
+            "resource": {
+              "spec": {
+                "cluster": {
+                  "existing": {
+                    "secretRef": {
+                      "key": "kubeconfig",
+                      "name": "k"
+                    }
+                  },
+                  "source": "Existing"
+                },
+                "stack": "Dynamo"
+              },
+              "apiVersion": "modelplane.ai/v1alpha1",
+              "kind": "InferenceCluster",
+              "status": {
+                "conditions": [
+                  {
+                    "reason": "Available",
+                    "lastTransitionTime": "2025-01-01T00:00:00Z",
+                    "status": "True",
+                    "type": "Ready"
+                  }
+                ],
+                "providerConfigRef": {
+                  "name": "cluster-a"
+                },
+                "schedulablePools": [
+                  {
+                    "devices": [
+                      {
+                        "driver": "gpu.nvidia.com",
+                        "count": 1.0,
+                        "claim": "DRA",
+                        "deviceClassName": "gpu.nvidia.com",
+                        "name": "gpu"
+                      }
+                    ],
+                    "nodes": 2.0,
+                    "name": "default"
+                  }
+                ],
+                "gateway": {
+                  "hostname": "cluster.clusters.example.com",
+                  "address": "10.0.0.1"
+                }
+              },
+              "metadata": {
+                "name": "cluster-a"
+              }
+            }
+          }
+        ]
+      },
+      "all-replicas": {}
+    }
+  },
+  "want": {
+    "meta": {
+      "ttl": "60s"
+    },
+    "desired": {
+      "composite": {
+        "resource": {
+          "status": {
+            "replicas": {
+              "total": 1.0,
+              "ready": 0.0
+            }
+          }
+        },
+        "ready": "READY_FALSE"
+      },
+      "resources": {
+        "replica-cluster-a-0": {
+          "resource": {
+            "spec": {
+              "clusterName": "cluster-a",
+              "engines": [
+                {
+                  "name": "main",
+                  "members": [
+                    {
+                      "nodePoolName": "default",
+                      "deviceRequests": [
+                        {
+                          "count": 1.0,
+                          "deviceClassName": "gpu.nvidia.com",
+                          "selectors": [
+                            {
+                              "cel": "device.driver == \"gpu.nvidia.com\""
+                            }
+                          ],
+                          "name": "gpu"
+                        }
+                      ],
+                      "role": "Standalone",
+                      "template": {
+                        "spec": {
+                          "containers": [
+                            {
+                              "args": [
+                                "--model=Qwen/Qwen3-0.6B"
+                              ],
+                              "image": "vllm/vllm-openai:latest",
+                              "env": [
+                                {
+                                  "value": "ml-team/my-model",
+                                  "name": "MODELPLANE_SERVED_MODEL_NAME"
+                                }
+                              ],
+                              "name": "engine",
+                              "readinessProbe": {
+                                "grpc": {
+                                  "port": 30001
+                                },
+                                "periodSeconds": 3
+                              }
+                            }
+                          ],
+                          "initContainers": [
+                            {
+                              "name": "runtime",
+                              "image": "example/runtime:nightly",
+                              "command": [
+                                "dynamo-vllm-sidecar"
+                              ],
+                              "args": [
+                                "--grpc-endpoint",
+                                "127.0.0.1:30001"
+                              ],
+                              "restartPolicy": "Always"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  "copies": 1.0
+                }
+              ],
+              "serving": {
+                "mode": "Unified",
+                "router": "Dynamo",
+                "dynamo": {
+                  "runtimeVersionOverride": "1.7.0",
+                  "frontend": {
+                    "replicas": 3,
+                    "template": {
+                      "spec": {
+                        "containers": [
+                          {
+                            "name": "main",
+                            "image": "example/frontend:nightly",
+                            "command": [
+                              "frontend"
+                            ],
+                            "args": [
+                              "--router-mode",
+                              "round-robin"
+                            ],
+                            "env": [
+                              {
+                                "name": "FRONTEND_ONLY",
+                                "value": "true"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "apiVersion": "modelplane.ai/v1alpha1",
+            "kind": "ModelReplica",
+            "metadata": {
+              "namespace": "ml-team",
+              "labels": {
+                "modelplane.ai/replica-index": "0",
+                "modelplane.ai/deployment": "my-model",
+                "modelplane.ai/cluster": "cluster-a"
+              },
+              "name": "my-model-5ab63"
+            }
+          }
+        }
+      }
+    },
+    "results": [
+      {
+        "severity": "SEVERITY_NORMAL",
+        "message": "Scheduled 1 replicas across 1 clusters: cluster-a"
+      }
+    ],
+    "context": {},
+    "requirements": {
+      "resources": {
+        "clusters": {
+          "apiVersion": "modelplane.ai/v1alpha1",
+          "kind": "InferenceCluster"
+        },
+        "all-replicas": {
+          "apiVersion": "modelplane.ai/v1alpha1",
+          "kind": "ModelReplica"
+        }
+      }
+    },
+    "conditions": [
+      {
+        "type": "ReplicasScheduled",
+        "status": "STATUS_CONDITION_FALSE",
+        "reason": "Scheduling",
+        "message": "Created 0 of 1 replicas"
+      },
+      {
+        "type": "ReplicasServing",
+        "status": "STATUS_CONDITION_FALSE",
+        "reason": "ModelStarting",
+        "message": "0 of 1 replicas serving"
+      },
+      {
+        "type": "ReplicasReady",
+        "status": "STATUS_CONDITION_FALSE",
+        "reason": "ModelStarting",
+        "message": "0 of 1 replicas ready"
+      }
+    ]
+  }
+}

@@ -14,12 +14,11 @@
 
 """Compose one Dynamo graph per ModelReplica; the operator owns its workloads.
 
-Engines run the Dynamo runtime in main. Member templates retain their commands,
-sidecars, placement, and device claims. A shared frontend routes requests to all
-workers in the graph, including native prefill/decode handoffs.
+Native engines run in main, with user-authored runtime init sidecars. Member
+templates retain their launches, probes, placement, and device claims. The user
+also supplies the shared frontend; Modelplane does not infer engine configuration.
 """
 
-import re
 from collections.abc import Mapping
 
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -29,10 +28,6 @@ from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from function.backends import base
 
 FRONTEND = "frontend"
-# Match the serving-stack chart pin. NGC nightly tags carry the build date and
-# commit rather than a semantic runtime version, so DGD admission needs this.
-NIGHTLY_TAG = "20261103-e37f0b9"
-NIGHTLY_RUNTIME_VERSION = "1.7.0"
 _MAX_PORT = 65535
 READY_CEL = (
     "has(object.status) && has(object.status.observedGeneration) && "
@@ -43,30 +38,13 @@ READY_CEL = (
 
 
 def graph_name(replica: v1alpha1.ModelReplica) -> str:
-    """Leave room for the frontend Service suffix."""
-    return base.dns_1035_label(f"{base._name(replica.metadata)}-{base.dynamo_graph_revision(replica)}", "dgd", 52)
+    """Leave room for a hyphen and the longest 16-character component name."""
+    return base.dns_1035_label(f"{base._name(replica.metadata)}-{base.dynamo_graph_revision(replica)}", "dgd", 46)
 
 
 def component_name(engine: v1alpha1.Engine) -> str:
     """Worker names cannot collide with the graph's frontend component."""
     return base.dns_1035_label(f"engine-{engine.name}", "engine", 16)
-
-
-def _runtime_version(members: list[v1alpha1.Member]) -> dict[str, str]:
-    """A component override applies to every role, independent of member order."""
-    images = [base.engine_container(member).image.split("@")[0] for member in members]
-    if not any(image.endswith(f"-runtime-nightly:{NIGHTLY_TAG}") for image in images):
-        return {}
-    for image in images:
-        if image.endswith(f"-runtime-nightly:{NIGHTLY_TAG}"):
-            continue
-        version = re.fullmatch(r"v?(\d+\.\d+\.\d+)(?:[-+].*)?", image.rsplit(":", 1)[-1])
-        if version is None or version.group(1) != NIGHTLY_RUNTIME_VERSION:
-            raise ValueError(
-                "Nightly component members must use the pinned nightly or semantic "
-                f"runtime version {NIGHTLY_RUNTIME_VERSION}"
-            )
-    return {"runtimeVersionOverride": NIGHTLY_RUNTIME_VERSION}
 
 
 def _runtime_port_number(name: str, variable: str, configured: dict | None, default: int) -> int:
@@ -85,12 +63,12 @@ def _runtime_port_number(name: str, variable: str, configured: dict | None, defa
 def _runtime_ports(container: dict) -> None:
     """An explicit port list replaces operator defaults, so retain its runtime ports."""
     env = {entry["name"]: entry for entry in container.get("env", [])}
-    defaults = [("system", "DYN_SYSTEM_PORT", 9090), ("nixl", "NIXL_TELEMETRY_PROMETHEUS_PORT", 19090)]
+    defaults = [("system", "DYN_SYSTEM_PORT", 9090)]
     if "ports" not in container and not any(variable in env for _, variable, _ in defaults):
         return
     ports = container.setdefault("ports", [])
     if len({(p["containerPort"], p.get("protocol", "TCP")) for p in ports}) != len(ports):
-        raise ValueError("Dynamo main container ports must have unique port numbers per protocol")
+        raise ValueError("Dynamo runtime container ports must have unique port numbers per protocol")
     for name, variable, default in defaults:
         declared = next((port for port in ports if port.get("name") == name), None)
         configured = env.get(variable)
@@ -112,44 +90,55 @@ def _runtime_ports(container: dict) -> None:
             existing["name"] = name
 
 
+def _validate_member(engine: v1alpha1.Engine, member: v1alpha1.Member) -> None:
+    """Protect the native-sidecar pod contract, leaving engine launch semantics to its author."""
+    if member.template.metadata and "dynamo.nvidia.com/gpu-power-limit" in (member.template.metadata.annotations or {}):
+        raise ValueError("Dynamo gpu-power-limit annotations are incompatible with Modelplane DRA claims")
+    init = base.init_containers(member)
+    if any(c.name == "main" for c in member.template.spec.containers) or any(c["name"] == "main" for c in init):
+        raise ValueError("Dynamo reserves container name main for the engine; rename the sidecar named main")
+    sidecar = next((c for c in init if c["name"] == "runtime"), None)
+    if member.role != base.ROLE_WORKER and sidecar is None:
+        raise ValueError(f"Dynamo member {engine.name}/{base.member_role(member)} requires a runtime init sidecar")
+    if sidecar is not None:
+        if sidecar.get("restartPolicy") != "Always":
+            raise ValueError("The Dynamo runtime init sidecar requires restartPolicy: Always")
+        _runtime_ports(sidecar)
+    container = base.engine_container(member)
+    if member.role != base.ROLE_WORKER and container.readinessProbe is None:
+        raise ValueError("Dynamo serving engines require their own readinessProbe")
+    for entry in container.env or []:
+        if entry.value and any(f"$({name})" in entry.value for name in (base.LEADER_ADDRESS_ENV, base.RANK_ENV)):
+            raise ValueError("Use Dynamo topology aliases in command or args, not dependent env values")
+
+
 def validate(replica: v1alpha1.ModelReplica) -> str | None:
-    """Reject graph shapes that would lose user configuration or be rejected by DGD admission."""
-    frameworks = set()
+    """Validate the operator's sidecar contract without interpreting engine launches."""
+    serving = replica.spec.serving
+    if not serving or serving.router != "Dynamo" or serving.dynamo is None:
+        return "Dynamo clusters require serving.router: Dynamo and serving.dynamo.frontend"
+    frontend = next((c for c in serving.dynamo.frontend.template.spec.containers if c.name == "main"), None)
+    if frontend is None or not frontend.command:
+        return "The Dynamo frontend requires a main container with an explicit command"
+    if frontend.ports is not None and not any(p.name == "http" for p in frontend.ports):
+        return "Explicit Dynamo frontend ports must declare the named http port targeted by its Service"
     try:
         for engine in replica.spec.engines:
-            _runtime_version(engine.members)
             for member in engine.members:
-                frameworks.add(base.dynamo_framework(member))
-                container = base.engine_container(member)
-                _runtime_ports(container.model_dump(exclude_none=True))
-                if not container.command and not container.args:
-                    raise ValueError(
-                        f"Dynamo member {engine.name}/{base.member_role(member)} requires a command or runtime args"
-                    )
-                if any(c.name == "main" for c in member.template.spec.containers):
-                    raise ValueError(
-                        "Dynamo reserves container name main for the engine; rename the sidecar named main"
-                    )
+                _validate_member(engine, member)
     except ValueError as err:
         return str(err)
-    if len(frameworks) != 1:
-        return "All engines in a Dynamo graph must use the same backend framework"
-    if replica.spec.serving and replica.spec.serving.router:
-        return "Dynamo uses its runtime frontend for routing; omit serving.router and serving.endpointPicker"
     return None
 
 
 def _pod_template(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine, member: v1alpha1.Member) -> dict:
     container = base.engine_container(member).model_dump(exclude_none=True)
     container["name"] = "main"
-    _runtime_ports(container)
-    if not container.get("command"):
-        container["command"] = ["python3", "-m", f"dynamo.{base.dynamo_framework(member)}"]
     resources = base.engine_resources(base.engine_container(member), claim=bool(member.deviceRequests))
     if resources:
         container["resources"] = resources
     volumes, mounts = base.cache_mounts(replica)
-    container["volumeMounts"] = mounts
+    container["volumeMounts"] = [{"name": "dshm", "mountPath": "/dev/shm"}, *mounts]
     env = [*base.cache_env(replica), *base.modelexpress_env(replica, "Dynamo")]
     if member.role != base.ROLE_STANDALONE:
         env[0:0] = [
@@ -161,68 +150,53 @@ def _pod_template(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine, membe
         container["securityContext"] = security
     spec = {
         "containers": [container, *base.sidecar_containers(member)],
-        "volumes": volumes,
+        "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}, *volumes],
         "schedulerName": base.GROVE_SCHEDULER_NAME,
     }
+    if init := base.init_containers(member):
+        for sidecar in init:
+            if sidecar["name"] == "runtime":
+                _runtime_ports(sidecar)
+        spec["initContainers"] = init
     base.place_pod(spec, replica, engine, member)
     if secrets := member.template.spec.imagePullSecrets:
         spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in secrets]
     return {
-        "metadata": base.pod_metadata(
-            member, {base.GROVE_QUEUE_LABEL: base.GROVE_QUEUE}, replica=replica, engine=engine
-        ),
+        "metadata": base.pod_metadata(member, replica=replica, engine=engine),
         "spec": spec,
     }
 
 
 def build(replica: v1alpha1.ModelReplica, provider_config: str) -> dict[str, k8sobjv1alpha1.Object]:
     assert replica.metadata is not None
-    first = replica.spec.engines[0]
-    first_member = base.engine_member(first, base.ROLE_LEADER) or first.members[0]
-    runtime = base.engine_container(first_member)
+    assert replica.spec.serving is not None and replica.spec.serving.dynamo is not None
+    config = replica.spec.serving.dynamo
+    version = {"runtimeVersionOverride": config.runtimeVersionOverride} if config.runtimeVersionOverride else {}
+    frontend_template = config.frontend.template.model_dump(exclude_none=True)
+    labels = frontend_template.setdefault("metadata", {}).setdefault("labels", {})
+    labels.update(base.fleet_labels(replica, "frontend"))
     volumes, mounts = base.cache_mounts(replica)
+    if volumes:
+        frontend_template["spec"]["volumes"] = volumes
+    for container in frontend_template["spec"]["containers"]:
+        if container["name"] == "main":
+            if mounts:
+                container["volumeMounts"] = mounts
+            container["env"] = [*base.cache_env(replica), *container.get("env", [])]
     frontend = {
         "name": FRONTEND,
         "type": "frontend",
-        **_runtime_version([first_member]),
-        "replicas": 1,
-        "podTemplate": {
-            "metadata": {
-                "labels": {
-                    base.LABEL_SERVING: base.serving_label(replica),
-                    base.LABEL_REPLICA: base._name(replica.metadata),
-                    base.LABEL_DEPLOYMENT: (replica.metadata.labels or {}).get(
-                        base.LABEL_DEPLOYMENT, base._name(replica.metadata)
-                    ),
-                }
-            },
-            "spec": {
-                "containers": [
-                    {
-                        "name": "main",
-                        "image": runtime.image,
-                        "command": ["python3", "-m", "dynamo.frontend"],
-                        "args": ["--http-port", "8000", "--router-mode", "kv"],
-                        "env": [
-                            *base.cache_env(replica),
-                            *[e.model_dump(exclude_none=True) for e in runtime.env or []],
-                        ],
-                        "volumeMounts": mounts,
-                    }
-                ],
-                "volumes": volumes,
-            },
-        },
+        **version,
+        "replicas": int(config.frontend.replicas or 1),
+        "podTemplate": frontend_template,
     }
-    if secrets := first_member.template.spec.imagePullSecrets:
-        frontend["podTemplate"]["spec"]["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in secrets]
     components = [frontend]
     composed = {}
     for engine in replica.spec.engines:
         component = {
             "name": component_name(engine),
             "type": (engine.phase or "worker").lower(),
-            **_runtime_version(engine.members),
+            **version,
             "replicas": int(engine.copies or 1),
         }
         if standalone := base.engine_member(engine, base.ROLE_STANDALONE):
@@ -255,9 +229,15 @@ def build(replica: v1alpha1.ModelReplica, provider_config: str) -> dict[str, k8s
                 "name": graph_name(replica),
                 "namespace": base.remote_namespace(replica),
                 # The pinned operator selects Grove's strategy through this annotation.
-                "annotations": {"nvidia.com/grove-update-strategy": "Coherent"},
+                "annotations": {
+                    "nvidia.com/grove-update-strategy": "Coherent",
+                    "nvidia.com/kai-scheduler-queue": base.GROVE_QUEUE,
+                },
             },
-            "spec": {"backendFramework": base.dynamo_framework(first_member), "components": components},
+            "spec": {
+                **({"backendFramework": config.backendFramework} if config.backendFramework else {}),
+                "components": components,
+            },
         },
         cel_query=READY_CEL,
         watch=True,

@@ -298,12 +298,14 @@ containers beside `engine`:
 
 - Exactly one container is named `engine`, and container names are unique.
 - Every container takes `image`, `command`, `args`, `env`, `ports`, and
-  `resources`. A container beside `engine` can also set a `readinessProbe`,
-  such as the sidecar's `/health` on 8000.
+  `resources`, and startup, readiness and liveness probes. A member may also
+  declare ordered init containers, including native sidecars with
+  `restartPolicy: Always`.
 - Modelplane doesn't change any container except `engine`. It adds device
   claims beside the engine's `resources`, `MODELPLANE_` environment, ModelCache
-  mounts, `/dev/shm`, the `http` port, and the readiness probe. The engine
-  can't set its own `readinessProbe`.
+  mounts and `/dev/shm`. Standard defaults the engine's `http` port and
+  readiness probe; authored engine probes replace those defaults. Dynamo
+  requires an authored readiness probe on each serving engine.
 - A `readinessProbe` sets exactly one of `httpGet`, `tcpSocket`, and `grpc`.
 - Under `PrefillDecode`, Modelplane warns when the decode pod has no container
   beside the engine. It can't tell whether a container is the sidecar.
@@ -314,7 +316,7 @@ containers beside `engine`:
 
 A serving pod receives requests on port 8000, as today. The engine's port named
 `http` is where Modelplane probes the engine and the collector scrapes its
-metrics. The collector reads only that port on the `engine` container, so a
+metrics. On Standard the collector reads that port on the `engine` container, so a
 sidecar port named `http` isn't scraped. The `http` port defaults to 8000, so an
 engine alone in its pod declares nothing, and an unnamed 8000 on the engine is
 its `http` port.
@@ -503,13 +505,21 @@ These router settings must match the engines:
 
 ### Dynamo
 
-A cluster that composes a DynamoGraphDeployment would route `Unified`
-deployments with Dynamo by default. Dynamo 1.5's own picker reads `DYN_*`
-environment variables, which a picker template can set. Its prefill/decode runs
-a Dynamo frontend in the worker pods rather than the llm-d sidecar, so
-prefill/decode on Dynamo needs its own `router` value. A `Unified` deployment keeps the
-unchanged API that [serving stacks](./serving-stacks.md) promises Dynamo
-users. A `PrefillDecode` deployment names its router on any stack.
+`serving.router: Dynamo` selects Dynamo clusters and requires
+`serving.dynamo.frontend`, with a user-authored PodTemplate and configurable
+replica count. The frontend handles Unified and PrefillDecode traffic. There is
+no endpoint picker in that path, and router mode, image, environment and launch
+arguments belong to the frontend template's author.
+
+Native engines connect through a user-authored `runtime` init sidecar with
+`restartPolicy: Always`. Modelplane preserves engine launches instead of
+requiring `python3 -m dynamo.<backend>`. A compute-only Worker may omit the
+runtime sidecar. The sidecar's native gRPC contract and engine compatibility are
+part of the deployment's stack configuration.
+
+PrefillDecode requires an explicit router on either stack. The API validates
+that EndpointPicker has an endpointPicker template and Dynamo has a frontend;
+placement filters both retained and new replicas to the router's stack.
 
 ### More container fields
 

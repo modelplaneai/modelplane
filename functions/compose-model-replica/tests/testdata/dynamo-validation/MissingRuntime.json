@@ -1,6 +1,6 @@
 {
-  "name": "UnversionedRuntimeRole",
-  "reason": "A component-wide nightly override must not misdeclare another role's runtime version.",
+  "name": "MissingRuntime",
+  "reason": "Reject MissingRuntime before applying a Dynamo graph.",
   "replica": {
     "apiVersion": "modelplane.ai/v1alpha1",
     "kind": "ModelReplica",
@@ -38,8 +38,14 @@
                         "-c",
                         "ray start --head --port=6379; exec python3 -m dynamo.vllm --model --model=meta-llama/Llama-3.1-405B --tensor-parallel-size=8 --pipeline-parallel-size=2 --port=8000"
                       ],
-                      "image": "registry.example.com/team/dynamo-vllm:latest",
-                      "name": "engine"
+                      "image": "vllm/vllm-openai:v0.32.0",
+                      "name": "engine",
+                      "readinessProbe": {
+                        "grpc": {
+                          "port": 30001
+                        },
+                        "periodSeconds": 5
+                      }
                     }
                   ]
                 }
@@ -69,7 +75,7 @@
                         "-c",
                         "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block"
                       ],
-                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                      "image": "vllm/vllm-openai:v0.32.0",
                       "name": "engine"
                     }
                   ]
@@ -82,8 +88,51 @@
           ],
           "name": "main"
         }
-      ]
+      ],
+      "serving": {
+        "mode": "Unified",
+        "router": "Dynamo",
+        "dynamo": {
+          "backendFramework": "vllm",
+          "frontend": {
+            "replicas": 2,
+            "template": {
+              "metadata": {
+                "labels": {
+                  "routing": "user-authored"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "main",
+                    "image": "example/dynamo-frontend:1.7.0",
+                    "command": [
+                      "dynamo-frontend"
+                    ],
+                    "args": [
+                      "--router-mode",
+                      "round-robin"
+                    ],
+                    "env": [
+                      {
+                        "name": "FRONTEND_SETTING",
+                        "value": "user-value"
+                      }
+                    ]
+                  }
+                ],
+                "imagePullSecrets": [
+                  {
+                    "name": "frontend-registry"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   },
-  "want": "Nightly component members must use the pinned nightly or semantic runtime version 1.7.0"
+  "want": "Dynamo member main/leader requires a runtime init sidecar"
 }

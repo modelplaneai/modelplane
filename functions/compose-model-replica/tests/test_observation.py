@@ -72,7 +72,7 @@ def _replica(
     """The ModelReplica test-replica in ml-team, whose one engine, main, has members, with conditions unless they're None."""
     return v1alpha1.ModelReplica(
         metadata=metav1.ObjectMeta(name="test-replica", namespace="ml-team", labels=labels),
-        spec=v1alpha1.SpecModel1(
+        spec=v1alpha1.SpecModel2(
             clusterName="cluster-a",
             engines=[v1alpha1.Engine(name="main", copies=1, members=members)],
         ),

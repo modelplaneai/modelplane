@@ -1,11 +1,5 @@
-# Qwen2.5-14B served across two L4 nodes as a gang. The FP16 weights (~29 GB)
-# don't fit one L4's 23 GB, so the engine is a Leader + Worker gang,
-# pipeline-parallel across two g6.8xlarge nodes with one L4 each. Both pods mount
-# the shared ModelCache.
-#
-# Modelplane composes a DGD with a runtime frontend and one multi-node component.
-# The operator owns Grove topology and supplies the leader address and absolute
-# rank for each engine copy. Member templates retain their launch commands.
+# Experimental native vLLM gRPC serving across two nodes. The leader hosts
+# the Dynamo sidecar; the headless worker keeps its own native launch.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
@@ -26,28 +20,49 @@ spec:
             - name: gpu
               count: 1
               selectors:
-              - cel: |
-                  device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+              - cel: 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+
+                  '
           template:
             spec:
               containers:
               - name: engine
-                image: nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9
+                image: vllm/vllm-openai:v0.32.0
                 command:
                 - /bin/sh
                 - -c
-                - >-
-                  pip install --index-url https://pypi.nvidia.com modelexpress &&
-                  exec python3 -m dynamo.vllm --model Qwen/Qwen2.5-14B-Instruct
-                  --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
-                  --tensor-parallel-size=1
-                  --pipeline-parallel-size=2
-                  --distributed-executor-backend=mp
-                  --nnodes=2 --node-rank=$(MODELPLANE_RANK)
-                  --master-addr=$(MODELPLANE_LEADER_ADDRESS)
-                  --load-format modelexpress
-                  --max-model-len=8192
-                  --gpu-memory-utilization=0.90
+                - pip install --index-url https://pypi.nvidia.com modelexpress && exec vllm serve Qwen/Qwen2.5-14B-Instruct
+                  --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME) --tensor-parallel-size=1 --pipeline-parallel-size=2
+                  --distributed-executor-backend=mp --nnodes=2 --node-rank=$(MODELPLANE_RANK) --master-addr=$(MODELPLANE_LEADER_ADDRESS)
+                  --load-format modelexpress --max-model-len=8192 --gpu-memory-utilization=0.90 --distributed-timeout-seconds=1800
+                  --grpc-port=30001
+                env:
+                - name: VLLM_USE_RUST_FRONTEND
+                  value: '1'
+                - name: VLLM_ENGINE_READY_TIMEOUT_S
+                  value: '1800'
+                readinessProbe:
+                  grpc:
+                    port: 30001
+                    service: ''
+                  periodSeconds: 5
+                  timeoutSeconds: 5
+                startupProbe:
+                  grpc:
+                    port: 30001
+                    service: ''
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 180
+              initContainers:
+              - name: runtime
+                image: nvcr.io/nvidia/ai-dynamo/dynamo-sidecar-nightly:20261103-e37f0b9
+                command:
+                - dynamo-vllm-sidecar
+                args:
+                - --grpc-endpoint
+                - 127.0.0.1:30001
+                restartPolicy: Always
         - role: Worker
           worker:
             nodes: 1
@@ -56,26 +71,40 @@ spec:
             - name: gpu
               count: 1
               selectors:
-              - cel: |
-                  device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+              - cel: 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+
+                  '
           template:
             spec:
               containers:
               - name: engine
-                image: nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9
+                image: vllm/vllm-openai:v0.32.0
                 command:
                 - /bin/sh
                 - -c
-                - >-
-                  pip install --index-url https://pypi.nvidia.com modelexpress &&
-                  exec python3 -m dynamo.vllm --model Qwen/Qwen2.5-14B-Instruct
-                  --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
-                  --tensor-parallel-size=1
-                  --pipeline-parallel-size=2
-                  --distributed-executor-backend=mp
-                  --nnodes=2 --node-rank=$(MODELPLANE_RANK)
-                  --master-addr=$(MODELPLANE_LEADER_ADDRESS)
-                  --headless
-                  --load-format modelexpress
-                  --max-model-len=8192
-                  --gpu-memory-utilization=0.90
+                - pip install --index-url https://pypi.nvidia.com modelexpress && exec vllm serve Qwen/Qwen2.5-14B-Instruct
+                  --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME) --tensor-parallel-size=1 --pipeline-parallel-size=2
+                  --distributed-executor-backend=mp --nnodes=2 --node-rank=$(MODELPLANE_RANK) --master-addr=$(MODELPLANE_LEADER_ADDRESS)
+                  --headless --load-format modelexpress --max-model-len=8192 --gpu-memory-utilization=0.90 --distributed-timeout-seconds=1800
+      serving:
+        mode: Unified
+        router: Dynamo
+        dynamo:
+          backendFramework: vllm
+          runtimeVersionOverride: 1.7.0
+          frontend:
+            replicas: 2
+            template:
+              spec:
+                containers:
+                - name: main
+                  image: nvcr.io/nvidia/ai-dynamo/dynamo-frontend-nightly:20261103-e37f0b9
+                  command:
+                  - python3
+                  - -m
+                  - dynamo.frontend
+                  args:
+                  - --http-port
+                  - '8000'
+                  - --router-mode
+                  - kv

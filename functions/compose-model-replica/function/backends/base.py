@@ -69,52 +69,21 @@ LLMD = "llmd"
 DYNAMO = "dynamo"
 
 
-def dynamo_framework(member: v1alpha1.Member) -> str:
-    """Resolve the runtime backend from the authored launch or a Dynamo image."""
-    container = engine_container(member)
-    launch = " ".join([*(container.command or []), *(container.args or [])])
-    for framework in ("sglang", "trtllm", "vllm"):
-        if f"dynamo.{framework}" in launch or (
-            "/ai-dynamo/" in container.image and f"{framework}-runtime" in container.image
-        ):
-            return framework
-    raise ValueError("Dynamo engines must use a runtime image and launch dynamo.vllm, dynamo.sglang, or dynamo.trtllm")
-
-
 def dynamo_graph_revision(replica: v1alpha1.ModelReplica) -> str:
-    """Hash fields the pinned DGD API cannot update, leaving mutable workload settings out."""
-    engines = []
-    frameworks = set()
-    power_annotation = "dynamo.nvidia.com/gpu-power-limit"
-    for engine in sorted(replica.spec.engines, key=lambda e: e.name):
-        members = []
-        has_power_limit = any(
-            m.template.metadata and power_annotation in (m.template.metadata.annotations or {}) for m in engine.members
-        )
-        for member in sorted(engine.members, key=member_role):
-            try:
-                frameworks.add(dynamo_framework(member))
-            except ValueError:
-                # Invalid requested launches still need a deterministic key for condition derivation.
-                frameworks.add("unsupported")
-            shape = {"role": member_role(member), "nodes": int(member.worker.nodes) if member.worker else 1}
-            if has_power_limit:
-                shape["powerLimit"] = (
-                    (member.template.metadata.annotations or {}).get(power_annotation)
-                    if member.template.metadata
-                    else None
-                )
-                # The operator freezes GPU allocation while a power limit is set.
-                shape["devices"] = [
-                    r.model_dump(exclude_none=True) for r in sorted(member.deviceRequests or [], key=lambda r: r.name)
-                ]
-                shape["resources"] = {
-                    c.name: c.resources.model_dump(exclude_none=True) if c.resources else {}
-                    for c in member.template.spec.containers
-                }
-            members.append(shape)
-        engines.append({"name": engine.name, "type": (engine.phase or "worker").lower(), "members": members})
-    shape = {"frameworks": sorted(frameworks), "engines": engines}
+    """Hash immutable graph settings without inspecting engine images or commands."""
+    engines = [
+        {
+            "name": engine.name,
+            "type": (engine.phase or "worker").lower(),
+            "members": [
+                {"role": member_role(member), "nodes": int(member.worker.nodes) if member.worker else 1}
+                for member in sorted(engine.members, key=member_role)
+            ],
+        }
+        for engine in sorted(replica.spec.engines, key=lambda e: e.name)
+    ]
+    config = replica.spec.serving.dynamo if replica.spec.serving else None
+    shape = {"backendFramework": config.backendFramework if config else None, "engines": engines}
     return hashlib.sha256(json.dumps(shape, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:10]
 
 
@@ -649,6 +618,11 @@ def sidecar_containers(member: v1alpha1.Member) -> list[dict]:
     user chooses which pods of a gang run them.
     """
     return [c.model_dump(exclude_none=True) for c in member.template.spec.containers if c.name != "engine"]
+
+
+def init_containers(member: v1alpha1.Member) -> list[dict]:
+    """Init containers and native sidecars retain the user's launch and probe settings."""
+    return [c.model_dump(exclude_none=True) for c in member.template.spec.initContainers or []]
 
 
 def engine_ports(container: v1alpha1.Container) -> list[dict]:

@@ -100,10 +100,17 @@ class NativeBackend:
         if security_context:
             container["securityContext"] = security_context
 
+        for probe in ("startupProbe", "readinessProbe", "livenessProbe"):
+            if value := getattr(engine_container, probe):
+                container[probe] = value.model_dump(exclude_none=True)
+
         pod_spec = {
             "containers": [container, *base.sidecar_containers(member)],
             "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}, *cache_volumes],
         }
+        if init := base.init_containers(member):
+            pod_spec["initContainers"] = init
+
         # Pin to the member's scheduled pool and claim GPUs via DRA.
         base.place_pod(pod_spec, replica, engine, member)
         tmpl = member.template

@@ -1,6 +1,6 @@
 {
-  "name": "ReversedSemanticLeader",
-  "reason": "Mixed semantic and dated images of Runtime 1.7.0 need the same component override in either member order.",
+  "name": "ReorderedCustomWorker",
+  "reason": "Custom native engine images and explicit sidecar configuration pass through independently of member order.",
   "replica": {
     "apiVersion": "modelplane.ai/v1alpha1",
     "kind": "ModelReplica",
@@ -34,11 +34,10 @@
                   "containers": [
                     {
                       "command": [
-                        "python3",
-                        "-m",
-                        "dynamo.vllm"
+                        "vllm",
+                        "serve"
                       ],
-                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                      "image": "registry.example/native-engine:arbitrary-tag",
                       "name": "engine",
                       "args": [
                         "--model",
@@ -85,11 +84,10 @@
                   "containers": [
                     {
                       "command": [
-                        "python3",
-                        "-m",
-                        "dynamo.vllm"
+                        "vllm",
+                        "serve"
                       ],
-                      "image": "registry.example.com/team/dynamo-vllm:1.7.0",
+                      "image": "vllm/vllm-openai:v0.32.0",
                       "name": "engine",
                       "args": [
                         "--model",
@@ -106,7 +104,27 @@
                         "1",
                         "--pipeline-parallel-size",
                         "2"
-                      ]
+                      ],
+                      "readinessProbe": {
+                        "grpc": {
+                          "port": 30001
+                        },
+                        "periodSeconds": 5
+                      }
+                    }
+                  ],
+                  "initContainers": [
+                    {
+                      "name": "runtime",
+                      "image": "example/dynamo-sidecar:1.7.0",
+                      "command": [
+                        "dynamo-vllm-sidecar"
+                      ],
+                      "args": [
+                        "--grpc-endpoint",
+                        "127.0.0.1:30001"
+                      ],
+                      "restartPolicy": "Always"
                     }
                   ]
                 }
@@ -115,7 +133,50 @@
           ],
           "name": "main"
         }
-      ]
+      ],
+      "serving": {
+        "mode": "Unified",
+        "router": "Dynamo",
+        "dynamo": {
+          "backendFramework": "vllm",
+          "frontend": {
+            "replicas": 2,
+            "template": {
+              "metadata": {
+                "labels": {
+                  "routing": "user-authored"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "main",
+                    "image": "example/dynamo-frontend:1.7.0",
+                    "command": [
+                      "dynamo-frontend"
+                    ],
+                    "args": [
+                      "--router-mode",
+                      "round-robin"
+                    ],
+                    "env": [
+                      {
+                        "name": "FRONTEND_SETTING",
+                        "value": "user-value"
+                      }
+                    ]
+                  }
+                ],
+                "imagePullSecrets": [
+                  {
+                    "name": "frontend-registry"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   },
   "provider_config": "cluster-a-pc",
@@ -206,7 +267,7 @@
         }
       }
     },
-    "workload-dynamo-694d196b93": {
+    "workload-dynamo-1ca5699aff": {
       "spec": {
         "providerConfigRef": {
           "kind": "ClusterProviderConfig",
@@ -222,10 +283,11 @@
             "apiVersion": "nvidia.com/v1beta1",
             "kind": "DynamoGraphDeployment",
             "metadata": {
-              "name": "r-694d196b93",
+              "name": "r-1ca5699aff",
               "namespace": "mp-ml-team-51733",
               "annotations": {
-                "nvidia.com/grove-update-strategy": "Coherent"
+                "nvidia.com/grove-update-strategy": "Coherent",
+                "nvidia.com/kai-scheduler-queue": "modelplane"
               }
             },
             "spec": {
@@ -234,36 +296,39 @@
                 {
                   "name": "frontend",
                   "type": "frontend",
-                  "replicas": 1,
+                  "replicas": 2,
                   "podTemplate": {
                     "metadata": {
                       "labels": {
-                        "modelplane.ai/serving": "r",
-                        "modelplane.ai/replica": "r",
-                        "modelplane.ai/deployment": "r"
+                        "routing": "user-authored",
+                        "modelplane.ai/role": "frontend"
                       }
                     },
                     "spec": {
                       "containers": [
                         {
                           "name": "main",
-                          "image": "registry.example.com/team/dynamo-vllm:1.7.0",
+                          "image": "example/dynamo-frontend:1.7.0",
                           "command": [
-                            "python3",
-                            "-m",
-                            "dynamo.frontend"
+                            "dynamo-frontend"
                           ],
                           "args": [
-                            "--http-port",
-                            "8000",
                             "--router-mode",
-                            "kv"
+                            "round-robin"
                           ],
-                          "env": [],
-                          "volumeMounts": []
+                          "env": [
+                            {
+                              "name": "FRONTEND_SETTING",
+                              "value": "user-value"
+                            }
+                          ]
                         }
                       ],
-                      "volumes": []
+                      "imagePullSecrets": [
+                        {
+                          "name": "frontend-registry"
+                        }
+                      ]
                     }
                   }
                 },
@@ -282,38 +347,18 @@
                         "metadata": {
                           "labels": {
                             "modelplane.ai/engine": "main",
-                            "modelplane.ai/role": "Worker",
-                            "kai.scheduler/queue": "modelplane"
+                            "modelplane.ai/role": "Worker"
                           }
                         },
                         "spec": {
                           "containers": [
                             {
-                              "name": "main",
-                              "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
-                              "volumeMounts": [],
-                              "resources": {
-                                "claims": [
-                                  {
-                                    "name": "devices"
-                                  }
-                                ]
-                              },
                               "command": [
-                                "python3",
-                                "-m",
-                                "dynamo.vllm"
+                                "vllm",
+                                "serve"
                               ],
-                              "env": [
-                                {
-                                  "name": "MODELPLANE_LEADER_ADDRESS",
-                                  "value": "$(DYNAMO_LEADER_ADDRESS)"
-                                },
-                                {
-                                  "name": "MODELPLANE_RANK",
-                                  "value": "$(DYNAMO_RANK)"
-                                }
-                              ],
+                              "image": "registry.example/native-engine:arbitrary-tag",
+                              "name": "main",
                               "args": [
                                 "--model",
                                 "Qwen/Qwen3-0.6B",
@@ -330,10 +375,40 @@
                                 "--pipeline-parallel-size",
                                 "2",
                                 "--headless"
+                              ],
+                              "resources": {
+                                "claims": [
+                                  {
+                                    "name": "devices"
+                                  }
+                                ]
+                              },
+                              "volumeMounts": [
+                                {
+                                  "name": "dshm",
+                                  "mountPath": "/dev/shm"
+                                }
+                              ],
+                              "env": [
+                                {
+                                  "name": "MODELPLANE_LEADER_ADDRESS",
+                                  "value": "$(DYNAMO_LEADER_ADDRESS)"
+                                },
+                                {
+                                  "name": "MODELPLANE_RANK",
+                                  "value": "$(DYNAMO_RANK)"
+                                }
                               ]
                             }
                           ],
-                          "volumes": [],
+                          "volumes": [
+                            {
+                              "name": "dshm",
+                              "emptyDir": {
+                                "medium": "Memory"
+                              }
+                            }
+                          ],
                           "schedulerName": "kai-scheduler",
                           "nodeSelector": {
                             "modelplane.ai/pool": "frontier"
@@ -371,38 +446,18 @@
                         "metadata": {
                           "labels": {
                             "modelplane.ai/engine": "main",
-                            "modelplane.ai/role": "Leader",
-                            "kai.scheduler/queue": "modelplane"
+                            "modelplane.ai/role": "Leader"
                           }
                         },
                         "spec": {
                           "containers": [
                             {
-                              "name": "main",
-                              "image": "registry.example.com/team/dynamo-vllm:1.7.0",
-                              "volumeMounts": [],
-                              "resources": {
-                                "claims": [
-                                  {
-                                    "name": "devices"
-                                  }
-                                ]
-                              },
                               "command": [
-                                "python3",
-                                "-m",
-                                "dynamo.vllm"
+                                "vllm",
+                                "serve"
                               ],
-                              "env": [
-                                {
-                                  "name": "MODELPLANE_LEADER_ADDRESS",
-                                  "value": "$(DYNAMO_LEADER_ADDRESS)"
-                                },
-                                {
-                                  "name": "MODELPLANE_RANK",
-                                  "value": "$(DYNAMO_RANK)"
-                                }
-                              ],
+                              "image": "vllm/vllm-openai:v0.32.0",
+                              "name": "main",
                               "args": [
                                 "--model",
                                 "Qwen/Qwen3-0.6B",
@@ -418,10 +473,46 @@
                                 "1",
                                 "--pipeline-parallel-size",
                                 "2"
+                              ],
+                              "readinessProbe": {
+                                "grpc": {
+                                  "port": 30001
+                                },
+                                "periodSeconds": 5
+                              },
+                              "resources": {
+                                "claims": [
+                                  {
+                                    "name": "devices"
+                                  }
+                                ]
+                              },
+                              "volumeMounts": [
+                                {
+                                  "name": "dshm",
+                                  "mountPath": "/dev/shm"
+                                }
+                              ],
+                              "env": [
+                                {
+                                  "name": "MODELPLANE_LEADER_ADDRESS",
+                                  "value": "$(DYNAMO_LEADER_ADDRESS)"
+                                },
+                                {
+                                  "name": "MODELPLANE_RANK",
+                                  "value": "$(DYNAMO_RANK)"
+                                }
                               ]
                             }
                           ],
-                          "volumes": [],
+                          "volumes": [
+                            {
+                              "name": "dshm",
+                              "emptyDir": {
+                                "medium": "Memory"
+                              }
+                            }
+                          ],
                           "schedulerName": "kai-scheduler",
                           "nodeSelector": {
                             "modelplane.ai/pool": "frontier"
@@ -448,12 +539,25 @@
                               "operator": "Exists",
                               "effect": "NoSchedule"
                             }
+                          ],
+                          "initContainers": [
+                            {
+                              "name": "runtime",
+                              "image": "example/dynamo-sidecar:1.7.0",
+                              "command": [
+                                "dynamo-vllm-sidecar"
+                              ],
+                              "args": [
+                                "--grpc-endpoint",
+                                "127.0.0.1:30001"
+                              ],
+                              "restartPolicy": "Always"
+                            }
                           ]
                         }
                       }
                     }
-                  ],
-                  "runtimeVersionOverride": "1.7.0"
+                  ]
                 }
               ]
             }

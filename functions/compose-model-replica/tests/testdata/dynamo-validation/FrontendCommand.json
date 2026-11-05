@@ -1,0 +1,111 @@
+{
+  "name": "FrontendCommand",
+  "reason": "Reject an incomplete authored frontend before its generated Service or launch can fail.",
+  "replica": {
+    "apiVersion": "modelplane.ai/v1alpha1",
+    "kind": "ModelReplica",
+    "metadata": {
+      "name": "r",
+      "namespace": "ml-team"
+    },
+    "spec": {
+      "clusterName": "cluster-a",
+      "engines": [
+        {
+          "name": "main",
+          "copies": 3,
+          "members": [
+            {
+              "role": "Standalone",
+              "nodePoolName": "frontier",
+              "template": {
+                "spec": {
+                  "containers": [
+                    {
+                      "name": "engine",
+                      "image": "vllm/vllm-openai:v0.32.0",
+                      "readinessProbe": {
+                        "grpc": {
+                          "port": 30001
+                        }
+                      }
+                    },
+                    {
+                      "name": "logging",
+                      "image": "example/logger:1",
+                      "args": [
+                        "--stdout"
+                      ]
+                    }
+                  ],
+                  "initContainers": [
+                    {
+                      "name": "runtime",
+                      "image": "example/dynamo-sidecar:1.7.0",
+                      "command": [
+                        "dynamo-vllm-sidecar"
+                      ],
+                      "args": [
+                        "--grpc-endpoint",
+                        "127.0.0.1:30001"
+                      ],
+                      "restartPolicy": "Always"
+                    }
+                  ]
+                }
+              },
+              "deviceRequests": [
+                {
+                  "name": "gpu",
+                  "deviceClassName": "gpu.nvidia.com",
+                  "count": 1
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "serving": {
+        "mode": "Unified",
+        "router": "Dynamo",
+        "dynamo": {
+          "backendFramework": "vllm",
+          "frontend": {
+            "replicas": 2,
+            "template": {
+              "metadata": {
+                "labels": {
+                  "routing": "user-authored"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "main",
+                    "image": "example/dynamo-frontend:1.7.0",
+                    "args": [
+                      "--router-mode",
+                      "round-robin"
+                    ],
+                    "env": [
+                      {
+                        "name": "FRONTEND_SETTING",
+                        "value": "user-value"
+                      }
+                    ]
+                  }
+                ],
+                "imagePullSecrets": [
+                  {
+                    "name": "frontend-registry"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "want": "The Dynamo frontend requires a main container with an explicit command"
+}

@@ -1,6 +1,6 @@
 {
   "name": "EndpointPicker",
-  "reason": "Reject an incompatible Dynamo graph with a concrete correction.",
+  "reason": "Reject EndpointPicker before applying a Dynamo graph.",
   "replica": {
     "apiVersion": "modelplane.ai/v1alpha1",
     "kind": "ModelReplica",
@@ -23,11 +23,10 @@
                   "containers": [
                     {
                       "name": "engine",
-                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                      "image": "vllm/vllm-openai:v0.32.0",
                       "command": [
-                        "python3",
-                        "-m",
-                        "dynamo.vllm"
+                        "vllm",
+                        "serve"
                       ],
                       "args": [
                         "--model",
@@ -36,7 +35,13 @@
                         "prefill",
                         "--kv-transfer-config",
                         "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}"
-                      ]
+                      ],
+                      "readinessProbe": {
+                        "grpc": {
+                          "port": 30001
+                        },
+                        "periodSeconds": 5
+                      }
                     },
                     {
                       "name": "logging",
@@ -44,6 +49,20 @@
                       "args": [
                         "--stdout"
                       ]
+                    }
+                  ],
+                  "initContainers": [
+                    {
+                      "name": "runtime",
+                      "image": "example/dynamo-sidecar:1.7.0",
+                      "command": [
+                        "dynamo-vllm-sidecar"
+                      ],
+                      "args": [
+                        "--grpc-endpoint",
+                        "127.0.0.1:30001"
+                      ],
+                      "restartPolicy": "Always"
                     }
                   ]
                 }
@@ -71,11 +90,10 @@
                   "containers": [
                     {
                       "name": "engine",
-                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                      "image": "vllm/vllm-openai:v0.32.0",
                       "command": [
-                        "python3",
-                        "-m",
-                        "dynamo.vllm"
+                        "vllm",
+                        "serve"
                       ],
                       "args": [
                         "--model",
@@ -84,7 +102,13 @@
                         "decode",
                         "--kv-transfer-config",
                         "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}"
-                      ]
+                      ],
+                      "readinessProbe": {
+                        "grpc": {
+                          "port": 30001
+                        },
+                        "periodSeconds": 5
+                      }
                     },
                     {
                       "name": "logging",
@@ -92,6 +116,20 @@
                       "args": [
                         "--stdout"
                       ]
+                    }
+                  ],
+                  "initContainers": [
+                    {
+                      "name": "runtime",
+                      "image": "example/dynamo-sidecar:1.7.0",
+                      "command": [
+                        "dynamo-vllm-sidecar"
+                      ],
+                      "args": [
+                        "--grpc-endpoint",
+                        "127.0.0.1:30001"
+                      ],
+                      "restartPolicy": "Always"
                     }
                   ]
                 }
@@ -109,22 +147,10 @@
         }
       ],
       "serving": {
-        "mode": "PrefillDecode",
-        "router": "EndpointPicker",
-        "endpointPicker": {
-          "template": {
-            "spec": {
-              "containers": [
-                {
-                  "name": "epp",
-                  "image": "example/epp:1"
-                }
-              ]
-            }
-          }
-        }
+        "mode": "Unified",
+        "router": "EndpointPicker"
       }
     }
   },
-  "want": "Dynamo uses its runtime frontend for routing; omit serving.router and serving.endpointPicker"
+  "want": "Dynamo clusters require serving.router: Dynamo and serving.dynamo.frontend"
 }

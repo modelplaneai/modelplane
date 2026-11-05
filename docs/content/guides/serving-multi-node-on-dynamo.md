@@ -46,10 +46,14 @@ kubectl create namespace ml-team
 
 ## Deploy the gang
 
-The `Leader` and `Worker` run `python3 -m dynamo.vllm` from a Dynamo runtime
-image. Their explicit role templates own the launch arguments.
+The `Leader` and `Worker` run native `vllm serve` from vLLM v0.32.0. The leader
+enables gRPC and runs a Dynamo native init sidecar; the headless worker needs no
+sidecar. This nightly sidecar topology is experimental. The deployment selects
+`router: Dynamo` and supplies a separate frontend template with two replicas.
+The member and frontend templates define all launch arguments.
 `$(MODELPLANE_LEADER_ADDRESS)` resolves to the leader and `$(MODELPLANE_RANK)`
-to the pod's rank in its engine copy. Both load with `--load-format modelexpress`,
+to the pod's rank in its engine copy. Use these aliases in command or args,
+not dependent environment values. Both load with `--load-format modelexpress`,
 so they read cached weights through the shared ModelExpress server.
 
 {{< manifests "guides/serving-multi-node-on-dynamo/model-deployment.yaml" >}}

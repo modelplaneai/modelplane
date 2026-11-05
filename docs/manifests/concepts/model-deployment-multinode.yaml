@@ -14,16 +14,12 @@
 #   - $(MODELPLANE_RANK) is the pod's node rank: 0 on the leader, 1..N on the
 #     workers. The worker also adds --headless.
 #
-# On a cluster that opts into the Dynamo stack (Grove + KAI Scheduler,
-# InferenceCluster.spec.stack: Dynamo), $(MODELPLANE_LEADER_ADDRESS) also
-# resolves - the Grove backend aliases Grove's own per-gang pod-discovery vars
-# to it (grove#753, needs Grove v0.1.0-alpha.12-rc2+, which is what this
-# stack now pins). $(MODELPLANE_RANK) does NOT: Grove exposes no group-wide
-# pod index yet (grove#754/grove#755, open), so a Dynamo command must still
-# compute node-rank itself: 0 on the leader, and
-# $$((GROVE_PCLQ_POD_INDEX + 1)) on the workers ($$ escapes past Kubernetes to
-# leave a literal $((...)) for the shell to evaluate) - replacing this
-# example's --node-rank=$(MODELPLANE_RANK) with that expression on Dynamo.
+# This example selects Standard through its default Unified picker. A Dynamo
+# deployment sets serving.router: Dynamo, supplies serving.dynamo.frontend, and
+# declares a native runtime init sidecar on the leader. On either stack the
+# command/args aliases MODELPLANE_LEADER_ADDRESS and MODELPLANE_RANK resolve to
+# that engine copy's leader address and absolute pod rank. See the Dynamo
+# multi-node guide for the explicit native-gRPC sidecar launch contract.
 #
 # Multi-node engines require a ModelCache: every pod in the gang mounts it at
 # /mnt/models, staged in HuggingFace's cache layout. Both members name the model

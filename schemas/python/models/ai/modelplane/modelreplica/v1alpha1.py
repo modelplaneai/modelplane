@@ -101,14 +101,6 @@ class EnvItem(BaseModel):
     valueFrom: ValueFrom | None = None
 
 
-class Port(BaseModel):
-    containerPort: conint(ge=1, le=65535)
-    name: (
-        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
-        | None
-    ) = None
-
-
 class Grpc(BaseModel):
     port: int
     service: str | None = None
@@ -121,6 +113,25 @@ class HttpGet(BaseModel):
 
 class TcpSocket(BaseModel):
     port: int | str
+
+
+class LivenessProbe(BaseModel):
+    failureThreshold: conint(ge=1) | None = None
+    grpc: Grpc | None = None
+    httpGet: HttpGet | None = None
+    initialDelaySeconds: conint(ge=0) | None = None
+    periodSeconds: conint(ge=1) | None = None
+    successThreshold: conint(ge=1) | None = None
+    tcpSocket: TcpSocket | None = None
+    timeoutSeconds: conint(ge=1) | None = None
+
+
+class Port(BaseModel):
+    containerPort: conint(ge=1, le=65535)
+    name: (
+        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
+        | None
+    ) = None
 
 
 class ReadinessProbe(BaseModel):
@@ -139,22 +150,44 @@ class Resources(BaseModel):
     requests: dict[str, int | str] | None = Field(None, max_length=3)
 
 
+class StartupProbe(BaseModel):
+    failureThreshold: conint(ge=1) | None = None
+    grpc: Grpc | None = None
+    httpGet: HttpGet | None = None
+    initialDelaySeconds: conint(ge=0) | None = None
+    periodSeconds: conint(ge=1) | None = None
+    successThreshold: conint(ge=1) | None = None
+    tcpSocket: TcpSocket | None = None
+    timeoutSeconds: conint(ge=1) | None = None
+
+
 class Container(BaseModel):
     args: list[str] | None = None
     command: list[str] | None = None
+    """
+    Container entrypoint override, passed through verbatim. Gang commands use $(MODELPLANE_LEADER_ADDRESS) and $(MODELPLANE_RANK) on either stack. On Dynamo, use these topology aliases in command or args, not in dependent env values.
+    """
     env: list[EnvItem] | None = None
     image: constr(min_length=1)
+    livenessProbe: LivenessProbe | None = None
+    """
+    How Kubernetes checks container liveness.
+    """
     name: constr(
         pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
     )
     ports: list[Port] | None = Field(None, max_length=8)
     readinessProbe: ReadinessProbe | None = None
     """
-    How Kubernetes checks that a container beside the engine is ready, such as a sidecar on port 8000. The engine container can't set one: Modelplane probes the engine on its http port.
+    How Kubernetes checks container readiness. Explicit engine probes replace Modelplane defaults.
     """
     resources: Resources | None = None
     """
     CPU and memory requests and limits. On the engine container, Modelplane adds the member's device claim beside them.
+    """
+    startupProbe: StartupProbe | None = None
+    """
+    How Kubernetes checks container startup.
     """
 
 
@@ -162,9 +195,53 @@ class ImagePullSecret(BaseModel):
     name: str
 
 
+class InitContainer(BaseModel):
+    args: list[str] | None = None
+    command: list[str] | None = None
+    """
+    Container entrypoint override, passed through verbatim. Gang commands use $(MODELPLANE_LEADER_ADDRESS) and $(MODELPLANE_RANK) on either stack. On Dynamo, use these topology aliases in command or args, not in dependent env values.
+    """
+    env: list[EnvItem] | None = None
+    image: constr(min_length=1)
+    livenessProbe: LivenessProbe | None = None
+    """
+    How Kubernetes checks container liveness.
+    """
+    name: constr(
+        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
+    )
+    """
+    Init container name; runtime selects Dynamo sidecar mode.
+    """
+    ports: list[Port] | None = Field(None, max_length=8)
+    readinessProbe: ReadinessProbe | None = None
+    """
+    How Kubernetes checks container readiness. Explicit engine probes replace Modelplane defaults.
+    """
+    resources: Resources | None = None
+    """
+    CPU and memory requests and limits. On the engine container, Modelplane adds the member's device claim beside them.
+    """
+    restartPolicy: Literal['Always'] | None = None
+    """
+    Always makes this init container a native sidecar that runs for the lifetime of the pod. Omitted for an init container that exits.
+    """
+    startupProbe: StartupProbe | None = None
+    """
+    How Kubernetes checks container startup.
+    """
+
+
 class Spec(BaseModel):
     containers: list[Container] = Field(..., max_length=8, min_length=1)
+    """
+    Containers for the engine pod. Exactly one is named engine. Modelplane adds device claims, topology and cache environment, and cache mounts to the engine. Other containers pass through unchanged.
+    """
     imagePullSecrets: list[ImagePullSecret] | None = None
+    initContainers: list[InitContainer] | None = Field(None, max_length=8, min_length=0)
+    """
+    Init containers in startup order, including native sidecars with restartPolicy: Always. Their commands, environment, resources and probes pass through unchanged. On Dynamo the serving member declares its Dynamo sidecar here as runtime.
+    """
 
 
 class Template(BaseModel):
@@ -203,6 +280,34 @@ class ModelCacheRef(BaseModel):
     name: constr(min_length=1)
 
 
+class SpecModel(BaseModel):
+    containers: list[Container] = Field(..., max_length=8, min_length=1)
+    """
+    Frontend containers. Exactly one is named main and declares an explicit command. The user owns image, command, args, environment and probes; Modelplane does not copy engine settings.
+    """
+    imagePullSecrets: list[ImagePullSecret] | None = None
+
+
+class Frontend(BaseModel):
+    replicas: conint(ge=1, le=64) | None = 1
+    """
+    Frontend replicas per ModelReplica. Independent of engine copies.
+    """
+    template: Template
+
+
+class Dynamo(BaseModel):
+    backendFramework: constr(min_length=1) | None = None
+    """
+    Optional backendFramework passed to DGD admission without detection from engine images. Set for backend-specific startup ordering or compilation cache defaults.
+    """
+    frontend: Frontend
+    runtimeVersionOverride: constr(min_length=1) | None = None
+    """
+    Optional runtime version passed to every DGD component. Set for runtime images whose tags do not identify a semantic version, including dated nightlies. The user must select matching frontend and runtime sidecar versions.
+    """
+
+
 class ValueFromModel(BaseModel):
     configMapKeyRef: ConfigMapKeyRef | None = None
     fieldRef: FieldRef | None = None
@@ -218,13 +323,13 @@ class ContainerModel(BaseModel):
     resources: Resources | None = None
 
 
-class SpecModel(BaseModel):
+class SpecModel1(BaseModel):
     containers: list[ContainerModel] = Field(..., max_length=1, min_length=1)
     imagePullSecrets: list[ImagePullSecret] | None = None
 
 
 class TemplateModel(BaseModel):
-    spec: SpecModel
+    spec: SpecModel1
 
 
 class EndpointPicker(BaseModel):
@@ -233,12 +338,19 @@ class EndpointPicker(BaseModel):
 
 
 class Serving(BaseModel):
+    dynamo: Dynamo | None = None
+    """
+    Dynamo graph configuration. Engines remain native and connect through user-authored runtime init sidecars. No engine or frontend launch flags are inferred.
+    """
     endpointPicker: EndpointPicker | None = None
     mode: Literal['Unified', 'PrefillDecode'] | None = 'Unified'
-    router: Literal['EndpointPicker'] | None = None
+    router: Literal['EndpointPicker', 'Dynamo'] | None = None
+    """
+    Selects the serving stack: Dynamo requires a Dynamo cluster and the serving.dynamo frontend; EndpointPicker requires a Standard cluster and serving.endpointPicker. Omitted means the default Unified picker on Standard. PrefillDecode requires an explicit router.
+    """
 
 
-class SpecModel1(BaseModel):
+class SpecModel2(BaseModel):
     clusterName: constr(min_length=1)
     """
     Name of the InferenceCluster this replica is pinned to. Replicas are pinned at creation time. If the cluster is temporarily unavailable the replica stays pinned and the parent ModelDeployment surfaces the degraded state via its conditions. If the cluster is deleted entirely the parent ModelDeployment re-places the replica on another viable cluster.
@@ -257,7 +369,7 @@ class SpecModel1(BaseModel):
     """
     serving: Serving | None = None
     """
-    Serving, inherited verbatim from the parent ModelDeployment. On Standard, both modes front the serving pods with an InferencePool and an endpoint picker. Dynamo uses a shared runtime frontend instead; omit router and endpointPicker there. PrefillDecode also role-labels the engine each marks with its phase.
+    Routing configuration inherited by each replica. Dynamo uses the user-authored frontend on a Dynamo stack; EndpointPicker and the default Unified picker run on Standard. Placement selects clusters with the matching stack.
     """
 
 
@@ -305,7 +417,7 @@ class ModelReplica(BaseModel):
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
-    spec: SpecModel1
+    spec: SpecModel2
     status: Status | None = None
 
 

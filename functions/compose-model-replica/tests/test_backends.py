@@ -671,7 +671,7 @@ def _replica(
     """A ModelReplica."""
     return v1alpha1.ModelReplica(
         metadata=metav1.ObjectMeta(name=name, namespace=namespace, labels=labels),
-        spec=v1alpha1.SpecModel1(
+        spec=v1alpha1.SpecModel2(
             clusterName=cluster_name,
             modelCacheRef=model_cache_ref,
             serving=serving,
@@ -3542,7 +3542,7 @@ APPLY_CASES = [
                 router="EndpointPicker",
                 endpointPicker=v1alpha1.EndpointPicker(
                     template=v1alpha1.TemplateModel(
-                        spec=v1alpha1.SpecModel(
+                        spec=v1alpha1.SpecModel1(
                             containers=[
                                 v1alpha1.ContainerModel(
                                     name="epp",
@@ -3808,7 +3808,7 @@ APPLY_CASES = [
                 router="EndpointPicker",
                 endpointPicker=v1alpha1.EndpointPicker(
                     template=v1alpha1.TemplateModel(
-                        spec=v1alpha1.SpecModel(
+                        spec=v1alpha1.SpecModel1(
                             containers=[
                                 v1alpha1.ContainerModel(
                                     name="epp",
@@ -4144,7 +4144,7 @@ APPLY_CASES = [
                 router="EndpointPicker",
                 endpointPicker=v1alpha1.EndpointPicker(
                     template=v1alpha1.TemplateModel(
-                        spec=v1alpha1.SpecModel(
+                        spec=v1alpha1.SpecModel1(
                             containers=[
                                 v1alpha1.ContainerModel(
                                     name="epp",
@@ -4864,7 +4864,7 @@ APPLY_CASES = [
                 router="EndpointPicker",
                 endpointPicker=v1alpha1.EndpointPicker(
                     template=v1alpha1.TemplateModel(
-                        spec=v1alpha1.SpecModel(
+                        spec=v1alpha1.SpecModel1(
                             containers=[
                                 v1alpha1.ContainerModel(
                                     name="epp",
@@ -5077,7 +5077,7 @@ APPLY_CASES = [
                 router="EndpointPicker",
                 endpointPicker=v1alpha1.EndpointPicker(
                     template=v1alpha1.TemplateModel(
-                        spec=v1alpha1.SpecModel(
+                        spec=v1alpha1.SpecModel1(
                             containers=[
                                 v1alpha1.ContainerModel(
                                     name="epp",

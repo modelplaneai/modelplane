@@ -58,7 +58,7 @@ def _model_replica(*, copies: int) -> fnv1.Resource:
                 "modelplane.ai/replica-index": "0",
             },
         ),
-        spec=v1alpha1.SpecModel1(
+        spec=v1alpha1.SpecModel2(
             clusterName="cluster-a",
             engines=[
                 v1alpha1.Engine(
@@ -116,7 +116,7 @@ def _prefill_decode_replica(*, serving: v1alpha1.Serving) -> fnv1.Resource:
                 "modelplane.ai/replica-index": "0",
             },
         ),
-        spec=v1alpha1.SpecModel1(
+        spec=v1alpha1.SpecModel2(
             clusterName="cluster-a",
             serving=serving,
             engines=[
@@ -1028,7 +1028,7 @@ COMPOSE_CASES = [
                         router="EndpointPicker",
                         endpointPicker=v1alpha1.EndpointPicker(
                             template=v1alpha1.TemplateModel(
-                                spec=v1alpha1.SpecModel(
+                                spec=v1alpha1.SpecModel1(
                                     containers=[
                                         v1alpha1.ContainerModel(
                                             name="epp",

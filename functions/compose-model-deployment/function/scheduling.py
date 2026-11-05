@@ -1120,8 +1120,8 @@ def schedule(
     when capacity forces it). Returns up to deployment.spec.replicas candidates,
     fewer if not enough capacity exists.
 
-    Existing replicas are always retained. fill gates only the placement of NEW
-    replicas: with fill=False the schedule is retain-only, holding steady at the
+    Existing replicas are retained while their cluster stack and pinned pools
+    still match the deployment. fill gates only the placement of NEW replicas: with fill=False the schedule is retain-only, holding steady at the
     current placement and adding nothing. A caller passes fill=False when it
     can't yet trust the candidate set - for instance when an input that narrows
     the candidate clusters is unresolved, so placing new replicas now risks
@@ -1130,6 +1130,9 @@ def schedule(
     absence can't evict a pinned replica.
     """
     desired = int(deployment.spec.replicas)
+    serving = deployment.spec.template.spec.serving
+    stack = "Dynamo" if serving and serving.router == "Dynamo" else "Standard"
+    clusters = [c for c in clusters if (c.spec.stack or "Standard") == stack]
     clusters_by_name = {_name(c.metadata): c for c in clusters}
 
     # Sort observed replicas by name (unique per object) so the schedule is a

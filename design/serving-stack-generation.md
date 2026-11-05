@@ -82,19 +82,22 @@ answers each of them:
 | What `ModelReplica` composes | Served by |
 | --- | --- |
 | `leaderworkerset.x-k8s.io/v1` `LeaderWorkerSet` | the `lws` chart, on the Standard stack |
-| `grove.io/v1alpha1` `PodCliqueSet` | the `grove-charts` chart, on the Dynamo stack |
+| `nvidia.com/v1beta1` `DynamoGraphDeployment` | the Dynamo platform operator, on the Dynamo stack |
 | `inference.networking.k8s.io/v1` `InferencePool` | the Gateway API Inference Extension CRDs and Envoy AI Gateway |
 | `gateway.networking.k8s.io/v1` `HTTPRoute` | Envoy Gateway |
 | a `ResourceClaimTemplate` naming the `gpu.nvidia.com` device class | the NVIDIA GPU DRA driver |
 
 Plain string contracts run beside those API contracts. A replica reaches
 ModelExpress at `modelexpress-server.default.svc:8001`, sets
-`schedulerName: kai-scheduler`, and labels pods
-`kai.scheduler/queue: modelplane` for a `Queue` the serving stack creates.
+`schedulerName: kai-scheduler`, and annotates the DGD with
+`nvidia.com/kai-scheduler-queue: modelplane` for a Queue the serving stack creates.
+The operator translates that annotation to each clique's queue label.
+`nvidia.com/grove-update-strategy: Coherent` selects coordinated graph rollouts.
 
-Modelplane composes a `grove.io/v1alpha1` resource against a chart pinned at
-`v0.1.0-alpha.12-rc2`. Neither an alpha API nor a pre-release chart promises
-compatibility across versions.
+Modelplane targets DGD v1beta1 against platform chart
+`1.7.0-dev.20261103.ge37f0b9`, with Grove `v0.1.0-alpha.15`. The operator
+owns the Grove API contract. These pre-release pins do not promise compatibility
+across versions.
 
 The coupling is growing. Grove and ModelExpress arrived with the Dynamo serving
 stack ([modelplaneai/modelplane#406](https://github.com/modelplaneai/modelplane/pull/406)),

@@ -468,7 +468,7 @@ class Composer:
                     namespace=_namespace(self.xr.metadata),
                     labels=self._child_labels(cluster_info),
                 ),
-                spec=mrv1alpha1.SpecModel1(
+                spec=mrv1alpha1.SpecModel2(
                     clusterName=cluster_info.name,
                     engines=[self._replica_engine(engines_by_name[ep.name], ep) for ep in cluster_info.engines],
                 ),

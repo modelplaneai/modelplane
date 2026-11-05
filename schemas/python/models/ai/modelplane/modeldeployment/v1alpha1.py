@@ -118,20 +118,6 @@ class EnvItem(BaseModel):
     valueFrom: ValueFrom | None = None
 
 
-class Port(BaseModel):
-    containerPort: conint(ge=1, le=65535)
-    """
-    Port number the container listens on.
-    """
-    name: (
-        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
-        | None
-    ) = None
-    """
-    Port name. The engine container's port named "http" is where Modelplane probes the engine and scrapes its metrics.
-    """
-
-
 class Grpc(BaseModel):
     port: int
     service: str | None = None
@@ -144,6 +130,31 @@ class HttpGet(BaseModel):
 
 class TcpSocket(BaseModel):
     port: int | str
+
+
+class LivenessProbe(BaseModel):
+    failureThreshold: conint(ge=1) | None = None
+    grpc: Grpc | None = None
+    httpGet: HttpGet | None = None
+    initialDelaySeconds: conint(ge=0) | None = None
+    periodSeconds: conint(ge=1) | None = None
+    successThreshold: conint(ge=1) | None = None
+    tcpSocket: TcpSocket | None = None
+    timeoutSeconds: conint(ge=1) | None = None
+
+
+class Port(BaseModel):
+    containerPort: conint(ge=1, le=65535)
+    """
+    Port number the container listens on.
+    """
+    name: (
+        constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=15)
+        | None
+    ) = None
+    """
+    Port name. The engine container's port named "http" is where Modelplane probes the engine and scrapes its metrics.
+    """
 
 
 class ReadinessProbe(BaseModel):
@@ -162,6 +173,17 @@ class Resources(BaseModel):
     requests: dict[str, int | str] | None = Field(None, max_length=3)
 
 
+class StartupProbe(BaseModel):
+    failureThreshold: conint(ge=1) | None = None
+    grpc: Grpc | None = None
+    httpGet: HttpGet | None = None
+    initialDelaySeconds: conint(ge=0) | None = None
+    periodSeconds: conint(ge=1) | None = None
+    successThreshold: conint(ge=1) | None = None
+    tcpSocket: TcpSocket | None = None
+    timeoutSeconds: conint(ge=1) | None = None
+
+
 class Container(BaseModel):
     args: list[str] | None = None
     """
@@ -170,7 +192,7 @@ class Container(BaseModel):
     """
     command: list[str] | None = None
     """
-    Container entrypoint override, passed through verbatim. For a Leader or Worker, the command owns cross-node coordination: it addresses the leader through $(MODELPLANE_LEADER_ADDRESS), which Modelplane injects into every engine container on either stack. The pod's rank (0 for the Leader, 1..worker.nodes for followers) comes from $(MODELPLANE_RANK) on a Standard cluster; on Dynamo the command derives it from Grove's GROVE_PCLQ_POD_INDEX, since Grove exposes no group-wide pod index yet.
+    Container entrypoint override, passed through verbatim. Gang commands use $(MODELPLANE_LEADER_ADDRESS) and $(MODELPLANE_RANK) on either stack. On Dynamo, use these topology aliases in command or args, not in dependent env values.
     """
     env: list[EnvItem] | None = None
     """
@@ -179,6 +201,10 @@ class Container(BaseModel):
     image: constr(min_length=1)
     """
     Container image.
+    """
+    livenessProbe: LivenessProbe | None = None
+    """
+    How Kubernetes checks container liveness.
     """
     name: constr(
         pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
@@ -192,11 +218,15 @@ class Container(BaseModel):
     """
     readinessProbe: ReadinessProbe | None = None
     """
-    How Kubernetes checks that a container beside the engine is ready, such as a sidecar on port 8000. The engine container can't set one: Modelplane probes the engine on its http port.
+    How Kubernetes checks container readiness. Explicit engine probes replace Modelplane defaults.
     """
     resources: Resources | None = None
     """
     CPU and memory requests and limits. On the engine container, Modelplane adds the member's device claim beside them.
+    """
+    startupProbe: StartupProbe | None = None
+    """
+    How Kubernetes checks container startup.
     """
 
 
@@ -204,14 +234,68 @@ class ImagePullSecret(BaseModel):
     name: str
 
 
+class InitContainer(BaseModel):
+    args: list[str] | None = None
+    """
+    Container args, passed through to the serving engine. Includes the model identifier (e.g. --model=...) and any parallelism flags.
+    Pass --served-model-name $(MODELPLANE_SERVED_MODEL_NAME), the variable Modelplane injects, so the engine answers to the name a gateway routes to. An engine started under a literal name may return a 404 for every request.
+    """
+    command: list[str] | None = None
+    """
+    Container entrypoint override, passed through verbatim. Gang commands use $(MODELPLANE_LEADER_ADDRESS) and $(MODELPLANE_RANK) on either stack. On Dynamo, use these topology aliases in command or args, not in dependent env values.
+    """
+    env: list[EnvItem] | None = None
+    """
+    Environment variables. Supports valueFrom.secretKeyRef / configMapKeyRef for secrets and config (like HF_TOKEN), and valueFrom.fieldRef for pod fields (e.g. status.podIP for vLLM's VLLM_HOST_IP on multi-NIC nodes).
+    """
+    image: constr(min_length=1)
+    """
+    Container image.
+    """
+    livenessProbe: LivenessProbe | None = None
+    """
+    How Kubernetes checks container liveness.
+    """
+    name: constr(
+        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
+    )
+    """
+    Init container name; runtime selects Dynamo sidecar mode.
+    """
+    ports: list[Port] | None = Field(None, max_length=8)
+    """
+    Ports the container listens on. The engine container's port named "http" is where Modelplane probes the engine and scrapes its metrics. Without one, the engine serves on 8000, and an unnamed port 8000 is its "http" port. A container in front of the engine declares 8000, and the engine then declares its "http" port elsewhere. A Worker's ports pass through as written.
+    """
+    readinessProbe: ReadinessProbe | None = None
+    """
+    How Kubernetes checks container readiness. Explicit engine probes replace Modelplane defaults.
+    """
+    resources: Resources | None = None
+    """
+    CPU and memory requests and limits. On the engine container, Modelplane adds the member's device claim beside them.
+    """
+    restartPolicy: Literal['Always'] | None = None
+    """
+    Always makes this init container a native sidecar that runs for the lifetime of the pod. Omitted for an init container that exits.
+    """
+    startupProbe: StartupProbe | None = None
+    """
+    How Kubernetes checks container startup.
+    """
+
+
 class Spec(BaseModel):
     containers: list[Container] = Field(..., max_length=8, min_length=1)
     """
-    Containers for the engine pod. Exactly one is named "engine", the inference engine. The others run beside it, such as a routing sidecar. Modelplane adds device claims, MODELPLANE_ environment, ModelCache mounts, /dev/shm and the readiness probe to the engine container only.
+    Containers for the engine pod. Exactly one is named engine. Modelplane adds device claims, topology and cache environment, and cache mounts to the engine. Other containers pass through unchanged.
     """
     imagePullSecrets: list[ImagePullSecret] | None = None
     """
     Image pull secrets for private registries (NGC etc.).
+    """
+    initContainers: list[InitContainer] | None = Field(None, max_length=8, min_length=0)
+    """
+    Init containers in startup order, including native sidecars with restartPolicy: Always. Their commands, environment, resources and probes pass through unchanged. On Dynamo the serving member declares its Dynamo sidecar here as runtime.
     """
 
 
@@ -278,6 +362,45 @@ class ModelCacheRef(BaseModel):
     """
 
 
+class SpecModel(BaseModel):
+    containers: list[Container] = Field(..., max_length=8, min_length=1)
+    """
+    Frontend containers. Exactly one is named main and declares an explicit command. The user owns image, command, args, environment and probes; Modelplane does not copy engine settings.
+    """
+    imagePullSecrets: list[ImagePullSecret] | None = None
+    """
+    Image pull secrets for private registries (NGC etc.).
+    """
+
+
+class TemplateModel(BaseModel):
+    metadata: MetadataModel | None = None
+    """
+    Metadata applied to the member's pods. Useful for labels and annotations that control cluster-level features like service mesh injection. Label keys under the modelplane.ai/ prefix are reserved.
+    """
+    spec: SpecModel
+
+
+class Frontend(BaseModel):
+    replicas: conint(ge=1, le=64) | None = 1
+    """
+    Frontend replicas per ModelReplica. Independent of engine copies.
+    """
+    template: TemplateModel
+
+
+class Dynamo(BaseModel):
+    backendFramework: constr(min_length=1) | None = None
+    """
+    Optional backendFramework passed to DGD admission without detection from engine images. Set for backend-specific startup ordering or compilation cache defaults.
+    """
+    frontend: Frontend
+    runtimeVersionOverride: constr(min_length=1) | None = None
+    """
+    Optional runtime version passed to every DGD component. Set for runtime images whose tags do not identify a semantic version, including dated nightlies. The user must select matching frontend and runtime sidecar versions.
+    """
+
+
 class ValueFromModel(BaseModel):
     configMapKeyRef: ConfigMapKeyRef | None = None
     fieldRef: FieldRef | None = None
@@ -293,7 +416,7 @@ class ContainerModel(BaseModel):
     resources: Resources | None = None
 
 
-class SpecModel(BaseModel):
+class SpecModel1(BaseModel):
     containers: list[ContainerModel] = Field(..., max_length=1, min_length=1)
     """
     The picker container, named "epp". Modelplane sets MODELPLANE_POOL_NAME, MODELPLANE_POOL_NAMESPACE and, when config is set, MODELPLANE_PICKER_CONFIG in its environment, for its args to pass on as $(MODELPLANE_POOL_NAME). The picker serves the gateway's gRPC on 9002, gRPC health on 9003 and Prometheus metrics on 9090. Modelplane declares those ports, and probes readiness on 9003.
@@ -301,8 +424,8 @@ class SpecModel(BaseModel):
     imagePullSecrets: list[ImagePullSecret] | None = None
 
 
-class TemplateModel(BaseModel):
-    spec: SpecModel
+class TemplateModel1(BaseModel):
+    spec: SpecModel1
 
 
 class EndpointPicker(BaseModel):
@@ -310,13 +433,17 @@ class EndpointPicker(BaseModel):
     """
     The picker's configuration, such as an llm-d EndpointPickerConfig. Modelplane mounts it at $(MODELPLANE_PICKER_CONFIG) without reading it. Omitted for a picker that takes no configuration.
     """
-    template: TemplateModel
+    template: TemplateModel1
     """
     Pod template for the picker. A curated subset of PodTemplateSpec, like a member's. The user writes the picker's command line, since each picker spells it differently.
     """
 
 
 class Serving(BaseModel):
+    dynamo: Dynamo | None = None
+    """
+    Dynamo graph configuration. Engines remain native and connect through user-authored runtime init sidecars. No engine or frontend launch flags are inferred.
+    """
     endpointPicker: EndpointPicker | None = None
     """
     The endpoint picker Modelplane runs in front of the serving pods. Required exactly when router is EndpointPicker. Modelplane composes the picker's InferencePool, Service and RBAC around it.
@@ -325,9 +452,9 @@ class Serving(BaseModel):
     """
     Unified serves prefill and decode on one engine. PrefillDecode splits them across two engines, each marking its phase as Prefill or Decode.
     """
-    router: Literal['EndpointPicker'] | None = None
+    router: Literal['EndpointPicker', 'Dynamo'] | None = None
     """
-    The router the user writes on Standard clusters. Required under PrefillDecode on Standard; omit on Dynamo, which uses its runtime frontend. Omitted, under Unified, Modelplane routes the deployment with its default picker configuration. EndpointPicker runs the endpoint picker set in endpointPicker, and the user writes any sidecar the picker needs as a container in the member templates.
+    Selects the serving stack: Dynamo requires a Dynamo cluster and the serving.dynamo frontend; EndpointPicker requires a Standard cluster and serving.endpointPicker. Omitted means the default Unified picker on Standard. PrefillDecode requires an explicit router.
     """
 
 
@@ -347,14 +474,14 @@ class Toleration(BaseModel):
     value: str | None = None
 
 
-class SpecModel1(BaseModel):
+class SpecModel2(BaseModel):
     clusterSelector: ClusterSelector | None = None
     """
     Optional label selector to filter InferenceClusters. If omitted, all ready clusters are candidates.
     """
     engines: list[Engine] = Field(..., max_length=8, min_length=1)
     """
-    A ModelReplica's inference engines. An engine is one serving unit: a single Standalone pod, or a gang of a Leader and one or more Workers coordinating across nodes. Modelplane composes the whole array once per ModelReplica; an engine composes to a Deployment (Standalone) or, for a Leader/Worker gang, a LeaderWorkerSet or a Grove PodCliqueSet depending on the cluster's stack, but the workload kind is an implementation detail. Modelplane is unopinionated about the engine itself: parallelism, quantization, and KV transfer all live in the members' engine flags, written by the user, never injected by Modelplane.
+    A ModelReplica's inference engines. A Standalone engine becomes a Deployment on Standard; Leader/Worker members become a LeaderWorkerSet. On Dynamo each engine becomes a DynamoGraphDeployment component with explicit role templates. The user owns engine images, commands, parallelism and KV transfer.
     """
     modelCacheRef: ModelCacheRef | None = None
     """
@@ -362,7 +489,7 @@ class SpecModel1(BaseModel):
     """
     serving: Serving | None = None
     """
-    How the deployment is served from the cluster edge to its engines. Modelplane fronts the serving pods with an InferencePool and an endpoint picker in both modes. Unified (the default) serves prefill and decode on each engine. PrefillDecode serves them from the two engines marking those phases, with routing that sequences prefill then decode. Omitted means Unified.
+    Routing configuration inherited by each replica. Dynamo uses the user-authored frontend on a Dynamo stack; EndpointPicker and the default Unified picker run on Standard. Placement selects clusters with the matching stack.
     """
     tolerations: list[Toleration] | None = None
     """
@@ -370,12 +497,12 @@ class SpecModel1(BaseModel):
     """
 
 
-class TemplateModel1(BaseModel):
+class TemplateModel2(BaseModel):
     metadata: Metadata | None = None
-    spec: SpecModel1
+    spec: SpecModel2
 
 
-class SpecModel2(BaseModel):
+class SpecModel3(BaseModel):
     crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
@@ -384,7 +511,7 @@ class SpecModel2(BaseModel):
     """
     How many ModelReplicas to fan out to. Each replica is a complete serving instance scheduled to one InferenceCluster. 0 parks the deployment: its replicas and endpoints are removed but the object and its spec remain, and conditions report NoReplicasDesired.
     """
-    template: TemplateModel1
+    template: TemplateModel2
     """
     Template for the ModelReplicas this deployment fans out to. Everything but the replica count lives here, mirroring a Kubernetes Deployment's spec.template.
     """
@@ -425,7 +552,7 @@ class ModelDeployment(BaseModel):
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
-    spec: SpecModel2
+    spec: SpecModel3
     status: Status | None = None
 
 

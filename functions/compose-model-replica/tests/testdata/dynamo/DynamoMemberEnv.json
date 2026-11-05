@@ -44,8 +44,28 @@
                           "value": "x"
                         }
                       ],
-                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
-                      "name": "engine"
+                      "image": "vllm/vllm-openai:v0.32.0",
+                      "name": "engine",
+                      "readinessProbe": {
+                        "grpc": {
+                          "port": 30001
+                        },
+                        "periodSeconds": 5
+                      }
+                    }
+                  ],
+                  "initContainers": [
+                    {
+                      "name": "runtime",
+                      "image": "example/dynamo-sidecar:1.7.0",
+                      "command": [
+                        "dynamo-vllm-sidecar"
+                      ],
+                      "args": [
+                        "--grpc-endpoint",
+                        "127.0.0.1:30001"
+                      ],
+                      "restartPolicy": "Always"
                     }
                   ]
                 }
@@ -75,7 +95,7 @@
                         "-c",
                         "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block"
                       ],
-                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                      "image": "vllm/vllm-openai:v0.32.0",
                       "name": "engine"
                     }
                   ]
@@ -88,7 +108,50 @@
           ],
           "name": "main"
         }
-      ]
+      ],
+      "serving": {
+        "mode": "Unified",
+        "router": "Dynamo",
+        "dynamo": {
+          "backendFramework": "vllm",
+          "frontend": {
+            "replicas": 2,
+            "template": {
+              "metadata": {
+                "labels": {
+                  "routing": "user-authored"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "main",
+                    "image": "example/dynamo-frontend:1.7.0",
+                    "command": [
+                      "dynamo-frontend"
+                    ],
+                    "args": [
+                      "--router-mode",
+                      "round-robin"
+                    ],
+                    "env": [
+                      {
+                        "name": "FRONTEND_SETTING",
+                        "value": "user-value"
+                      }
+                    ]
+                  }
+                ],
+                "imagePullSecrets": [
+                  {
+                    "name": "frontend-registry"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   },
   "provider_config": "cluster-a-pc",
@@ -179,7 +242,7 @@
         }
       }
     },
-    "workload-dynamo-694d196b93": {
+    "workload-dynamo-1ca5699aff": {
       "spec": {
         "providerConfigRef": {
           "kind": "ClusterProviderConfig",
@@ -195,10 +258,11 @@
             "apiVersion": "nvidia.com/v1beta1",
             "kind": "DynamoGraphDeployment",
             "metadata": {
-              "name": "r-694d196b93",
+              "name": "r-1ca5699aff",
               "namespace": "mp-ml-team-51733",
               "annotations": {
-                "nvidia.com/grove-update-strategy": "Coherent"
+                "nvidia.com/grove-update-strategy": "Coherent",
+                "nvidia.com/kai-scheduler-queue": "modelplane"
               }
             },
             "spec": {
@@ -207,44 +271,41 @@
                 {
                   "name": "frontend",
                   "type": "frontend",
-                  "replicas": 1,
+                  "replicas": 2,
                   "podTemplate": {
                     "metadata": {
                       "labels": {
-                        "modelplane.ai/serving": "r",
-                        "modelplane.ai/replica": "r",
-                        "modelplane.ai/deployment": "r"
+                        "routing": "user-authored",
+                        "modelplane.ai/role": "frontend"
                       }
                     },
                     "spec": {
                       "containers": [
                         {
                           "name": "main",
-                          "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                          "image": "example/dynamo-frontend:1.7.0",
                           "command": [
-                            "python3",
-                            "-m",
-                            "dynamo.frontend"
+                            "dynamo-frontend"
                           ],
                           "args": [
-                            "--http-port",
-                            "8000",
                             "--router-mode",
-                            "kv"
+                            "round-robin"
                           ],
                           "env": [
                             {
-                              "name": "HF_TOKEN",
-                              "value": "x"
+                              "name": "FRONTEND_SETTING",
+                              "value": "user-value"
                             }
-                          ],
-                          "volumeMounts": []
+                          ]
                         }
                       ],
-                      "volumes": []
+                      "imagePullSecrets": [
+                        {
+                          "name": "frontend-registry"
+                        }
+                      ]
                     }
-                  },
-                  "runtimeVersionOverride": "1.7.0"
+                  }
                 },
                 {
                   "name": "engine-main",
@@ -261,23 +322,12 @@
                         "metadata": {
                           "labels": {
                             "modelplane.ai/engine": "main",
-                            "modelplane.ai/role": "Leader",
-                            "kai.scheduler/queue": "modelplane"
+                            "modelplane.ai/role": "Leader"
                           }
                         },
                         "spec": {
                           "containers": [
                             {
-                              "name": "main",
-                              "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
-                              "volumeMounts": [],
-                              "resources": {
-                                "claims": [
-                                  {
-                                    "name": "devices"
-                                  }
-                                ]
-                              },
                               "command": [
                                 "/bin/sh",
                                 "-c",
@@ -296,10 +346,38 @@
                                   "name": "HF_TOKEN",
                                   "value": "x"
                                 }
+                              ],
+                              "image": "vllm/vllm-openai:v0.32.0",
+                              "name": "main",
+                              "readinessProbe": {
+                                "grpc": {
+                                  "port": 30001
+                                },
+                                "periodSeconds": 5
+                              },
+                              "resources": {
+                                "claims": [
+                                  {
+                                    "name": "devices"
+                                  }
+                                ]
+                              },
+                              "volumeMounts": [
+                                {
+                                  "name": "dshm",
+                                  "mountPath": "/dev/shm"
+                                }
                               ]
                             }
                           ],
-                          "volumes": [],
+                          "volumes": [
+                            {
+                              "name": "dshm",
+                              "emptyDir": {
+                                "medium": "Memory"
+                              }
+                            }
+                          ],
                           "schedulerName": "kai-scheduler",
                           "nodeSelector": {
                             "modelplane.ai/pool": "frontier"
@@ -326,6 +404,20 @@
                               "operator": "Exists",
                               "effect": "NoSchedule"
                             }
+                          ],
+                          "initContainers": [
+                            {
+                              "name": "runtime",
+                              "image": "example/dynamo-sidecar:1.7.0",
+                              "command": [
+                                "dynamo-vllm-sidecar"
+                              ],
+                              "args": [
+                                "--grpc-endpoint",
+                                "127.0.0.1:30001"
+                              ],
+                              "restartPolicy": "Always"
+                            }
                           ]
                         }
                       }
@@ -337,16 +429,19 @@
                         "metadata": {
                           "labels": {
                             "modelplane.ai/engine": "main",
-                            "modelplane.ai/role": "Worker",
-                            "kai.scheduler/queue": "modelplane"
+                            "modelplane.ai/role": "Worker"
                           }
                         },
                         "spec": {
                           "containers": [
                             {
+                              "command": [
+                                "/bin/sh",
+                                "-c",
+                                "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block"
+                              ],
+                              "image": "vllm/vllm-openai:v0.32.0",
                               "name": "main",
-                              "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
-                              "volumeMounts": [],
                               "resources": {
                                 "claims": [
                                   {
@@ -354,10 +449,11 @@
                                   }
                                 ]
                               },
-                              "command": [
-                                "/bin/sh",
-                                "-c",
-                                "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block"
+                              "volumeMounts": [
+                                {
+                                  "name": "dshm",
+                                  "mountPath": "/dev/shm"
+                                }
                               ],
                               "env": [
                                 {
@@ -371,7 +467,14 @@
                               ]
                             }
                           ],
-                          "volumes": [],
+                          "volumes": [
+                            {
+                              "name": "dshm",
+                              "emptyDir": {
+                                "medium": "Memory"
+                              }
+                            }
+                          ],
                           "schedulerName": "kai-scheduler",
                           "nodeSelector": {
                             "modelplane.ai/pool": "frontier"
@@ -402,8 +505,7 @@
                         }
                       }
                     }
-                  ],
-                  "runtimeVersionOverride": "1.7.0"
+                  ]
                 }
               ]
             }

@@ -1,0 +1,248 @@
+{
+  "name": "ClusterStackChangeReplacesPin",
+  "reason": "Router selection constrains both new placement and retained pins to a compatible serving stack.",
+  "deployment": {
+    "apiVersion": "modelplane.ai/v1alpha1",
+    "kind": "ModelDeployment",
+    "metadata": {
+      "name": "my-model",
+      "namespace": "ml-team"
+    },
+    "spec": {
+      "replicas": 1,
+      "template": {
+        "spec": {
+          "engines": [
+            {
+              "copies": 1,
+              "members": [
+                {
+                  "nodeSelector": {
+                    "devices": [
+                      {
+                        "count": 1,
+                        "name": "gpu",
+                        "selectors": [
+                          {
+                            "cel": "device.capacity[\"gpu.nvidia.com\"].memory.compareTo(quantity(\"141Gi\")) >= 0"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "role": "Standalone",
+                  "template": {
+                    "spec": {
+                      "containers": [
+                        {
+                          "image": "vllm/vllm-openai:latest",
+                          "name": "engine"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ],
+              "name": "main"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "clusters": [
+    {
+      "apiVersion": "modelplane.ai/v1alpha1",
+      "kind": "InferenceCluster",
+      "metadata": {
+        "name": "cluster-a"
+      },
+      "spec": {
+        "cluster": {
+          "existing": {
+            "secretRef": {
+              "key": "kubeconfig",
+              "name": "k"
+            }
+          },
+          "source": "Existing"
+        },
+        "stack": "Dynamo"
+      },
+      "status": {
+        "conditions": [
+          {
+            "lastTransitionTime": "2025-01-01T00:00:00Z",
+            "reason": "Available",
+            "status": "True",
+            "type": "Ready"
+          }
+        ],
+        "gateway": {
+          "address": "10.0.0.1",
+          "hostname": "cluster-a.clusters.example.com"
+        },
+        "providerConfigRef": {
+          "name": "cluster-a"
+        },
+        "schedulablePools": [
+          {
+            "devices": [
+              {
+                "capacity": {
+                  "memory": {
+                    "value": "141Gi"
+                  }
+                },
+                "claim": "DRA",
+                "count": 1,
+                "deviceClassName": "gpu.nvidia.com",
+                "driver": "gpu.nvidia.com",
+                "name": "gpu"
+              }
+            ],
+            "name": "default",
+            "nodes": 2
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "modelplane.ai/v1alpha1",
+      "kind": "InferenceCluster",
+      "metadata": {
+        "name": "cluster-b"
+      },
+      "spec": {
+        "cluster": {
+          "existing": {
+            "secretRef": {
+              "key": "kubeconfig",
+              "name": "k"
+            }
+          },
+          "source": "Existing"
+        },
+        "stack": "Standard"
+      },
+      "status": {
+        "conditions": [
+          {
+            "lastTransitionTime": "2025-01-01T00:00:00Z",
+            "reason": "Available",
+            "status": "True",
+            "type": "Ready"
+          }
+        ],
+        "gateway": {
+          "address": "10.0.0.1",
+          "hostname": "cluster-b.clusters.example.com"
+        },
+        "providerConfigRef": {
+          "name": "cluster-b"
+        },
+        "schedulablePools": [
+          {
+            "devices": [
+              {
+                "capacity": {
+                  "memory": {
+                    "value": "141Gi"
+                  }
+                },
+                "claim": "DRA",
+                "count": 1,
+                "deviceClassName": "gpu.nvidia.com",
+                "driver": "gpu.nvidia.com",
+                "name": "gpu"
+              }
+            ],
+            "name": "default",
+            "nodes": 2
+          }
+        ]
+      }
+    }
+  ],
+  "all_replicas": [
+    {
+      "apiVersion": "modelplane.ai/v1alpha1",
+      "kind": "ModelReplica",
+      "metadata": {
+        "labels": {
+          "modelplane.ai/deployment": "my-model",
+          "modelplane.ai/cluster": "cluster-a",
+          "modelplane.ai/replica-index": "0"
+        },
+        "name": "my-model-cluster-a-0",
+        "namespace": "ml-team"
+      },
+      "spec": {
+        "clusterName": "cluster-a",
+        "engines": [
+          {
+            "copies": 1,
+            "members": [
+              {
+                "deviceRequests": [
+                  {
+                    "count": 1,
+                    "deviceClassName": "gpu.nvidia.com",
+                    "name": "gpu",
+                    "selectors": [
+                      {
+                        "cel": "device.capacity[\"gpu.nvidia.com\"].memory.compareTo(quantity(\"141Gi\")) >= 0"
+                      }
+                    ]
+                  }
+                ],
+                "nodePoolName": "default",
+                "role": "Standalone",
+                "template": {
+                  "spec": {
+                    "containers": [
+                      {
+                        "image": "vllm/vllm-openai:latest",
+                        "name": "engine"
+                      }
+                    ]
+                  }
+                }
+              }
+            ],
+            "name": "main"
+          }
+        ]
+      }
+    }
+  ],
+  "want": [
+    {
+      "name": "cluster-b",
+      "index": 0,
+      "gateway_hostname": "cluster-b.clusters.example.com",
+      "placement_labels": {},
+      "engines": [
+        {
+          "name": "main",
+          "members": [
+            {
+              "role": "Standalone",
+              "pool": "default",
+              "device_requests": [
+                {
+                  "name": "gpu",
+                  "device_class_name": "gpu.nvidia.com",
+                  "count": 1,
+                  "cel_selectors": [
+                    "device.capacity[\"gpu.nvidia.com\"].memory.compareTo(quantity(\"141Gi\")) >= 0"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

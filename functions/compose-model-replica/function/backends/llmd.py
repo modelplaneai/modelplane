@@ -108,6 +108,9 @@ class LLMDBackend:
                 c["readinessProbe"] = base.readiness_probe(base.engine_http_port(engine_container))
             elif engine_container.ports:
                 c["ports"] = base.declared_ports(engine_container)
+            for probe in ("startupProbe", "readinessProbe", "livenessProbe"):
+                if value := getattr(engine_container, probe):
+                    c[probe] = value.model_dump(exclude_none=True)
             return c
 
         def pod_spec(member: v1alpha1.Member, c: dict) -> dict:
@@ -115,6 +118,9 @@ class LLMDBackend:
                 "containers": [c, *base.sidecar_containers(member)],
                 "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}, *cache_volumes],
             }
+            if init := base.init_containers(member):
+                spec["initContainers"] = init
+
             # Every pod pins to its member's scheduled pool and, if the member
             # claims devices, claims GPUs via the member's DRA template (one
             # fresh claim per pod).

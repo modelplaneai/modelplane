@@ -60,7 +60,7 @@ the TensorRT-LLM engine run as engine containers like any other, Modelplane stag
 weights and NIM-style artifacts from NVIDIA NGC alongside Hugging Face and other
 registries, and a cluster can run NVIDIA's
 [Dynamo serving stack]({{< ref "/platform/inference-cluster.md#serving-stack" >}}),
-with deeper Dynamo integration on the roadmap.
+with native engines, runtime sidecars and a user-authored Dynamo frontend.
 {{< /qa >}}
 
 {{< qa "Which engines and accelerators are supported?" >}}
@@ -130,7 +130,8 @@ replicas, and load-balances across all of them.
 An engine can be a gang: a leader and one or more workers serving across nodes.
 How Modelplane composes and schedules the gang depends on the cluster's
 [serving stack]({{< ref "/platform/inference-cluster.md#serving-stack" >}}), a
-LeaderWorkerSet on Standard or a gang-scheduled Grove PodCliqueSet on Dynamo. You
+LeaderWorkerSet on Standard or a `DynamoGraphDeployment` whose operator manages
+Grove gangs on Dynamo. The deployment's router selects its compatible stack. You
 write the coordination (like Ray or vLLM's data-parallel coordinator) in the
 engine flags; `MODELPLANE_LEADER_ADDRESS` resolves on either stack.
 Multi-node deployments stage weights through a `ModelCache`.

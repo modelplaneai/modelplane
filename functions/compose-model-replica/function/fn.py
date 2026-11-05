@@ -169,6 +169,9 @@ class Composer:
         # its value (Standard or Dynamo). Coalesce for the type checker, which
         # sees the field as optional.
         stack = self.ic.spec.stack or "Standard"
+        if stack != "Dynamo" and self.xr.spec.serving and self.xr.spec.serving.router == "Dynamo":
+            response.fatal(self.rsp, "serving.router: Dynamo requires a Dynamo cluster")
+            return
         if stack != "Dynamo" and routing.prefill_decode_routing_missing(self.xr):
             # Stop rather than compose a router the engines can't use. A fatal
             # result leaves the replica's existing resources as they are, so an

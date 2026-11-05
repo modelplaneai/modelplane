@@ -191,7 +191,7 @@ def _config(
                                         "__meta_kubernetes_pod_container_port_name",
                                     ],
                                     "action": "keep",
-                                    "regex": "(engine|epp);http|main;system",
+                                    "regex": "(engine|epp|main);http|(main|runtime);system",
                                 },
                                 {
                                     "source_labels": ["__meta_kubernetes_pod_label_modelplane_ai_deployment"],
@@ -1238,7 +1238,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="0fa998e125d0ab67",
+                    config_hash="04d616811ea2e38e",
                     volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                     volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                     env_from=None,
@@ -1283,7 +1283,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="44e8725f569955e3",
+                    config_hash="1b694a7091dabb2f",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -1350,7 +1350,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="99bdd45bc618f16e",
+                    config_hash="a0719b6a050ff143",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-vendor", "secret": {"secretName": "vendor-token"}},

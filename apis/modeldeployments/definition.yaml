@@ -138,18 +138,18 @@ spec:
                       serving:
                         type: object
                         x-kubernetes-validations:
-                        - rule: "!has(self.endpointPicker) || (has(self.router) && self.router == 'EndpointPicker')"
-                          message: "serving.endpointPicker may only be set when serving.router is EndpointPicker"
-                        - rule: "!has(self.router) || has(self.endpointPicker)"
-                          message: "serving.router EndpointPicker requires serving.endpointPicker with its template"
-                        description: >-
-                          How the deployment is served from the cluster edge to its
-                          engines. Modelplane fronts the serving pods with an
-                          InferencePool and an endpoint picker in both modes. Unified
-                          (the default) serves prefill and decode on each engine.
-                          PrefillDecode serves them from the two engines marking those
-                          phases, with routing that sequences prefill then decode.
-                          Omitted means Unified.
+                        - rule: '!has(self.endpointPicker) || (has(self.router) && self.router == ''EndpointPicker'')'
+                          message: serving.endpointPicker may only be set when serving.router is EndpointPicker
+                        - rule: '!has(self.router) || self.router != ''EndpointPicker'' || has(self.endpointPicker)'
+                          message: serving.router EndpointPicker requires serving.endpointPicker with its template
+                        - rule: '!has(self.dynamo) || (has(self.router) && self.router == ''Dynamo'')'
+                          message: serving.dynamo may only be set when serving.router is Dynamo
+                        - rule: '!has(self.router) || self.router != ''Dynamo'' || has(self.dynamo)'
+                          message: serving.router Dynamo requires serving.dynamo with its frontend
+                        - rule: self.mode != 'PrefillDecode' || has(self.router)
+                          message: PrefillDecode serving requires an explicit router
+                        description: Routing configuration inherited by each replica. Dynamo uses the user-authored frontend on a Dynamo stack;
+                          EndpointPicker and the default Unified picker run on Standard. Placement selects clusters with the matching stack.
                         required: [mode]
                         properties:
                           mode:
@@ -162,15 +162,12 @@ spec:
                               its phase as Prefill or Decode.
                           router:
                             type: string
-                            enum: [EndpointPicker]
-                            description: >-
-                              The router the user writes on Standard clusters. Required under PrefillDecode
-                              on Standard; omit on Dynamo, which uses its runtime frontend.
-                              Omitted, under Unified, Modelplane routes the deployment with
-                              its default picker configuration. EndpointPicker runs the
-                              endpoint picker set in endpointPicker, and the user writes any
-                              sidecar the picker needs as a container in the member
-                              templates.
+                            enum:
+                            - EndpointPicker
+                            - Dynamo
+                            description: 'Selects the serving stack: Dynamo requires a Dynamo cluster and the serving.dynamo frontend; EndpointPicker
+                              requires a Standard cluster and serving.endpointPicker. Omitted means the default Unified picker on Standard. PrefillDecode
+                              requires an explicit router.'
                           endpointPicker:
                             type: object
                             description: >-
@@ -301,6 +298,397 @@ spec:
                                   The picker's configuration, such as an llm-d EndpointPickerConfig.
                                   Modelplane mounts it at $(MODELPLANE_PICKER_CONFIG) without reading it.
                                   Omitted for a picker that takes no configuration.
+                          dynamo:
+                            type: object
+                            required:
+                            - frontend
+                            description: Dynamo graph configuration. Engines remain native and connect through user-authored runtime init sidecars.
+                              No engine or frontend launch flags are inferred.
+                            properties:
+                              backendFramework:
+                                type: string
+                                minLength: 1
+                                description: Optional backendFramework passed to DGD admission without detection from engine images. Set for backend-specific
+                                  startup ordering or compilation cache defaults.
+                              runtimeVersionOverride:
+                                type: string
+                                minLength: 1
+                                description: Optional runtime version passed to every DGD component. Set for runtime images whose tags do not identify
+                                  a semantic version, including dated nightlies. The user must select matching frontend and runtime sidecar versions.
+                              frontend:
+                                type: object
+                                required:
+                                - template
+                                properties:
+                                  replicas:
+                                    type: integer
+                                    minimum: 1
+                                    maximum: 64
+                                    default: 1
+                                    description: Frontend replicas per ModelReplica. Independent of engine copies.
+                                  template:
+                                    type: object
+                                    required:
+                                    - spec
+                                    properties:
+                                      metadata:
+                                        type: object
+                                        description: Metadata applied to the member's pods. Useful for labels and annotations that control cluster-level
+                                          features like service mesh injection. Label keys under the modelplane.ai/ prefix are reserved.
+                                        x-kubernetes-validations:
+                                        - rule: '!has(self.labels) || self.labels.all(k, !k.startsWith(''modelplane.ai/''))'
+                                          message: member template.metadata.labels keys must not use the reserved modelplane.ai/ prefix
+                                        - rule: '!has(self.labels) || self.labels.all(k, k.matches(''^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$''))'
+                                          message: member template.metadata.labels keys must be valid Kubernetes label keys
+                                        - rule: '!has(self.labels) || self.labels.all(k, k.split(''/'')[0].size() <= 253)'
+                                          message: member template.metadata.labels key prefixes must be DNS subdomains of at most 253 characters
+                                        - rule: '!has(self.labels) || self.labels.all(k, self.labels[k].matches(''^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$''))'
+                                          message: member template.metadata.labels values must be valid Kubernetes label values
+                                        - rule: '!has(self.annotations) || self.annotations.all(k, k.matches(''^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$''))'
+                                          message: member template.metadata.annotations keys must be valid Kubernetes annotation keys
+                                        - rule: '!has(self.annotations) || self.annotations.all(k, k.split(''/'')[0].size() <= 253)'
+                                          message: member template.metadata.annotations key prefixes must be DNS subdomains of at most 253 characters
+                                        properties:
+                                          labels:
+                                            type: object
+                                            maxProperties: 32
+                                            additionalProperties:
+                                              type: string
+                                              maxLength: 63
+                                          annotations:
+                                            type: object
+                                            maxProperties: 32
+                                            additionalProperties:
+                                              type: string
+                                              maxLength: 8192
+                                      spec:
+                                        type: object
+                                        required:
+                                        - containers
+                                        properties:
+                                          containers:
+                                            type: array
+                                            minItems: 1
+                                            maxItems: 8
+                                            x-kubernetes-list-type: map
+                                            x-kubernetes-list-map-keys:
+                                            - name
+                                            description: Frontend containers. Exactly one is named main and declares an explicit command. The user
+                                              owns image, command, args, environment and probes; Modelplane does not copy engine settings.
+                                            x-kubernetes-validations:
+                                            - rule: self.exists_one(c, c.name == 'main' && has(c.command) && c.command.size() > 0)
+                                              message: the Dynamo frontend requires a main container with an explicit command
+                                            items:
+                                              type: object
+                                              required:
+                                              - name
+                                              - image
+                                              properties:
+                                                name:
+                                                  type: string
+                                                  minLength: 1
+                                                  maxLength: 63
+                                                  pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                                  description: Container name. The container named "engine" is the inference engine.
+                                                image:
+                                                  type: string
+                                                  minLength: 1
+                                                  description: Container image.
+                                                command:
+                                                  type: array
+                                                  description: Container entrypoint override, passed through verbatim. Gang commands use $(MODELPLANE_LEADER_ADDRESS)
+                                                    and $(MODELPLANE_RANK) on either stack. On Dynamo, use these topology aliases in command or
+                                                    args, not in dependent env values.
+                                                  items:
+                                                    type: string
+                                                args:
+                                                  type: array
+                                                  description: 'Container args, passed through to the serving engine. Includes the model identifier
+                                                    (e.g. --model=...) and any parallelism flags.
+
+                                                    Pass --served-model-name $(MODELPLANE_SERVED_MODEL_NAME), the variable Modelplane injects,
+                                                    so the engine answers to the name a gateway routes to. An engine started under a literal name
+                                                    may return a 404 for every request.'
+                                                  items:
+                                                    type: string
+                                                env:
+                                                  type: array
+                                                  description: Environment variables. Supports valueFrom.secretKeyRef / configMapKeyRef for secrets
+                                                    and config (like HF_TOKEN), and valueFrom.fieldRef for pod fields (e.g. status.podIP for vLLM's
+                                                    VLLM_HOST_IP on multi-NIC nodes).
+                                                  items:
+                                                    type: object
+                                                    required:
+                                                    - name
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                      value:
+                                                        type: string
+                                                      valueFrom:
+                                                        type: object
+                                                        properties:
+                                                          secretKeyRef:
+                                                            type: object
+                                                            required:
+                                                            - name
+                                                            - key
+                                                            properties:
+                                                              name:
+                                                                type: string
+                                                              key:
+                                                                type: string
+                                                              optional:
+                                                                type: boolean
+                                                          configMapKeyRef:
+                                                            type: object
+                                                            required:
+                                                            - name
+                                                            - key
+                                                            properties:
+                                                              name:
+                                                                type: string
+                                                              key:
+                                                                type: string
+                                                              optional:
+                                                                type: boolean
+                                                          fieldRef:
+                                                            type: object
+                                                            description: Reference a pod field via the downward API, e.g. status.podIP, metadata.name,
+                                                              or metadata.namespace.
+                                                            required:
+                                                            - fieldPath
+                                                            properties:
+                                                              fieldPath:
+                                                                type: string
+                                                              apiVersion:
+                                                                type: string
+                                                resources:
+                                                  type: object
+                                                  description: CPU and memory requests and limits. On the engine container, Modelplane adds the
+                                                    member's device claim beside them.
+                                                  x-kubernetes-validations:
+                                                  - rule: (!has(self.requests) || self.requests.all(k, k in ['cpu', 'memory', 'ephemeral-storage']))
+                                                      && (!has(self.limits) || self.limits.all(k, k in ['cpu', 'memory', 'ephemeral-storage']))
+                                                    message: resources take only cpu, memory and ephemeral-storage; a member gets devices from
+                                                      its node pool's device requests
+                                                  properties:
+                                                    requests:
+                                                      type: object
+                                                      maxProperties: 3
+                                                      additionalProperties:
+                                                        anyOf:
+                                                        - type: integer
+                                                        - type: string
+                                                        x-kubernetes-int-or-string: true
+                                                    limits:
+                                                      type: object
+                                                      maxProperties: 3
+                                                      additionalProperties:
+                                                        anyOf:
+                                                        - type: integer
+                                                        - type: string
+                                                        x-kubernetes-int-or-string: true
+                                                readinessProbe:
+                                                  type: object
+                                                  description: How Kubernetes checks container readiness. Explicit engine probes replace Modelplane
+                                                    defaults.
+                                                  x-kubernetes-validations:
+                                                  - rule: '[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1'
+                                                    message: readinessProbe sets exactly one of httpGet, tcpSocket and grpc
+                                                  properties:
+                                                    httpGet:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        path:
+                                                          type: string
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    tcpSocket:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    grpc:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          type: integer
+                                                        service:
+                                                          type: string
+                                                    initialDelaySeconds:
+                                                      type: integer
+                                                      minimum: 0
+                                                    periodSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    timeoutSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    successThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                    failureThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                ports:
+                                                  type: array
+                                                  maxItems: 8
+                                                  x-kubernetes-list-type: map
+                                                  x-kubernetes-list-map-keys:
+                                                  - containerPort
+                                                  x-kubernetes-validations:
+                                                  - rule: self.all(p, !has(p.name) || self.exists_one(q, has(q.name) && q.name == p.name))
+                                                    message: port names must be unique within a container
+                                                  description: Ports the container listens on. The engine container's port named "http" is where
+                                                    Modelplane probes the engine and scrapes its metrics. Without one, the engine serves on 8000,
+                                                    and an unnamed port 8000 is its "http" port. A container in front of the engine declares 8000,
+                                                    and the engine then declares its "http" port elsewhere. A Worker's ports pass through as written.
+                                                  items:
+                                                    type: object
+                                                    required:
+                                                    - containerPort
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                        minLength: 1
+                                                        maxLength: 15
+                                                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                                        description: Port name. The engine container's port named "http" is where Modelplane probes
+                                                          the engine and scrapes its metrics.
+                                                      containerPort:
+                                                        type: integer
+                                                        minimum: 1
+                                                        maximum: 65535
+                                                        description: Port number the container listens on.
+                                                startupProbe:
+                                                  type: object
+                                                  description: How Kubernetes checks container startup.
+                                                  x-kubernetes-validations:
+                                                  - rule: '[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1'
+                                                    message: readinessProbe sets exactly one of httpGet, tcpSocket and grpc
+                                                  properties:
+                                                    httpGet:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        path:
+                                                          type: string
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    tcpSocket:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    grpc:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          type: integer
+                                                        service:
+                                                          type: string
+                                                    initialDelaySeconds:
+                                                      type: integer
+                                                      minimum: 0
+                                                    periodSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    timeoutSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    successThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                    failureThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                livenessProbe:
+                                                  type: object
+                                                  description: How Kubernetes checks container liveness.
+                                                  x-kubernetes-validations:
+                                                  - rule: '[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1'
+                                                    message: readinessProbe sets exactly one of httpGet, tcpSocket and grpc
+                                                  properties:
+                                                    httpGet:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        path:
+                                                          type: string
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    tcpSocket:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    grpc:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          type: integer
+                                                        service:
+                                                          type: string
+                                                    initialDelaySeconds:
+                                                      type: integer
+                                                      minimum: 0
+                                                    periodSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    timeoutSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    successThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                    failureThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                          imagePullSecrets:
+                                            type: array
+                                            description: Image pull secrets for private registries (NGC etc.).
+                                            items:
+                                              type: object
+                                              required:
+                                              - name
+                                              properties:
+                                                name:
+                                                  type: string
                       tolerations:
                         type: array
                         description: >-
@@ -340,18 +728,9 @@ spec:
                                 Taint effect to match. Empty matches all effects.
                       engines:
                         type: array
-                        description: >-
-                          A ModelReplica's inference engines. An engine is one serving
-                          unit: a single Standalone pod, or a gang of a Leader and one
-                          or more Workers coordinating across nodes. Modelplane
-                          composes the whole array once per ModelReplica; an engine
-                          composes to a Deployment (Standalone) or, for a Leader/Worker
-                          gang, a LeaderWorkerSet or a Grove PodCliqueSet depending on
-                          the cluster's stack, but the workload kind is an implementation
-                          detail. Modelplane is unopinionated about the engine itself:
-                          parallelism, quantization, and KV transfer all live in the
-                          members' engine flags, written by the user, never injected by
-                          Modelplane.
+                        description: A ModelReplica's inference engines. A Standalone engine becomes a Deployment on Standard; Leader/Worker
+                          members become a LeaderWorkerSet. On Dynamo each engine becomes a DynamoGraphDeployment component with explicit role
+                          templates. The user owns engine images, commands, parallelism and KV transfer.
                         minItems: 1
                         maxItems: 8
                         x-kubernetes-list-type: map
@@ -623,83 +1002,54 @@ spec:
                                             minItems: 1
                                             maxItems: 8
                                             x-kubernetes-list-type: map
-                                            x-kubernetes-list-map-keys: [name]
-                                            description: >-
-                                              Containers for the engine pod. Exactly one is named "engine",
-                                              the inference engine. The others run beside it, such as a
-                                              routing sidecar. Modelplane adds device claims, MODELPLANE_
-                                              environment, ModelCache mounts, /dev/shm and the readiness
-                                              probe to the engine container only.
+                                            x-kubernetes-list-map-keys:
+                                            - name
+                                            description: Containers for the engine pod. Exactly one is named engine. Modelplane adds device claims, topology and
+                                              cache environment, and cache mounts to the engine. Other containers pass through unchanged.
                                             x-kubernetes-validations:
-                                            - rule: "self.exists_one(c, c.name == 'engine')"
-                                              message: "exactly one container must be named 'engine'"
-                                            - rule: "!self.exists(c, c.name == 'engine' && has(c.readinessProbe))"
-                                              message: "the engine container can't set readinessProbe; Modelplane probes it on its http port"
+                                            - rule: self.exists_one(c, c.name == 'engine')
+                                              message: exactly one container must be named 'engine'
                                             items:
                                               type: object
-                                              required: [name, image]
+                                              required:
+                                              - name
+                                              - image
                                               properties:
                                                 name:
                                                   type: string
                                                   minLength: 1
                                                   maxLength: 63
-                                                  pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
-                                                  description: >-
-                                                    Container name. The container named
-                                                    "engine" is the inference engine.
+                                                  pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                                  description: Container name. The container named "engine" is the inference engine.
                                                 image:
                                                   type: string
                                                   minLength: 1
                                                   description: Container image.
                                                 command:
                                                   type: array
-                                                  description: >-
-                                                    Container entrypoint override, passed
-                                                    through verbatim. For a Leader or
-                                                    Worker, the command owns cross-node
-                                                    coordination: it addresses the leader
-                                                    through $(MODELPLANE_LEADER_ADDRESS),
-                                                    which Modelplane injects into every
-                                                    engine container on either stack. The
-                                                    pod's rank (0 for the Leader,
-                                                    1..worker.nodes for followers) comes
-                                                    from $(MODELPLANE_RANK) on a Standard
-                                                    cluster; on Dynamo the command derives
-                                                    it from Grove's GROVE_PCLQ_POD_INDEX,
-                                                    since Grove exposes no group-wide pod
-                                                    index yet.
+                                                  description: Container entrypoint override, passed through verbatim. Gang commands use $(MODELPLANE_LEADER_ADDRESS)
+                                                    and $(MODELPLANE_RANK) on either stack. On Dynamo, use these topology aliases in command or args, not in dependent
+                                                    env values.
                                                   items:
                                                     type: string
                                                 args:
                                                   type: array
-                                                  description: >-
-                                                    Container args, passed through to the
-                                                    serving engine. Includes the model
-                                                    identifier (e.g. --model=...) and any
-                                                    parallelism flags.
+                                                  description: 'Container args, passed through to the serving engine. Includes the model identifier (e.g. --model=...)
+                                                    and any parallelism flags.
 
-                                                    Pass --served-model-name
-                                                    $(MODELPLANE_SERVED_MODEL_NAME), the
-                                                    variable Modelplane injects, so the
-                                                    engine answers to the name a gateway
-                                                    routes to. An engine started under a
-                                                    literal name may return a 404 for
-                                                    every request.
+                                                    Pass --served-model-name $(MODELPLANE_SERVED_MODEL_NAME), the variable Modelplane injects, so the engine answers
+                                                    to the name a gateway routes to. An engine started under a literal name may return a 404 for every request.'
                                                   items:
                                                     type: string
                                                 env:
                                                   type: array
-                                                  description: >-
-                                                    Environment variables. Supports
-                                                    valueFrom.secretKeyRef /
-                                                    configMapKeyRef for secrets and
-                                                    config (like HF_TOKEN), and
-                                                    valueFrom.fieldRef for pod fields
-                                                    (e.g. status.podIP for vLLM's
-                                                    VLLM_HOST_IP on multi-NIC nodes).
+                                                  description: Environment variables. Supports valueFrom.secretKeyRef / configMapKeyRef for secrets and config
+                                                    (like HF_TOKEN), and valueFrom.fieldRef for pod fields (e.g. status.podIP for vLLM's VLLM_HOST_IP on multi-NIC
+                                                    nodes).
                                                   items:
                                                     type: object
-                                                    required: [name]
+                                                    required:
+                                                    - name
                                                     properties:
                                                       name:
                                                         type: string
@@ -710,7 +1060,9 @@ spec:
                                                         properties:
                                                           secretKeyRef:
                                                             type: object
-                                                            required: [name, key]
+                                                            required:
+                                                            - name
+                                                            - key
                                                             properties:
                                                               name:
                                                                 type: string
@@ -720,7 +1072,9 @@ spec:
                                                                 type: boolean
                                                           configMapKeyRef:
                                                             type: object
-                                                            required: [name, key]
+                                                            required:
+                                                            - name
+                                                            - key
                                                             properties:
                                                               name:
                                                                 type: string
@@ -730,12 +1084,9 @@ spec:
                                                                 type: boolean
                                                           fieldRef:
                                                             type: object
-                                                            description: >-
-                                                              Reference a pod field via
-                                                              the downward API, e.g.
-                                                              status.podIP, metadata.name,
-                                                              or metadata.namespace.
-                                                            required: [fieldPath]
+                                                            description: Reference a pod field via the downward API, e.g. status.podIP, metadata.name, or metadata.namespace.
+                                                            required:
+                                                            - fieldPath
                                                             properties:
                                                               fieldPath:
                                                                 type: string
@@ -743,54 +1094,63 @@ spec:
                                                                 type: string
                                                 resources:
                                                   type: object
-                                                  description: >-
-                                                    CPU and memory requests and limits. On the engine container,
-                                                    Modelplane adds the member's device claim beside them.
+                                                  description: CPU and memory requests and limits. On the engine container, Modelplane adds the member's device
+                                                    claim beside them.
                                                   x-kubernetes-validations:
-                                                  - rule: "(!has(self.requests) || self.requests.all(k, k in ['cpu', 'memory', 'ephemeral-storage'])) && (!has(self.limits) || self.limits.all(k, k in ['cpu', 'memory', 'ephemeral-storage']))"
-                                                    message: "resources take only cpu, memory and ephemeral-storage; a member gets devices from its node pool's device requests"
+                                                  - rule: (!has(self.requests) || self.requests.all(k, k in ['cpu', 'memory', 'ephemeral-storage'])) && (!has(self.limits)
+                                                      || self.limits.all(k, k in ['cpu', 'memory', 'ephemeral-storage']))
+                                                    message: resources take only cpu, memory and ephemeral-storage; a member gets devices from its node pool's
+                                                      device requests
                                                   properties:
                                                     requests:
                                                       type: object
                                                       maxProperties: 3
                                                       additionalProperties:
-                                                        anyOf: [{type: integer}, {type: string}]
+                                                        anyOf:
+                                                        - type: integer
+                                                        - type: string
                                                         x-kubernetes-int-or-string: true
                                                     limits:
                                                       type: object
                                                       maxProperties: 3
                                                       additionalProperties:
-                                                        anyOf: [{type: integer}, {type: string}]
+                                                        anyOf:
+                                                        - type: integer
+                                                        - type: string
                                                         x-kubernetes-int-or-string: true
                                                 readinessProbe:
                                                   type: object
-                                                  description: >-
-                                                    How Kubernetes checks that a container beside the engine is
-                                                    ready, such as a sidecar on port 8000. The engine container
-                                                    can't set one: Modelplane probes the engine on its http port.
+                                                  description: How Kubernetes checks container readiness. Explicit engine probes replace Modelplane defaults.
                                                   x-kubernetes-validations:
-                                                  - rule: "[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1"
-                                                    message: "readinessProbe sets exactly one of httpGet, tcpSocket and grpc"
+                                                  - rule: '[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1'
+                                                    message: readinessProbe sets exactly one of httpGet, tcpSocket and grpc
                                                   properties:
                                                     httpGet:
                                                       type: object
-                                                      required: [port]
+                                                      required:
+                                                      - port
                                                       properties:
                                                         path:
                                                           type: string
                                                         port:
-                                                          anyOf: [{type: integer}, {type: string}]
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
                                                           x-kubernetes-int-or-string: true
                                                     tcpSocket:
                                                       type: object
-                                                      required: [port]
+                                                      required:
+                                                      - port
                                                       properties:
                                                         port:
-                                                          anyOf: [{type: integer}, {type: string}]
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
                                                           x-kubernetes-int-or-string: true
                                                     grpc:
                                                       type: object
-                                                      required: [port]
+                                                      required:
+                                                      - port
                                                       properties:
                                                         port:
                                                           type: integer
@@ -815,35 +1175,138 @@ spec:
                                                   type: array
                                                   maxItems: 8
                                                   x-kubernetes-list-type: map
-                                                  x-kubernetes-list-map-keys: [containerPort]
+                                                  x-kubernetes-list-map-keys:
+                                                  - containerPort
                                                   x-kubernetes-validations:
-                                                  - rule: "self.all(p, !has(p.name) || self.exists_one(q, has(q.name) && q.name == p.name))"
-                                                    message: "port names must be unique within a container"
-                                                  description: >-
-                                                    Ports the container listens on. The engine container's
-                                                    port named "http" is where Modelplane probes the engine
-                                                    and scrapes its metrics. Without one, the engine serves
-                                                    on 8000, and an unnamed port 8000 is its "http" port. A
-                                                    container in front of the engine declares 8000, and the
-                                                    engine then declares its "http" port elsewhere. A Worker's
-                                                    ports pass through as written.
+                                                  - rule: self.all(p, !has(p.name) || self.exists_one(q, has(q.name) && q.name == p.name))
+                                                    message: port names must be unique within a container
+                                                  description: Ports the container listens on. The engine container's port named "http" is where Modelplane probes
+                                                    the engine and scrapes its metrics. Without one, the engine serves on 8000, and an unnamed port 8000 is its
+                                                    "http" port. A container in front of the engine declares 8000, and the engine then declares its "http" port
+                                                    elsewhere. A Worker's ports pass through as written.
                                                   items:
                                                     type: object
-                                                    required: [containerPort]
+                                                    required:
+                                                    - containerPort
                                                     properties:
                                                       name:
                                                         type: string
                                                         minLength: 1
                                                         maxLength: 15
-                                                        pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
-                                                        description: >-
-                                                          Port name. The engine container's port named "http" is
-                                                          where Modelplane probes the engine and scrapes its metrics.
+                                                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                                        description: Port name. The engine container's port named "http" is where Modelplane probes the engine
+                                                          and scrapes its metrics.
                                                       containerPort:
                                                         type: integer
                                                         minimum: 1
                                                         maximum: 65535
                                                         description: Port number the container listens on.
+                                                startupProbe:
+                                                  type: object
+                                                  description: How Kubernetes checks container startup.
+                                                  x-kubernetes-validations:
+                                                  - rule: '[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1'
+                                                    message: readinessProbe sets exactly one of httpGet, tcpSocket and grpc
+                                                  properties:
+                                                    httpGet:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        path:
+                                                          type: string
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    tcpSocket:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    grpc:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          type: integer
+                                                        service:
+                                                          type: string
+                                                    initialDelaySeconds:
+                                                      type: integer
+                                                      minimum: 0
+                                                    periodSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    timeoutSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    successThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                    failureThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                livenessProbe:
+                                                  type: object
+                                                  description: How Kubernetes checks container liveness.
+                                                  x-kubernetes-validations:
+                                                  - rule: '[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1'
+                                                    message: readinessProbe sets exactly one of httpGet, tcpSocket and grpc
+                                                  properties:
+                                                    httpGet:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        path:
+                                                          type: string
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    tcpSocket:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    grpc:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          type: integer
+                                                        service:
+                                                          type: string
+                                                    initialDelaySeconds:
+                                                      type: integer
+                                                      minimum: 0
+                                                    periodSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    timeoutSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    successThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                    failureThreshold:
+                                                      type: integer
+                                                      minimum: 1
                                           imagePullSecrets:
                                             type: array
                                             description: >-
@@ -855,6 +1318,326 @@ spec:
                                               properties:
                                                 name:
                                                   type: string
+                                          initContainers:
+                                            type: array
+                                            minItems: 0
+                                            maxItems: 8
+                                            x-kubernetes-list-type: map
+                                            x-kubernetes-list-map-keys:
+                                            - name
+                                            description: 'Init containers in startup order, including native sidecars with restartPolicy: Always. Their commands,
+                                              environment, resources and probes pass through unchanged. On Dynamo the serving member declares its Dynamo sidecar
+                                              here as runtime.'
+                                            x-kubernetes-validations:
+                                            - rule: self.all(c, c.name != 'engine')
+                                              message: init containers must not be named engine
+                                            items:
+                                              type: object
+                                              required:
+                                              - name
+                                              - image
+                                              properties:
+                                                name:
+                                                  type: string
+                                                  minLength: 1
+                                                  maxLength: 63
+                                                  pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                                  description: Init container name; runtime selects Dynamo sidecar mode.
+                                                image:
+                                                  type: string
+                                                  minLength: 1
+                                                  description: Container image.
+                                                command:
+                                                  type: array
+                                                  description: Container entrypoint override, passed through verbatim. Gang commands use $(MODELPLANE_LEADER_ADDRESS)
+                                                    and $(MODELPLANE_RANK) on either stack. On Dynamo, use these topology aliases in command or args, not in dependent
+                                                    env values.
+                                                  items:
+                                                    type: string
+                                                args:
+                                                  type: array
+                                                  description: 'Container args, passed through to the serving engine. Includes the model identifier (e.g. --model=...)
+                                                    and any parallelism flags.
+
+                                                    Pass --served-model-name $(MODELPLANE_SERVED_MODEL_NAME), the variable Modelplane injects, so the engine answers
+                                                    to the name a gateway routes to. An engine started under a literal name may return a 404 for every request.'
+                                                  items:
+                                                    type: string
+                                                env:
+                                                  type: array
+                                                  description: Environment variables. Supports valueFrom.secretKeyRef / configMapKeyRef for secrets and config
+                                                    (like HF_TOKEN), and valueFrom.fieldRef for pod fields (e.g. status.podIP for vLLM's VLLM_HOST_IP on multi-NIC
+                                                    nodes).
+                                                  items:
+                                                    type: object
+                                                    required:
+                                                    - name
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                      value:
+                                                        type: string
+                                                      valueFrom:
+                                                        type: object
+                                                        properties:
+                                                          secretKeyRef:
+                                                            type: object
+                                                            required:
+                                                            - name
+                                                            - key
+                                                            properties:
+                                                              name:
+                                                                type: string
+                                                              key:
+                                                                type: string
+                                                              optional:
+                                                                type: boolean
+                                                          configMapKeyRef:
+                                                            type: object
+                                                            required:
+                                                            - name
+                                                            - key
+                                                            properties:
+                                                              name:
+                                                                type: string
+                                                              key:
+                                                                type: string
+                                                              optional:
+                                                                type: boolean
+                                                          fieldRef:
+                                                            type: object
+                                                            description: Reference a pod field via the downward API, e.g. status.podIP, metadata.name, or metadata.namespace.
+                                                            required:
+                                                            - fieldPath
+                                                            properties:
+                                                              fieldPath:
+                                                                type: string
+                                                              apiVersion:
+                                                                type: string
+                                                resources:
+                                                  type: object
+                                                  description: CPU and memory requests and limits. On the engine container, Modelplane adds the member's device
+                                                    claim beside them.
+                                                  x-kubernetes-validations:
+                                                  - rule: (!has(self.requests) || self.requests.all(k, k in ['cpu', 'memory', 'ephemeral-storage'])) && (!has(self.limits)
+                                                      || self.limits.all(k, k in ['cpu', 'memory', 'ephemeral-storage']))
+                                                    message: resources take only cpu, memory and ephemeral-storage; a member gets devices from its node pool's
+                                                      device requests
+                                                  properties:
+                                                    requests:
+                                                      type: object
+                                                      maxProperties: 3
+                                                      additionalProperties:
+                                                        anyOf:
+                                                        - type: integer
+                                                        - type: string
+                                                        x-kubernetes-int-or-string: true
+                                                    limits:
+                                                      type: object
+                                                      maxProperties: 3
+                                                      additionalProperties:
+                                                        anyOf:
+                                                        - type: integer
+                                                        - type: string
+                                                        x-kubernetes-int-or-string: true
+                                                readinessProbe:
+                                                  type: object
+                                                  description: How Kubernetes checks container readiness. Explicit engine probes replace Modelplane defaults.
+                                                  x-kubernetes-validations:
+                                                  - rule: '[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1'
+                                                    message: readinessProbe sets exactly one of httpGet, tcpSocket and grpc
+                                                  properties:
+                                                    httpGet:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        path:
+                                                          type: string
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    tcpSocket:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    grpc:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          type: integer
+                                                        service:
+                                                          type: string
+                                                    initialDelaySeconds:
+                                                      type: integer
+                                                      minimum: 0
+                                                    periodSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    timeoutSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    successThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                    failureThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                ports:
+                                                  type: array
+                                                  maxItems: 8
+                                                  x-kubernetes-list-type: map
+                                                  x-kubernetes-list-map-keys:
+                                                  - containerPort
+                                                  x-kubernetes-validations:
+                                                  - rule: self.all(p, !has(p.name) || self.exists_one(q, has(q.name) && q.name == p.name))
+                                                    message: port names must be unique within a container
+                                                  description: Ports the container listens on. The engine container's port named "http" is where Modelplane probes
+                                                    the engine and scrapes its metrics. Without one, the engine serves on 8000, and an unnamed port 8000 is its
+                                                    "http" port. A container in front of the engine declares 8000, and the engine then declares its "http" port
+                                                    elsewhere. A Worker's ports pass through as written.
+                                                  items:
+                                                    type: object
+                                                    required:
+                                                    - containerPort
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                        minLength: 1
+                                                        maxLength: 15
+                                                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                                        description: Port name. The engine container's port named "http" is where Modelplane probes the engine
+                                                          and scrapes its metrics.
+                                                      containerPort:
+                                                        type: integer
+                                                        minimum: 1
+                                                        maximum: 65535
+                                                        description: Port number the container listens on.
+                                                startupProbe:
+                                                  type: object
+                                                  description: How Kubernetes checks container startup.
+                                                  x-kubernetes-validations:
+                                                  - rule: '[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1'
+                                                    message: readinessProbe sets exactly one of httpGet, tcpSocket and grpc
+                                                  properties:
+                                                    httpGet:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        path:
+                                                          type: string
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    tcpSocket:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    grpc:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          type: integer
+                                                        service:
+                                                          type: string
+                                                    initialDelaySeconds:
+                                                      type: integer
+                                                      minimum: 0
+                                                    periodSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    timeoutSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    successThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                    failureThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                livenessProbe:
+                                                  type: object
+                                                  description: How Kubernetes checks container liveness.
+                                                  x-kubernetes-validations:
+                                                  - rule: '[has(self.httpGet), has(self.tcpSocket), has(self.grpc)].filter(h, h).size() == 1'
+                                                    message: readinessProbe sets exactly one of httpGet, tcpSocket and grpc
+                                                  properties:
+                                                    httpGet:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        path:
+                                                          type: string
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    tcpSocket:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          anyOf:
+                                                          - type: integer
+                                                          - type: string
+                                                          x-kubernetes-int-or-string: true
+                                                    grpc:
+                                                      type: object
+                                                      required:
+                                                      - port
+                                                      properties:
+                                                        port:
+                                                          type: integer
+                                                        service:
+                                                          type: string
+                                                    initialDelaySeconds:
+                                                      type: integer
+                                                      minimum: 0
+                                                    periodSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    timeoutSeconds:
+                                                      type: integer
+                                                      minimum: 1
+                                                    successThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                    failureThreshold:
+                                                      type: integer
+                                                      minimum: 1
+                                                restartPolicy:
+                                                  type: string
+                                                  enum:
+                                                  - Always
+                                                  description: Always makes this init container a native sidecar that runs for the lifetime of the pod. Omitted
+                                                    for an init container that exits.
+                                        x-kubernetes-validations:
+                                        - rule: '!has(self.initContainers) || self.initContainers.all(i, !self.containers.exists(c, c.name == i.name))'
+                                          message: container names must be unique across containers and initContainers
           status:
             type: object
             properties:

@@ -1,6 +1,6 @@
 {
-  "name": "ArgsOnlyStandalone",
-  "reason": "An args-only runtime template gets the Python module launcher instead of inheriting the operator shell command.",
+  "name": "FrontendConfiguration",
+  "reason": "The authored frontend owns replicas, router mode, environment and the named Service port independently of engine settings.",
   "replica": {
     "apiVersion": "modelplane.ai/v1alpha1",
     "kind": "ModelReplica",
@@ -23,11 +23,21 @@
                   "containers": [
                     {
                       "name": "engine",
-                      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                      "image": "vllm/vllm-openai:v0.32.0",
+                      "command": [
+                        "vllm",
+                        "serve"
+                      ],
                       "args": [
                         "--model",
                         "Qwen/Qwen3-0.6B"
-                      ]
+                      ],
+                      "readinessProbe": {
+                        "grpc": {
+                          "port": 30001
+                        },
+                        "periodSeconds": 5
+                      }
                     },
                     {
                       "name": "logging",
@@ -35,6 +45,20 @@
                       "args": [
                         "--stdout"
                       ]
+                    }
+                  ],
+                  "initContainers": [
+                    {
+                      "name": "runtime",
+                      "image": "nvcr.io/nvidia/ai-dynamo/dynamo-sidecar-nightly:20261103-e37f0b9",
+                      "command": [
+                        "dynamo-vllm-sidecar"
+                      ],
+                      "args": [
+                        "--grpc-endpoint",
+                        "127.0.0.1:30001"
+                      ],
+                      "restartPolicy": "Always"
                     }
                   ]
                 }
@@ -49,7 +73,59 @@
             }
           ]
         }
-      ]
+      ],
+      "serving": {
+        "mode": "Unified",
+        "router": "Dynamo",
+        "dynamo": {
+          "backendFramework": "vllm",
+          "frontend": {
+            "replicas": 2,
+            "template": {
+              "metadata": {
+                "labels": {
+                  "routing": "user-authored"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "main",
+                    "image": "nvcr.io/nvidia/ai-dynamo/dynamo-frontend-nightly:20261103-e37f0b9",
+                    "command": [
+                      "dynamo-frontend"
+                    ],
+                    "args": [
+                      "--http-port",
+                      "9000",
+                      "--router-mode",
+                      "round-robin"
+                    ],
+                    "env": [
+                      {
+                        "name": "FRONTEND_SETTING",
+                        "value": "user-value"
+                      }
+                    ],
+                    "ports": [
+                      {
+                        "name": "http",
+                        "containerPort": 9000
+                      }
+                    ]
+                  }
+                ],
+                "imagePullSecrets": [
+                  {
+                    "name": "frontend-registry"
+                  }
+                ]
+              }
+            }
+          },
+          "runtimeVersionOverride": "1.7.0"
+        }
+      }
     }
   },
   "provider_config": "cluster-a-pc",
@@ -90,7 +166,7 @@
         }
       }
     },
-    "workload-dynamo-9a9f92bce0": {
+    "workload-dynamo-5e03f93660": {
       "spec": {
         "providerConfigRef": {
           "kind": "ClusterProviderConfig",
@@ -106,10 +182,11 @@
             "apiVersion": "nvidia.com/v1beta1",
             "kind": "DynamoGraphDeployment",
             "metadata": {
-              "name": "r-9a9f92bce0",
+              "name": "r-5e03f93660",
               "namespace": "mp-ml-team-51733",
               "annotations": {
-                "nvidia.com/grove-update-strategy": "Coherent"
+                "nvidia.com/grove-update-strategy": "Coherent",
+                "nvidia.com/kai-scheduler-queue": "modelplane"
               }
             },
             "spec": {
@@ -118,36 +195,47 @@
                 {
                   "name": "frontend",
                   "type": "frontend",
-                  "replicas": 1,
+                  "replicas": 2,
                   "podTemplate": {
                     "metadata": {
                       "labels": {
-                        "modelplane.ai/serving": "r",
-                        "modelplane.ai/replica": "r",
-                        "modelplane.ai/deployment": "r"
+                        "routing": "user-authored",
+                        "modelplane.ai/role": "frontend"
                       }
                     },
                     "spec": {
                       "containers": [
                         {
                           "name": "main",
-                          "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                          "image": "nvcr.io/nvidia/ai-dynamo/dynamo-frontend-nightly:20261103-e37f0b9",
                           "command": [
-                            "python3",
-                            "-m",
-                            "dynamo.frontend"
+                            "dynamo-frontend"
                           ],
                           "args": [
                             "--http-port",
-                            "8000",
+                            "9000",
                             "--router-mode",
-                            "kv"
+                            "round-robin"
                           ],
-                          "env": [],
-                          "volumeMounts": []
+                          "env": [
+                            {
+                              "name": "FRONTEND_SETTING",
+                              "value": "user-value"
+                            }
+                          ],
+                          "ports": [
+                            {
+                              "name": "http",
+                              "containerPort": 9000
+                            }
+                          ]
                         }
                       ],
-                      "volumes": []
+                      "imagePullSecrets": [
+                        {
+                          "name": "frontend-registry"
+                        }
+                      ]
                     }
                   },
                   "runtimeVersionOverride": "1.7.0"
@@ -160,33 +248,42 @@
                     "metadata": {
                       "labels": {
                         "modelplane.ai/engine": "main",
-                        "modelplane.ai/role": "Standalone",
-                        "kai.scheduler/queue": "modelplane"
+                        "modelplane.ai/role": "Standalone"
                       }
                     },
                     "spec": {
                       "containers": [
                         {
                           "name": "main",
-                          "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime-nightly:20261103-e37f0b9",
+                          "image": "vllm/vllm-openai:v0.32.0",
                           "command": [
-                            "python3",
-                            "-m",
-                            "dynamo.vllm"
+                            "vllm",
+                            "serve"
                           ],
                           "args": [
                             "--model",
                             "Qwen/Qwen3-0.6B"
                           ],
-                          "volumeMounts": [],
-                          "env": [],
+                          "readinessProbe": {
+                            "grpc": {
+                              "port": 30001
+                            },
+                            "periodSeconds": 5
+                          },
                           "resources": {
                             "claims": [
                               {
                                 "name": "devices"
                               }
                             ]
-                          }
+                          },
+                          "volumeMounts": [
+                            {
+                              "name": "dshm",
+                              "mountPath": "/dev/shm"
+                            }
+                          ],
+                          "env": []
                         },
                         {
                           "name": "logging",
@@ -196,7 +293,14 @@
                           ]
                         }
                       ],
-                      "volumes": [],
+                      "volumes": [
+                        {
+                          "name": "dshm",
+                          "emptyDir": {
+                            "medium": "Memory"
+                          }
+                        }
+                      ],
                       "schedulerName": "kai-scheduler",
                       "nodeSelector": {
                         "modelplane.ai/pool": "frontier"
@@ -222,6 +326,20 @@
                         {
                           "name": "devices",
                           "resourceClaimTemplateName": "r-main-standalone-devices-f456f"
+                        }
+                      ],
+                      "initContainers": [
+                        {
+                          "name": "runtime",
+                          "image": "nvcr.io/nvidia/ai-dynamo/dynamo-sidecar-nightly:20261103-e37f0b9",
+                          "command": [
+                            "dynamo-vllm-sidecar"
+                          ],
+                          "args": [
+                            "--grpc-endpoint",
+                            "127.0.0.1:30001"
+                          ],
+                          "restartPolicy": "Always"
                         }
                       ]
                     }
