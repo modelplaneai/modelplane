@@ -21,8 +21,14 @@
 
 set -e
 
+# Our flake needs Nix 2.19 or later (for builtins.convertHash), which rules out
+# Ubuntu's nix-bin package. Install a static Nix build with the Renovate
+# image's containerbase installer instead.
+NIX_VERSION=2.34.9
+NIX_BIN=/opt/containerbase/tools/nix/${NIX_VERSION}/bin/nix
+
 echo "Installing Nix..."
-apt-get update && apt-get install -y nix-bin
+install-tool nix "${NIX_VERSION}"
 
 mkdir -p /etc/nix
 cat >/etc/nix/nix.conf <<'EOF'
@@ -37,16 +43,17 @@ build-users-group =
 max-jobs = auto
 EOF
 
-# Renovate installs its own Nix when it updates flake.lock. It goes earlier on
-# PATH than ours and ignores the config above, so all nix commands we run (e.g.
-# postUpgradeTasks) will go through this launcher, which pins both the binary
-# and the config it reads.
-cat >/usr/local/bin/modelplane-nix <<'EOF'
+# The nix on PATH is containerbase's wrapper, which Renovate also uses when it
+# updates flake.lock. It ignores the config above and keeps its store under
+# /tmp, where nothing can be substituted from cache.nixos.org. So all nix
+# commands we run (e.g. postUpgradeTasks) go through this launcher, which runs
+# the binary directly with the config above and the default /nix/store.
+cat >/usr/local/bin/modelplane-nix <<EOF
 #!/bin/bash
-exec env NIX_CONF_DIR=/etc/nix /usr/bin/nix "$@"
+exec env NIX_CONF_DIR=/etc/nix ${NIX_BIN} "\$@"
 EOF
 chmod +x /usr/local/bin/modelplane-nix
 
-echo "Nix $(modelplane-nix --version) installed successfully"
+modelplane-nix --version
 
 renovate
