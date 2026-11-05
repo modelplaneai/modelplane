@@ -91,6 +91,10 @@ _SECRET_TYPE_KUBECONFIG = "Kubeconfig"
 _CERT_MANAGER_KEY = "cert-manager"
 _CLUSTER_RESOURCE_NAMESPACE = "modelplane-system"
 
+# The composed-resource key of the EnvoyProxy the GatewayClass references
+# (stacks.common.gateway_proxy).
+_GATEWAY_PROXY = "gateway-proxy"
+
 # The (apiVersion, kind) a component's composed resources render as,
 # used by the derived Usages' of/by references.
 _RELEASE_REF = ("helm.m.crossplane.io/v1beta1", "Release")
@@ -563,9 +567,17 @@ class Composer:
                 f"Gateway {gw.hostname} not served: no InferenceGateway has published a client CA for this "
                 "cluster to trust, and serving without one would accept unauthenticated callers",
             )
+        # Envoy Gateway creates the Gateway's LoadBalancer Service from the
+        # EnvoyProxy that exists at that moment, and some clouds assign the
+        # Service an address only once. CKS gives a Service without its public
+        # annotation a private address and keeps it after the annotation
+        # arrives. The Gateway waits for the EnvoyProxy the first time.
+        proxy_ready = resource.get_condition(self.req.observed.resources.get(_GATEWAY_PROXY), "Ready").status == "True"
         rendered: list[str] = []
         for key, manifest, cel in gateway.objects(self.xr.spec.gateway):
             if key == "gateway" and not serve_gateway:
+                continue
+            if key == "gateway" and not proxy_ready and key not in self.req.observed.resources:
                 continue
             if not (pc_observed or key in self.req.observed.resources):
                 continue

@@ -492,6 +492,36 @@ def _gaie_crd(*, name: str, ready: fnv1.Ready) -> fnv1.Resource:
     )
 
 
+def _gateway_proxy(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed EnvoyProxy the GatewayClass references, on a cloud whose load balancers need no settings."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "metadata": {"labels": {"modelplane.ai/resource": "gateway-proxy"}},
+                "spec": {
+                    "providerConfigRef": {"kind": "ProviderConfig", "name": "test-backend-cluster-63fde"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+                            "kind": "EnvoyProxy",
+                            "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
+                            "spec": {
+                                "provider": {
+                                    "type": "Kubernetes",
+                                    "kubernetes": {"envoyService": {"externalTrafficPolicy": "Cluster"}},
+                                }
+                            },
+                        }
+                    },
+                },
+            }
+        ),
+        ready=ready,
+    )
+
+
 def _gateway_namespace(*, ready: fnv1.Ready) -> fnv1.Resource:
     """The composed modelplane-system Namespace."""
     return fnv1.Resource(
@@ -2046,7 +2076,10 @@ COMPOSE_CASES = [
     # trust-manager on gateway-selfsigned-issuer.
     ComposeCase(
         name="ProviderConfigsObserved",
-        reason="Once its ProviderConfigs are observed, a stack renders the components with no dependencies.",
+        reason=(
+            "Once its ProviderConfigs are observed, a stack renders the components with no dependencies, and "
+            "withholds the Gateway until the EnvoyProxy it references is Ready."
+        ),
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_serving_stack(
@@ -2342,7 +2375,6 @@ COMPOSE_CASES = [
                         )
                     ),
                     "gateway-class": _gateway_class(ready=fnv1.READY_UNSPECIFIED),
-                    "gateway": _gateway(hostname="test-backend.gateways.example.com", ready=fnv1.READY_UNSPECIFIED),
                     "gateway-ca-certificate": _gateway_ca_certificate(
                         common_name="modelplane cluster CA test-backend.gateways.example.com",
                         ready=fnv1.READY_UNSPECIFIED,
@@ -2687,37 +2719,7 @@ COMPOSE_CASES = [
                         name="inferencepools.inference.networking.x-k8s.io", ready=fnv1.READY_TRUE
                     ),
                     "gateway-namespace": _gateway_namespace(ready=fnv1.READY_TRUE),
-                    "gateway-proxy": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                                "kind": "Object",
-                                "metadata": {"labels": {"modelplane.ai/resource": "gateway-proxy"}},
-                                "spec": {
-                                    "providerConfigRef": {
-                                        "kind": "ProviderConfig",
-                                        "name": "test-backend-cluster-63fde",
-                                    },
-                                    "forProvider": {
-                                        "manifest": {
-                                            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-                                            "kind": "EnvoyProxy",
-                                            "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
-                                            "spec": {
-                                                "provider": {
-                                                    "type": "Kubernetes",
-                                                    "kubernetes": {
-                                                        "envoyService": {"externalTrafficPolicy": "Cluster"}
-                                                    },
-                                                }
-                                            },
-                                        }
-                                    },
-                                },
-                            }
-                        ),
-                        ready=fnv1.READY_TRUE,
-                    ),
+                    "gateway-proxy": _gateway_proxy(ready=fnv1.READY_TRUE),
                     "gateway-selfsigned-issuer": _gateway_selfsigned_issuer(),
                     "trust-manager": _trust_manager(ready=fnv1.READY_TRUE),
                     "cluster-agent": _cluster_agent(ready=fnv1.READY_TRUE),
@@ -3383,6 +3385,7 @@ COMPOSE_CASES = [
                 resources={
                     "provider-config-kubernetes": _observed_kubernetes_provider_config(),
                     "provider-config-helm": _observed_helm_provider_config(),
+                    "gateway-proxy": _observed_ready(),
                     "gateway-selfsigned-issuer": _observed_ready(),
                     "gateway-ca-configmap": fnv1.Resource(
                         resource=resource.dict_to_struct(
@@ -3400,6 +3403,7 @@ COMPOSE_CASES = [
                 resources={
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
+                    "gateway-proxy": _gateway_proxy(ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
                     "node-feature-discovery": _node_feature_discovery(
                         ready=fnv1.READY_UNSPECIFIED,
@@ -3558,6 +3562,7 @@ COMPOSE_CASES = [
                 resources={
                     "provider-config-kubernetes": _observed_kubernetes_provider_config(),
                     "provider-config-helm": _observed_helm_provider_config(),
+                    "gateway-proxy": _observed_ready(),
                     "gateway-selfsigned-issuer": _observed_ready(),
                     "gateway-ca-certificate": _observed_ready(),
                     "gateway-ca-issuer": _observed_ready(),
@@ -3586,6 +3591,7 @@ COMPOSE_CASES = [
                 resources={
                     "provider-config-kubernetes": _kubernetes_provider_config(identity=None, ready=fnv1.READY_TRUE),
                     "provider-config-helm": _helm_provider_config(identity=None, ready=fnv1.READY_TRUE),
+                    "gateway-proxy": _gateway_proxy(ready=fnv1.READY_TRUE),
                     "cert-manager": _cert_manager(ready=fnv1.READY_UNSPECIFIED),
                     "node-feature-discovery": _node_feature_discovery(
                         ready=fnv1.READY_UNSPECIFIED,
@@ -4658,6 +4664,7 @@ COMPOSE_CASES = [
                 resources={
                     "provider-config-kubernetes": _observed_kubernetes_provider_config(),
                     "provider-config-helm": _observed_helm_provider_config(),
+                    "gateway-proxy": _observed_ready(),
                 },
             ),
             required_resources={
@@ -4693,6 +4700,7 @@ COMPOSE_CASES = [
                         },
                         ready=fnv1.READY_TRUE,
                     ),
+                    "gateway-proxy": _gateway_proxy(ready=fnv1.READY_TRUE),
                     "cert-manager": _gke_cert_manager(),
                     "node-feature-discovery": _gke_node_feature_discovery(),
                     "nodewright-operator": _nodewright_operator(),
@@ -4921,6 +4929,7 @@ COMPOSE_CASES = [
                 resources={
                     "provider-config-kubernetes": _observed_kubernetes_provider_config(),
                     "provider-config-helm": _observed_helm_provider_config(),
+                    "gateway-proxy": _observed_ready(),
                 },
             ),
             required_resources={
@@ -4978,6 +4987,7 @@ COMPOSE_CASES = [
                         },
                         ready=fnv1.READY_TRUE,
                     ),
+                    "gateway-proxy": _gateway_proxy(ready=fnv1.READY_TRUE),
                     "cert-manager": _gke_cert_manager(),
                     "node-feature-discovery": _gke_node_feature_discovery(),
                     "nodewright-operator": _nodewright_operator(),
@@ -5248,6 +5258,7 @@ COMPOSE_CASES = [
                 resources={
                     "provider-config-kubernetes": _observed_kubernetes_provider_config(),
                     "provider-config-helm": _observed_helm_provider_config(),
+                    "gateway-proxy": _observed_ready(),
                 },
             ),
             required_resources={
@@ -5289,6 +5300,7 @@ COMPOSE_CASES = [
                         },
                         ready=fnv1.READY_TRUE,
                     ),
+                    "gateway-proxy": _gateway_proxy(ready=fnv1.READY_TRUE),
                     "cert-manager": _gke_cert_manager(),
                     "node-feature-discovery": _gke_node_feature_discovery(),
                     "nodewright-operator": _nodewright_operator(),
@@ -5517,6 +5529,7 @@ COMPOSE_CASES = [
                 resources={
                     "provider-config-kubernetes": _observed_kubernetes_provider_config(),
                     "provider-config-helm": _observed_helm_provider_config(),
+                    "gateway-proxy": _observed_ready(),
                 },
             ),
             required_resources={
@@ -5556,6 +5569,7 @@ COMPOSE_CASES = [
                         },
                         ready=fnv1.READY_TRUE,
                     ),
+                    "gateway-proxy": _gateway_proxy(ready=fnv1.READY_TRUE),
                     "cert-manager": _gke_cert_manager(),
                     "node-feature-discovery": _gke_node_feature_discovery(),
                     "nodewright-operator": _nodewright_operator(),
@@ -5789,6 +5803,7 @@ COMPOSE_CASES = [
                 resources={
                     "provider-config-kubernetes": _observed_kubernetes_provider_config(),
                     "provider-config-helm": _observed_helm_provider_config(),
+                    "gateway-proxy": _observed_ready(),
                 },
             ),
             required_resources={
@@ -5845,6 +5860,7 @@ COMPOSE_CASES = [
                         },
                         ready=fnv1.READY_TRUE,
                     ),
+                    "gateway-proxy": _gateway_proxy(ready=fnv1.READY_TRUE),
                     "cert-manager": _gke_cert_manager(),
                     "node-feature-discovery": _gke_node_feature_discovery(),
                     "nodewright-operator": _nodewright_operator(),

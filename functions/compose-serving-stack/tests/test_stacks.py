@@ -56,6 +56,16 @@ class SupportedDriversCase:
 
 
 @dataclasses.dataclass
+class GatewayProxyCase:
+    """A test case for the EnvoyProxy stacks.join builds for a cloud."""
+
+    name: str
+    reason: str
+    cloud: str
+    want: dict
+
+
+@dataclasses.dataclass
 class WithNvLinkDisabledCase:
     """A test case for civo.with_nvlink_disabled."""
 
@@ -261,6 +271,57 @@ SUPPORTED_DRIVERS_CASES = [
 def test_supported_drivers(case: SupportedDriversCase) -> None:
     """Each cloud's derived supported drivers match the pinned set."""
     assert stacks.supported_drivers(case.cloud) == case.want, case.reason  # ty: ignore[invalid-argument-type]  # parametrize erases the Literal
+
+
+# The EnvoyProxy every gateway's LoadBalancer Service is configured by,
+# pinned as literals so a cloud's Service settings change deliberately.
+GATEWAY_PROXY_CASES = [
+    GatewayProxyCase(
+        name="NoServiceSettings",
+        reason="A cloud whose load balancers need nothing gets only the externalTrafficPolicy pin.",
+        cloud="GKE",
+        want={
+            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+            "kind": "EnvoyProxy",
+            "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
+            "spec": {
+                "provider": {
+                    "type": "Kubernetes",
+                    "kubernetes": {"envoyService": {"externalTrafficPolicy": "Cluster"}},
+                },
+            },
+        },
+    ),
+    GatewayProxyCase(
+        name="CoreWeave",
+        reason="CoreWeave's EnvoyProxy asks CKS for a public load balancer beside the externalTrafficPolicy pin.",
+        cloud="CoreWeave",
+        want={
+            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+            "kind": "EnvoyProxy",
+            "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
+            "spec": {
+                "provider": {
+                    "type": "Kubernetes",
+                    "kubernetes": {
+                        "envoyService": {
+                            "annotations": {"service.beta.kubernetes.io/coreweave-load-balancer-type": "public"},
+                            "externalTrafficPolicy": "Cluster",
+                        },
+                    },
+                },
+            },
+        },
+    ),
+]
+
+
+@pytest.mark.parametrize("case", GATEWAY_PROXY_CASES, ids=lambda case: case.name)
+def test_gateway_proxy(case: GatewayProxyCase) -> None:
+    """The joined stack's gateway-proxy EnvoyProxy carries the cloud's Service settings."""
+    joined = stacks.join(case.cloud, "Standard")  # ty: ignore[invalid-argument-type]  # parametrize erases the Literal
+    proxy = next(c for c in joined if isinstance(c, stacks.Manifests) and c.key == "gateway-proxy")
+    assert proxy.manifests == [case.want], case.reason
 
 
 @pytest.mark.parametrize("stack", stacks.stacks())

@@ -241,6 +241,7 @@ def _envoy_proxy() -> fnv1.Resource:
                             "kind": "EnvoyProxy",
                             "metadata": {"name": "inference-gateway", "namespace": "modelplane-system"},
                             "spec": {
+                                "mergeType": "StrategicMerge",
                                 # Two proxy pods spread softly across nodes and
                                 # zones, a disruption budget so a drain can't
                                 # evict both, and ndots:1. Without ndots:1 every
@@ -253,7 +254,6 @@ def _envoy_proxy() -> fnv1.Resource:
                                 "provider": {
                                     "type": "Kubernetes",
                                     "kubernetes": {
-                                        "envoyService": {"externalTrafficPolicy": "Cluster"},
                                         "envoyDeployment": {
                                             "name": "envoy-modelplane-system-inference-gateway",
                                             "replicas": 2,

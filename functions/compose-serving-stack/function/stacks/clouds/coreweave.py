@@ -32,6 +32,8 @@ maps DRA allocations to pods. Both exporters run side by side without
 disturbing each other's profiling metrics.
 """
 
+from typing import Any
+
 from function.stacks.clouds.generated.aicr.dcgm import DCGM_METRICS_CSV
 from function.stacks.components import Chart, Component
 
@@ -39,6 +41,12 @@ from function.stacks.components import Chart, Component
 # stack; the stacks package folds them into its derived
 # supported-drivers table.
 EXTERNAL_DRIVERS: list[str] = []
+
+# Settings for every gateway's LoadBalancer Service. CKS gives a
+# LoadBalancer Service a private address without this annotation.
+GATEWAY_SERVICE: dict[str, Any] = {
+    "annotations": {"service.beta.kubernetes.io/coreweave-load-balancer-type": "public"},
+}
 
 COMPONENTS: list[Component] = [
     Chart(

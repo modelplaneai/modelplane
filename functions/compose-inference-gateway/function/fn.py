@@ -572,7 +572,10 @@ class Composer:
 
         Attached to the Gateway rather than the GatewayClass, because the class
         is shared with the cluster gateway, whose per-pod routing has nothing to
-        log here.
+        log here. It merges onto the GatewayClass's EnvoyProxy rather than
+        replacing it, so this gateway's LoadBalancer Service gets what the
+        serving stack configures there: the Service settings the cluster's
+        cloud needs, and the externalTrafficPolicy pin.
 
         Every token field reads request metadata rather than a header or the
         response body. The AI Gateway's ext-proc writes the counts there, having
@@ -591,10 +594,10 @@ class Composer:
                     "kind": "EnvoyProxy",
                     "metadata": {"name": _GATEWAY_NAME, "namespace": REMOTE_NAMESPACE},
                     "spec": {
+                        "mergeType": "StrategicMerge",
                         "provider": {
                             "type": "Kubernetes",
                             "kubernetes": {
-                                "envoyService": {"externalTrafficPolicy": "Cluster"},
                                 "envoyDeployment": {
                                     "name": _ENVOY_DEPLOYMENT_NAME,
                                     "replicas": _PROXY_REPLICAS,
