@@ -1,0 +1,227 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: coreweaveclusters.infrastructure.modelplane.ai
+spec:
+  group: infrastructure.modelplane.ai
+  names:
+    categories:
+    - crossplane
+    - modelplane
+    - infrastructure
+    kind: CoreWeaveCluster
+    plural: coreweaveclusters
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    referenceable: true
+    additionalPrinterColumns:
+    - name: ZONE
+      type: string
+      jsonPath: .spec.zone
+    schema:
+      openAPIV3Schema:
+        description: >-
+          A CoreWeaveCluster provisions a CoreWeave Kubernetes Service (CKS)
+          cluster in a dedicated VPC, with node pools for GPU inference and
+          system workloads. CKS node pools are Kubernetes resources inside
+          the cluster, so they're created through the cluster's own API
+          once it's running. It outputs a Secret containing a kubeconfig
+          for the cluster, which authenticates with the CoreWeave API
+          access token the CoreWeave ProviderConfig uses.
+        properties:
+          spec:
+            description: CoreWeaveClusterSpec defines the desired state of CoreWeaveCluster.
+            required:
+            - zone
+            - nodePools
+            properties:
+              zone:
+                type: string
+                description: >-
+                  CoreWeave Availability Zone for the cluster (e.g.
+                  US-EAST-04A). Instance types vary by zone.
+                minLength: 1
+                maxLength: 32
+              kubernetesVersion:
+                type: string
+                description: >-
+                  CKS Kubernetes minor version, in the form X.Y. CKS
+                  applies patch versions itself.
+                default: "1.37"
+                pattern: '^[0-9]+\.[0-9]+$'
+              credentials:
+                type: object
+                description: >-
+                  CoreWeave ProviderConfig or ClusterProviderConfig used to
+                  authenticate to the CoreWeave API. Its API access token
+                  also authenticates the kubeconfig this cluster outputs,
+                  so the kubeconfig Secret holds a copy of the org's API
+                  token. Limit who can create CoreWeaveClusters, and who
+                  can read Secrets in their namespaces. Defaults to the
+                  ClusterProviderConfig named default.
+                properties:
+                  type:
+                    type: string
+                    default: ClusterProviderConfig
+                    enum:
+                    - ProviderConfig
+                    - ClusterProviderConfig
+                  name:
+                    type: string
+                    default: default
+                    minLength: 1
+                    maxLength: 253
+              nodePools:
+                type: array
+                description: >-
+                  Node pools for the cluster. A system pool for controllers
+                  and infrastructure workloads is added automatically.
+                minItems: 1
+                maxItems: 8
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys:
+                - name
+                items:
+                  type: object
+                  required:
+                  - name
+                  - role
+                  - instanceType
+                  x-kubernetes-validations:
+                  - rule: "self.role != 'GPU' || has(self.gpu)"
+                    message: gpu is required when role is GPU.
+                  - rule: "!has(self.minNodeCount) || has(self.maxNodeCount)"
+                    message: maxNodeCount is required when minNodeCount is set.
+                  - rule: "self.name != 'system'"
+                    message: system is reserved for the system pool added to every cluster.
+                  properties:
+                    name:
+                      type: string
+                      description: >-
+                        Unique name for this node pool. Used as the name of
+                        the pool's CKS NodePool.
+                      minLength: 1
+                      maxLength: 40
+                      pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                    role:
+                      type: string
+                      description: >-
+                        Determines what workloads this pool runs. GPU pools
+                        host inference workloads and are tainted to exclude
+                        non-GPU pods. CPU pools host CPU inference
+                        workloads: a CPU instance type and the
+                        modelplane.ai/cpu label and taint.
+                      enum:
+                      - GPU
+                      - CPU
+                    instanceType:
+                      type: string
+                      description: >-
+                        CKS instance type for the pool's nodes (e.g.
+                        rtxp6000-8x, turin-gp). CKS can't
+                        change an existing pool's instance type; replace
+                        the pool with a new name instead.
+                      minLength: 1
+                      maxLength: 63
+                    nodeCount:
+                      type: integer
+                      default: 1
+                      description: >-
+                        Number of nodes. Fixed unless maxNodeCount enables
+                        autoscaling, in which case it's the initial count,
+                        and a new pool starts with at least one node even if
+                        this is 0, because CKS's autoscaler can't scale it up
+                        from zero (see minNodeCount).
+                      minimum: 0
+                      maximum: 1000
+                    minNodeCount:
+                      type: integer
+                      description: >-
+                        Minimum number of nodes for autoscaling. Defaults to
+                        nodeCount, or 1 if nodeCount is 0. Requires
+                        maxNodeCount. Keep it at 1 or higher: CKS's cluster
+                        autoscaler can't scale a pool whose devices bind
+                        through DRA up from zero nodes, so a pod scheduled to
+                        an empty pool waits forever.
+                      minimum: 0
+                      maximum: 1000
+                    maxNodeCount:
+                      type: integer
+                      description: >-
+                        Maximum number of nodes for autoscaling. When set,
+                        CKS's managed cluster autoscaler scales the pool
+                        between minNodeCount (or nodeCount) and this, and
+                        owns the pool's node count. Setting this on an
+                        existing pool with no nodes leaves it at zero (see
+                        minNodeCount). Omit for fixed-size pools.
+                      minimum: 1
+                      maximum: 1000
+                    gpu:
+                      type: object
+                      description: >-
+                        GPU configuration. Required when role is GPU.
+                      required:
+                      - acceleratorType
+                      properties:
+                        acceleratorType:
+                          type: string
+                          description: >-
+                            GPU accelerator type (e.g. nvidia-h100,
+                            nvidia-l40s). Used to label GPU nodes; the
+                            actual GPU and count are determined by the
+                            instance type.
+                          minLength: 1
+                          maxLength: 63
+            type: object
+          status:
+            description: CoreWeaveClusterStatus defines the observed state of CoreWeaveCluster.
+            properties:
+              secrets:
+                type: array
+                description: >-
+                  Secrets produced by this cluster. Consumers use these to
+                  authenticate to the cluster. All secrets are in the same
+                  namespace as this CoreWeaveCluster.
+                items:
+                  type: object
+                  required:
+                  - type
+                  - name
+                  - key
+                  properties:
+                    type:
+                      type: string
+                      description: >-
+                        The type of credential this secret contains.
+                        Kubeconfig contains a kubeconfig file with the
+                        cluster endpoint and a CoreWeave API access token.
+                      enum:
+                      - Kubeconfig
+                    name:
+                      type: string
+                      description: Name of the Secret.
+                      maxLength: 253
+                    key:
+                      type: string
+                      description: >-
+                        Key within the Secret that holds the credential data.
+                      maxLength: 253
+              cache:
+                type: object
+                description: >-
+                  Observed ModelCache RWX storage state.
+                properties:
+                  storageClassName:
+                    type: string
+                    description: >-
+                      Name of the Modelplane-managed ReadWriteMany
+                      StorageClass composed on this cluster for ModelCache
+                      PVCs, a copy of CKS's shared-vast class that deletes
+                      a volume when its claim is deleted.
+                    maxLength: 253
+            type: object
+        required:
+        - spec
+        type: object
+    served: true

@@ -29,6 +29,10 @@ spec:
       pathPrefix: _output/functions/compose-civo-cluster
   - source: Tarball
     tarball:
+      name: compose-coreweave-cluster
+      pathPrefix: _output/functions/compose-coreweave-cluster
+  - source: Tarball
+    tarball:
       name: compose-eks-cluster
       pathPrefix: _output/functions/compose-eks-cluster
   - source: Tarball
