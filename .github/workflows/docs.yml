@@ -51,7 +51,7 @@ jobs:
       # permission repository_dispatch requires.
       - name: Mint a token for the site repo
         id: token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
         with:
           app-id: ${{ vars.DOCS_SITE_APP_ID }}
           private-key: ${{ secrets.DOCS_SITE_APP_KEY }}
