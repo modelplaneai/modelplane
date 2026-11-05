@@ -99,7 +99,7 @@ spec:
   - type: crd
     git:
       repository: https://github.com/crossplane/crossplane
-      ref: v2.3.2
+      ref: v2.3.7
       path: cluster/crds
   # The serving stack installs the cluster agent, at the version
   # compose-serving-stack pins, on every InferenceCluster.
