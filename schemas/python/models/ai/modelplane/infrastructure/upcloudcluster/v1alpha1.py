@@ -123,7 +123,7 @@ class Spec(BaseModel):
     """
     nodePools: list[NodePool] = Field(..., max_length=8, min_length=1)
     """
-    Node pools for the cluster. At least one System pool is required for controllers and infrastructure workloads.
+    Node pools for the cluster. A system pool for controllers and infrastructure workloads is injected automatically, so only inference (GPU or CPU) pools need declaring.
     """
     zone: constr(min_length=1, max_length=32)
     """
@@ -156,10 +156,6 @@ class Secret(BaseModel):
 
 
 class Status(BaseModel):
-    clusterId: constr(max_length=36) | None = None
-    """
-    UUID of the UKS cluster at UpCloud, once observed. compose-inference-cluster builds account-unique gateway load balancer names from it.
-    """
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.

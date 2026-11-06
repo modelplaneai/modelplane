@@ -31,6 +31,9 @@ dcgm-exporter chart exports the GPU fields the collector's
 modelplane-gpu job scrapes.
 """
 
+import json
+from typing import Any
+
 from function.stacks.clouds.generated.aicr.dcgm import DCGM_METRICS_CSV
 from function.stacks.components import Chart, Component
 
@@ -38,6 +41,25 @@ from function.stacks.components import Chart, Component
 # stack; the stacks package folds them into its derived
 # supported-drivers table.
 EXTERNAL_DRIVERS: list[str] = []
+
+# What UpCloud's load balancers need on every gateway's LoadBalancer
+# Service, which the stacks package builds the GatewayClass's EnvoyProxy
+# from. UpCloud's cloud controller hardcodes every load balancer frontend
+# to HTTP mode, which can't carry the cluster gateway's TLS: the load
+# balancer parses the handshake as HTTP and resets the connection. TCP
+# passthrough leaves Envoy as the HTTP layer. The controller matches
+# config frontends to Service ports by name, and Envoy Gateway names a
+# port <protocol>-<port>, so this names the cluster gateway's single
+# HTTPS listener port. The inference gateway's ports differ, so
+# compose-inference-gateway overrides this annotation with a frontend
+# per listener of its own.
+GATEWAY_SERVICE: dict[str, Any] = {
+    "annotations": {
+        "service.beta.kubernetes.io/upcloud-load-balancer-config": json.dumps(
+            {"frontends": [{"name": "https-443", "mode": "tcp"}]}
+        ),
+    },
+}
 
 COMPONENTS: list[Component] = [
     Chart(

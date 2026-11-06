@@ -319,6 +319,34 @@ GATEWAY_PROXY_CASES = [
             },
         },
     ),
+    GatewayProxyCase(
+        name="UpCloud",
+        reason=(
+            "UpCloud's EnvoyProxy puts the cluster gateway's load balancer in TCP mode beside the "
+            "externalTrafficPolicy pin, naming the frontend after the gateway's single Service port."
+        ),
+        cloud="UpCloud",
+        want={
+            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+            "kind": "EnvoyProxy",
+            "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
+            "spec": {
+                "provider": {
+                    "type": "Kubernetes",
+                    "kubernetes": {
+                        "envoyService": {
+                            "annotations": {
+                                "service.beta.kubernetes.io/upcloud-load-balancer-config": (
+                                    '{"frontends": [{"name": "https-443", "mode": "tcp"}]}'
+                                ),
+                            },
+                            "externalTrafficPolicy": "Cluster",
+                        },
+                    },
+                },
+            },
+        },
+    ),
 ]
 
 

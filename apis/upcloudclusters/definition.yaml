@@ -116,8 +116,9 @@ spec:
               nodePools:
                 type: array
                 description: >-
-                  Node pools for the cluster. At least one System pool is
-                  required for controllers and infrastructure workloads.
+                  Node pools for the cluster. A system pool for controllers
+                  and infrastructure workloads is injected automatically, so
+                  only inference (GPU or CPU) pools need declaring.
                 minItems: 1
                 maxItems: 8
                 x-kubernetes-list-type: map
@@ -226,13 +227,6 @@ spec:
           status:
             description: UpCloudClusterStatus defines the observed state of UpCloudCluster.
             properties:
-              clusterId:
-                type: string
-                description: >-
-                  UUID of the UKS cluster at UpCloud, once observed.
-                  compose-inference-cluster builds account-unique gateway
-                  load balancer names from it.
-                maxLength: 36
               secrets:
                 type: array
                 description: >-

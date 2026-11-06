@@ -89,6 +89,7 @@ _EXTERNAL_DRIVERS: dict[Cloud, frozenset[str]] = {
 # need any settings are absent.
 _GATEWAY_SERVICE: dict[Cloud, dict[str, Any]] = {
     "CoreWeave": coreweave.GATEWAY_SERVICE,
+    "UpCloud": upcloud.GATEWAY_SERVICE,
 }
 
 
