@@ -31,6 +31,9 @@ from models.ai.modelplane.infrastructure.servingstack import v1alpha1
 # fn.compose_gateway_pki). The HTTPS listener terminates TLS with it.
 _GATEWAY_SERVING_SECRET = "cluster-gateway-serving"
 
+# The Gateway's name.
+_GATEWAY_NAME = "cluster-gateway"
+
 # Label compose-inference-cluster stamps on the namespaces it mirrors onto this
 # cluster. The gateway's listeners select on it so a replica's HTTPRoute attaches
 # from its own team's namespace.
@@ -79,7 +82,7 @@ def objects(gw: v1alpha1.Gateway) -> list[tuple[str, dict[str, Any], str | None]
                 "apiVersion": "gateway.networking.k8s.io/v1",
                 "kind": "Gateway",
                 "metadata": {
-                    "name": "cluster-gateway",
+                    "name": _GATEWAY_NAME,
                     "namespace": "modelplane-system",
                 },
                 "spec": {

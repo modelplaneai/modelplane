@@ -32,6 +32,7 @@ per-service.
 """
 
 import ipaddress
+import json
 
 import grpc
 from crossplane.function import logging, request, resource, response
@@ -88,6 +89,10 @@ _AI_GATEWAY_ANCHOR_HEADER_VALUE = "true"
 # readiness would have to track to observe it.
 _ENVOY_GATEWAY_NAMESPACE = "envoy-gateway-system"
 _ENVOY_DEPLOYMENT_NAME = "envoy-modelplane-system-inference-gateway"
+
+# UpCloud's cloud controller reads a load balancer's configuration from this
+# annotation on the LoadBalancer Service (see _envoy_service).
+_UPCLOUD_LB_CONFIG_ANNOTATION = "service.beta.kubernetes.io/upcloud-load-balancer-config"
 
 # The Gateway's listener names. When the gateway terminates TLS, inference binds
 # to the HTTPS listener alone (compose-model-route sets the AIGatewayRoute's
@@ -524,6 +529,77 @@ class Composer:
         assert self.cluster and self.cluster.status and self.cluster.status.providerConfigRef
         return self.cluster.status.providerConfigRef.name or ""
 
+    def _gateway_listeners(self) -> list[dict]:
+        """The Gateway's listeners: HTTP on 80 always, HTTPS on 443 when
+        the gateway terminates TLS.
+
+        compose_gateway composes these, and _envoy_service derives
+        UpCloud's load balancer frontends from the same list, so a
+        listener added here reaches both.
+        """
+        allowed = {
+            "namespaces": {
+                "from": "Selector",
+                "selector": {"matchExpressions": [{"key": _NS_LABEL, "operator": "Exists"}]},
+            }
+        }
+        listeners: list[dict] = [
+            {
+                "name": _LISTENER_HTTP,
+                "protocol": "HTTP",
+                "port": 80,
+                "allowedRoutes": allowed,
+            }
+        ]
+        if self.xr.spec.tls:
+            listeners.append(
+                {
+                    "name": _LISTENER_HTTPS,
+                    "protocol": "HTTPS",
+                    "port": 443,
+                    "tls": {
+                        "mode": "Terminate",
+                        "certificateRefs": [{"name": r.name} for r in self.xr.spec.tls.certificateRefs],
+                    },
+                    "allowedRoutes": allowed,
+                }
+            )
+        return listeners
+
+    def _envoy_service(self) -> dict:
+        """This gateway's LoadBalancer Service settings, merged over what
+        the GatewayClass-level EnvoyProxy already says.
+
+        The Service name is pinned on every cloud, so the Service and
+        whatever a cloud controller derives from its name stay
+        deterministic. On UpCloud it is also what keeps load balancer
+        names apart: the controller truncates
+        <cluster UUID>-<namespace>-<Service name> to 64 characters with
+        no unique suffix (upcloud-cloud-controller-manager#14), the
+        generated envoy-modelplane-system-* names agree on everything the
+        truncation keeps, and every load balancer after the first fails
+        with RESOURCE_ALREADY_EXISTS. This name differs from the cluster
+        gateway's within what the truncation keeps.
+
+        On UpCloud the Service also carries the load balancer config
+        annotation with a TCP frontend per listener. The controller
+        matches config frontends to Service ports by name (Envoy Gateway
+        names a port <protocol>-<port>), and the class-level config from
+        the serving stack names only the cluster gateway's https-443
+        port - this gateway's ports differ, so it carries its own list.
+        The override replaces the class-level JSON value whole, so a key
+        added to the stack's UpCloud config (stacks/clouds/upcloud.py)
+        must be mirrored here.
+        """
+        service: dict = {"name": _GATEWAY_NAME}
+        if self.cluster and self.cluster.spec.cluster.source == "UpCloud":
+            frontends = [
+                {"name": f"{listener['protocol'].lower()}-{listener['port']}", "mode": "tcp"}
+                for listener in self._gateway_listeners()
+            ]
+            service["annotations"] = {_UPCLOUD_LB_CONFIG_ANNOTATION: json.dumps({"frontends": frontends})}
+        return service
+
     def compose_secrets(self) -> None:
         """Copy the gateway's Secrets to its cluster.
 
@@ -572,7 +648,10 @@ class Composer:
 
         Attached to the Gateway rather than the GatewayClass, because the class
         is shared with the cluster gateway, whose per-pod routing has nothing to
-        log here.
+        log here. It merges onto the GatewayClass's EnvoyProxy rather than
+        replacing it, so this gateway's LoadBalancer Service gets what the
+        serving stack configures there: the Service settings the cluster's
+        cloud needs, and the externalTrafficPolicy pin.
 
         Every token field reads request metadata rather than a header or the
         response body. The AI Gateway's ext-proc writes the counts there, having
@@ -581,6 +660,10 @@ class Composer:
         the header carrying it is removed before the request reaches a
         third-party backend, so a log reading the header would drop the caller
         from the records that attribute provider spend.
+
+        The envoyService block pins the Service name on every cloud and,
+        on UpCloud, carries the per-listener load balancer config the
+        class-level EnvoyProxy can't know (see _envoy_service).
         """
         resource.update(
             self.rsp.desired.resources["envoy-proxy"],
@@ -591,10 +674,11 @@ class Composer:
                     "kind": "EnvoyProxy",
                     "metadata": {"name": _GATEWAY_NAME, "namespace": REMOTE_NAMESPACE},
                     "spec": {
+                        "mergeType": "StrategicMerge",
                         "provider": {
                             "type": "Kubernetes",
                             "kubernetes": {
-                                "envoyService": {"externalTrafficPolicy": "Cluster"},
+                                "envoyService": self._envoy_service(),
                                 "envoyDeployment": {
                                     "name": _ENVOY_DEPLOYMENT_NAME,
                                     "replicas": _PROXY_REPLICAS,
@@ -673,34 +757,6 @@ class Composer:
         an HTTPRoute on this cluster attach to the authenticated front door,
         overriding its SecurityPolicy the way /healthz does.
         """
-        allowed = {
-            "namespaces": {
-                "from": "Selector",
-                "selector": {"matchExpressions": [{"key": _NS_LABEL, "operator": "Exists"}]},
-            }
-        }
-        listeners: list[dict] = [
-            {
-                "name": _LISTENER_HTTP,
-                "protocol": "HTTP",
-                "port": 80,
-                "allowedRoutes": allowed,
-            }
-        ]
-        if self.xr.spec.tls:
-            listeners.append(
-                {
-                    "name": _LISTENER_HTTPS,
-                    "protocol": "HTTPS",
-                    "port": 443,
-                    "tls": {
-                        "mode": "Terminate",
-                        "certificateRefs": [{"name": r.name} for r in self.xr.spec.tls.certificateRefs],
-                    },
-                    "allowedRoutes": allowed,
-                }
-            )
-
         resource.update(
             self.rsp.desired.resources["gateway"],
             _k8s_object(
@@ -718,7 +774,7 @@ class Composer:
                                 "name": _GATEWAY_NAME,
                             }
                         },
-                        "listeners": listeners,
+                        "listeners": self._gateway_listeners(),
                     },
                 },
                 ready_when=_GATEWAY_READY_CEL,

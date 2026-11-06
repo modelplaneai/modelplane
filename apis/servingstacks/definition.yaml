@@ -62,6 +62,7 @@ spec:
                 - Nebius
                 - Vultr
                 - Civo
+                - UpCloud
                 - Existing
               draDrivers:
                 type: array

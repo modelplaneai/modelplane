@@ -21,8 +21,10 @@ none does), common.py for the components on every stack, and the
 stack's own file. See design/serving-stack-generation.md.
 """
 
+from typing import Any
+
 from function.stacks import common, components, dynamo, metrics, standard
-from function.stacks.clouds import civo, existing, nebius, vultr
+from function.stacks.clouds import civo, existing, nebius, upcloud, vultr
 from function.stacks.clouds.generated.aicr import aks, eks, gke
 from function.stacks.components import Chart, Cloud, Component, Manifests, Stack
 from function.stacks.metrics import BUILTIN_MAPPINGS
@@ -52,6 +54,7 @@ _CLOUDS: dict[Cloud, list[Component]] = {
     "Nebius": nebius.COMPONENTS,
     "Vultr": vultr.COMPONENTS,
     "Civo": civo.COMPONENTS,
+    "UpCloud": upcloud.COMPONENTS,
     "Existing": existing.COMPONENTS,
 }
 
@@ -73,7 +76,17 @@ _EXTERNAL_DRIVERS: dict[Cloud, frozenset[str]] = {
     "Nebius": frozenset(nebius.EXTERNAL_DRIVERS),
     "Vultr": frozenset(vultr.EXTERNAL_DRIVERS),
     "Civo": frozenset(civo.EXTERNAL_DRIVERS),
+    "UpCloud": frozenset(upcloud.EXTERNAL_DRIVERS),
     "Existing": frozenset(existing.EXTERNAL_DRIVERS),
+}
+
+
+# What each cloud's load balancers need on a gateway's LoadBalancer
+# Service, as a subset of Envoy Gateway's KubernetesServiceSpec. join()
+# builds common.gateway_proxy from it. A cloud whose load balancers need
+# nothing is absent.
+_GATEWAY_SERVICE: dict[Cloud, dict[str, Any]] = {
+    "UpCloud": upcloud.GATEWAY_SERVICE,
 }
 
 
@@ -140,7 +153,12 @@ def join(cloud: Cloud, stack: Stack, dra_drivers: list[str] | None = None) -> li
     if stack not in _STACKS:
         raise ValueError(f"unknown stack {stack!r}; known: {', '.join(_STACKS)}")
 
-    joined = [*_CLOUDS[cloud], *common.COMPONENTS, *_STACKS[stack]]
+    joined = [
+        *_CLOUDS[cloud],
+        *common.COMPONENTS,
+        common.gateway_proxy(_GATEWAY_SERVICE.get(cloud, {})),
+        *_STACKS[stack],
+    ]
 
     keys = [c.key for c in joined]
     duplicates = sorted({k for k in keys if keys.count(k) > 1})
