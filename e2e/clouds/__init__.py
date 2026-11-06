@@ -317,7 +317,6 @@ CLOUDS: dict[str, Cloud] = {
             "nvidia-dra-driver/dra-driver-nvidia-gpu-kubelet-plugin": 2,
             "dra-driver-cpu/mp-dra-driver-cpu": 2,
             "node-feature-discovery/mp-node-feature-discovery-worker": 3,
-            "monitoring/mp-kube-prometheus-stack-prometheus-node-exporter": 5,
             "dcgm-exporter/mp-dcgm-exporter": 2,
         },
     ),

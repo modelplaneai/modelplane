@@ -35,6 +35,16 @@ from function.stacks.clouds.generated.aicr import dcgm
 
 
 @dataclasses.dataclass
+class GatewayProxyCase:
+    """A test case for the EnvoyProxy stacks.join builds for a cloud."""
+
+    name: str
+    reason: str
+    cloud: str
+    want: dict
+
+
+@dataclasses.dataclass
 class JoinFailsClosedCase:
     """A test case for stacks.join rejecting a cloud or stack."""
 
@@ -170,6 +180,62 @@ def test_no_wildcard_tolerations(cloud: stacks.Cloud, stack: stacks.Stack) -> No
     for c in stacks.join(cloud, stack):
         check(c.values if isinstance(c, stacks.Chart) else c.manifests, c.key)
     assert wildcards == [], "keyless (wildcard) tolerations, by component"
+
+
+GATEWAY_PROXY_CASES = [
+    GatewayProxyCase(
+        name="NoServiceSettings",
+        reason="A cloud whose load balancers need nothing gets only the externalTrafficPolicy pin.",
+        cloud="GKE",
+        want={
+            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+            "kind": "EnvoyProxy",
+            "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
+            "spec": {
+                "provider": {
+                    "type": "Kubernetes",
+                    "kubernetes": {"envoyService": {"externalTrafficPolicy": "Cluster"}},
+                },
+            },
+        },
+    ),
+    GatewayProxyCase(
+        name="UpCloud",
+        reason=(
+            "UpCloud's EnvoyProxy puts the cluster gateway's load balancer in TCP mode beside the "
+            "externalTrafficPolicy pin, naming the frontend after the gateway's single Service port."
+        ),
+        cloud="UpCloud",
+        want={
+            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+            "kind": "EnvoyProxy",
+            "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
+            "spec": {
+                "provider": {
+                    "type": "Kubernetes",
+                    "kubernetes": {
+                        "envoyService": {
+                            "annotations": {
+                                "service.beta.kubernetes.io/upcloud-load-balancer-config": (
+                                    '{"frontends": [{"name": "https-443", "mode": "tcp"}]}'
+                                ),
+                            },
+                            "externalTrafficPolicy": "Cluster",
+                        },
+                    },
+                },
+            },
+        },
+    ),
+]
+
+
+@pytest.mark.parametrize("case", GATEWAY_PROXY_CASES, ids=lambda case: case.name)
+def test_gateway_proxy(case: GatewayProxyCase) -> None:
+    """The joined stack's gateway-proxy EnvoyProxy carries the cloud's Service settings."""
+    joined = stacks.join(case.cloud, "Standard")  # ty: ignore[invalid-argument-type]  # parametrize erases the Literal
+    proxy = next(c for c in joined if isinstance(c, stacks.Manifests) and c.key == "gateway-proxy")
+    assert proxy.manifests == [case.want], case.reason
 
 
 # The Literal types reject these at type-checking time; these exercise the

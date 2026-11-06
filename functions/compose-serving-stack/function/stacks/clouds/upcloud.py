@@ -52,7 +52,8 @@ EXTERNAL_DRIVERS: list[str] = []
 # port <protocol>-<port>, so this names the cluster gateway's single
 # HTTPS listener port. The inference gateway's ports differ, so
 # compose-inference-gateway overrides this annotation with a frontend
-# per listener of its own.
+# per listener of its own; the override replaces this JSON value whole,
+# so a key added to this config must be mirrored there.
 GATEWAY_SERVICE: dict[str, Any] = {
     "annotations": {
         "service.beta.kubernetes.io/upcloud-load-balancer-config": json.dumps(
@@ -77,72 +78,6 @@ COMPONENTS: list[Component] = [
         # Objects, and removing their CRDs would stop provider-kubernetes
         # observing them to release their finalizers.
         values={"crds": {"enabled": True}},
-    ),
-    Chart(
-        key="kube-prometheus-stack",
-        release="mp-kube-prometheus-stack",
-        namespace="monitoring",
-        chart="kube-prometheus-stack",
-        repository="https://prometheus-community.github.io/helm-charts",
-        version="84.4.0",
-        values={
-            "fullnameOverride": "prometheus",
-            "prometheus": {
-                "prometheusSpec": {
-                    # Discover PodMonitors across all namespaces.
-                    "podMonitorSelectorNilUsesHelmValues": False,
-                    "podMonitorNamespaceSelector": {},
-                    # Scrape Envoy Gateway proxy pods for upstream
-                    # request metrics (envoy_cluster_upstream_rq_active):
-                    # in-flight requests at the proxy level.
-                    "additionalScrapeConfigs": [
-                        {
-                            "job_name": "envoy-gateway-proxy",
-                            "kubernetes_sd_configs": [
-                                {
-                                    "role": "pod",
-                                    "namespaces": {
-                                        "names": ["envoy-gateway-system"],
-                                    },
-                                },
-                            ],
-                            "relabel_configs": [
-                                {
-                                    "source_labels": [
-                                        "__meta_kubernetes_pod_label_app_kubernetes_io_component",
-                                    ],
-                                    "action": "keep",
-                                    "regex": "proxy",
-                                },
-                                {
-                                    "source_labels": ["__address__"],
-                                    "action": "replace",
-                                    "regex": "([^:]+)(?::\\d+)?",
-                                    "replacement": "$1:19001",
-                                    "target_label": "__address__",
-                                },
-                            ],
-                            "metrics_path": "/stats/prometheus",
-                        },
-                    ],
-                },
-            },
-            # The node-exporter chart's default toleration is keyless - it
-            # tolerates every taint, landing the pod on tainted nodes by
-            # accident rather than by intent. Scope it to the GPU and CPU pool
-            # taints, mirroring the generated clouds (TOLERATIONS in
-            # generate.py); as a DaemonSet it still reaches every untainted
-            # node.
-            "prometheus-node-exporter": {
-                "tolerations": [
-                    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
-                    {"key": "modelplane.ai/cpu", "operator": "Exists", "effect": "NoSchedule"},
-                ],
-            },
-            # Disable components we don't need for observability.
-            "grafana": {"enabled": False},
-            "alertmanager": {"enabled": False},
-        },
     ),
     Chart(
         key="node-feature-discovery",

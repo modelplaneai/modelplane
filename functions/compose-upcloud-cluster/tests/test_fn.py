@@ -649,6 +649,73 @@ COMPOSE_CASES = [
             context=structpb.Struct(),
         ),
     ),
+    # The fork lists every node group in the cluster and scales any group
+    # missing from the autoscaler's list between one node and the cluster
+    # plan's limit, so a fixed pool must appear pinned at its node count
+    # whenever another pool autoscales.
+    Case(
+        name="FixedPoolPinned",
+        reason="A fixed-size pool beside an autoscaled one is listed in the autoscaler's groups pinned at its node count, keeping the autoscaler off it.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    autoscaler=v1alpha1.Autoscaler(secretRef=v1alpha1.SecretRef(name="upcloud-api")),
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="GPU-8xCPU-64GB-1xL40S",
+                            nodeCount=1,
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                        v1alpha1.NodePool(
+                            name="cpu-pool",
+                            role="CPU",
+                            plan="PREMIUM-8xCPU-32GB",
+                            nodeCount=2,
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=True),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "node-pool-system": _node_pool_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "node-pool-gpu-l40s": _node_pool_gpu(
+                        management_policies=["Observe", "Create", "Update", "Delete"],
+                        init_node_count=1,
+                        node_count=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "node-pool-cpu-pool": _node_pool_cpu(
+                        node_count=2,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "provider-config-helm": _provider_config_helm(),
+                    "provider-config-kubernetes": _provider_config_kubernetes(),
+                    "autoscaler-secret": _autoscaler_secret(),
+                    "release-cluster-autoscaler": _autoscaler_release(
+                        autoscaling_groups=[
+                            {"name": "system", "minSize": 2, "maxSize": 2},
+                            {"name": "gpu-l40s", "minSize": 1, "maxSize": 4},
+                            {"name": "cpu-pool", "minSize": 2, "maxSize": 2},
+                        ],
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
     # Without spec.autoscaler nothing needs to reach into the cluster, so no
     # ProviderConfigs, token Secret or autoscaler Release are composed.
     Case(
