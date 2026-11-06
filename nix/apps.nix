@@ -35,8 +35,8 @@
 
           echo "Formatting and linting Nix..."
           statix fix .
-          deadnix --edit flake.nix nix/*.nix
-          nixfmt flake.nix nix/*.nix
+          find . -name '*.nix' -type f -exec deadnix --edit {} +
+          find . -name '*.nix' -type f -exec nixfmt {} +
 
           echo "Formatting and linting shell..."
           find . -name '*.sh' -type f | while read -r script; do
