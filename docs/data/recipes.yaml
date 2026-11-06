@@ -8,6 +8,9 @@ vendors:
   - name: Qwen
     org: qwen
     icon: brand-qwen
+  - name: Moonshot AI
+    org: moonshotai
+    icon: brand-moonshotai
   - name: Meta
     org: meta-llama
     icon: brand-meta
@@ -56,6 +59,9 @@ accelerators:
     icon: brand-nvidia
   - name: H200
     mem: 141G
+    icon: brand-nvidia
+  - name: B300
+    mem: 288G
     icon: brand-nvidia
   - name: MI325X
     mem: 256G

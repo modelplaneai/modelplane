@@ -1,0 +1,84 @@
+# Kimi K3.1 Pro served by SGLang on one 8x B300 node: one Standalone engine,
+# tensor-parallel across the 8 GPUs with decode context parallelism (DCP) over
+# all 8, so each rank holds an eighth of the KV cache instead of a full copy.
+# At --mem-fraction-static=0.88 that gives a KV pool of ~8.6M tokens.
+#
+# The image is SGLang's Kimi K3.1 day-0 build, pinned by digest (the tag
+# dev-kimi-k31-pro moves). The model forces its own KV dtype (fp8_e4m3), page
+# size (64) and attention backend, so none are set here.
+#
+# Flags beyond the basics:
+#   --dcp-size=8, --dcp-comm-backend=fi_a2a: decode context parallelism over
+#     the 8 ranks, from the SGLang cookbook's B300 DCP8 cell; it shards the KV
+#     cache instead of copying it to every rank.
+#   --ep-size=2: the same cell's expert-parallel size, kept as the cookbook
+#     sets it; not tuned here.
+#   --context-length=524288: half the model's native 1,048,576, so more
+#     sessions share the KV pool. Raise it for single long-context requests.
+#   --max-running-requests=48: the linear-attention (KDA) state pool scales
+#     with slots; 48 leaves room for cached prefix states.
+#   --mamba-max-states-per-path=4: how many linear-attention states the radix
+#     cache keeps along one prefix path. A hybrid model reuses a cached prefix
+#     only up to the deepest kept state, so 1 (the cookbook's value) misses most
+#     reuse when a client edits its history between turns, as coding agents do;
+#     4 reused noticeably more of that traffic's prefixes. SGLang's default, -1,
+#     keeps every state; each kept state takes a
+#     slot from the same pool as running requests, and only 4 has been measured
+#     here, so the recipe keeps that bound.
+#   --weight-loader-prefetch-checkpoints: prefetches the weight files, which
+#     SGLang recommends for network storage such as the ModelCache's.
+# No HiCache: a hybrid linear-attention model's prefix restored from host
+# memory answers wrongly (sgl-project/sglang#39830). No speculative decoding:
+# the model has no MTP layer.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: kimi-k3-1-pro
+  namespace: ml-team
+spec:
+  replicas: 1
+  template:
+    spec:
+      modelCacheRef:
+        name: kimi-k3-1-pro
+      engines:
+      - name: kimi
+        members:
+        - role: Standalone
+          nodeSelector:
+            devices:
+            - name: gpu
+              count: 8
+              selectors:
+              - cel: |
+                  device.driver == "gpu.nvidia.com" && device.attributes["gpu.nvidia.com"].architecture == "Blackwell" && device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("250Gi")) >= 0
+          template:
+            metadata:
+              labels:
+                llm-d.ai/engine-type: sglang   # the picker reads SGLang's metric names
+            spec:
+              containers:
+              - name: engine
+                image: lmsysorg/sglang:dev-kimi-k31-pro@sha256:67fc77d1cbe67de27ca54d874c82757a4844743fea899ea7d0df547e30c2c391
+                command: ["python3", "-m", "sglang.launch_server"]
+                args:
+                - --model-path=moonshotai/Kimi-K3.1-Pro
+                - --revision=d9e99b0792a5e93b78ea9bea62a68167e36ddd9e
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
+                - --trust-remote-code
+                - --tp-size=8
+                - --dcp-size=8
+                - --dcp-comm-backend=fi_a2a
+                - --ep-size=2
+                - --context-length=524288
+                - --mem-fraction-static=0.88
+                - --max-running-requests=48
+                - --mamba-max-states-per-path=4
+                - --weight-loader-prefetch-checkpoints
+                - --reasoning-parser=kimi_k3
+                - --tool-call-parser=kimi_k3
+                # SGLang serves no /metrics without it, and Modelplane's
+                # collector reads the engine's metrics from there.
+                - --enable-metrics
+                - --host=0.0.0.0
+                - --port=8000
