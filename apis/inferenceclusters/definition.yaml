@@ -700,18 +700,6 @@ spec:
                       certificate. An InferenceGateway validates the gateway's
                       serving certificate against it. Written once cert-manager on
                       the cluster has issued.
-                  serviceAnnotations:
-                    type: object
-                    description: >-
-                      Annotations every gateway's LoadBalancer Service on
-                      this cluster carries, applied through a per-Gateway
-                      EnvoyProxy. {gateway} in a value is replaced with the
-                      Gateway's name by the function composing it. Set only
-                      on clouds whose load balancers need them.
-                    maxProperties: 8
-                    additionalProperties:
-                      type: string
-                      maxLength: 1024
               cache:
                 type: object
                 description: >-

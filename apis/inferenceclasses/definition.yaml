@@ -458,6 +458,11 @@ spec:
                         type: integer
                         default: 100
                         minimum: 10
+                        description: >-
+                          Node disk size in GB. Honored for GPU and Cloud
+                          Native plans, whose storage UpCloud unbundles from
+                          the plan; Starter and Premium plans bundle a fixed
+                          disk and ignore it.
                       accelerator:
                         type: object
                         description: >-

@@ -31,7 +31,6 @@ to host control-plane components (Envoy Gateway, Prometheus, etc.).
 The system pool is not exposed in the user-facing API.
 """
 
-import json
 from typing import Final, Literal
 
 import grpc
@@ -253,10 +252,6 @@ _ACTIVATE_UPCLOUD = (
     "networks.network.m.upcloud.com",
 )
 
-# Annotation UpCloud's cloud controller reads load balancer configuration
-# from on a LoadBalancer Service.
-_UPCLOUD_LB_CONFIG_ANNOTATION = "service.beta.kubernetes.io/upcloud-load-balancer-config"
-
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
     """The object's name, always set on resources read from the API server."""
@@ -330,11 +325,6 @@ class Composer:
         self.reservations: dict[str, crv1alpha1.CapacityReservation] = {}
         # Client CA per InferenceGateway, keyed by gateway name.
         self.gateway_cas: dict[str, str] = {}
-        # Annotations every gateway LoadBalancer Service on this cluster
-        # must carry, with {gateway} standing in for the Gateway's name.
-        # Set by clouds that need them, projected onto the ServingStack
-        # and published in status for compose-inference-gateway.
-        self.gateway_service_annotations: dict[str, str] | None = None
 
     def compose(self) -> None:
         # Crossplane discards a function's desired resources on any reconcile
@@ -1132,11 +1122,6 @@ class Composer:
             self.rsp.desired.resources["activation"].ready = fnv1.READY_TRUE
             self.compose_upcloud_cluster(upcloud)
 
-        # Available as soon as the UKS cluster's UUID is observed, well
-        # before any gateway composes its LoadBalancer Service, so no
-        # Service is ever created without its load balancer name.
-        self.gateway_service_annotations = self.upcloud_gateway_service_annotations()
-
         upcloud_ready = (
             resource.get_condition(self.req.observed.resources.get("upcloud-cluster"), "Ready").status == "True"
         )
@@ -1219,8 +1204,6 @@ class Composer:
             gateway.clientCAs = [
                 ssv1alpha1.ClientCA(name=name, certificate=cert) for name, cert in sorted(self.gateway_cas.items())
             ]
-        if self.gateway_service_annotations:
-            gateway.serviceAnnotations = self.gateway_service_annotations
         spec = ssv1alpha1.Spec(
             secrets=backend_secrets,
             stack=self.xr.spec.stack,
@@ -1301,16 +1284,8 @@ class Composer:
         if cache_storage_class:
             status.cache = v1alpha1.CacheModel(storageClassName=cache_storage_class)
         gateway_address = self.observed_gateway_address()
-        # The service annotations are published independently of the
-        # address: compose-inference-gateway reads them before its Gateway's
-        # Service exists, which is before this cluster's own gateway has an
-        # address.
-        if self.gateway_service_annotations:
-            status.gateway = v1alpha1.Gateway(serviceAnnotations=self.gateway_service_annotations)
         if gateway_address:
-            if status.gateway is None:
-                status.gateway = v1alpha1.Gateway()
-            status.gateway.address = gateway_address
+            status.gateway = v1alpha1.Gateway(address=gateway_address)
             # Republished from the ServingStack so an InferenceGateway can
             # validate this cluster's gateway without reading a ServingStack,
             # which is machine-generated and not something another composition
@@ -2045,8 +2020,9 @@ class Composer:
         """Compose an UpCloudCluster XR.
 
         Combines the cluster-level config (zone, autoscaler credentials)
-        with GPU node pools derived from the user's node pools + referenced
-        classes. The system pool is injected by compose-upcloud-cluster.
+        with inference node pools derived from the user's node pools +
+        referenced classes, GPU or CPU by whether the class sets an
+        accelerator. The system pool is injected by compose-upcloud-cluster.
         """
         upcloud_node_pools: list[upcloudv1alpha1.NodePool] = []
 
@@ -2164,34 +2140,6 @@ class Composer:
                     return [ssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in observed_secrets]
 
         return None
-
-    def upcloud_gateway_service_annotations(self) -> dict[str, str] | None:
-        """Annotations every gateway LoadBalancer Service on a UKS cluster
-        must carry.
-
-        UpCloud's cloud controller derives a load balancer's name by
-        truncating <cluster UUID><namespace><Service name> to 64 characters
-        with no unique suffix, so Modelplane's gateway Services, which agree
-        on that whole prefix, collide and every load balancer after the
-        first fails with RESOURCE_ALREADY_EXISTS. Naming each load balancer
-        through the config annotation sidesteps the truncation: the cluster
-        UUID keeps names account-unique and the Gateway's name, substituted
-        for {gateway}, keeps them unique within the cluster.
-        """
-        upcloud_observed = self.req.observed.resources.get("upcloud-cluster")
-        if not upcloud_observed:
-            return None
-        observed_upcloud = upcloudv1alpha1.UpCloudCluster.model_validate(
-            resource.struct_to_dict(upcloud_observed.resource)
-        )
-        if not observed_upcloud.status or not observed_upcloud.status.clusterId:
-            return None
-        name = f"{observed_upcloud.status.clusterId}-{{gateway}}"
-        # The cloud controller hardcodes every frontend to HTTP mode, which
-        # can't carry the cluster gateway's TLS: the load balancer parses
-        # the handshake as HTTP and resets the connection. TCP passthrough
-        # suits both gateways; Envoy is the HTTP layer.
-        return {_UPCLOUD_LB_CONFIG_ANNOTATION: json.dumps({"name": name, "frontends": [{"mode": "tcp"}]})}
 
     def observed_upcloud_secrets(self) -> list[upcloudv1alpha1.Secret] | None:
         """Read the UpCloudCluster's status.secrets from observed state."""

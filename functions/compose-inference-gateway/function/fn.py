@@ -32,6 +32,7 @@ per-service.
 """
 
 import ipaddress
+import json
 
 import grpc
 from crossplane.function import logging, request, resource, response
@@ -88,6 +89,10 @@ _AI_GATEWAY_ANCHOR_HEADER_VALUE = "true"
 # readiness would have to track to observe it.
 _ENVOY_GATEWAY_NAMESPACE = "envoy-gateway-system"
 _ENVOY_DEPLOYMENT_NAME = "envoy-modelplane-system-inference-gateway"
+
+# UpCloud's cloud controller reads a load balancer's configuration from this
+# annotation on the LoadBalancer Service (see _upcloud_envoy_service).
+_UPCLOUD_LB_CONFIG_ANNOTATION = "service.beta.kubernetes.io/upcloud-load-balancer-config"
 
 # The Gateway's listener names. When the gateway terminates TLS, inference binds
 # to the HTTPS listener alone (compose-model-route sets the AIGatewayRoute's
@@ -524,16 +529,36 @@ class Composer:
         assert self.cluster and self.cluster.status and self.cluster.status.providerConfigRef
         return self.cluster.status.providerConfigRef.name or ""
 
-    def _gateway_service_annotations(self) -> dict[str, str] | None:
-        """Annotations this gateway's LoadBalancer Service must carry,
-        published by the cluster for clouds whose load balancers need them,
-        with {gateway} replaced by this Gateway's name."""
-        if not (self.cluster and self.cluster.status and self.cluster.status.gateway):
+    def _upcloud_envoy_service(self) -> dict | None:
+        """What this gateway's LoadBalancer Service needs on UpCloud,
+        merged over what the GatewayClass-level EnvoyProxy already says.
+
+        The load balancer config annotation overrides the class-level one
+        with a TCP frontend per listener: UpCloud's cloud controller
+        matches config frontends to Service ports by name (Envoy Gateway
+        names a port <protocol>-<port>), and its single-frontend fallback
+        can't cover the two ports this gateway has with TLS configured -
+        the class-level single-frontend config would leave the load
+        balancer one nameless frontend on port 0 with no backend.
+
+        The Service name dodges a collision: the controller truncates
+        <cluster UUID>-<namespace>-<Service name> to 64 characters with no
+        unique suffix (upcloud-cloud-controller-manager#14), which cuts
+        this gateway's generated envoy-modelplane-system-* Service name
+        and the cluster gateway's to the same prefix, so every load
+        balancer after the first fails with RESOURCE_ALREADY_EXISTS. A
+        name that differs from the cluster gateway's generated one within
+        what the truncation keeps survives it.
+        """
+        if not self.cluster or self.cluster.spec.cluster.source != "UpCloud":
             return None
-        annotations = self.cluster.status.gateway.serviceAnnotations
-        if not annotations:
-            return None
-        return {k: v.replace("{gateway}", _GATEWAY_NAME) for k, v in annotations.items()}
+        frontends = [{"name": "http-80", "mode": "tcp"}]
+        if self.xr.spec.tls:
+            frontends.append({"name": "https-443", "mode": "tcp"})
+        return {
+            "name": _GATEWAY_NAME,
+            "annotations": {_UPCLOUD_LB_CONFIG_ANNOTATION: json.dumps({"frontends": frontends})},
+        }
 
     def compose_secrets(self) -> None:
         """Copy the gateway's Secrets to its cluster.
@@ -583,7 +608,10 @@ class Composer:
 
         Attached to the Gateway rather than the GatewayClass, because the class
         is shared with the cluster gateway, whose per-pod routing has nothing to
-        log here.
+        log here. It merges onto the GatewayClass's EnvoyProxy rather than
+        replacing it, so this gateway's LoadBalancer Service gets what the
+        serving stack configures there: the Service settings the cluster's
+        cloud needs, and the externalTrafficPolicy pin.
 
         Every token field reads request metadata rather than a header or the
         response body. The AI Gateway's ext-proc writes the counts there, having
@@ -593,15 +621,15 @@ class Composer:
         third-party backend, so a log reading the header would drop the caller
         from the records that attribute provider spend.
 
-        The cluster's gateway service annotations, published on the
-        InferenceCluster by clouds whose load balancers need them, land on
-        this gateway's LoadBalancer Service with {gateway} replaced by this
-        Gateway's name.
+        On UpCloud alone this proxy also carries an envoyService block (see
+        _upcloud_envoy_service): this gateway's ports differ from the
+        cluster gateway's, so the class-level load balancer config can't
+        cover them.
         """
-        envoy_service: dict = {"externalTrafficPolicy": "Cluster"}
-        annotations = self._gateway_service_annotations()
-        if annotations:
-            envoy_service["annotations"] = annotations
+        kubernetes: dict = {}
+        envoy_service = self._upcloud_envoy_service()
+        if envoy_service:
+            kubernetes["envoyService"] = envoy_service
         resource.update(
             self.rsp.desired.resources["envoy-proxy"],
             _k8s_object(
@@ -611,10 +639,11 @@ class Composer:
                     "kind": "EnvoyProxy",
                     "metadata": {"name": _GATEWAY_NAME, "namespace": REMOTE_NAMESPACE},
                     "spec": {
+                        "mergeType": "StrategicMerge",
                         "provider": {
                             "type": "Kubernetes",
                             "kubernetes": {
-                                "envoyService": envoy_service,
+                                **kubernetes,
                                 "envoyDeployment": {
                                     "name": _ENVOY_DEPLOYMENT_NAME,
                                     "replicas": _PROXY_REPLICAS,

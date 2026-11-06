@@ -75,11 +75,12 @@ from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 # System pool injected into every UKS cluster to host control-plane
 # components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.). Not part
-# of the user-facing API - compose-inference-cluster only passes GPU pools.
-# The plan matches the Nebius, Vultr and Civo system pools' shape (16 GB
-# memory); Premium is UpCloud's general-purpose family (Cloud Native plans
-# unbundle storage, Starter tops out smaller). Fixed at two nodes: the
-# autoscaler only scales user pools.
+# of the user-facing API - compose-inference-cluster passes only inference
+# (GPU and CPU) pools. The plan matches the Nebius, Vultr and Civo system
+# pools' shape (16 GB memory); Premium is UpCloud's general-purpose family
+# (Cloud Native plans unbundle storage, Starter tops out smaller). Fixed at
+# two nodes; compose_cluster_autoscaler pins it there whenever the
+# autoscaler runs.
 _SYSTEM_POOL_NAME = "system"
 _SYSTEM_POOL_PLAN = "PREMIUM-4xCPU-16GB"
 _SYSTEM_POOL_NODES = 2
@@ -256,10 +257,11 @@ class Composer:
             # token Secret Object is composed only while spec.autoscaler
             # names its source Secret; dropped, the copy stays on the
             # cluster because the Object excludes Delete too.
-            if self.xr.spec.autoscaler or "release-cluster-autoscaler" in self.req.observed.resources:
+            autoscaler = self.xr.spec.autoscaler
+            if autoscaler or "release-cluster-autoscaler" in self.req.observed.resources:
                 self.compose_provider_configs()
-                if self.xr.spec.autoscaler:
-                    self.compose_autoscaler_secret()
+                if autoscaler:
+                    self.compose_autoscaler_secret(autoscaler)
                 self.compose_cluster_autoscaler()
         self.write_status()
         self.mark_readiness()
@@ -404,17 +406,14 @@ class Composer:
             ),
         )
 
-    def compose_autoscaler_secret(self) -> None:
+    def compose_autoscaler_secret(self, autoscaler: v1alpha1.Autoscaler) -> None:
         """Copy the UpCloud API token to kube-system on the workload
         cluster for the autoscaler. UpCloud provisions no API credentials
         on UKS clusters, so unlike Civo there is nothing to reference.
         provider-kubernetes resolves the patchesFrom reference server-side
         at apply time, so the token appears in neither this function nor
         the Object's stored manifest."""
-        autoscaler = self.xr.spec.autoscaler
-        if autoscaler is None:  # compose() only calls this when set; keeps the type checker happy.
-            return
-        key = autoscaler.secretRef.key or _AUTOSCALER_SECRET_KEY
+        key = autoscaler.secretRef.key
         resource.update(
             self.rsp.desired.resources["autoscaler-secret"],
             k8sobjv1alpha1.Object(
@@ -474,14 +473,27 @@ class Composer:
         if cluster_id is None:
             return
 
-        groups = [
-            {
-                "name": pool.name,
-                "minSize": pool.minNodeCount if pool.minNodeCount is not None else pool.nodeCount,
-                "maxSize": pool.maxNodeCount,
-            }
-            for pool in self._autoscaled_pools()
-        ]
+        # The fork lists every node group in the cluster each refresh and
+        # gives any group missing from this list a minimum of 1 and a
+        # maximum of the cluster plan's limit (its upcloud_manager.go), so
+        # left unlisted it would scale the system group down and fixed
+        # pools up. While any pool autoscales, the system group and every
+        # fixed pool are pinned at their node count.
+        autoscaled = {pool.name for pool in self._autoscaled_pools()}
+        groups: list[dict] = []
+        if autoscaled:
+            groups.append({"name": _SYSTEM_POOL_NAME, "minSize": _SYSTEM_POOL_NODES, "maxSize": _SYSTEM_POOL_NODES})
+            for pool in self.xr.spec.nodePools:
+                if pool.name in autoscaled:
+                    groups.append(
+                        {
+                            "name": pool.name,
+                            "minSize": pool.minNodeCount if pool.minNodeCount is not None else pool.nodeCount,
+                            "maxSize": pool.maxNodeCount,
+                        }
+                    )
+                else:
+                    groups.append({"name": pool.name, "minSize": pool.nodeCount, "maxSize": pool.nodeCount})
 
         resource.update(
             self.rsp.desired.resources["release-cluster-autoscaler"],
@@ -640,13 +652,6 @@ class Composer:
                 ),
             ],
         )
-        # The cluster's UpCloud UUID. compose-inference-cluster builds
-        # account-unique gateway load balancer names from it. Assigned only
-        # when observed: an explicit None would serialize as a null
-        # tombstone under exclude_unset.
-        cluster_id = self._observed_cluster_id()
-        if cluster_id is not None:
-            status.clusterId = cluster_id
         resource.update_status(self.rsp.desired.composite, status)
 
     def mark_readiness(self) -> None:

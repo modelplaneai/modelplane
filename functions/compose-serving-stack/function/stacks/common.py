@@ -208,32 +208,6 @@ COMPONENTS: list[Component] = [
             },
         ],
     ),
-    # EnvoyProxy pins the managed LoadBalancer Service's
-    # externalTrafficPolicy to Cluster. Envoy Gateway defaults it to
-    # Local, which some clouds' load balancers reject (Nebius returns
-    # SyncLoadBalancerFailed and never assigns an external IP). Cluster
-    # is accepted by every cloud Modelplane runs on; the inference
-    # gateway does not need client source-IP preservation. The
-    # GatewayClass references it via parametersRef.
-    Manifests(
-        key="gateway-proxy",
-        depends_on=["gateway-namespace"],
-        manifests=[
-            {
-                "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-                "kind": "EnvoyProxy",
-                "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
-                "spec": {
-                    "provider": {
-                        "type": "Kubernetes",
-                        "kubernetes": {
-                            "envoyService": {"externalTrafficPolicy": "Cluster"},
-                        },
-                    },
-                },
-            },
-        ],
-    ),
     # The cluster gateway's mTLS trust anchor. A self-signed Issuer signs the
     # per-cluster CA (fn.py's compose_gateway_pki), which signs the gateway's
     # serving certificate. Every cluster's gateway CA roots in it.
@@ -408,3 +382,39 @@ COMPONENTS: list[Component] = [
         depends_on=["gateway-namespace"],
     ),
 ]
+
+
+def gateway_proxy(service: dict[str, Any]) -> Manifests:
+    """The EnvoyProxy the GatewayClass references, configuring the
+    LoadBalancer Service of every gateway on the cluster.
+
+    service is what the cluster's cloud needs on that Service, a subset of
+    Envoy Gateway's KubernetesServiceSpec. The cluster gateway uses this
+    EnvoyProxy as is, and compose-inference-gateway's per-Gateway EnvoyProxy
+    merges onto it, so both gateways' Services get it.
+
+    externalTrafficPolicy is pinned to Cluster over whatever service says.
+    Envoy Gateway defaults it to Local, which some clouds' load balancers
+    reject (Nebius returns SyncLoadBalancerFailed and never assigns an
+    external IP). Cluster is accepted by every cloud Modelplane runs on, and
+    neither gateway needs client source-IP preservation.
+    """
+    return Manifests(
+        key="gateway-proxy",
+        depends_on=["gateway-namespace"],
+        manifests=[
+            {
+                "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+                "kind": "EnvoyProxy",
+                "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
+                "spec": {
+                    "provider": {
+                        "type": "Kubernetes",
+                        "kubernetes": {
+                            "envoyService": {**service, "externalTrafficPolicy": "Cluster"},
+                        },
+                    },
+                },
+            },
+        ],
+    )

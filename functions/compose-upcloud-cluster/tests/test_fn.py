@@ -62,9 +62,8 @@ def _xr(
     return fnv1.Resource(resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json", by_alias=True)))
 
 
-def _desired_xr(*, cluster_id: str | None) -> fnv1.Resource:
-    """The desired XR, publishing the cluster's kubeconfig Secret and, once
-    the cluster is observed, its UpCloud UUID."""
+def _desired_xr() -> fnv1.Resource:
+    """The desired XR, publishing the cluster's kubeconfig Secret."""
     status: dict[str, Any] = {
         "secrets": [
             {
@@ -74,8 +73,6 @@ def _desired_xr(*, cluster_id: str | None) -> fnv1.Resource:
             },
         ],
     }
-    if cluster_id is not None:
-        status["clusterId"] = cluster_id
     return fnv1.Resource(resource=resource.dict_to_struct({"status": status}))
 
 
@@ -449,7 +446,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(cluster_id=None),
+                composite=_desired_xr(),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(
@@ -486,7 +483,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
+                composite=_desired_xr(),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -501,7 +498,10 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _provider_config_kubernetes(),
                     "autoscaler-secret": _autoscaler_secret(),
                     "release-cluster-autoscaler": _autoscaler_release(
-                        autoscaling_groups=[{"name": "gpu-l40s", "minSize": 1, "maxSize": 4}],
+                        autoscaling_groups=[
+                            {"name": "system", "minSize": 2, "maxSize": 2},
+                            {"name": "gpu-l40s", "minSize": 1, "maxSize": 4},
+                        ],
                     ),
                 },
             ),
@@ -569,7 +569,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
+                composite=_desired_xr(),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(
@@ -586,7 +586,10 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _provider_config_kubernetes(),
                     "autoscaler-secret": _autoscaler_secret(),
                     "release-cluster-autoscaler": _autoscaler_release(
-                        autoscaling_groups=[{"name": "gpu-l40s", "minSize": 1, "maxSize": 4}],
+                        autoscaling_groups=[
+                            {"name": "system", "minSize": 2, "maxSize": 2},
+                            {"name": "gpu-l40s", "minSize": 1, "maxSize": 4},
+                        ],
                     ),
                 },
             ),
@@ -621,7 +624,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
+                composite=_desired_xr(),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -636,7 +639,10 @@ COMPOSE_CASES = [
                     "provider-config-kubernetes": _provider_config_kubernetes(),
                     "autoscaler-secret": _autoscaler_secret(),
                     "release-cluster-autoscaler": _autoscaler_release(
-                        autoscaling_groups=[{"name": "gpu-l40s", "minSize": 2, "maxSize": 4}],
+                        autoscaling_groups=[
+                            {"name": "system", "minSize": 2, "maxSize": 2},
+                            {"name": "gpu-l40s", "minSize": 2, "maxSize": 4},
+                        ],
                     ),
                 },
             ),
@@ -671,10 +677,60 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
+                composite=_desired_xr(),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
+                    "node-pool-system": _node_pool_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "node-pool-gpu-l40s": _node_pool_gpu(
+                        management_policies=None,
+                        init_node_count=None,
+                        node_count=2,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        ),
+    ),
+    # The node groups are the only sentinel on a cluster without an
+    # autoscaler: nothing composes a ProviderConfig there, so an observed
+    # node group alone must keep the Ready-gated block composed when the
+    # cluster's Ready condition regresses - dropping the groups would
+    # deprovision their nodes.
+    Case(
+        name="ReadyRegressedNoAutoscaler",
+        reason="With the cluster's Ready condition regressed to False, no autoscaler and a node group observed, an UpCloudCluster keeps the node groups composed.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    credentials=None,
+                    autoscaler=None,
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="GPU-8xCPU-64GB-1xL40S",
+                            nodeCount=2,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=False),
+                    "node-pool-system": _node_pool_system(cred_kind="ClusterProviderConfig", cred_name="default"),
+                },
+            ),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(),
+                resources={
+                    "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
+                    "cluster": _cluster(
+                        cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_UNSPECIFIED
+                    ),
                     "node-pool-system": _node_pool_system(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "node-pool-gpu-l40s": _node_pool_gpu(
                         management_policies=None,
@@ -715,7 +771,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
+                composite=_desired_xr(),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -768,7 +824,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
+                composite=_desired_xr(),
                 resources={
                     "network": _network(cred_kind="ClusterProviderConfig", cred_name="default"),
                     "cluster": _cluster(cred_kind="ClusterProviderConfig", cred_name="default", ready=fnv1.READY_TRUE),
@@ -812,7 +868,7 @@ COMPOSE_CASES = [
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=_desired_xr(cluster_id="11111111-2222-3333-4444-555555555555"),
+                composite=_desired_xr(),
                 resources={
                     "network": _network(cred_kind="ProviderConfig", cred_name="team-a"),
                     "cluster": _cluster(cred_kind="ProviderConfig", cred_name="team-a", ready=fnv1.READY_TRUE),

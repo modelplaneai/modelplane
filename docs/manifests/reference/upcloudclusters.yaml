@@ -8,11 +8,9 @@ spec:
   autoscaler:
     secretRef:
       name: upcloud-autoscaler
+  # The system node pool hosting controllers and infrastructure
+  # workloads is injected automatically and is not declared here.
   nodePools:
-    - name: workers
-      role: System
-      plan: PREMIUM-4xCPU-16GB
-      nodeCount: 2
     - name: gpu-l40s
       role: GPU
       plan: GPU-8xCPU-64GB-1xL40S

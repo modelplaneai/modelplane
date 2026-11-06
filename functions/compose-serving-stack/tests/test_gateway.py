@@ -75,7 +75,7 @@ class Case:
 OBJECTS_CASES = [
     Case(
         name="Plain",
-        reason="Without service annotations, the pair is the GatewayClass and the Gateway, which uses the GatewayClass-level EnvoyProxy.",
+        reason="The pair is the GatewayClass and the Gateway, which uses the GatewayClass-level EnvoyProxy.",
         gw=v1alpha1.Gateway(hostname="test-backend.gateways.example.com"),
         want=[
             ("gateway-class", _gateway_class(), None),
@@ -87,65 +87,6 @@ OBJECTS_CASES = [
                     "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
                     "spec": {
                         "gatewayClassName": "envoy",
-                        "listeners": _listeners(),
-                    },
-                },
-                gateway.READY_CEL,
-            ),
-        ],
-    ),
-    Case(
-        name="ServiceAnnotations",
-        reason="With service annotations, a per-gateway EnvoyProxy carries them on the Gateway's Service with {gateway} replaced by the Gateway's name, and the Gateway references it through its own parametersRef.",
-        gw=v1alpha1.Gateway(
-            hostname="test-backend.gateways.example.com",
-            serviceAnnotations={
-                "service.beta.kubernetes.io/upcloud-load-balancer-config": (
-                    '{"name": "11111111-2222-3333-4444-555555555555-{gateway}", "frontends": [{"mode": "tcp"}]}'
-                ),
-            },
-        ),
-        want=[
-            ("gateway-class", _gateway_class(), None),
-            (
-                "gateway-lb-proxy",
-                {
-                    "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-                    "kind": "EnvoyProxy",
-                    "metadata": {"name": "cluster-gateway-lb", "namespace": "modelplane-system"},
-                    "spec": {
-                        "provider": {
-                            "type": "Kubernetes",
-                            "kubernetes": {
-                                "envoyService": {
-                                    "externalTrafficPolicy": "Cluster",
-                                    "annotations": {
-                                        "service.beta.kubernetes.io/upcloud-load-balancer-config": (
-                                            '{"name": "11111111-2222-3333-4444-555555555555-cluster-gateway", "frontends": [{"mode": "tcp"}]}'
-                                        ),
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-                None,
-            ),
-            (
-                "gateway",
-                {
-                    "apiVersion": "gateway.networking.k8s.io/v1",
-                    "kind": "Gateway",
-                    "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
-                    "spec": {
-                        "gatewayClassName": "envoy",
-                        "infrastructure": {
-                            "parametersRef": {
-                                "group": "gateway.envoyproxy.io",
-                                "kind": "EnvoyProxy",
-                                "name": "cluster-gateway-lb",
-                            },
-                        },
                         "listeners": _listeners(),
                     },
                 },
