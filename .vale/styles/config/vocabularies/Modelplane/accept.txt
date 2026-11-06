@@ -186,6 +186,10 @@ Qwen3-8B
 Qwen3-Coder
 Kimi-K2
 Kimi
+K3.1
+B300
+MXFP4
+NVMe
 Llama
 Laguna[\w.-]*
 Nemotron[\w.-]*

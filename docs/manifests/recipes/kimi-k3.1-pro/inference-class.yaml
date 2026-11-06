@@ -1,0 +1,29 @@
+# InferenceClass for one EKS p6-b300.48xlarge: 8x NVIDIA B300 288GB over NVLink.
+# The GPUs are DRA devices; the Kimi K3.1 Pro ModelDeployment's nodeSelector
+# matches eight Blackwell GPUs with at least the 250Gi each this class
+# advertises, so it can't land on an 8x B200 node, where the weights don't fit.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: eks-b300-8x-p6
+spec:
+  description: "EKS p6-b300.48xlarge, 8x NVIDIA B300 288GB"
+  provisioning:
+    provider: EKS
+    eks:
+      instanceType: p6-b300.48xlarge
+      diskSizeGb: 200
+      accelerator:
+        type: nvidia-b300
+        count: 8
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 8
+    attributes:
+      architecture: { string: Blackwell }
+      cudaComputeCapability: { version: "10.3.0" }
+    capacity:
+      memory: { value: "250Gi" }

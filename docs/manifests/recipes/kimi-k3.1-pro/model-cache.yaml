@@ -1,0 +1,16 @@
+# The weights, staged once per cluster on shared storage (RWX) and mounted at
+# /mnt/models in the serving pod. moonshotai/Kimi-K3.1-Pro is ~1.42 TiB
+# (1,454 GiB: MXFP4 routed experts, BF16 elsewhere), so staging and every
+# engine start that reads it take a while. Pin the revision the deployment
+# serves.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: kimi-k3-1-pro
+  namespace: ml-team
+spec:
+  source: HuggingFace
+  huggingFace:
+    repo: moonshotai/Kimi-K3.1-Pro
+    revision: d9e99b0792a5e93b78ea9bea62a68167e36ddd9e
+    sizeGiB: 1600

@@ -34,7 +34,9 @@ packages) are skipped — they aren't ours to validate here.
 
 An engine in a recipe is also checked against what the built-in MetricMappings
 read: a pinned engine version or a missing flag that leaves the engine's
-modelplane_* series empty fails here rather than on a user's cluster.
+modelplane_* series empty fails here rather than on a user's cluster. A
+pre-release SGLang build, a non-release tag pinned by digest, gets the checks
+that don't depend on the version.
 """
 
 from __future__ import annotations
@@ -125,6 +127,9 @@ def model_for(api_version: str, kind: str) -> type[pydantic.BaseModel] | None:
 _TAG = re.compile(r":v(\d+)\.(\d+)\.(\d+)")
 _VLLM_IMAGE = re.compile(r"(^|/)vllm/vllm-openai[:@]")
 _SGLANG_IMAGE = re.compile(r"(^|/)lmsysorg/sglang[:@]")
+# A pre-release SGLang build: a non-release tag pinned by digest, such as
+# lmsysorg/sglang:dev-kimi-k31-pro@sha256:...
+_PRERELEASE = re.compile(r":(?!v\d)[^:@/]+@sha256:")
 
 
 def _has_flag(argv: str, flag: str) -> bool:
@@ -155,7 +160,7 @@ def _container_problems(container: pydantic.BaseModel) -> list[str]:
     is_sglang = _SGLANG_IMAGE.search(image) is not None
     if not (is_vllm or is_sglang):
         return []
-    if version is None:
+    if version is None and not (is_sglang and _PRERELEASE.search(image)):
         return [f"pin {image} to a vX.Y.Z tag, so its engine can be checked against the built-in mappings"]
     if is_vllm:
         if version < (0, 9, 2):
@@ -167,7 +172,9 @@ def _container_problems(container: pydantic.BaseModel) -> list[str]:
     problems = []
     if not _has_flag(argv, "--enable-metrics"):
         problems.append("SGLang serves no /metrics without --enable-metrics")
-    if version < (0, 5, 12) and not _has_flag(argv, "--collect-tokens-histogram"):
+    # A pre-release build (a model's day-0 image) postdates v0.5.12: only the
+    # checks that don't depend on the version apply.
+    if version is not None and version < (0, 5, 12) and not _has_flag(argv, "--collect-tokens-histogram"):
         problems.append("SGLang before v0.5.12 publishes no token histograms without --collect-tokens-histogram")
     return problems
 
