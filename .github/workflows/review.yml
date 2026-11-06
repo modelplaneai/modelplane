@@ -1,8 +1,10 @@
 name: Review
 
 # An agent reviews pull requests from org members when they're opened or marked
-# ready for review. A maintainer can review any other PR, or re-review one after
-# new pushes, by commenting /review (see commands.yml).
+# ready for review, unless they touch the governance docs (CHARTER.md,
+# GOVERNANCE.md, MAINTAINERS.md) or have the skip-review-bot label. A maintainer
+# can review any other PR, or re-review one after new pushes, by commenting
+# /review (see commands.yml).
 #
 # pull_request_target runs this workflow from the default branch, with secrets,
 # even for PRs from forks, which every PR is. That's safe only because nothing
@@ -42,21 +44,24 @@ env:
   CADDY_IMAGE: caddy@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
 
 jobs:
-  # Review automatically only PRs that org members open. The event's
+  # Review automatically only PRs that org members open, and that neither touch
+  # the governance docs nor have the skip-review-bot label. The event's
   # author_association reports a private member as a CONTRIBUTOR, so ask the
   # org instead.
   #
   # Every job needs the reviewer's GitHub App, so a repo without one, such as
   # a contributor's fork, never runs them.
-  author:
+  gate:
     if: >-
       vars.REVIEW_APP_ID != '' &&
       github.event_name == 'pull_request_target' &&
       !github.event.pull_request.draft
     runs-on: ubuntu-24.04
-    permissions: {}
+    permissions:
+      pull-requests: read
     outputs:
       member: ${{ steps.member.outputs.member }}
+      skip: ${{ steps.skip.outputs.skip }}
     steps:
       - name: Mint a token to read org membership
         if: github.event.repository.owner.type == 'Organization'
@@ -86,15 +91,33 @@ jobs:
             echo "member=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Read the labels from the API rather than the event. gh pr create
+      # --label adds them after it opens the PR, so the opened event may
+      # predate them. A rename lists the old path as previous_filename.
+      - name: Check whether the PR opts out of review
+        id: skip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '.[].name')
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files?per_page=100" --jq '.[] | .filename, .previous_filename // empty')
+          if grep -qx skip-review-bot <<<"$labels" || grep -qxE '(CHARTER|GOVERNANCE|MAINTAINERS)\.md' <<<"$files"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
   review:
-    # A /review comment skips the author job, having already checked that the
-    # commenter can write.
-    needs: author
+    # A /review comment skips the gate job, having already checked that the
+    # commenter can write. A maintainer can review a PR the gate would skip.
+    needs: gate
     if: >-
       !cancelled() &&
       vars.REVIEW_APP_ID != '' && (
-        github.event_name == 'issue_comment' ||
-        needs.author.outputs.member == 'true'
+        github.event_name == 'issue_comment' || (
+          needs.gate.outputs.member == 'true' &&
+          needs.gate.outputs.skip == 'false'
+        )
       )
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -304,7 +327,7 @@ jobs:
           path: /mnt/vm/out.tar
           if-no-files-found: ignore
 
-  # A /review skips the author job. Without an explicit condition, GitHub
+  # A /review skips the gate job. Without an explicit condition, GitHub
   # would skip this job too, since it depends on a job that depends on one
   # that was skipped.
   post:
