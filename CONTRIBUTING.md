@@ -142,10 +142,10 @@ incremental work into the commit it belongs to; don't leave behind "address
 review feedback", "fix tests", WIP, or rebase-merge commits.
 
 Write the subject in the imperative mood, naming specifically what the change
-does, so it's legible at a glance in a log: "Order KServe CRD deletion after the
-resources that use it", not "fix deletion" or "update composition". Keep it under
-~70 characters, capitalized, with no trailing period and no typed prefix like
-`feat:`, `fix:`, or `chore:`.
+does, so it's legible at a glance in a log: "Mark a ModelReplica's objects ready
+only once each reports Ready", not "fix readiness" or "update composition". Keep
+it under ~70 characters, capitalized, with no trailing period and no typed
+prefix like `feat:`, `fix:`, or `chore:`.
 
 Write a body for every commit except the most mechanical, like a schema regen.
 Lead with the problem: what was wrong, missing, or how things behaved before.
@@ -163,19 +163,18 @@ certifying you have the right to submit the code under the project's license
 A representative commit:
 
 ```
-Order KServe CRD deletion after the resources that use it
+Mark a ModelReplica's objects ready only once each reports Ready
 
-compose-kserve-backend installs KServe as two Helm releases: kserve-crds
-provides the CRDs, and kserve-controller installs custom resources of those
-CRDs.
+compose-model-replica marked every composed Object other than its workloads
+ready as soon as it was observed. That included one that had failed to
+create, such as a picker Service rejected for an invalid name, and the
+endpoint picker's Deployment before it was Available, though its Object has
+a CEL readiness query for exactly that and Envoy AI Gateway fails closed
+without a picker. Either way the replica reported Ready and
+compose-model-deployment put it into rotation.
 
-Nothing ordered their deletion. On teardown the CRD release could uninstall
-first, removing a CRD while the resources release still owned CRs of that kind.
-The resources release's uninstall then failed and hung indefinitely, blocking
-the rest of the teardown.
-
-This adds a Usage holding the CRD release until the resources release is gone,
-so the CRs are deleted while their CRD still exists.
+This relays each Object's own Ready condition instead, as its readiness
+policy decides.
 
 Signed-off-by: Nic Cope <nicc@rk0n.org>
 ```
@@ -213,13 +212,11 @@ Use bullets only for genuinely parallel items.
 A representative description:
 
 ```
-Fixes #45.
+Fixes #567.
 
-The ModelDeployment scheduler considered all InferenceEnvironments as scheduling candidates regardless of their readiness. An environment still provisioning its cluster would be selected if its computed capacity matched, creating a ModelPlacement that targets an environment that can't serve traffic yet. The user then sees errors until the environment becomes Ready.
+The AKS stack enables nvsentinel's NIC health monitor, whose pods tolerate the GPU taint and run on the GPU pool. The E2E Clouds placement audits fail any such pod that isn't listed as a GPU workload. This PR adds the monitor to AKS's `gpu_workloads`.
 
-This makes the scheduler skip environments without a `Ready=True` condition. When a new environment finishes provisioning, the next reconcile picks it up.
-
-The pool-fitting logic moves into a `_best_pool_fit` helper to keep `schedule()` under the branch-count lint threshold. A new `test-model-deployment-not-ready-env` case covers the skip behavior.
+#569 tracks why #539's own AKS run didn't catch this.
 ```
 
 ### Work from a fork
