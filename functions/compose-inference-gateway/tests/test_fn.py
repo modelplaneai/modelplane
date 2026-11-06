@@ -227,11 +227,15 @@ def _observed_envoy_deployment(*, ready: bool) -> fnv1.Resource:
 # composed at all.
 
 
-def _envoy_proxy(*, envoy_service: dict | None) -> fnv1.Resource:
-    """The composed EnvoyProxy, configuring the gateway's proxy pods and its usage-record access log."""
-    kubernetes: dict = {}
-    if envoy_service is not None:
-        kubernetes["envoyService"] = envoy_service
+def _envoy_proxy(*, lb_config: str | None) -> fnv1.Resource:
+    """The composed EnvoyProxy, configuring the gateway's proxy pods and its usage-record access log.
+
+    The Service name is pinned on every cloud; lb_config is UpCloud's load
+    balancer config annotation value, absent elsewhere.
+    """
+    envoy_service: dict = {"name": "inference-gateway"}
+    if lb_config is not None:
+        envoy_service["annotations"] = {"service.beta.kubernetes.io/upcloud-load-balancer-config": lb_config}
     return fnv1.Resource(
         resource=resource.dict_to_struct(
             {
@@ -260,7 +264,7 @@ def _envoy_proxy(*, envoy_service: dict | None) -> fnv1.Resource:
                                 "provider": {
                                     "type": "Kubernetes",
                                     "kubernetes": {
-                                        **kubernetes,
+                                        "envoyService": envoy_service,
                                         "envoyDeployment": {
                                             "name": "envoy-modelplane-system-inference-gateway",
                                             "replicas": 2,
@@ -1263,7 +1267,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1323,14 +1327,7 @@ COMPOSE_CASES = [
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
                     "envoy-proxy": _envoy_proxy(
-                        envoy_service={
-                            "name": "inference-gateway",
-                            "annotations": {
-                                "service.beta.kubernetes.io/upcloud-load-balancer-config": (
-                                    '{"frontends": [{"name": "http-80", "mode": "tcp"}]}'
-                                ),
-                            },
-                        },
+                        lb_config='{"frontends": [{"name": "http-80", "mode": "tcp"}]}',
                     ),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
@@ -1392,15 +1389,9 @@ COMPOSE_CASES = [
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
                     "envoy-proxy": _envoy_proxy(
-                        envoy_service={
-                            "name": "inference-gateway",
-                            "annotations": {
-                                "service.beta.kubernetes.io/upcloud-load-balancer-config": (
-                                    '{"frontends": [{"name": "http-80", "mode": "tcp"}, '
-                                    '{"name": "https-443", "mode": "tcp"}]}'
-                                ),
-                            },
-                        },
+                        lb_config=(
+                            '{"frontends": [{"name": "http-80", "mode": "tcp"}, {"name": "https-443", "mode": "tcp"}]}'
+                        ),
                     ),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=True, ready=fnv1.READY_UNSPECIFIED),
@@ -1469,7 +1460,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_FALSE,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1535,7 +1526,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_FALSE,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1602,7 +1593,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1695,7 +1686,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_UNSPECIFIED,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1755,7 +1746,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_UNSPECIFIED,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1813,7 +1804,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_FALSE,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -1885,7 +1876,7 @@ COMPOSE_CASES = [
                     ready=fnv1.READY_FALSE,
                 ),
                 resources={
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2020,7 +2011,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2294,7 +2285,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=True, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2409,7 +2400,7 @@ COMPOSE_CASES = [
                             }
                         )
                     ),
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
                     "gateway": _gateway(https=True, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2535,7 +2526,7 @@ COMPOSE_CASES = [
                 ),
                 resources={
                     "caller-secret-ml-team-keys": _caller_secret(name="callers-ml-team-keys", data={"a": "c2stMQ=="}),
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2628,7 +2619,7 @@ COMPOSE_CASES = [
                 resources={
                     "caller-secret-team-a-keys": _caller_secret(name="callers-team-a-keys", data={"a": "c2stMQ=="}),
                     "caller-secret-team-b-keys": _caller_secret(name="callers-team-b-keys", data={"b": "c2stMQ=="}),
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2716,7 +2707,7 @@ COMPOSE_CASES = [
                     "caller-secret-team-a-keys": _caller_secret(
                         name="callers-team-a-keys", data={"a": "c2stMQ==", "z": "c2stMQ=="}
                     ),
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2812,7 +2803,7 @@ COMPOSE_CASES = [
                     "caller-secret-team-b-keys": _caller_secret(
                         name="callers-team-b-keys", data={"x": "c2stMg==", "y": "c2stMQ=="}
                     ),
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2907,7 +2898,7 @@ COMPOSE_CASES = [
                     "caller-secret-team-b-keys": _caller_secret(
                         name="callers-team-b-keys", data={"a": "c2stMQ==", "b": "c2stMg=="}
                     ),
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_TRUE),
                     "gateway": _gateway(https=False, ready=fnv1.READY_TRUE),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -2973,7 +2964,7 @@ COMPOSE_CASES = [
                 resources={
                     "caller-secret-team-a-keys": _caller_secret(name="callers-team-a-keys", data={"a": "c2stMQ=="}),
                     "caller-secret-team-b-keys": _caller_secret(name="callers-team-b-keys", data={"b": "c2stMg=="}),
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -3048,7 +3039,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -3156,7 +3147,7 @@ COMPOSE_CASES = [
             desired=fnv1.State(
                 composite=_desired_xr(status={}, ready=fnv1.READY_FALSE),
                 resources={
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=False, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),
@@ -3320,7 +3311,7 @@ COMPOSE_CASES = [
                             }
                         )
                     ),
-                    "envoy-proxy": _envoy_proxy(envoy_service=None),
+                    "envoy-proxy": _envoy_proxy(lb_config=None),
                     "envoy-deployment": _envoy_deployment(ready=fnv1.READY_UNSPECIFIED),
                     "gateway": _gateway(https=True, ready=fnv1.READY_UNSPECIFIED),
                     "client-selfsigned-issuer": _client_selfsigned_issuer(),

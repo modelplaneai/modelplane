@@ -8060,7 +8060,6 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
-                    "kube-prometheus-stack": _observed_ready(),
                     "node-feature-discovery": _observed_ready(),
                     "nvidia-dra-driver-gpu": _observed_ready(),
                     "dcgm-exporter": _observed_ready(),
@@ -8105,7 +8104,6 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written UpCloud half.
             "cert-manager",
-            "kube-prometheus-stack",
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
             "dcgm-exporter",
@@ -8174,7 +8172,6 @@ COMPOSED_RESOURCE_KEYS_CASES = [
                     "usage-gateway-namespace-by-gateway-selfsigned-issuer": _observed_ready(),
                     "usage-gateway-selfsigned-issuer-by-trust-manager": _observed_ready(),
                     "cert-manager": _observed_ready(),
-                    "kube-prometheus-stack": _observed_ready(),
                     "node-feature-discovery": _observed_ready(),
                     "nvidia-dra-driver-gpu": _observed_ready(),
                     "dcgm-exporter": _observed_ready(),
@@ -8233,7 +8230,6 @@ COMPOSED_RESOURCE_KEYS_CASES = [
             "usage-gateway-selfsigned-issuer-by-trust-manager",
             # The hand-written UpCloud half.
             "cert-manager",
-            "kube-prometheus-stack",
             "node-feature-discovery",
             "nvidia-dra-driver-gpu",
             "dcgm-exporter",

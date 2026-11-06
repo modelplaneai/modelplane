@@ -1,9 +1,9 @@
 # An InferenceCluster backed by an UpCloud Managed Kubernetes (UKS) cluster.
 #
 # Modelplane provisions the full cluster (SDN network, control plane,
-# system + inference node groups) and installs the inference stack (cert-manager,
-# Envoy Gateway, Prometheus, NVIDIA DRA driver, LeaderWorkerSet, Gateway
-# API). UKS GPU node images ship the NVIDIA driver and container toolkit,
+# system + inference node groups) and installs the inference stack
+# (cert-manager, Envoy Gateway, NVIDIA DRA driver, LeaderWorkerSet,
+# Gateway API). UKS GPU node images ship the NVIDIA driver and container toolkit,
 # so the stack installs no GPU Operator.
 #
 # The system node pool that hosts control-plane components is provisioned
