@@ -29,9 +29,9 @@
     # opencode, Vale and vale-ls come from unstable. 26.05 ships an older major
     # version of opencode, and a Vale that ignores the relative StylesPath in
     # the repo's Vale config.
-    nixpkgs-unstable.url = "github:NixOS/nixpkgs/0bbd84664ed6cf6e80409190b04a8caab1c77eac";
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
     microvm = {
-      url = "github:microvm-nix/microvm.nix/b7bd556974fa8a171b5b639200e81d52244dfde4";
+      url = "github:microvm-nix/microvm.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
