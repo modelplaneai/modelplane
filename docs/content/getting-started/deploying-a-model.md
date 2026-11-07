@@ -40,6 +40,9 @@ you just added:
 {{< tab "Civo" >}}
 {{< manifests "getting-started/civo/model-deployment.yaml" >}}
 {{< /tab >}}
+{{< tab "CoreWeave" >}}
+{{< manifests "getting-started/coreweave/model-deployment.yaml" >}}
+{{< /tab >}}
 {{< /tabs >}}
 
 Wait until `REPLICAS` shows `1`:

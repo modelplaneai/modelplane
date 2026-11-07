@@ -29,6 +29,10 @@ spec:
       pathPrefix: _output/functions/compose-civo-cluster
   - source: Tarball
     tarball:
+      name: compose-coreweave-cluster
+      pathPrefix: _output/functions/compose-coreweave-cluster
+  - source: Tarball
+    tarball:
       name: compose-eks-cluster
       pathPrefix: _output/functions/compose-eks-cluster
   - source: Tarball
@@ -156,6 +160,12 @@ spec:
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-civo
       version: v1.0.1
+  - type: xpkg
+    xpkg:
+      apiVersion: pkg.crossplane.io/v1
+      kind: Provider
+      package: xpkg.upbound.io/upbound/provider-coreweave
+      version: v0.1.0
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1

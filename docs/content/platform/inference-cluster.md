@@ -11,7 +11,7 @@ serving. Platform teams create these to provide GPU capacity.
 
 Each cluster has:
 
-- A **cluster source**: `GKE`, `EKS`, `AKS`, `Nebius`, `Vultr` or `Civo` (Modelplane
+- A **cluster source**: `GKE`, `EKS`, `AKS`, `Nebius`, `Vultr`, `Civo` or `CoreWeave` (Modelplane
   provisions the full cluster) or `Existing` (bring a cluster you manage yourself). See
   [Supported Providers]({{< ref "platform/providers.md" >}}) for the clouds and
   neoclouds Modelplane runs on.
@@ -40,7 +40,7 @@ cluster](#requirements-for-an-existing-cluster) sets out.
 
 The `cluster.source` discriminator picks one of two models:
 
-- **Provisioned (`GKE`, `EKS`, `AKS`, `Nebius`, `Vultr`, `Civo`).** Modelplane creates the cluster and its GPU node
+- **Provisioned (`GKE`, `EKS`, `AKS`, `Nebius`, `Vultr`, `Civo`, `CoreWeave`).** Modelplane creates the cluster and its GPU node
   pools from each pool's `InferenceClass`, labels the pool's nodes so the
   scheduler's placement is enforced, and provisions the storage class for model
   weights. It also injects a non-GPU **system pool** with opinionated defaults to
@@ -196,6 +196,9 @@ pool.
 {{< tab "Civo" >}}
 {{< manifests path="concepts/inference-cluster-civo.yaml" apply="false" >}}
 {{< /tab >}}
+{{< tab "CoreWeave" >}}
+{{< manifests path="concepts/inference-cluster-coreweave.yaml" apply="false" >}}
+{{< /tab >}}
 {{< tab "Existing" >}}
 {{< manifests path="concepts/inference-cluster-existing.yaml" apply="false" >}}
 {{< /tab >}}
@@ -209,8 +212,9 @@ depends on the source:
 
 <!-- vale Google.Acronyms = NO -->
 - **`GKE`** (Filestore Enterprise), **`EKS`** (EFS), **`AKS`** (Azure Files),
-  and **`Nebius`** (shared filesystem): auto-provisioned. Those classes are
-  fixed; nothing for the admin to do.
+  **`Nebius`** (shared filesystem), and **`CoreWeave`** (Distributed File
+  Storage): auto-provisioned. Those classes are fixed; nothing for the admin
+  to do.
 - **`Vultr`** and **`Civo`**: none. VKE's built-in RWX class (Vultr File
   System) isn't usable on GPU nodes, Civo's `civo-volume` class is
   `ReadWriteOnce` only, and Modelplane doesn't provision an alternative

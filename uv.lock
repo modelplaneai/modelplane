@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11, <3.14"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -11,6 +11,7 @@ members = [
     "compose-aks-cluster",
     "compose-capacity-reservation",
     "compose-civo-cluster",
+    "compose-coreweave-cluster",
     "compose-eks-cluster",
     "compose-gke-cluster",
     "compose-inference-class",
@@ -316,6 +317,25 @@ requires-dist = [
 name = "compose-civo-cluster"
 version = "0.0.0"
 source = { editable = "functions/compose-civo-cluster" }
+dependencies = [
+    { name = "click" },
+    { name = "crossplane-function-sdk-python" },
+    { name = "crossplane-models" },
+    { name = "grpcio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
+    { name = "crossplane-models", editable = "schemas/python" },
+    { name = "grpcio", specifier = ">=1.73.1" },
+]
+
+[[package]]
+name = "compose-coreweave-cluster"
+version = "0.0.0"
+source = { editable = "functions/compose-coreweave-cluster" }
 dependencies = [
     { name = "click" },
     { name = "crossplane-function-sdk-python" },

@@ -1,0 +1,36 @@
+# An InferenceCluster backed by a CoreWeave Kubernetes Service (CKS)
+# cluster.
+#
+# Modelplane provisions the cluster (VPC, control plane, system and GPU
+# node pools) and installs the inference stack. The system node pool is
+# provisioned automatically and isn't declared here. Only GPU node pools,
+# each referencing an InferenceClass, need to be declared.
+#
+# CKS publishes no kubeconfig, so Modelplane authenticates to the cluster
+# with the CoreWeave API access token of the ClusterProviderConfig named
+# default. The token must belong to a user who can administer CKS
+# clusters.
+#
+# Delete what runs on this InferenceCluster first, since it refuses deletion
+# while anything uses it, then delete it with foreground cascading deletion,
+# so the inference stack uninstalls while the cluster still exists:
+#
+#   kubectl delete inferencecluster coreweave-us-east-04 --cascade=foreground
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: coreweave-us-east-04
+  labels:
+    modelplane.ai/region: us-east-04
+spec:
+  cluster:
+    source: CoreWeave
+    coreweave:
+      zone: US-EAST-04A
+
+  nodePools:
+    - name: gpu-rtxp6000
+      className: coreweave-rtxp6000-8x
+      nodeCount: 1
+      minNodeCount: 1
+      maxNodeCount: 2

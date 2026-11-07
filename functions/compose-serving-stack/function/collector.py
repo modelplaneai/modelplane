@@ -332,12 +332,17 @@ def _scrape_configs() -> list[dict[str, Any]]:
                 # A job of its own because nobody annotates a GPU exporter
                 # for scraping: GKE runs a managed DCGM in
                 # gke-managed-system, the NVIDIA GPU operator installs its
-                # own elsewhere, Nebius gets the standalone dcgm-exporter
-                # chart, the AMD GPU operator Modelplane installs on
+                # own elsewhere, Nebius and CoreWeave get the standalone
+                # dcgm-exporter chart, the AMD GPU operator Modelplane installs on
                 # Existing runs AMD's device-metrics-exporter, and the
                 # substrate job sees none of them. Without this every
                 # modelplane_gpu_* series is empty.
                 _gpu_exporter_selector("keep"),
+                # CKS runs its own DCGM exporter in cw-exporters, which can't
+                # attribute DRA-allocated GPUs to pods. The serving stack
+                # installs one that can, and scraping both would collect
+                # every GPU series twice.
+                {"source_labels": ["__meta_kubernetes_namespace"], "action": "drop", "regex": "cw-exporters"},
                 # The exporters name their metrics port differently: DCGM's
                 # is metrics, the AMD operator's is exporter-port.
                 {

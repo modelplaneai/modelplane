@@ -1,0 +1,44 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: rtxp6000-8x
+spec:
+  # An 8x RTX PRO 6000 bare-metal instance type. CKS instance types vary by
+  # zone.
+  description: "CoreWeave rtxp6000-8x, 8x NVIDIA RTX PRO 6000 Blackwell 96GB"
+  provisioning:
+    provider: CoreWeave
+    coreweave:
+      instanceType: rtxp6000-8x
+      accelerator:
+        type: nvidia-rtx-pro-6000
+        count: 8
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 8
+    attributes:
+      architecture: { string: Blackwell }
+      cudaComputeCapability: { version: "12.0.0" }
+    capacity:
+      memory: { value: "97887Mi" }   # RTX PRO 6000's real reported VRAM
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: coreweave-us-east-04
+  labels:
+    modelplane.ai/region: us-east-04
+spec:
+  cluster:
+    source: CoreWeave
+    coreweave:
+      zone: US-EAST-04A
+  nodePools:
+  - name: gpu-rtxp6000
+    className: rtxp6000-8x
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1

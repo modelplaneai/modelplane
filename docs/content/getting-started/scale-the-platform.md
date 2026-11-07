@@ -4,8 +4,8 @@ weight: 50
 description: Grow from one cluster to a multi-region fleet.
 ---
 
-You have one small-GPU cluster with a running model. In this guide, you'll grow
-the fleet with larger-GPU capacity so the ML team has more to schedule against.
+You have one GPU cluster with a running model. In this guide, you'll grow the
+fleet with more GPU capacity so the ML team has more to schedule against.
 
 Provisioning takes about 10 to 15 minutes.
 
@@ -88,6 +88,20 @@ The `A100` cluster costs more per hour than the `L40S` from earlier. Clean up
 when you're done (see [Clean up]({{< ref "getting-started/clean-up.md" >}})).
 {{< /hint >}}
 {{< /tab >}}
+{{< tab "CoreWeave" >}}
+Register a second `RTX PRO 6000` (`96 GB`) cluster in the same zone:
+
+{{< manifests "getting-started/coreweave/platform-scale.yaml" >}}
+
+{{< hint "note" >}}
+The second cluster doubles the hourly cost. Clean up when you're done (see
+[Clean up]({{< ref "getting-started/clean-up.md" >}})).
+{{< /hint >}}
+
+```bash
+kubectl wait --for=condition=Ready ic/coreweave-us-east-04-b --timeout=45m
+```
+{{< /tab >}}
 {{< /tabs >}}
 
 Modelplane provisions the new clusters in parallel:
@@ -105,4 +119,4 @@ its deployment changes in a way that no longer fits where it runs.
 
 ## Next step
 
-The fleet has grown with larger-GPU capacity. The ML team is next. [Scale the model]({{< ref "getting-started/scale-the-model.md" >}}) to serve it across the fleet behind one endpoint.
+The fleet has more GPU capacity. The ML team is next. [Scale the model]({{< ref "getting-started/scale-the-model.md" >}}) to serve it across the fleet behind one endpoint.

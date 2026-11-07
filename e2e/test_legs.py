@@ -40,6 +40,7 @@ COMPOSITIONS = {
     "gke": "compose-gke-cluster",
     "aks": "compose-aks-cluster",
     "civo": "compose-civo-cluster",
+    "coreweave": "compose-coreweave-cluster",
     "nebius": "compose-nebius-cluster",
     "vultr": "compose-vultr-cluster",
 }

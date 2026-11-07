@@ -1,0 +1,20 @@
+# A second cluster of the same class in the same zone. The tier label
+# lets a ModelDeployment's clusterSelector pick it.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: coreweave-us-east-04-b
+  labels:
+    modelplane.ai/region: us-east-04
+    modelplane.ai/tier: b
+spec:
+  cluster:
+    source: CoreWeave
+    coreweave:
+      zone: US-EAST-04A
+  nodePools:
+  - name: gpu-rtxp6000
+    className: rtxp6000-8x
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1

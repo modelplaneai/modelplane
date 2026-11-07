@@ -53,6 +53,7 @@
         "compose-aks-cluster"
         "compose-capacity-reservation"
         "compose-civo-cluster"
+        "compose-coreweave-cluster"
         "compose-eks-cluster"
         "compose-gke-cluster"
         "compose-inference-class"

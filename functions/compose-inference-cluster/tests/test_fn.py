@@ -357,6 +357,24 @@ def _civo_cluster(*, node_pools: list[dict], credentials: dict | None, ready: fn
     )
 
 
+def _coreweave_cluster(*, node_pools: list[dict], credentials: dict | None, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed CoreWeaveCluster in US-EAST-04A with node_pools, using credentials unless they're None."""
+    spec: dict = {"zone": "US-EAST-04A", "nodePools": node_pools}
+    if credentials is not None:
+        spec["credentials"] = credentials
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                "kind": "CoreWeaveCluster",
+                "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                "spec": spec,
+            }
+        ),
+        ready=ready,
+    )
+
+
 def _cluster_provider_config(*, kubeconfig: str, identity: dict | None) -> fnv1.Resource:
     """The ClusterProviderConfig reaching test-cluster with the kubeconfig Secret, as identity unless it's None."""
     spec: dict = {
@@ -5957,6 +5975,575 @@ COMPOSE_CASES = [
                     "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
                     "class-gpu-h100-civo": fnv1.ResourceSelector(
                         api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-h100-civo"
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClusterReady", status=fnv1.STATUS_CONDITION_TRUE, reason="ClusterRunning"),
+                fnv1.Condition(type="BackendReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Installing"),
+            ],
+        ),
+    ),
+    ComposeCase(
+        name="CoreWeaveFirstPass",
+        reason="With no CoreWeaveCluster observed yet, a CoreWeave cluster composes only the activation policy and the CoreWeaveCluster.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_inference_cluster(
+                    cluster=v1alpha1.Cluster(source="CoreWeave", coreweave=v1alpha1.Coreweave(zone="US-EAST-04A")),
+                    node_pools=[
+                        v1alpha1.NodePool(name="h100-pool", className="gpu-h100-coreweave", nodeCount=1),
+                    ],
+                ),
+                resources={
+                    "activation": _observed_activation_policy(
+                        activated=["clusters.cks.coreweave.m.upbound.io", "vpcs.networking.coreweave.m.upbound.io"]
+                    ),
+                },
+            ),
+            required_resources={
+                "class-gpu-h100-coreweave": fnv1.Resources(
+                    items=[
+                        _inference_class(
+                            name="gpu-h100-coreweave",
+                            count=8,
+                            memory="81559Mi",
+                            provisioning={
+                                "provider": "CoreWeave",
+                                "coreweave": {
+                                    "instanceType": "gd-8xh100ib-i128",
+                                    "accelerator": {"type": "nvidia-h100", "count": 8},
+                                },
+                            },
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_inference_cluster(
+                    schedulable_pools=[
+                        {
+                            "name": "h100-pool",
+                            "nodes": 1,
+                            "devices": [
+                                {
+                                    "name": "gpu",
+                                    "claim": "DRA",
+                                    "driver": "gpu.nvidia.com",
+                                    "deviceClassName": "gpu.nvidia.com",
+                                    "count": 8,
+                                    "capacity": {"memory": {"value": "81559Mi"}},
+                                },
+                            ],
+                        },
+                    ],
+                    cache=None,
+                    gateway=None,
+                ),
+                resources={
+                    "usage-inferenceclass-gpu-h100-coreweave": _input_usage(
+                        kind="InferenceClass", name="gpu-h100-coreweave"
+                    ),
+                    "activation": _activation_policy(
+                        activate=["clusters.cks.coreweave.m.upbound.io", "vpcs.networking.coreweave.m.upbound.io"],
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "coreweave-cluster": _coreweave_cluster(
+                        node_pools=[
+                            {
+                                "name": "h100-pool",
+                                "role": "GPU",
+                                "instanceType": "gd-8xh100ib-i128",
+                                "nodeCount": 1,
+                                "gpu": {"acceleratorType": "nvidia-h100"},
+                            },
+                        ],
+                        credentials=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "model-replicas": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelReplica",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-routes": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelRoute",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-caches": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache"),
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "class-gpu-h100-coreweave": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-h100-coreweave"
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClusterReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Provisioning"),
+                fnv1.Condition(type="BackendReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForCluster"),
+            ],
+        ),
+    ),
+    ComposeCase(
+        name="CoreWeaveCredentials",
+        reason=(
+            "A CoreWeave cluster's credentials, Kubernetes version and autoscaling bounds pass through to the "
+            "CoreWeaveCluster's spec."
+        ),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_inference_cluster(
+                    cluster=v1alpha1.Cluster(
+                        source="CoreWeave",
+                        coreweave=v1alpha1.Coreweave(
+                            zone="US-EAST-04A",
+                            kubernetesVersion="1.36",
+                            credentials=v1alpha1.Credentials(type="ProviderConfig", name="my-coreweave-org"),
+                        ),
+                    ),
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="h100-pool",
+                            className="gpu-h100-coreweave",
+                            nodeCount=1,
+                            minNodeCount=0,
+                            maxNodeCount=4,
+                        ),
+                    ],
+                ),
+                resources={
+                    "activation": _observed_activation_policy(
+                        activated=["clusters.cks.coreweave.m.upbound.io", "vpcs.networking.coreweave.m.upbound.io"]
+                    ),
+                },
+            ),
+            required_resources={
+                "class-gpu-h100-coreweave": fnv1.Resources(
+                    items=[
+                        _inference_class(
+                            name="gpu-h100-coreweave",
+                            count=8,
+                            memory="81559Mi",
+                            provisioning={
+                                "provider": "CoreWeave",
+                                "coreweave": {
+                                    "instanceType": "gd-8xh100ib-i128",
+                                    "accelerator": {"type": "nvidia-h100", "count": 8},
+                                },
+                            },
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_inference_cluster(
+                    schedulable_pools=[
+                        {
+                            "name": "h100-pool",
+                            "nodes": 4,
+                            "devices": [
+                                {
+                                    "name": "gpu",
+                                    "claim": "DRA",
+                                    "driver": "gpu.nvidia.com",
+                                    "deviceClassName": "gpu.nvidia.com",
+                                    "count": 8,
+                                    "capacity": {"memory": {"value": "81559Mi"}},
+                                },
+                            ],
+                        },
+                    ],
+                    cache=None,
+                    gateway=None,
+                ),
+                resources={
+                    "usage-inferenceclass-gpu-h100-coreweave": _input_usage(
+                        kind="InferenceClass", name="gpu-h100-coreweave"
+                    ),
+                    "activation": _activation_policy(
+                        activate=["clusters.cks.coreweave.m.upbound.io", "vpcs.networking.coreweave.m.upbound.io"],
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "coreweave-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "CoreWeaveCluster",
+                                "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                                "spec": {
+                                    "zone": "US-EAST-04A",
+                                    "kubernetesVersion": "1.36",
+                                    "credentials": {"type": "ProviderConfig", "name": "my-coreweave-org"},
+                                    "nodePools": [
+                                        {
+                                            "name": "h100-pool",
+                                            "role": "GPU",
+                                            "instanceType": "gd-8xh100ib-i128",
+                                            "nodeCount": 1,
+                                            "minNodeCount": 0,
+                                            "maxNodeCount": 4,
+                                            "gpu": {"acceleratorType": "nvidia-h100"},
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "model-replicas": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelReplica",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-routes": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelRoute",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-caches": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache"),
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "class-gpu-h100-coreweave": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-h100-coreweave"
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClusterReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Provisioning"),
+                fnv1.Condition(type="BackendReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForCluster"),
+            ],
+        ),
+    ),
+    # compose-coreweave-cluster renders the kubeconfig with a CoreWeave API
+    # access token, so the ClusterProviderConfig carries no identity (unlike
+    # Nebius). The CoreWeaveCluster reports its cache StorageClass, which is
+    # relayed to status.cache.
+    ComposeCase(
+        name="CoreWeaveReady",
+        reason=(
+            "Once its CoreWeaveCluster is Ready, a CoreWeave cluster composes a ClusterProviderConfig without "
+            "identity, the ServingStack and the Usage, and relays the cache StorageClass."
+        ),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_inference_cluster(
+                    cluster=v1alpha1.Cluster(source="CoreWeave", coreweave=v1alpha1.Coreweave(zone="US-EAST-04A")),
+                    node_pools=[
+                        v1alpha1.NodePool(name="h100-pool", className="gpu-h100-coreweave", nodeCount=1),
+                    ],
+                ),
+                resources={
+                    "coreweave-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "CoreWeaveCluster",
+                                "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                                "spec": {
+                                    "zone": "US-EAST-04A",
+                                    "nodePools": [
+                                        {
+                                            "name": "h100-pool",
+                                            "role": "GPU",
+                                            "instanceType": "gd-8xh100ib-i128",
+                                            "nodeCount": 1,
+                                            "gpu": {"acceleratorType": "nvidia-h100"},
+                                        },
+                                    ],
+                                },
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                        },
+                                    ],
+                                    "secrets": [
+                                        {
+                                            "type": "Kubeconfig",
+                                            "name": "test-cluster-kubeconfig-abcde",
+                                            "key": "kubeconfig",
+                                        },
+                                    ],
+                                    "cache": {"storageClassName": "modelplane-rwx-fs"},
+                                },
+                            }
+                        ),
+                    ),
+                    "activation": _observed_activation_policy(
+                        activated=["clusters.cks.coreweave.m.upbound.io", "vpcs.networking.coreweave.m.upbound.io"]
+                    ),
+                },
+            ),
+            required_resources={
+                "class-gpu-h100-coreweave": fnv1.Resources(
+                    items=[
+                        _inference_class(
+                            name="gpu-h100-coreweave",
+                            count=8,
+                            memory="81559Mi",
+                            provisioning={
+                                "provider": "CoreWeave",
+                                "coreweave": {
+                                    "instanceType": "gd-8xh100ib-i128",
+                                    "accelerator": {"type": "nvidia-h100", "count": 8},
+                                },
+                            },
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_inference_cluster(
+                    schedulable_pools=[
+                        {
+                            "name": "h100-pool",
+                            "nodes": 1,
+                            "devices": [
+                                {
+                                    "name": "gpu",
+                                    "claim": "DRA",
+                                    "driver": "gpu.nvidia.com",
+                                    "deviceClassName": "gpu.nvidia.com",
+                                    "count": 8,
+                                    "capacity": {"memory": {"value": "81559Mi"}},
+                                },
+                            ],
+                        },
+                    ],
+                    cache={"storageClassName": "modelplane-rwx-fs"},
+                    gateway=None,
+                ),
+                resources={
+                    "usage-inferenceclass-gpu-h100-coreweave": _input_usage(
+                        kind="InferenceClass", name="gpu-h100-coreweave"
+                    ),
+                    "activation": _activation_policy(
+                        activate=["clusters.cks.coreweave.m.upbound.io", "vpcs.networking.coreweave.m.upbound.io"],
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "coreweave-cluster": _coreweave_cluster(
+                        node_pools=[
+                            {
+                                "name": "h100-pool",
+                                "role": "GPU",
+                                "instanceType": "gd-8xh100ib-i128",
+                                "nodeCount": 1,
+                                "gpu": {"acceleratorType": "nvidia-h100"},
+                            },
+                        ],
+                        credentials=None,
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "cluster-provider-config-kubernetes": _cluster_provider_config(
+                        kubeconfig="test-cluster-kubeconfig-abcde", identity=None
+                    ),
+                    "serving-stack": _serving_stack(
+                        cloud="CoreWeave",
+                        dra_drivers=("gpu.nvidia.com",),
+                        secrets=[{"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"}],
+                        client_cas=None,
+                        gpu=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "usage-coreweave-by-backend": _backend_usage(cluster_kind="CoreWeaveCluster"),
+                },
+            ),
+            results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="CoreWeave cluster ready, composing backend")],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "model-replicas": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelReplica",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-routes": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelRoute",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-caches": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache"),
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "class-gpu-h100-coreweave": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-h100-coreweave"
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClusterReady", status=fnv1.STATUS_CONDITION_TRUE, reason="ClusterRunning"),
+                fnv1.Condition(type="BackendReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Installing"),
+            ],
+        ),
+    ),
+    # A class with no accelerator describes a CPU pool: the CoreWeaveCluster
+    # pool is CPU-role with no gpu block, and the ServingStack installs the
+    # dra.cpu stack.
+    ComposeCase(
+        name="CoreWeaveCPUPool",
+        reason=(
+            "Once its CoreWeaveCluster is Ready, a CoreWeave cluster whose pool's class names no accelerator "
+            "composes a CPU-role pool and a ServingStack claiming dra.cpu."
+        ),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_inference_cluster(
+                    cluster=v1alpha1.Cluster(source="CoreWeave", coreweave=v1alpha1.Coreweave(zone="US-EAST-04A")),
+                    node_pools=[
+                        v1alpha1.NodePool(name="cpu-pool", className="cpu-coreweave", nodeCount=1),
+                    ],
+                ),
+                resources={
+                    "coreweave-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "CoreWeaveCluster",
+                                "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                                "spec": {
+                                    "zone": "US-EAST-04A",
+                                    "nodePools": [
+                                        {
+                                            "name": "cpu-pool",
+                                            "role": "CPU",
+                                            "instanceType": "cd-gp-i64-erapids",
+                                            "nodeCount": 1,
+                                        },
+                                    ],
+                                },
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                        },
+                                    ],
+                                    "secrets": [
+                                        {
+                                            "type": "Kubeconfig",
+                                            "name": "test-cluster-kubeconfig-abcde",
+                                            "key": "kubeconfig",
+                                        },
+                                    ],
+                                    "cache": {"storageClassName": "modelplane-rwx-fs"},
+                                },
+                            }
+                        ),
+                    ),
+                    "activation": _observed_activation_policy(
+                        activated=["clusters.cks.coreweave.m.upbound.io", "vpcs.networking.coreweave.m.upbound.io"]
+                    ),
+                },
+            ),
+            required_resources={
+                "class-cpu-coreweave": fnv1.Resources(
+                    items=[
+                        _cpu_inference_class(
+                            name="cpu-coreweave",
+                            cpus="64",
+                            provisioning={
+                                "provider": "CoreWeave",
+                                "coreweave": {"instanceType": "cd-gp-i64-erapids"},
+                            },
+                        ),
+                    ],
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_inference_cluster(
+                    schedulable_pools=[
+                        {
+                            "name": "cpu-pool",
+                            "nodes": 1,
+                            "devices": [
+                                {
+                                    "name": "cpu",
+                                    "claim": "DRA",
+                                    "driver": "dra.cpu",
+                                    "deviceClassName": "dra.cpu",
+                                    "count": 1,
+                                    "capacity": {"cpu": {"value": "64"}},
+                                },
+                            ],
+                        },
+                    ],
+                    cache={"storageClassName": "modelplane-rwx-fs"},
+                    gateway=None,
+                ),
+                resources={
+                    "usage-inferenceclass-cpu-coreweave": _input_usage(kind="InferenceClass", name="cpu-coreweave"),
+                    "activation": _activation_policy(
+                        activate=["clusters.cks.coreweave.m.upbound.io", "vpcs.networking.coreweave.m.upbound.io"],
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "coreweave-cluster": _coreweave_cluster(
+                        node_pools=[
+                            {
+                                "name": "cpu-pool",
+                                "role": "CPU",
+                                "instanceType": "cd-gp-i64-erapids",
+                                "nodeCount": 1,
+                            },
+                        ],
+                        credentials=None,
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "cluster-provider-config-kubernetes": _cluster_provider_config(
+                        kubeconfig="test-cluster-kubeconfig-abcde", identity=None
+                    ),
+                    "serving-stack": _serving_stack(
+                        cloud="CoreWeave",
+                        dra_drivers=("dra.cpu",),
+                        secrets=[{"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"}],
+                        client_cas=None,
+                        gpu=None,
+                        ready=fnv1.READY_UNSPECIFIED,
+                    ),
+                    "usage-coreweave-by-backend": _backend_usage(cluster_kind="CoreWeaveCluster"),
+                },
+            ),
+            results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="CoreWeave cluster ready, composing backend")],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "model-replicas": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelReplica",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-routes": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelRoute",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/cluster": "test-cluster"}),
+                    ),
+                    "model-caches": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache"),
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "class-cpu-coreweave": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="cpu-coreweave"
                     ),
                 },
             ),
