@@ -18,7 +18,6 @@
       "original": {
         "owner": "microvm-nix",
         "repo": "microvm.nix",
-        "rev": "b7bd556974fa8a171b5b639200e81d52244dfde4",
         "type": "github"
       }
     },
@@ -40,17 +39,17 @@
     },
     "nixpkgs-unstable": {
       "locked": {
-        "lastModified": 1793865873,
-        "narHash": "sha256-C1EQfodfY/mFJRh8MTA8f5vpT/K7m4jH0sLSbTu21bM=",
+        "lastModified": 1793726008,
+        "narHash": "sha256-jQp1wKvbwWdLBASTXkSi/VYmDJ5AbBi1WvcMt9HWJC8=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "0bbd84664ed6cf6e80409190b04a8caab1c77eac",
+        "rev": "1d060086d60cb76a40cf37109f979d88a5bd6396",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
+        "ref": "nixos-unstable",
         "repo": "nixpkgs",
-        "rev": "0bbd84664ed6cf6e80409190b04a8caab1c77eac",
         "type": "github"
       }
     },

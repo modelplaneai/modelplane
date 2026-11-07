@@ -299,6 +299,7 @@ in
     pkgs.runCommand "modelplane-nix-lint"
       {
         nativeBuildInputs = [
+          pkgs.findutils
           pkgs.statix
           pkgs.deadnix
           pkgs.nixfmt
@@ -306,8 +307,8 @@ in
       }
       ''
         statix check ${self}
-        deadnix --fail ${self}/flake.nix ${self}/nix
-        nixfmt --check ${self}/flake.nix ${self}/nix/*.nix
+        find ${self} -name '*.nix' -type f -exec deadnix --fail {} +
+        find ${self} -name '*.nix' -type f -exec nixfmt --check {} +
         mkdir -p $out
         touch $out/.nix-lint-passed
       '';
