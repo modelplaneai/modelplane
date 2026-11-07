@@ -12,7 +12,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: github.event.issue.pull_request && startsWith(github.event.comment.body, '/backport')
     steps:
     - name: Extract Command
@@ -42,7 +42,7 @@ jobs:
   review-command:
     permissions:
       pull-requests: write
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # Only a new comment. The slash command action checks the commenter's
     # permission on created and edited comments, and lets a deleted one through
     # unchecked.

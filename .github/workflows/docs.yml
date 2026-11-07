@@ -39,7 +39,7 @@ jobs:
     # Forks inherit this workflow but not the app id and key it needs, so the
     # token mint fails there. Only the canonical repo can dispatch to the site.
     if: github.repository == 'modelplaneai/modelplane'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       SITE_REPO: modelplaneai/docs-site
 
@@ -51,7 +51,7 @@ jobs:
       # permission repository_dispatch requires.
       - name: Mint a token for the site repo
         id: token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
           app-id: ${{ vars.DOCS_SITE_APP_ID }}
           private-key: ${{ secrets.DOCS_SITE_APP_KEY }}
