@@ -163,6 +163,9 @@ def _published_count(value: int | None) -> int:
 # (name, amount) pairs, so devices with the same capacity compare equal.
 _Capacity = tuple[tuple[str, decimal.Decimal], ...]
 
+# The capacity name whose share compose-model-deployment tells the engine.
+_CAPACITY_MEMORY = "memory"
+
 
 def _parse_capacity(amounts: dict[str, str]) -> _Capacity | None:
     """Parse capacity quantities keyed by name, or return None if one doesn't parse."""
@@ -197,6 +200,16 @@ def _device_capacity(device: icv1alpha1.Device) -> _Capacity:
     return tuple(sorted(capacity))
 
 
+def _memory_fraction(wants: _Capacity, device: icv1alpha1.Device) -> str:
+    """The requested memory over the device's, rounded down to three places, or empty if either is unknown."""
+    requested = dict(wants).get(_CAPACITY_MEMORY)
+    total = dict(_device_capacity(device)).get(_CAPACITY_MEMORY)
+    if requested is None or not total:
+        return ""
+    fraction = (requested / total).quantize(decimal.Decimal("0.001"), rounding=decimal.ROUND_DOWN)
+    return f"{fraction.normalize():f}"
+
+
 @dataclass
 class DeviceRequest:
     """A resolved DRA device request for a matched pool device.
@@ -207,6 +220,10 @@ class DeviceRequest:
     capacity it consumes on each device of a class that allows multiple
     allocations. Only claim: DRA devices produce one of these; synthetic devices
     are matched for scheduling but never claimed.
+
+    memory_fraction is the requested memory over the memory the matched device
+    declares, as a decimal string rounded down to three places. It's empty
+    unless the request asks for memory.
     """
 
     name: str
@@ -214,6 +231,7 @@ class DeviceRequest:
     count: int
     cel_selectors: list[str]
     capacity_requests: dict[str, str] = field(default_factory=dict)
+    memory_fraction: str = ""
 
 
 @dataclass
@@ -503,6 +521,7 @@ def _match_member(pool: icv1alpha1.SchedulablePool, member: _CompiledMember) -> 
                     count=req.count,
                     cel_selectors=req.cel_selectors,
                     capacity_requests=req.capacity_requests,
+                    memory_fraction=_memory_fraction(req.capacity or (), match),
                 )
             )
     return resolved

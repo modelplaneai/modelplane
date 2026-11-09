@@ -7073,6 +7073,7 @@ SCHEDULE_CASES = [
                                 count=1,
                                 cel_selectors=[_MEM_20],
                                 capacity_requests={"memory": "24Gi"},
+                                memory_fraction="0.3",
                             )
                         ],
                     ),
@@ -7193,6 +7194,7 @@ SCHEDULE_CASES = [
                                 count=1,
                                 cel_selectors=[_MEM_20],
                                 capacity_requests={"memory": "24Gi"},
+                                memory_fraction="0.3",
                             )
                         ],
                     ),
@@ -7214,6 +7216,7 @@ SCHEDULE_CASES = [
                                 count=1,
                                 cel_selectors=[_MEM_20],
                                 capacity_requests={"memory": "24Gi"},
+                                memory_fraction="0.3",
                             )
                         ],
                     ),
@@ -7235,6 +7238,7 @@ SCHEDULE_CASES = [
                                 count=1,
                                 cel_selectors=[_MEM_20],
                                 capacity_requests={"memory": "24Gi"},
+                                memory_fraction="0.3",
                             )
                         ],
                     ),
@@ -7560,6 +7564,7 @@ SCHEDULE_CASES = [
                                 count=1,
                                 cel_selectors=[_MEM_20],
                                 capacity_requests={"memory": "24Gi"},
+                                memory_fraction="0.3",
                             )
                         ],
                     ),

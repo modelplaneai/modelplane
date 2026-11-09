@@ -22,7 +22,7 @@ from typing import Any, Literal
 import pytest
 from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
-from function import fn
+from function import fn, scheduling
 from google.protobuf import duration_pb2 as durationpb
 from google.protobuf import json_format, message
 from google.protobuf import struct_pb2 as structpb
@@ -62,6 +62,17 @@ class InjectNameCase:
     reason: str
     template: mrv1alpha1.Template
     served: str
+    want: mrv1alpha1.Template
+
+
+@dataclasses.dataclass
+class InjectFractionCase:
+    """A test case for fn._inject_device_memory_fraction."""
+
+    name: str
+    reason: str
+    template: mrv1alpha1.Template
+    requests: list[scheduling.DeviceRequest]
     want: mrv1alpha1.Template
 
 
@@ -2731,7 +2742,7 @@ COMPOSE_CASES = [
     # written out.
     ComposeCase(
         name="SharedGPU",
-        reason="A replica requesting a share of a GPU's memory carries the request into its device requests.",
+        reason="A replica requesting a share of a GPU's memory carries the request into its device requests and the share into its engine's env.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=fnv1.Resource(
@@ -2881,10 +2892,15 @@ COMPOSE_CASES = [
                                                                 {
                                                                     "name": "engine",
                                                                     "image": "vllm/vllm-openai:latest",
+                                                                    # 24Gi of the GPU's 80Gi.
                                                                     "env": [
                                                                         {
                                                                             "name": "MODELPLANE_SERVED_MODEL_NAME",
                                                                             "value": "ml-team/my-model",
+                                                                        },
+                                                                        {
+                                                                            "name": "MODELPLANE_DEVICE_MEMORY_FRACTION",
+                                                                            "value": "0.3",
                                                                         },
                                                                     ],
                                                                 }
@@ -3070,6 +3086,140 @@ def test_inject_name(case: InjectNameCase) -> None:
     """_inject_served_model_name puts the served model name first in each container's env."""
     got = case.template.model_copy(deep=True)  # noqa: MPT401  # _inject_served_model_name edits it in place.
     fn._inject_served_model_name(got, case.served)
+    assert got.model_dump() == case.want.model_dump(), case.reason
+
+
+INJECT_FRACTION_CASES = [
+    InjectFractionCase(
+        name="MemoryShare",
+        reason="A member requesting a share of one GPU's memory gets the share ahead of the env the user wrote.",
+        template=mrv1alpha1.Template(
+            spec=mrv1alpha1.Spec(
+                containers=[
+                    mrv1alpha1.Container(
+                        name="engine",
+                        image="vllm/vllm-openai:latest",
+                        env=[mrv1alpha1.EnvItem(name="HF_TOKEN", value="x")],
+                    )
+                ]
+            )
+        ),
+        requests=[
+            scheduling.DeviceRequest(
+                name="gpu",
+                device_class_name="gpu.nvidia.com",
+                count=1,
+                cel_selectors=[],
+                capacity_requests={"memory": "24Gi"},
+                memory_fraction="0.3",
+            )
+        ],
+        want=mrv1alpha1.Template(
+            spec=mrv1alpha1.Spec(
+                containers=[
+                    mrv1alpha1.Container(
+                        name="engine",
+                        image="vllm/vllm-openai:latest",
+                        env=[
+                            mrv1alpha1.EnvItem(name="MODELPLANE_DEVICE_MEMORY_FRACTION", value="0.3"),
+                            mrv1alpha1.EnvItem(name="HF_TOKEN", value="x"),
+                        ],
+                    )
+                ]
+            )
+        ),
+    ),
+    InjectFractionCase(
+        name="WholeDevice",
+        reason="A member that takes whole devices gets no memory fraction.",
+        template=mrv1alpha1.Template(
+            spec=mrv1alpha1.Spec(containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")])
+        ),
+        requests=[
+            scheduling.DeviceRequest(
+                name="gpu",
+                device_class_name="gpu.nvidia.com",
+                count=1,
+                cel_selectors=[],
+            )
+        ],
+        want=mrv1alpha1.Template(
+            spec=mrv1alpha1.Spec(containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")])
+        ),
+    ),
+    # One variable can't say which of two devices a share is of.
+    InjectFractionCase(
+        name="TwoMemoryShares",
+        reason="A member requesting memory on two device requests gets no memory fraction.",
+        template=mrv1alpha1.Template(
+            spec=mrv1alpha1.Spec(containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")])
+        ),
+        requests=[
+            scheduling.DeviceRequest(
+                name="prefill",
+                device_class_name="gpu.nvidia.com",
+                count=1,
+                cel_selectors=[],
+                capacity_requests={"memory": "24Gi"},
+                memory_fraction="0.3",
+            ),
+            scheduling.DeviceRequest(
+                name="decode",
+                device_class_name="gpu.nvidia.com",
+                count=1,
+                cel_selectors=[],
+                capacity_requests={"memory": "40Gi"},
+                memory_fraction="0.5",
+            ),
+        ],
+        want=mrv1alpha1.Template(
+            spec=mrv1alpha1.Spec(containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")])
+        ),
+    ),
+    InjectFractionCase(
+        name="UserOverride",
+        reason="A MODELPLANE_DEVICE_MEMORY_FRACTION the user wrote is replaced by the member's share.",
+        template=mrv1alpha1.Template(
+            spec=mrv1alpha1.Spec(
+                containers=[
+                    mrv1alpha1.Container(
+                        name="engine",
+                        image="vllm/vllm-openai:latest",
+                        env=[mrv1alpha1.EnvItem(name="MODELPLANE_DEVICE_MEMORY_FRACTION", value="0.9")],
+                    )
+                ]
+            )
+        ),
+        requests=[
+            scheduling.DeviceRequest(
+                name="gpu",
+                device_class_name="gpu.nvidia.com",
+                count=1,
+                cel_selectors=[],
+                capacity_requests={"memory": "24Gi"},
+                memory_fraction="0.3",
+            )
+        ],
+        want=mrv1alpha1.Template(
+            spec=mrv1alpha1.Spec(
+                containers=[
+                    mrv1alpha1.Container(
+                        name="engine",
+                        image="vllm/vllm-openai:latest",
+                        env=[mrv1alpha1.EnvItem(name="MODELPLANE_DEVICE_MEMORY_FRACTION", value="0.3")],
+                    )
+                ]
+            )
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize("case", INJECT_FRACTION_CASES, ids=lambda case: case.name)
+def test_inject_fraction(case: InjectFractionCase) -> None:
+    """_inject_device_memory_fraction tells the engine its share of its device's memory."""
+    got = case.template.model_copy(deep=True)  # noqa: MPT401  # _inject_device_memory_fraction edits it in place.
+    fn._inject_device_memory_fraction(got, case.requests)
     assert got.model_dump() == case.want.model_dump(), case.reason
 
 

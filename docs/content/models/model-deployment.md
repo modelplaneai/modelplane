@@ -189,8 +189,12 @@ nodeSelector:
 The request matches only a device whose class sets `allowMultipleAllocations`
 and declares at least that much memory, and the scheduler places it on a GPU
 with that much memory free. Modelplane copies `capacity.requests` into the pod's
-`ResourceClaim`. A request without `capacity` takes whole GPUs, even on a class
-that allows sharing.
+`ResourceClaim`, and sets `MODELPLANE_DEVICE_MEMORY_FRACTION` in the engine
+container to the requested memory over the device's, `0.3` for 24Gi of an 80Gi
+GPU. DRA accounts for the share but doesn't confine the engine to it, so pass it
+to the engine, such as with vLLM's
+`--gpu-memory-utilization=$(MODELPLANE_DEVICE_MEMORY_FRACTION)`. A request without
+`capacity` takes whole GPUs, even on a class that allows sharing.
 
 ### What you can match on
 

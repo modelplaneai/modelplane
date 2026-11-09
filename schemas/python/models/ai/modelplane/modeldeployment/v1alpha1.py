@@ -61,7 +61,7 @@ class Capacity(BaseModel):
         ),
     ] = Field(..., max_length=8, min_length=1)
     """
-    The capacity to consume on each device, keyed by the names the device declares capacity under (e.g. memory); values are Kubernetes Quantities.
+    The capacity to consume on each device, keyed by the names the device declares capacity under (e.g. memory); values are Kubernetes Quantities. When exactly one of a member's requests asks for memory, its engine container gets MODELPLANE_DEVICE_MEMORY_FRACTION: the requested memory over the memory the device's class declares.
     """
 
 
