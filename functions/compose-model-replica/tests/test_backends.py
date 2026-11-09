@@ -125,6 +125,16 @@ class RemoteNamespaceCase:
 
 
 @dataclasses.dataclass
+class ClaimTemplateNameCase:
+    """A test case for base.claim_template_name, of the replica's only member."""
+
+    name: str
+    reason: str
+    replica: v1alpha1.ModelReplica
+    want: str
+
+
+@dataclasses.dataclass
 class LwsNameCase:
     """A test case for base.lws_name, of the replica's only engine."""
 
@@ -826,7 +836,7 @@ BUILD_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -854,7 +864,9 @@ BUILD_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
     ),
     # A sidecar takes 8000, so the engine declares its http port elsewhere, and
@@ -923,7 +935,7 @@ BUILD_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -957,7 +969,9 @@ BUILD_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
     ),
     # Containers set their own resources; the engine's sit beside its device
@@ -1032,7 +1046,7 @@ BUILD_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -1072,7 +1086,9 @@ BUILD_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
     ),
     # An unnamed port 8000 on the engine is its http port, not a second entry.
@@ -1133,7 +1149,7 @@ BUILD_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -1162,7 +1178,9 @@ BUILD_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
     ),
     # See #378.
@@ -1226,7 +1244,7 @@ BUILD_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -1256,7 +1274,9 @@ BUILD_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
     ),
     # Two replicas of one deployment on the same cluster, this one and
@@ -1314,7 +1334,7 @@ BUILD_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="dep-clusterA-main-3d1d5",
-                claim_template_name="dep-clusterA-main-standalone-devices-145eb",
+                claim_template_name="dep-clusterA-main-standalone-devices-31556731-51560",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -1342,8 +1362,8 @@ BUILD_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(
-                name="dep-clusterA-main-standalone-devices-145eb", count=1
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="dep-clusterA-main-standalone-devices-31556731-51560", count=1
             ),
         },
     ),
@@ -1403,7 +1423,7 @@ BUILD_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="dep-clusterB-main-d6c52",
-                claim_template_name="dep-clusterB-main-standalone-devices-5a8a8",
+                claim_template_name="dep-clusterB-main-standalone-devices-31556731-80027",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -1431,8 +1451,8 @@ BUILD_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(
-                name="dep-clusterB-main-standalone-devices-5a8a8", count=1
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="dep-clusterB-main-standalone-devices-31556731-80027", count=1
             ),
         },
     ),
@@ -1527,7 +1547,7 @@ BUILD_CASES = [
         want={
             "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
-                claim_template_name="r-prefill-standalone-devices-f62af",
+                claim_template_name="r-prefill-standalone-devices-31556731-d5dbc",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -1555,10 +1575,12 @@ BUILD_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
+            "resource-claim-prefill-standalone-31556731": _claim_template(
+                name="r-prefill-standalone-devices-31556731-d5dbc", count=1
+            ),
             "workload-native-decode": _deployment(
                 name="r-decode-4b27b",
-                claim_template_name="r-decode-standalone-devices-63392",
+                claim_template_name="r-decode-standalone-devices-31556731-771a9",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -1586,7 +1608,9 @@ BUILD_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
+            "resource-claim-decode-standalone-31556731": _claim_template(
+                name="r-decode-standalone-devices-31556731-771a9", count=1
+            ),
         },
     ),
     # resources.claims is a list-map keyed on name alone, so N device requests
@@ -1639,7 +1663,7 @@ BUILD_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-95ac100f-9f9ba",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -1669,7 +1693,7 @@ BUILD_CASES = [
             ),
             # Written out because it's the only claim template that asks for
             # more than GPUs, which is all _claim_template builds.
-            "resource-claim-main-standalone": {
+            "resource-claim-main-standalone-95ac100f": {
                 "spec": {
                     "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
                     "readiness": {"policy": "SuccessfulCreate"},
@@ -1677,7 +1701,10 @@ BUILD_CASES = [
                         "manifest": {
                             "apiVersion": "resource.k8s.io/v1",
                             "kind": "ResourceClaimTemplate",
-                            "metadata": {"name": "r-main-standalone-devices-f456f", "namespace": "mp-ml-team-51733"},
+                            "metadata": {
+                                "name": "r-main-standalone-devices-95ac100f-9f9ba",
+                                "namespace": "mp-ml-team-51733",
+                            },
                             "spec": {
                                 "spec": {
                                     "devices": {
@@ -1758,7 +1785,7 @@ BUILD_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -1796,7 +1823,9 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
     ),
     # Kubernetes expands $(VAR) left to right, so Modelplane's own entries must
@@ -1855,7 +1884,7 @@ BUILD_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -1896,7 +1925,9 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
     ),
     # A Standalone engine on a Dynamo cluster with a cache is as valid a P2P
@@ -1961,7 +1992,7 @@ BUILD_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -2027,7 +2058,9 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
     ),
     # There's no flag injection or bootstrap. The worker addresses the leader
@@ -2182,7 +2215,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                        "resourceClaimTemplateName": "r-main-leader-devices-8b2f53e4-bf5db",
                                     }
                                 ],
                                 "tolerations": [
@@ -2242,7 +2275,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-8b2f53e4-fc752",
                                     }
                                 ],
                                 "tolerations": [
@@ -2267,8 +2300,12 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     # A Grove leader behind a sidecar, and a worker carrying its own ports and
@@ -2426,7 +2463,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                        "resourceClaimTemplateName": "r-main-leader-devices-8b2f53e4-bf5db",
                                     }
                                 ],
                                 "tolerations": [
@@ -2488,7 +2525,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-8b2f53e4-fc752",
                                     }
                                 ],
                                 "tolerations": [
@@ -2513,8 +2550,12 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     BuildCase(
@@ -2656,7 +2697,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                        "resourceClaimTemplateName": "r-main-leader-devices-8b2f53e4-bf5db",
                                     }
                                 ],
                                 "tolerations": [
@@ -2716,7 +2757,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-8b2f53e4-fc752",
                                     }
                                 ],
                                 "tolerations": [
@@ -2741,8 +2782,12 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     # Multi-NIC RDMA nodes need VLLM_HOST_IP from status.podIP so the engine
@@ -2896,7 +2941,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                        "resourceClaimTemplateName": "r-main-leader-devices-8b2f53e4-bf5db",
                                     }
                                 ],
                                 "tolerations": [
@@ -2956,7 +3001,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-8b2f53e4-fc752",
                                     }
                                 ],
                                 "tolerations": [
@@ -2981,8 +3026,12 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     # Grove propagates a clique's labels and annotations to its pods (#378).
@@ -3136,7 +3185,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                        "resourceClaimTemplateName": "r-main-leader-devices-8b2f53e4-bf5db",
                                     }
                                 ],
                                 "tolerations": [
@@ -3198,7 +3247,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-8b2f53e4-fc752",
                                     }
                                 ],
                                 "tolerations": [
@@ -3223,8 +3272,12 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     # A coordinator-only leader, like a vLLM DP head running
@@ -3410,7 +3463,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-8b2f53e4-fc752",
                                     }
                                 ],
                                 "tolerations": [
@@ -3435,7 +3488,9 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     # The scheduler may split a gang across pools when no single pool satisfies
@@ -3578,7 +3633,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                        "resourceClaimTemplateName": "r-main-leader-devices-8b2f53e4-bf5db",
                                     }
                                 ],
                                 "tolerations": [
@@ -3638,7 +3693,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-8b2f53e4-fc752",
                                     }
                                 ],
                                 "tolerations": [
@@ -3663,8 +3718,12 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     # Pointing HF_HUB_CACHE at the mount lets each clique's own --model=<repo>
@@ -3828,7 +3887,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                        "resourceClaimTemplateName": "r-main-leader-devices-8b2f53e4-bf5db",
                                     }
                                 ],
                                 "tolerations": [
@@ -3920,7 +3979,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-8b2f53e4-fc752",
                                     }
                                 ],
                                 "tolerations": [
@@ -3945,8 +4004,12 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     BuildCase(
@@ -4121,7 +4184,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                        "resourceClaimTemplateName": "r-main-leader-devices-8b2f53e4-bf5db",
                                     }
                                 ],
                                 "tolerations": [
@@ -4213,7 +4276,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-8b2f53e4-fc752",
                                     }
                                 ],
                                 "tolerations": [
@@ -4238,8 +4301,12 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     # Each pod publishes itself as a source independently, so the worker needs
@@ -4420,7 +4487,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-leader-devices-f58c6",
+                                        "resourceClaimTemplateName": "r-main-leader-devices-8b2f53e4-bf5db",
                                     }
                                 ],
                                 "tolerations": [
@@ -4516,7 +4583,7 @@ BUILD_CASES = [
                                 "resourceClaims": [
                                     {
                                         "name": "devices",
-                                        "resourceClaimTemplateName": "r-main-worker-devices-99b8a",
+                                        "resourceClaimTemplateName": "r-main-worker-devices-8b2f53e4-fc752",
                                     }
                                 ],
                                 "tolerations": [
@@ -4541,8 +4608,12 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     # The worker followers never serve, so without the serving label the
@@ -4624,8 +4695,8 @@ BUILD_CASES = [
             "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
-                leader_claim_template_name="r-main-leader-devices-f58c6",
-                worker_claim_template_name="r-main-worker-devices-99b8a",
+                leader_claim_template_name="r-main-leader-devices-8b2f53e4-bf5db",
+                worker_claim_template_name="r-main-worker-devices-8b2f53e4-fc752",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -4668,8 +4739,12 @@ BUILD_CASES = [
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     # LWS names a LeaderWorkerSet's headless Service after it, so its webhook
@@ -4748,8 +4823,8 @@ BUILD_CASES = [
             "workload-llmd-main": _leader_worker_set(
                 name="lws-qwen2-5-main-b2784-6d975",
                 serving="qwen2.5",
-                leader_claim_template_name="qwen2.5-main-leader-devices-5743a",
-                worker_claim_template_name="qwen2.5-main-worker-devices-4d4ac",
+                leader_claim_template_name="qwen2.5-main-leader-devices-8b2f53e4-0eb95",
+                worker_claim_template_name="qwen2.5-main-worker-devices-8b2f53e4-1949b",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -4792,8 +4867,12 @@ BUILD_CASES = [
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-leader": _claim_template(name="qwen2.5-main-leader-devices-5743a", count=8),
-            "resource-claim-main-worker": _claim_template(name="qwen2.5-main-worker-devices-4d4ac", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="qwen2.5-main-leader-devices-8b2f53e4-0eb95", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="qwen2.5-main-worker-devices-8b2f53e4-1949b", count=8
+            ),
         },
     ),
     # Each member has its own template, so a container the user adds to the
@@ -4875,8 +4954,8 @@ BUILD_CASES = [
             "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
-                leader_claim_template_name="r-main-leader-devices-f58c6",
-                worker_claim_template_name="r-main-worker-devices-99b8a",
+                leader_claim_template_name="r-main-leader-devices-8b2f53e4-bf5db",
+                worker_claim_template_name="r-main-worker-devices-8b2f53e4-fc752",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -4920,8 +4999,12 @@ BUILD_CASES = [
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     # A Worker doesn't serve: its ports pass through and nothing probes it.
@@ -5004,8 +5087,8 @@ BUILD_CASES = [
             "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
-                leader_claim_template_name="r-main-leader-devices-f58c6",
-                worker_claim_template_name="r-main-worker-devices-99b8a",
+                leader_claim_template_name="r-main-leader-devices-8b2f53e4-bf5db",
+                worker_claim_template_name="r-main-worker-devices-8b2f53e4-fc752",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -5050,8 +5133,12 @@ BUILD_CASES = [
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     # Modelplane is unopinionated about the engine: each member's command passes
@@ -5150,8 +5237,8 @@ BUILD_CASES = [
             "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
-                leader_claim_template_name="r-main-leader-devices-f58c6",
-                worker_claim_template_name="r-main-worker-devices-99b8a",
+                leader_claim_template_name="r-main-leader-devices-8b2f53e4-bf5db",
+                worker_claim_template_name="r-main-worker-devices-8b2f53e4-fc752",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -5204,8 +5291,12 @@ BUILD_CASES = [
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     BuildCase(
@@ -5278,8 +5369,8 @@ BUILD_CASES = [
             "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
-                leader_claim_template_name="r-main-leader-devices-f58c6",
-                worker_claim_template_name="r-main-worker-devices-99b8a",
+                leader_claim_template_name="r-main-leader-devices-8b2f53e4-bf5db",
+                worker_claim_template_name="r-main-worker-devices-8b2f53e4-fc752",
                 replicas=2,
                 size=4,
                 leader_containers=[
@@ -5322,8 +5413,12 @@ BUILD_CASES = [
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
     # Only the native and Grove backends wire ModelExpress, and only on Dynamo,
@@ -5399,8 +5494,8 @@ BUILD_CASES = [
             "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
-                leader_claim_template_name="r-main-leader-devices-f58c6",
-                worker_claim_template_name="r-main-worker-devices-99b8a",
+                leader_claim_template_name="r-main-leader-devices-8b2f53e4-bf5db",
+                worker_claim_template_name="r-main-worker-devices-8b2f53e4-fc752",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -5463,8 +5558,12 @@ BUILD_CASES = [
                     },
                 ],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
     ),
 ]
@@ -5637,6 +5736,91 @@ def test_gpu_claim_share() -> None:
     got = obj.model_dump(exclude_unset=True, by_alias=True)
     requests = got["spec"]["forProvider"]["manifest"]["spec"]["spec"]["devices"]["requests"]
     assert requests[0]["exactly"]["capacity"] == {"requests": {"memory": "24Gi"}}
+
+
+def _claim_replica(*, name: str, count: int, memory: str | None) -> v1alpha1.ModelReplica:
+    """A replica whose one Standalone member claims count GPUs of at least 80Gi, and memory of each if given."""
+    return _replica(
+        name=name,
+        namespace="ml-team",
+        cluster_name="cluster-a",
+        labels=None,
+        model_cache_ref=None,
+        serving=None,
+        engines=[
+            v1alpha1.Engine(
+                name="main",
+                copies=1,
+                members=[
+                    v1alpha1.Member(
+                        role="Standalone",
+                        nodePoolName="frontier",
+                        deviceRequests=[
+                            v1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=count,
+                                selectors=[
+                                    v1alpha1.Selector(
+                                        cel='device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
+                                    )
+                                ],
+                                capacity=v1alpha1.Capacity(requests={"memory": memory}) if memory is not None else None,
+                            )
+                        ],
+                        template=v1alpha1.Template(
+                            spec=v1alpha1.Spec(
+                                containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                            )
+                        ),
+                    )
+                ],
+            )
+        ],
+    )
+
+
+# A ResourceClaimTemplate's spec is immutable, so a member whose device
+# requests change needs a template with a new name.
+CLAIM_TEMPLATE_NAME_CASES = [
+    ClaimTemplateNameCase(
+        name="WholeDevice",
+        reason="A member claiming one whole GPU gets a template named for its replica, engine, role and spec.",
+        replica=_claim_replica(name="r", count=1, memory=None),
+        want="r-main-standalone-devices-31556731-b687f",
+    ),
+    ClaimTemplateNameCase(
+        name="CapacityRequest",
+        reason="Requesting a share of the GPU's memory changes the spec, and so the template's name.",
+        replica=_claim_replica(name="r", count=1, memory="24Gi"),
+        want="r-main-standalone-devices-ee595852-15ae6",
+    ),
+    ClaimTemplateNameCase(
+        name="CapacityChanged",
+        reason="Requesting a different share changes the template's name again.",
+        replica=_claim_replica(name="r", count=1, memory="32Gi"),
+        want="r-main-standalone-devices-b3234b61-247a2",
+    ),
+    ClaimTemplateNameCase(
+        name="CountChanged",
+        reason="Claiming two GPUs instead of one changes the template's name.",
+        replica=_claim_replica(name="r", count=2, memory=None),
+        want="r-main-standalone-devices-9dfa9360-0c2f8",
+    ),
+    ClaimTemplateNameCase(
+        name="LongReplicaName",
+        reason="A replica name of 63 characters is truncated so the template's name is a 63-character DNS label.",
+        replica=_claim_replica(name="a" * 63, count=1, memory=None),
+        want="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-9ff43",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", CLAIM_TEMPLATE_NAME_CASES, ids=lambda case: case.name)
+def test_claim_template_name(case: ClaimTemplateNameCase) -> None:
+    """claim_template_name names a member's template for its replica, engine, role and spec."""
+    engine = case.replica.spec.engines[0]
+    assert base.claim_template_name(case.replica, engine, engine.members[0]) == case.want, case.reason
 
 
 INVALID_CPU_CLAIM_CASES = [
@@ -6112,7 +6296,7 @@ APPLY_CASES = [
         composed={
             "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
-                claim_template_name="r-prefill-standalone-devices-f62af",
+                claim_template_name="r-prefill-standalone-devices-31556731-d5dbc",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -6140,10 +6324,12 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
+            "resource-claim-prefill-standalone-31556731": _claim_template(
+                name="r-prefill-standalone-devices-31556731-d5dbc", count=1
+            ),
             "workload-native-decode": _deployment(
                 name="r-decode-4b27b",
-                claim_template_name="r-decode-standalone-devices-63392",
+                claim_template_name="r-decode-standalone-devices-31556731-771a9",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -6171,7 +6357,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
+            "resource-claim-decode-standalone-31556731": _claim_template(
+                name="r-decode-standalone-devices-31556731-771a9", count=1
+            ),
         },
         replica=_replica(
             name="r",
@@ -6282,7 +6470,7 @@ APPLY_CASES = [
         want={
             "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
-                claim_template_name="r-prefill-standalone-devices-f62af",
+                claim_template_name="r-prefill-standalone-devices-31556731-d5dbc",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -6313,10 +6501,12 @@ APPLY_CASES = [
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                 ],
             ),
-            "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
+            "resource-claim-prefill-standalone-31556731": _claim_template(
+                name="r-prefill-standalone-devices-31556731-d5dbc", count=1
+            ),
             "workload-native-decode": _deployment(
                 name="r-decode-4b27b",
-                claim_template_name="r-decode-standalone-devices-63392",
+                claim_template_name="r-decode-standalone-devices-31556731-771a9",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -6347,7 +6537,9 @@ APPLY_CASES = [
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                 ],
             ),
-            "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
+            "resource-claim-decode-standalone-31556731": _claim_template(
+                name="r-decode-standalone-devices-31556731-771a9", count=1
+            ),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
@@ -6378,7 +6570,7 @@ APPLY_CASES = [
         composed={
             "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
-                claim_template_name="r-prefill-standalone-devices-f62af",
+                claim_template_name="r-prefill-standalone-devices-31556731-d5dbc",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -6406,10 +6598,12 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
+            "resource-claim-prefill-standalone-31556731": _claim_template(
+                name="r-prefill-standalone-devices-31556731-d5dbc", count=1
+            ),
             "workload-native-decode": _deployment(
                 name="r-decode-4b27b",
-                claim_template_name="r-decode-standalone-devices-63392",
+                claim_template_name="r-decode-standalone-devices-31556731-771a9",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -6437,7 +6631,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
+            "resource-claim-decode-standalone-31556731": _claim_template(
+                name="r-decode-standalone-devices-31556731-771a9", count=1
+            ),
         },
         replica=_replica(
             name="r",
@@ -6555,7 +6751,7 @@ APPLY_CASES = [
         want={
             "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
-                claim_template_name="r-prefill-standalone-devices-f62af",
+                claim_template_name="r-prefill-standalone-devices-31556731-d5dbc",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -6586,10 +6782,12 @@ APPLY_CASES = [
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                 ],
             ),
-            "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
+            "resource-claim-prefill-standalone-31556731": _claim_template(
+                name="r-prefill-standalone-devices-31556731-d5dbc", count=1
+            ),
             "workload-native-decode": _deployment(
                 name="r-decode-4b27b",
-                claim_template_name="r-decode-standalone-devices-63392",
+                claim_template_name="r-decode-standalone-devices-31556731-771a9",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -6620,7 +6818,9 @@ APPLY_CASES = [
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                 ],
             ),
-            "resource-claim-decode-standalone": _claim_template(name="r-decode-standalone-devices-63392", count=1),
+            "resource-claim-decode-standalone-31556731": _claim_template(
+                name="r-decode-standalone-devices-31556731-771a9", count=1
+            ),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
@@ -6982,7 +7182,7 @@ APPLY_CASES = [
         composed={
             "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
-                claim_template_name="r-prefill-standalone-devices-f62af",
+                claim_template_name="r-prefill-standalone-devices-31556731-d5dbc",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -7010,7 +7210,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
+            "resource-claim-prefill-standalone-31556731": _claim_template(
+                name="r-prefill-standalone-devices-31556731-d5dbc", count=1
+            ),
             "scaling-group-decode": _scaling_group(pcs_name="r-decode-4b27b"),
             "workload-grove-decode": _pod_clique_set(
                 name="r-decode-4b27b",
@@ -7294,7 +7496,7 @@ APPLY_CASES = [
         want={
             "workload-native-prefill": _deployment(
                 name="r-prefill-d90b0",
-                claim_template_name="r-prefill-standalone-devices-f62af",
+                claim_template_name="r-prefill-standalone-devices-31556731-d5dbc",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -7325,7 +7527,9 @@ APPLY_CASES = [
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                 ],
             ),
-            "resource-claim-prefill-standalone": _claim_template(name="r-prefill-standalone-devices-f62af", count=1),
+            "resource-claim-prefill-standalone-31556731": _claim_template(
+                name="r-prefill-standalone-devices-31556731-d5dbc", count=1
+            ),
             "scaling-group-decode": _scaling_group(pcs_name="r-decode-4b27b"),
             "workload-grove-decode": _pod_clique_set(
                 name="r-decode-4b27b",
@@ -7508,7 +7712,7 @@ APPLY_CASES = [
         composed={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -7536,7 +7740,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
         replica=_replica(
             name="r",
@@ -7586,7 +7792,7 @@ APPLY_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -7614,7 +7820,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
@@ -7664,7 +7872,7 @@ APPLY_CASES = [
         composed={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -7692,7 +7900,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
         replica=_replica(
             name="r",
@@ -7742,7 +7952,7 @@ APPLY_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -7770,7 +7980,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
@@ -7820,7 +8032,7 @@ APPLY_CASES = [
         composed={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -7848,7 +8060,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
         replica=_replica(
             name="r",
@@ -7898,7 +8112,7 @@ APPLY_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -7926,7 +8140,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
@@ -7979,7 +8195,7 @@ APPLY_CASES = [
         composed={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -8007,7 +8223,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
         replica=_replica(
             name="r",
@@ -8088,7 +8306,7 @@ APPLY_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -8116,7 +8334,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
@@ -8192,7 +8412,7 @@ APPLY_CASES = [
         composed={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -8220,7 +8440,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
         replica=_replica(
             name="r",
@@ -8286,7 +8508,7 @@ APPLY_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -8314,7 +8536,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
@@ -8364,7 +8588,7 @@ APPLY_CASES = [
         composed={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -8394,7 +8618,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
         replica=_replica(
             name="r",
@@ -8444,7 +8670,7 @@ APPLY_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=1,
                 pod_metadata={
                     "labels": {
@@ -8474,7 +8700,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
@@ -8531,7 +8759,7 @@ APPLY_CASES = [
         composed={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=2,
                 pod_metadata={
                     "labels": {
@@ -8559,7 +8787,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
         },
         replica=_replica(
             name="r",
@@ -8609,7 +8839,7 @@ APPLY_CASES = [
         want={
             "workload-native-main": _deployment(
                 name="r-main-bb4e3",
-                claim_template_name="r-main-standalone-devices-f456f",
+                claim_template_name="r-main-standalone-devices-31556731-b687f",
                 replicas=2,
                 pod_metadata={
                     "labels": {
@@ -8637,7 +8867,9 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="r-main-standalone-devices-f456f", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(
+                name="r-main-standalone-devices-31556731-b687f", count=1
+            ),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
@@ -8694,8 +8926,8 @@ APPLY_CASES = [
             "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
-                leader_claim_template_name="r-main-leader-devices-f58c6",
-                worker_claim_template_name="r-main-worker-devices-99b8a",
+                leader_claim_template_name="r-main-leader-devices-8b2f53e4-bf5db",
+                worker_claim_template_name="r-main-worker-devices-8b2f53e4-fc752",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -8748,8 +8980,12 @@ APPLY_CASES = [
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
         },
         replica=_replica(
             name="r",
@@ -8836,8 +9072,8 @@ APPLY_CASES = [
             "workload-llmd-main": _leader_worker_set(
                 name="r-main-bb4e3",
                 serving="r",
-                leader_claim_template_name="r-main-leader-devices-f58c6",
-                worker_claim_template_name="r-main-worker-devices-99b8a",
+                leader_claim_template_name="r-main-leader-devices-8b2f53e4-bf5db",
+                worker_claim_template_name="r-main-worker-devices-8b2f53e4-fc752",
                 replicas=1,
                 size=2,
                 leader_containers=[
@@ -8890,8 +9126,12 @@ APPLY_CASES = [
                 ],
                 worker_volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-leader": _claim_template(name="r-main-leader-devices-f58c6", count=8),
-            "resource-claim-main-worker": _claim_template(name="r-main-worker-devices-99b8a", count=8),
+            "resource-claim-main-leader-8b2f53e4": _claim_template(
+                name="r-main-leader-devices-8b2f53e4-bf5db", count=8
+            ),
+            "resource-claim-main-worker-8b2f53e4": _claim_template(
+                name="r-main-worker-devices-8b2f53e4-fc752", count=8
+            ),
             "inference-pool": _inference_pool(name="r-pool", serving="r", picker="r-epp"),
             "model-route": _route(name="r", path="/ml-team/r/", pool="r-pool"),
             "epp-serviceaccount": _epp_service_account(name="r-epp"),
@@ -8976,7 +9216,7 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(
+            "resource-claim-main-standalone-31556731": _claim_template(
                 name="qwen2.5-7b-abcde-main-standalone-devices-771a9", count=1
             ),
         },
@@ -9056,7 +9296,7 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(
+            "resource-claim-main-standalone-31556731": _claim_template(
                 name="qwen2.5-7b-abcde-main-standalone-devices-771a9", count=1
             ),
             "inference-pool": _inference_pool(
@@ -9147,7 +9387,7 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="a" * 57 + "-05ced", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(name="a" * 57 + "-05ced", count=1),
         },
         replica=_replica(
             name="a" * 57 + "-abcde",
@@ -9225,7 +9465,7 @@ APPLY_CASES = [
                 ],
                 volumes=[{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
             ),
-            "resource-claim-main-standalone": _claim_template(name="a" * 57 + "-05ced", count=1),
+            "resource-claim-main-standalone-31556731": _claim_template(name="a" * 57 + "-05ced", count=1),
             "inference-pool": _inference_pool(
                 name="a" * 57 + "-abcde-pool", serving="a" * 57 + "-abcde", picker="epp-" + "a" * 53 + "-2dd65"
             ),

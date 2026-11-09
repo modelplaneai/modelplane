@@ -1064,7 +1064,7 @@ COMPOSE_CASES = [
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-prefill-10d7e",
-                        claim_template_name="test-replica-prefill-standalone-devices-51762",
+                        claim_template_name="test-replica-prefill-standalone-devices-31556731-fa720",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "prefill",
@@ -1076,14 +1076,14 @@ COMPOSE_CASES = [
                             "llm-d.ai/role": "prefill",
                         },
                     ),
-                    "resource-claim-prefill-standalone": _claim_template(
-                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-prefill-standalone-devices-51762"
+                    "resource-claim-prefill-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-prefill-standalone-devices-31556731-fa720"
                     ),
                     "workload-native-decode": _deployment(
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-decode-44185",
-                        claim_template_name="test-replica-decode-standalone-devices-e863a",
+                        claim_template_name="test-replica-decode-standalone-devices-31556731-f60b1",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "decode",
@@ -1095,8 +1095,8 @@ COMPOSE_CASES = [
                             "llm-d.ai/role": "decode",
                         },
                     ),
-                    "resource-claim-decode-standalone": _claim_template(
-                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-decode-standalone-devices-e863a"
+                    "resource-claim-decode-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-decode-standalone-devices-31556731-f60b1"
                     ),
                     "model-route": _route(ready=fnv1.READY_UNSPECIFIED),
                     "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
@@ -1196,7 +1196,7 @@ COMPOSE_CASES = [
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -1207,8 +1207,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_UNSPECIFIED),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
                     "epp": _epp(
@@ -1293,7 +1293,7 @@ COMPOSE_CASES = [
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -1304,8 +1304,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_UNSPECIFIED),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
                     "epp": _epp(
@@ -1455,7 +1455,7 @@ COMPOSE_CASES = [
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -1466,8 +1466,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_UNSPECIFIED),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
                     "epp": _epp(
@@ -1602,7 +1602,7 @@ COMPOSE_CASES = [
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -1613,8 +1613,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_UNSPECIFIED),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
                     "epp": _epp(
@@ -1691,7 +1691,7 @@ COMPOSE_CASES = [
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -1702,8 +1702,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_UNSPECIFIED),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
                     "epp": _epp(
@@ -1793,7 +1793,7 @@ COMPOSE_CASES = [
                         copies=1,
                         ready=fnv1.READY_UNSPECIFIED,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -1804,8 +1804,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_UNSPECIFIED),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_UNSPECIFIED, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
                     "epp": _epp(
@@ -1934,7 +1934,7 @@ COMPOSE_CASES = [
                 resources={
                     "workload-native-main": _observed_deployment(ready=True, ready_replicas=1),
                     "model-route": _observed_object(ready=True),
-                    "resource-claim-main-standalone": _observed_object(ready=True),
+                    "resource-claim-main-standalone-31556731": _observed_object(ready=True),
                 },
             ),
             required_resources={
@@ -1949,7 +1949,7 @@ COMPOSE_CASES = [
                         copies=1,
                         ready=fnv1.READY_TRUE,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -1960,8 +1960,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_TRUE),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_UNSPECIFIED),
                     "epp": _epp(
@@ -2017,7 +2017,7 @@ COMPOSE_CASES = [
                 resources={
                     "workload-native-main": _observed_deployment(ready=True, ready_replicas=1),
                     "model-route": _observed_object(ready=True),
-                    "resource-claim-main-standalone": _observed_object(ready=True),
+                    "resource-claim-main-standalone-31556731": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
                     "epp": _observed_object(ready=True),
                     "epp-config": _observed_object(ready=True),
@@ -2040,7 +2040,7 @@ COMPOSE_CASES = [
                         copies=1,
                         ready=fnv1.READY_TRUE,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -2051,8 +2051,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_TRUE),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_TRUE),
                     "epp": _epp(
@@ -2108,7 +2108,7 @@ COMPOSE_CASES = [
                 resources={
                     "workload-native-main": _observed_deployment(ready=True, ready_replicas=1),
                     "model-route": _observed_object(ready=True),
-                    "resource-claim-main-standalone": _observed_object(ready=True),
+                    "resource-claim-main-standalone-31556731": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
                     "epp": _observed_object(ready=False),
                     "epp-config": _observed_object(ready=True),
@@ -2131,7 +2131,7 @@ COMPOSE_CASES = [
                         copies=1,
                         ready=fnv1.READY_TRUE,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -2142,8 +2142,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_TRUE),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_TRUE),
                     "epp": _epp(
@@ -2196,7 +2196,7 @@ COMPOSE_CASES = [
                 resources={
                     "workload-native-main": _observed_deployment(ready=False, ready_replicas=1),
                     "model-route": _observed_object(ready=True),
-                    "resource-claim-main-standalone": _observed_object(ready=True),
+                    "resource-claim-main-standalone-31556731": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
                     "epp": _observed_object(ready=True),
                     "epp-config": _observed_object(ready=True),
@@ -2219,7 +2219,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                         copies=2,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -2230,8 +2230,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_TRUE),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_TRUE),
                     "epp": _epp(
@@ -2277,7 +2277,7 @@ COMPOSE_CASES = [
                 resources={
                     "workload-native-main": _observed_deployment(ready=False, ready_replicas=0),
                     "model-route": _observed_object(ready=True),
-                    "resource-claim-main-standalone": _observed_object(ready=True),
+                    "resource-claim-main-standalone-31556731": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
                     "epp": _observed_object(ready=True),
                     "epp-config": _observed_object(ready=True),
@@ -2300,7 +2300,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                         copies=2,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -2311,8 +2311,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_TRUE),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_TRUE),
                     "epp": _epp(
@@ -2361,7 +2361,7 @@ COMPOSE_CASES = [
                 resources={
                     "workload-native-main": _observed_deployment(ready=False, ready_replicas=2),
                     "model-route": _observed_object(ready=True),
-                    "resource-claim-main-standalone": _observed_object(ready=True),
+                    "resource-claim-main-standalone-31556731": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
                     "epp": _observed_object(ready=True),
                     "epp-config": _observed_object(ready=True),
@@ -2384,7 +2384,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_UNSPECIFIED,
                         copies=2,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -2395,8 +2395,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_TRUE),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_TRUE),
                     "epp": _epp(
@@ -2442,7 +2442,7 @@ COMPOSE_CASES = [
                 resources={
                     "workload-native-main": _observed_deployment(ready=True, ready_replicas=2),
                     "model-route": _observed_object(ready=True),
-                    "resource-claim-main-standalone": _observed_object(ready=True),
+                    "resource-claim-main-standalone-31556731": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
                     "epp": _observed_object(ready=True),
                     "epp-config": _observed_object(ready=True),
@@ -2465,7 +2465,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                         copies=2,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -2476,8 +2476,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_TRUE),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_TRUE),
                     "epp": _epp(
@@ -2526,7 +2526,7 @@ COMPOSE_CASES = [
                 resources={
                     "workload-native-main": _observed_deployment(ready=True, ready_replicas=2),
                     "model-route": _observed_object(ready=True),
-                    "resource-claim-main-standalone": _observed_object(ready=True),
+                    "resource-claim-main-standalone-31556731": _observed_object(ready=True),
                     "inference-pool": _observed_object(ready=True),
                     "epp": _observed_object(ready=True),
                     "epp-config": _observed_object(ready=True),
@@ -2549,7 +2549,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                         copies=2,
                         name="test-replica-main-6b608",
-                        claim_template_name="test-replica-main-standalone-devices-e609d",
+                        claim_template_name="test-replica-main-standalone-devices-31556731-6a31b",
                         labels={
                             "modelplane.ai/deployment": "my-deployment",
                             "modelplane.ai/engine": "main",
@@ -2560,8 +2560,8 @@ COMPOSE_CASES = [
                         },
                     ),
                     "model-route": _route(ready=fnv1.READY_TRUE),
-                    "resource-claim-main-standalone": _claim_template(
-                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-e609d"
+                    "resource-claim-main-standalone-31556731": _claim_template(
+                        ready=fnv1.READY_TRUE, name="test-replica-main-standalone-devices-31556731-6a31b"
                     ),
                     "inference-pool": _inference_pool(ready=fnv1.READY_TRUE),
                     "epp": _epp(
