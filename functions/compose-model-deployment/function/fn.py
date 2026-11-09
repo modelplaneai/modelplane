@@ -518,6 +518,11 @@ class Composer:
                     )
                     for r in mp.device_requests
                 ]
+                for r, dr in zip(mp.device_requests, replica_member.deviceRequests, strict=True):
+                    # Set only when requested, so a request that takes whole
+                    # devices doesn't serialize an empty capacity.
+                    if r.capacity_requests:
+                        dr.capacity = mrv1alpha1.Capacity(requests=dict(r.capacity_requests))
             # Only a Worker carries the worker block, and only when the user
             # set one. Setting worker=None explicitly would serialize a literal
             # null into the composed manifest rather than omitting the field.

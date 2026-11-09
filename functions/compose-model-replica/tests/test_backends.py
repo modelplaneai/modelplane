@@ -5584,14 +5584,59 @@ def test_cpu_claim_capacity() -> None:
 
 
 def test_gpu_claim_uncapped() -> None:
-    """A GPU claim carries no capacity request: GPUs bind whole devices, and
-    a capacity request is the CPU driver's contract, not DRA's generally."""
+    """A GPU claim whose device request carries no capacity requests carries
+    none either, so it takes whole devices."""
     replica = _gpu_replica()
     engine = replica.spec.engines[0]
     obj = base.resource_claim_template(replica, engine, engine.members[0], "cluster-a-pc")
     got = obj.model_dump(exclude_unset=True, by_alias=True)
     requests = got["spec"]["forProvider"]["manifest"]["spec"]["spec"]["devices"]["requests"]
     assert "capacity" not in requests[0]["exactly"]
+
+
+def test_gpu_claim_share() -> None:
+    """A GPU claim carries its device request's capacity requests verbatim,
+    so DRA allocates it a share of a device that allows multiple
+    allocations."""
+    replica = _replica(
+        name="r",
+        namespace="ml-team",
+        cluster_name="cluster-a",
+        labels=None,
+        model_cache_ref=None,
+        serving=None,
+        engines=[
+            v1alpha1.Engine(
+                name="main",
+                copies=1,
+                members=[
+                    v1alpha1.Member(
+                        role="Standalone",
+                        nodePoolName="shared",
+                        deviceRequests=[
+                            v1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=1,
+                                selectors=[v1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
+                                capacity=v1alpha1.Capacity(requests={"memory": "24Gi"}),
+                            )
+                        ],
+                        template=v1alpha1.Template(
+                            spec=v1alpha1.Spec(
+                                containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]
+                            )
+                        ),
+                    )
+                ],
+            )
+        ],
+    )
+    engine = replica.spec.engines[0]
+    obj = base.resource_claim_template(replica, engine, engine.members[0], "cluster-a-pc")
+    got = obj.model_dump(exclude_unset=True, by_alias=True)
+    requests = got["spec"]["forProvider"]["manifest"]["spec"]["spec"]["devices"]["requests"]
+    assert requests[0]["exactly"]["capacity"] == {"requests": {"memory": "24Gi"}}
 
 
 INVALID_CPU_CLAIM_CASES = [

@@ -168,6 +168,30 @@ nodeSelector:
     - cel: device.attributes["nic.nvidia.com"].linkType == "infiniband"
 ```
 
+### Sharing a GPU
+
+When the platform team's class allows a GPU to be shared, several pods can each
+take part of its memory instead of a whole GPU. Request the share with
+`capacity.requests`:
+
+```yaml {nocopy=true}
+nodeSelector:
+  devices:
+  - name: gpu
+    count: 1
+    selectors:
+    - cel: device.driver == "gpu.nvidia.com"
+    capacity:
+      requests:
+        memory: 24Gi
+```
+
+The request matches only a device whose class sets `allowMultipleAllocations`
+and declares at least that much memory, and the scheduler places it on a GPU
+with that much memory free. Modelplane copies `capacity.requests` into the pod's
+`ResourceClaim`. A request without `capacity` takes whole GPUs, even on a class
+that allows sharing.
+
 ### What you can match on
 
 Each selector is evaluated against one device and must return a boolean. The

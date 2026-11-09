@@ -41,11 +41,19 @@ class Crossplane(BaseModel):
     resourceRefs: list[ResourceRef] | None = None
 
 
+class Capacity(BaseModel):
+    requests: dict[str, constr(max_length=32)] = Field(..., max_length=8, min_length=1)
+
+
 class Selector(BaseModel):
     cel: constr(min_length=1, max_length=10240) | None = None
 
 
 class DeviceRequest(BaseModel):
+    capacity: Capacity | None = None
+    """
+    The capacity to consume on each device, copied verbatim from the nodeSelector request into the DeviceRequest.
+    """
     count: conint(ge=1, le=64) | None = 1
     """
     How many devices to claim.

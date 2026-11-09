@@ -129,6 +129,27 @@ NUMA node, with that node's cores as its capacity, and the agent counts a
 device as taken once any pod claims some of its cores. A pool's nodes fit at
 most one CPU replica per NUMA node, whatever number of cores each claims.
 
+A device whose class sets `allowMultipleAllocations` can be shared. Once a pod
+claims part of one, the agent stops counting it in `freeDevices` and reports
+the capacity it has left instead, under `sharedDevices`:
+
+```yaml
+    nodesByFreeDevices:
+    - freeDevices:
+        gpu.nvidia.com: 0
+      sharedDevices:
+        gpu.nvidia.com:
+        - freeCapacity:
+            memory: 56Gi
+      nodes: 1
+```
+
+A pod whose request sets `capacity.requests` fits a device with that much free,
+either a shared one or one in `freeDevices`, which has all the capacity its
+class declares. One that sets none takes whole devices from `freeDevices`, as on
+any other pool. That's stricter than DRA when the driver consumes nothing for a
+claim that requests nothing, and the same when it consumes the whole device.
+
 The scheduler counts a pool in whole nodes when the agent hasn't reported on it
 or can't observe it. Such a pool publishes no `observedNodes`, and every node
 it can have starts empty. A pod that claims any device takes a whole one.

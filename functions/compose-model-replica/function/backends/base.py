@@ -952,9 +952,10 @@ def resource_claim_template(
 
     Each resolved device request (stamped by compose-model-deployment from the
     matched InferenceClass claim: DRA devices) becomes one DeviceRequest carrying
-    its DeviceClass, count, and CEL selectors verbatim. Only called for a member
-    with device requests; a claimless member composes no template. One template
-    serves every pod of the member, and DRA stamps a fresh claim per pod.
+    its DeviceClass, count, CEL selectors, and capacity requests verbatim. Only
+    called for a member with device requests; a claimless member composes no
+    template. One template serves every pod of the member, and DRA stamps a
+    fresh claim per pod.
     """
     # Callers (the backends) gate this on `if member.deviceRequests`, so it's
     # only reached for a member that claims devices; a claimless member composes
@@ -966,6 +967,10 @@ def resource_claim_template(
         selectors = [{"cel": {"expression": s.cel}} for s in (r.selectors or []) if s.cel]
         if selectors:
             exactly["selectors"] = selectors
+        if r.capacity:
+            # A share of a device that allows multiple allocations, as the
+            # deployment's nodeSelector requested it.
+            exactly["capacity"] = {"requests": dict(r.capacity.requests)}
         if r.deviceClassName == _CPU_DEVICE_CLASS:
             # dra-driver-cpu's grouped device holds its cores as consumable
             # capacity, and a claim with no capacity request consumes the

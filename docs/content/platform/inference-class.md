@@ -46,6 +46,33 @@ Each device sets a `claim` discriminator:
   hardware that matters for placement but has no DRA driver yet, like an
   InfiniBand fabric.
 
+## Shared devices
+
+Set `allowMultipleAllocations: true` on a `DRA` device whose driver publishes it
+that way. Several pods can then share the device, each consuming part of its
+capacity. This is Kubernetes' consumable capacity
+([KEP-5075](https://github.com/kubernetes/enhancements/issues/5075)). On
+Kubernetes 1.34 and 1.35 it needs the `DRAConsumableCapacity` feature gate on the
+API server, controller manager, scheduler, and Kubelet. From 1.36 it's on by
+default. The NVIDIA DRA driver publishes GPUs this way with its
+`ConsumableShares` feature gate and a `consumableShares` mode set. A claim that
+doesn't request memory consumes none of a GPU in the driver's `unlimited` mode,
+and the whole GPU in its `memory` mode.
+
+```yaml {nocopy=true}
+devices:
+- name: gpu
+  driver: gpu.nvidia.com
+  deviceClassName: gpu.nvidia.com
+  count: 1
+  allowMultipleAllocations: true
+  capacity:
+    memory: { value: "81559Mi" }
+```
+
+A `ModelDeployment` takes a share of such a device with `capacity.requests`, and
+the scheduler places it by the capacity each device has free.
+
 ## The device contract
 
 The `driver`, attribute keys, and capacity keys a class declares are a contract

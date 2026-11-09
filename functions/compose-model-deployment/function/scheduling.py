@@ -77,12 +77,22 @@ them (see _settled). Where the agent doesn't
 report on a pool, every one of the nodes it can have starts with every device
 free, and a pod that claims any device takes a whole node.
 
+A device whose class allows multiple allocations can be shared. A request that
+sets capacity.requests consumes that much of each device it's placed on, and
+fits a device with that much capacity free: one no claim has allocated, which
+has all the capacity its class declares, or one the agent reports shared with
+enough left. A request without capacity.requests takes whole devices no claim
+has allocated, as it does on any other pool. That's stricter than DRA when the
+driver's request policy consumes nothing by default, and matches it when the
+policy, or its absence, consumes the whole device.
+
 The scheduler predicts and the workload cluster's scheduler decides. It can't
 know which node each pod will bind to, so it guesses, and a wrong guess leaves a
 pod Pending until devices free up. The next reconcile sees the updated observed
 state.
 """
 
+import decimal
 from dataclasses import dataclass, field
 
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
@@ -90,7 +100,7 @@ from models.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-from function import cel
+from function import cel, quantity
 
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
@@ -149,21 +159,61 @@ def _published_count(value: int | None) -> int:
     return value
 
 
+# A device's capacity, or the capacity a request consumes on one, as sorted
+# (name, amount) pairs, so devices with the same capacity compare equal.
+_Capacity = tuple[tuple[str, decimal.Decimal], ...]
+
+
+def _parse_capacity(amounts: dict[str, str]) -> _Capacity | None:
+    """Parse capacity quantities keyed by name, or return None if one doesn't parse."""
+    try:
+        return tuple(sorted((name, quantity.parse(amount)) for name, amount in amounts.items()))
+    except ValueError:
+        return None
+
+
+def _covers(capacity: _Capacity, wants: _Capacity) -> bool:
+    """Whether a device's capacity has at least the amount of each capacity wanted."""
+    have = dict(capacity)
+    return all(name in have and have[name] >= amount for name, amount in wants)
+
+
+def _consume(capacity: _Capacity, wants: _Capacity) -> _Capacity:
+    """A device's capacity less what a request consumes of it."""
+    left = dict(capacity)
+    for name, amount in wants:
+        left[name] -= amount
+    return tuple(sorted(left.items()))
+
+
+def _device_capacity(device: icv1alpha1.Device) -> _Capacity:
+    """The capacity a pool device declares. A value that doesn't parse is left out, so nothing can consume it."""
+    capacity = []
+    for name, c in (device.capacity or {}).items():
+        try:
+            capacity.append((name, quantity.parse(c.value)))
+        except ValueError:
+            continue
+    return tuple(sorted(capacity))
+
+
 @dataclass
 class DeviceRequest:
     """A resolved DRA device request for a matched pool device.
 
     Carries everything compose-model-replica needs to emit one DeviceRequest in
     a ResourceClaim: the request name, the DeviceClass to claim through (from the
-    matched InferenceClass device), the count, and the CEL selectors. Only
-    claim: DRA devices produce one of these; synthetic devices are matched for
-    scheduling but never claimed.
+    matched InferenceClass device), the count, the CEL selectors, and the
+    capacity it consumes on each device of a class that allows multiple
+    allocations. Only claim: DRA devices produce one of these; synthetic devices
+    are matched for scheduling but never claimed.
     """
 
     name: str
     device_class_name: str
     count: int
     cel_selectors: list[str]
+    capacity_requests: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -231,13 +281,17 @@ class _CompiledRequest:
     """One nodeSelector device request with its CEL selectors compiled.
 
     cel_selectors are the raw expressions (carried through to the DeviceRequest);
-    programs are the compiled forms used to match a pool device.
+    programs are the compiled forms used to match a pool device. capacity_requests
+    are the raw capacity.requests (carried through too); capacity is the same
+    parsed, or None when one doesn't parse, which matches no device.
     """
 
     name: str
     count: int
     cel_selectors: list[str]
     programs: list[cel.Program]
+    capacity_requests: dict[str, str] = field(default_factory=dict)
+    capacity: _Capacity | None = ()
 
 
 @dataclass
@@ -291,12 +345,15 @@ def _compile_requests(node_selector: mdv1alpha1.NodeSelector) -> list[_CompiledR
     requests = []
     for req in node_selector.devices:
         cel_selectors = [s.cel for s in req.selectors if s.cel]
+        capacity_requests = dict(req.capacity.requests) if req.capacity else {}
         requests.append(
             _CompiledRequest(
                 name=req.name,
                 count=int(req.count or 1),
                 cel_selectors=cel_selectors,
                 programs=[cel.Program(c) for c in cel_selectors],
+                capacity_requests=capacity_requests,
+                capacity=_parse_capacity(capacity_requests),
             )
         )
     return requests
@@ -415,6 +472,11 @@ def _match_member(pool: icv1alpha1.SchedulablePool, member: _CompiledMember) -> 
     false-reject, never overcommit, so it fails safe. Members are matched
     independently of each other, against what one node of the pool has. Whether
     their pods fit the nodes the pool has free is up to its capacity.
+
+    A request that sets capacity.requests matches only a device that allows
+    multiple allocations and declares at least the requested amount of each
+    capacity, as DRA's consumable capacity requires. It still needs count of
+    them: it consumes its share of count distinct devices.
     """
     devices = pool.devices or []
     remaining = [_published_count(d.count) for d in devices]
@@ -425,6 +487,8 @@ def _match_member(pool: icv1alpha1.SchedulablePool, member: _CompiledMember) -> 
             if remaining[i] < req.count:
                 continue
             if not _device_satisfies(device, req.programs):
+                continue
+            if req.capacity_requests and not _shareable(device, req.capacity):
                 continue
             match = device
             remaining[i] -= req.count
@@ -438,17 +502,39 @@ def _match_member(pool: icv1alpha1.SchedulablePool, member: _CompiledMember) -> 
                     device_class_name=match.deviceClassName or "",
                     count=req.count,
                     cel_selectors=req.cel_selectors,
+                    capacity_requests=req.capacity_requests,
                 )
             )
     return resolved
 
 
-# The devices one pod claims, keyed by DeviceClass.
-_Claim = dict[str, int]
+def _shareable(device: icv1alpha1.Device, wants: _Capacity | None) -> bool:
+    """Whether a pool device can give a request the capacity it wants while other claims hold it too."""
+    if wants is None or not device.allowMultipleAllocations:
+        return False
+    return (device.claim or _CLAIM_DRA) == _CLAIM_DRA and _covers(_device_capacity(device), wants)
 
-# A node's free devices as sorted (DeviceClass, count) pairs, so nodes with the
-# same free devices share a key.
-_Free = tuple[tuple[str, int], ...]
+
+@dataclass(frozen=True)
+class _Take:
+    """The devices one of a pod's requests takes: count devices of a DeviceClass.
+
+    capacity is what the request consumes on each of them when they're shared.
+    It's empty for a request that takes whole devices.
+    """
+
+    device_class: str
+    count: int
+    capacity: _Capacity = ()
+
+
+# The devices one pod claims, one _Take per device request.
+_Claim = tuple[_Take, ...]
+
+
+def _size(claim: _Claim) -> int:
+    """How many devices a pod claims."""
+    return sum(t.count for t in claim)
 
 
 def _claim(requests: list[DeviceRequest]) -> _Claim:
@@ -459,10 +545,10 @@ def _claim(requests: list[DeviceRequest]) -> _Claim:
     still use CPU and memory on whatever node of its gang's pool the cluster's
     scheduler packs them onto, which the scheduler doesn't model.
     """
-    claim: _Claim = {}
-    for r in requests:
-        claim[r.device_class_name] = claim.get(r.device_class_name, 0) + r.count
-    return claim
+    return tuple(
+        _Take(device_class=r.device_class_name, count=r.count, capacity=_parse_capacity(r.capacity_requests) or ())
+        for r in requests
+    )
 
 
 def _observed_claim(member: mrv1alpha1.Member) -> _Claim:
@@ -472,10 +558,14 @@ def _observed_claim(member: mrv1alpha1.Member) -> _Claim:
     now. For a retained member whose pinned pool drifted, the two can disagree
     for one reconcile, until the re-resolved spec is observed.
     """
-    claim: _Claim = {}
-    for r in member.deviceRequests or []:
-        claim[r.deviceClassName] = claim.get(r.deviceClassName, 0) + int(r.count or 1)
-    return claim
+    return tuple(
+        _Take(
+            device_class=r.deviceClassName,
+            count=int(r.count or 1),
+            capacity=(_parse_capacity(dict(r.capacity.requests)) or ()) if r.capacity else (),
+        )
+        for r in member.deviceRequests or []
+    )
 
 
 def _schedulable_pools(cluster: icv1alpha1.InferenceCluster) -> list[icv1alpha1.SchedulablePool]:
@@ -514,6 +604,58 @@ def _replica_index(replica: mrv1alpha1.ModelReplica) -> int:
         return 0
 
 
+@dataclass(frozen=True, order=True)
+class _Node:
+    """A node's free devices, so nodes with the same free devices share a key.
+
+    free is how many devices of each DeviceClass no claim has allocated, as
+    sorted (DeviceClass, count) pairs. shared is the free capacity of each
+    device of a class that allows multiple allocations that a claim has
+    allocated, as sorted (DeviceClass, capacities) pairs, each capacities sorted
+    too. A device no claim has allocated counts in free, with all the capacity
+    its class declares.
+    """
+
+    free: tuple[tuple[str, int], ...]
+    shared: tuple[tuple[str, tuple[_Capacity, ...]], ...] = ()
+
+    def take(self, claim: _Claim, whole: dict[str, _Capacity]) -> "_Node | None":
+        """The node with a pod's claim placed on it, or None if the claim doesn't fit.
+
+        A take with no capacity takes count devices no claim has allocated. One
+        with capacity consumes it on count distinct devices that have that much
+        free. It uses shared devices before free ones, the fullest that fits
+        first, guessing that DRA packs a device before it starts another; whole
+        gives a free device's capacity, by DeviceClass. Takes are placed in
+        order, so two of a pod's requests may share one device, as DRA allows
+        two requests of a claim to.
+        """
+        free = dict(self.free)
+        shared = {c: list(devices) for c, devices in self.shared}
+        for t in claim:
+            if not t.capacity:
+                if free.get(t.device_class, 0) < t.count:
+                    return None
+                free[t.device_class] -= t.count
+                continue
+            devices = shared.setdefault(t.device_class, [])
+            fits = sorted((d, i) for i, d in enumerate(devices) if _covers(d, t.capacity))[: t.count]
+            for d, i in fits:
+                devices[i] = _consume(d, t.capacity)
+            rest = t.count - len(fits)
+            if rest == 0:
+                continue
+            capacity = whole.get(t.device_class)
+            if capacity is None or not _covers(capacity, t.capacity) or free.get(t.device_class, 0) < rest:
+                return None
+            free[t.device_class] -= rest
+            devices.extend([_consume(capacity, t.capacity)] * rest)
+        return _Node(
+            free=tuple(sorted(free.items())),
+            shared=tuple(sorted((c, tuple(sorted(devices))) for c, devices in shared.items() if devices)),
+        )
+
+
 @dataclass
 class _Pool:
     """A pool's free capacity: how many of its nodes have each set of free devices.
@@ -521,14 +663,18 @@ class _Pool:
     whole_node is set for a pool the cluster agent hasn't reported on. Each of
     its nodes starts with every device free, and a pod that claims any device
     takes a whole node, however few of its devices it claims.
+
+    whole is the capacity of a device no claim has allocated, for each
+    DeviceClass whose devices allow multiple allocations.
     """
 
-    nodes: dict[_Free, int]
+    nodes: dict[_Node, int]
     whole_node: bool
+    whole: dict[str, _Capacity] = field(default_factory=dict)
 
     def copy(self) -> "_Pool":
         """A copy to place pods on without changing this one."""
-        return _Pool(nodes=dict(self.nodes), whole_node=self.whole_node)
+        return _Pool(nodes=dict(self.nodes), whole_node=self.whole_node, whole=self.whole)
 
     def place(self, pods: list[_Claim]) -> bool:
         """Place one copy of an engine's pods, each claiming its devices, or return False if they don't all fit.
@@ -545,23 +691,23 @@ class _Pool:
         stops the cluster's scheduler binding them to one.
         """
         fit = True
-        for claim in sorted(pods, key=lambda c: sum(c.values())):
+        for claim in sorted(pods, key=_size):
             if not claim:
                 continue
-            fits = [f for f in self.nodes if self.whole_node or all(dict(f).get(c, 0) >= n for c, n in claim.items())]
+            placed = {n: n if self.whole_node else n.take(claim, self.whole) for n in self.nodes}
+            fits = [n for n, left in placed.items() if left is not None]
             if not fits:
                 fit = False
                 continue
-            node = max(fits, key=lambda f: (sum(dict(f).get(c, 0) for c in claim), f))
+            classes = {t.device_class for t in claim}
+            node = max(fits, key=lambda n: (sum(dict(n.free).get(c, 0) for c in classes), n))
             self.nodes[node] -= 1
             if self.nodes[node] == 0:
                 del self.nodes[node]
             if self.whole_node:
                 continue
-            free = dict(node)
-            for c, n in claim.items():
-                free[c] -= n
-            left = tuple(sorted(free.items()))
+            left = placed[node]
+            assert left is not None
             self.nodes[left] = self.nodes.get(left, 0) + 1
         return fit
 
@@ -576,24 +722,45 @@ def _pool_capacity(pool: icv1alpha1.SchedulablePool) -> _Pool:
     """
     # Keyed as _match_member keys the requests it resolves.
     full: dict[str, int] = {}
+    whole: dict[str, _Capacity] = {}
     for d in pool.devices or []:
         if (d.claim or _CLAIM_DRA) == _CLAIM_DRA:
             key = d.deviceClassName or ""
             full[key] = full.get(key, 0) + _published_count(d.count)
-    empty = tuple(sorted(full.items()))
+            if d.allowMultipleAllocations:
+                whole.setdefault(key, _device_capacity(d))
+    empty = _Node(free=tuple(sorted(full.items())))
     nodes = _published_count(pool.nodes)
 
     if pool.observedNodes is None:
-        return _Pool(nodes={empty: nodes} if nodes else {}, whole_node=True)
+        return _Pool(nodes={empty: nodes} if nodes else {}, whole_node=True, whole=whole)
 
-    capacity = _Pool(nodes={}, whole_node=False)
+    capacity = _Pool(nodes={}, whole_node=False, whole=whole)
     for bucket in pool.nodesByFreeDevices or []:
-        free = tuple(sorted((bucket.freeDevices or {}).items()))
-        capacity.nodes[free] = capacity.nodes.get(free, 0) + bucket.nodes
+        node = _Node(free=tuple(sorted((bucket.freeDevices or {}).items())), shared=_shared(bucket))
+        capacity.nodes[node] = capacity.nodes.get(node, 0) + bucket.nodes
     growth = nodes - pool.observedNodes
     if growth > 0:
         capacity.nodes[empty] = capacity.nodes.get(empty, 0) + growth
     return capacity
+
+
+def _shared(bucket: icv1alpha1.NodesByFreeDevice) -> tuple[tuple[str, tuple[_Capacity, ...]], ...]:
+    """The free capacity of a bucket's shared devices, as _Node keeps it.
+
+    A device whose capacity doesn't parse is left out, as though it had none
+    free.
+    """
+    shared = []
+    for device_class, devices in (bucket.sharedDevices or {}).items():
+        capacities = []
+        for d in devices:
+            capacity = _parse_capacity(dict(d.freeCapacity or {}))
+            if capacity is not None:
+                capacities.append(capacity)
+        if capacities:
+            shared.append((device_class, tuple(sorted(capacities))))
+    return tuple(sorted(shared))
 
 
 @dataclass
@@ -679,7 +846,7 @@ def _build_ledger(
         # Smallest pod first, as _place_engines places them.
         engines = sorted(
             r.spec.engines,
-            key=lambda e: max((sum(_observed_claim(m).values()) for m in e.members or []), default=0),
+            key=lambda e: max((_size(_observed_claim(m)) for m in e.members or []), default=0),
         )
         for engine in engines:
             # The pods of one copy of the engine, by the pool they're pinned to.

@@ -376,6 +376,21 @@ spec:
                                         type: string
                                         minLength: 1
                                         maxLength: 10240
+                                capacity:
+                                  type: object
+                                  description: >-
+                                    The capacity to consume on each device,
+                                    copied verbatim from the nodeSelector
+                                    request into the DeviceRequest.
+                                  required: [requests]
+                                  properties:
+                                    requests:
+                                      type: object
+                                      minProperties: 1
+                                      maxProperties: 8
+                                      additionalProperties:
+                                        type: string
+                                        maxLength: 32
                           worker:
                             type: object
                             # No schema default, mirroring the ModelDeployment

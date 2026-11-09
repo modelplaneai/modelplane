@@ -438,6 +438,7 @@ class Capacity(BaseModel):
 
 
 class Device(BaseModel):
+    allowMultipleAllocations: bool | None = None
     attributes: dict[str, Attributes] | None = Field(None, max_length=32)
     capacity: dict[str, Capacity] | None = Field(None, max_length=32)
     claim: Literal['DRA', 'Synthetic'] | None = None
@@ -445,6 +446,13 @@ class Device(BaseModel):
     deviceClassName: constr(max_length=253) | None = None
     driver: constr(max_length=253)
     name: constr(max_length=63)
+
+
+class SharedDevice(BaseModel):
+    freeCapacity: dict[str, constr(max_length=32)] | None = Field(None, max_length=32)
+    """
+    The device's capacity no claim has consumed, keyed by the names its driver publishes capacity under.
+    """
 
 
 class NodesByFreeDevice(BaseModel):
@@ -455,6 +463,10 @@ class NodesByFreeDevice(BaseModel):
     nodes: conint(ge=1)
     """
     Nodes with these free devices.
+    """
+    sharedDevices: dict[str, list[SharedDevice]] | None = Field(None, max_length=32)
+    """
+    The free capacity of each of the nodes' devices that allows multiple allocations and that a claim has allocated, keyed by DeviceClass. Such a device doesn't count in freeDevices. One no claim has allocated does, with all of its capacity free.
     """
 
 

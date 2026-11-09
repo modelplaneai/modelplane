@@ -109,6 +109,19 @@ def _gpu_device(*, name: str, claim: Literal["DRA", "Synthetic"], count: int, me
     )
 
 
+def _shared_gpu_device(*, count: int, memory: str) -> icv1alpha1.Device:
+    """A gpu.nvidia.com GPU in a pool that several claims can allocate at once, each consuming part of its memory."""
+    return icv1alpha1.Device(
+        name="gpu",
+        claim="DRA",
+        driver="gpu.nvidia.com",
+        deviceClassName="gpu.nvidia.com",
+        count=count,
+        allowMultipleAllocations=True,
+        capacity={"memory": icv1alpha1.Capacity(value=memory)},
+    )
+
+
 def _nic_device(*, link_type: str) -> icv1alpha1.Device:
     """A Synthetic NIC in a pool, which a nodeSelector can match but nothing claims."""
     return icv1alpha1.Device(
@@ -6989,6 +7002,570 @@ SCHEDULE_CASES = [
         ],
         fill=True,
         want=[],
+    ),
+    # Pools whose GPUs allow multiple allocations. A request that sets
+    # capacity.requests is placed by the capacity each GPU has free, so several
+    # replicas can share one GPU. Every pool's GPU has 80Gi of memory.
+    Case(
+        name="SharedGPUFits",
+        reason="A replica requesting 24Gi of a GPU's memory fits a GPU another claim holds with 56Gi free, though the node has no GPU free.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[
+                        mdv1alpha1.Device(
+                            name="gpu",
+                            count=1,
+                            selectors=[mdv1alpha1.Selector(cel=_MEM_20)],
+                            capacity=mdv1alpha1.Capacity(requests={"memory": "24Gi"}),
+                        )
+                    ],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.SchedulablePool(
+                        name="gpu-shared",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(
+                                freeDevices={"gpu.nvidia.com": 0},
+                                sharedDevices={
+                                    "gpu.nvidia.com": [icv1alpha1.SharedDevice(freeCapacity={"memory": "56Gi"})]
+                                },
+                                nodes=1,
+                            ),
+                        ],
+                        devices=[_shared_gpu_device(count=1, memory="80Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[
+            _candidate(
+                name="cluster-a",
+                index=0,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="gpu-shared",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu",
+                                device_class_name="gpu.nvidia.com",
+                                count=1,
+                                cel_selectors=[_MEM_20],
+                                capacity_requests={"memory": "24Gi"},
+                            )
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    ),
+    Case(
+        name="SharedGPUFull",
+        reason="A replica requesting 24Gi of a GPU's memory doesn't fit a node whose only GPU another claim holds with 16Gi free.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[
+                        mdv1alpha1.Device(
+                            name="gpu",
+                            count=1,
+                            selectors=[mdv1alpha1.Selector(cel=_MEM_20)],
+                            capacity=mdv1alpha1.Capacity(requests={"memory": "24Gi"}),
+                        )
+                    ],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.SchedulablePool(
+                        name="gpu-shared",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(
+                                freeDevices={"gpu.nvidia.com": 0},
+                                sharedDevices={
+                                    "gpu.nvidia.com": [icv1alpha1.SharedDevice(freeCapacity={"memory": "16Gi"})]
+                                },
+                                nodes=1,
+                            ),
+                        ],
+                        devices=[_shared_gpu_device(count=1, memory="80Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[],
+    ),
+    Case(
+        name="SharedGPUPacksReplicas",
+        reason="Replicas requesting 24Gi each pack three to one free 80Gi GPU, and a fourth doesn't fit.",
+        deployment=_deployment(
+            replicas=4,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[
+                        mdv1alpha1.Device(
+                            name="gpu",
+                            count=1,
+                            selectors=[mdv1alpha1.Selector(cel=_MEM_20)],
+                            capacity=mdv1alpha1.Capacity(requests={"memory": "24Gi"}),
+                        )
+                    ],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.SchedulablePool(
+                        name="gpu-shared",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 1}, nodes=1),
+                        ],
+                        devices=[_shared_gpu_device(count=1, memory="80Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[
+            _candidate(
+                name="cluster-a",
+                index=0,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="gpu-shared",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu",
+                                device_class_name="gpu.nvidia.com",
+                                count=1,
+                                cel_selectors=[_MEM_20],
+                                capacity_requests={"memory": "24Gi"},
+                            )
+                        ],
+                    ),
+                ],
+            ),
+            _candidate(
+                name="cluster-a",
+                index=1,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="gpu-shared",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu",
+                                device_class_name="gpu.nvidia.com",
+                                count=1,
+                                cel_selectors=[_MEM_20],
+                                capacity_requests={"memory": "24Gi"},
+                            )
+                        ],
+                    ),
+                ],
+            ),
+            _candidate(
+                name="cluster-a",
+                index=2,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="gpu-shared",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu",
+                                device_class_name="gpu.nvidia.com",
+                                count=1,
+                                cel_selectors=[_MEM_20],
+                                capacity_requests={"memory": "24Gi"},
+                            )
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    ),
+    Case(
+        name="DistinctSharedDevices",
+        reason="A replica requesting 24Gi on each of two GPUs doesn't fit a node with one GPU that has room for two such shares.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[
+                        mdv1alpha1.Device(
+                            name="gpu",
+                            count=2,
+                            selectors=[mdv1alpha1.Selector(cel=_MEM_20)],
+                            capacity=mdv1alpha1.Capacity(requests={"memory": "24Gi"}),
+                        )
+                    ],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.SchedulablePool(
+                        name="gpu-shared",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(
+                                freeDevices={"gpu.nvidia.com": 0},
+                                sharedDevices={
+                                    "gpu.nvidia.com": [icv1alpha1.SharedDevice(freeCapacity={"memory": "56Gi"})]
+                                },
+                                nodes=1,
+                            ),
+                        ],
+                        devices=[_shared_gpu_device(count=2, memory="80Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[],
+    ),
+    Case(
+        name="SharedPoolWholeGPU",
+        reason="A replica that sets no capacity.requests takes a whole GPU, so it doesn't fit a node whose only GPU another claim holds, however much of it is free.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[mdv1alpha1.Device(name="gpu", count=1, selectors=[mdv1alpha1.Selector(cel=_MEM_20)])],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.SchedulablePool(
+                        name="gpu-shared",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(
+                                freeDevices={"gpu.nvidia.com": 0},
+                                sharedDevices={
+                                    "gpu.nvidia.com": [icv1alpha1.SharedDevice(freeCapacity={"memory": "79Gi"})]
+                                },
+                                nodes=1,
+                            ),
+                        ],
+                        devices=[_shared_gpu_device(count=1, memory="80Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[],
+    ),
+    Case(
+        name="CapacityNeedsSharing",
+        reason="A request that sets capacity.requests doesn't match a GPU whose class doesn't allow multiple allocations.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[
+                        mdv1alpha1.Device(
+                            name="gpu",
+                            count=1,
+                            selectors=[mdv1alpha1.Selector(cel=_MEM_20)],
+                            capacity=mdv1alpha1.Capacity(requests={"memory": "24Gi"}),
+                        )
+                    ],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.SchedulablePool(
+                        name="gpu-shared",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 1}, nodes=1),
+                        ],
+                        devices=[_gpu_device(name="gpu", claim="DRA", count=1, memory="80Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[],
+    ),
+    Case(
+        name="CapacityRequestExceedsGPU",
+        reason="A request for more memory than the GPU's class declares doesn't match it.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[
+                        mdv1alpha1.Device(
+                            name="gpu",
+                            count=1,
+                            selectors=[mdv1alpha1.Selector(cel=_MEM_20)],
+                            capacity=mdv1alpha1.Capacity(requests={"memory": "96Gi"}),
+                        )
+                    ],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.SchedulablePool(
+                        name="gpu-shared",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 1}, nodes=1),
+                        ],
+                        devices=[_shared_gpu_device(count=1, memory="80Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[],
+    ),
+    # The pool's histogram doesn't yet account for the other replica, which
+    # holds 48Gi of the pool's one GPU, so the ledger charges it.
+    Case(
+        name="SharedGPUUnsettledReplica",
+        reason="A replica requesting 48Gi doesn't fit a GPU an unsettled replica of another deployment has taken 48Gi of.",
+        deployment=_deployment(
+            replicas=1,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[
+                        mdv1alpha1.Device(
+                            name="gpu",
+                            count=1,
+                            selectors=[mdv1alpha1.Selector(cel=_MEM_20)],
+                            capacity=mdv1alpha1.Capacity(requests={"memory": "48Gi"}),
+                        )
+                    ],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.SchedulablePool(
+                        name="gpu-shared",
+                        nodes=1,
+                        observedNodes=1,
+                        nodesByFreeDevices=[
+                            icv1alpha1.NodesByFreeDevice(freeDevices={"gpu.nvidia.com": 1}, nodes=1),
+                        ],
+                        devices=[_shared_gpu_device(count=1, memory="80Gi")],
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[
+            _replica(
+                name="other-model-cluster-a-0",
+                deployment="other-model",
+                cluster="cluster-a",
+                index=0,
+                copies=1,
+                pods_scheduled=False,
+                pools=None,
+                members=[
+                    _replica_member(
+                        role="Standalone",
+                        worker_nodes=None,
+                        pool="gpu-shared",
+                        device_requests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=1,
+                                selectors=[mrv1alpha1.Selector(cel=_MEM_20)],
+                                capacity=mrv1alpha1.Capacity(requests={"memory": "48Gi"}),
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        fill=True,
+        want=[],
+    ),
+    Case(
+        name="SharedGPUUnobservedPool",
+        reason="On a pool the agent doesn't report on, a replica requesting a share of a GPU still takes a whole node, so a one-node pool hosts one replica.",
+        deployment=_deployment(
+            replicas=2,
+            copies=1,
+            members=[
+                _member(
+                    role="Standalone",
+                    worker_nodes=None,
+                    devices=[
+                        mdv1alpha1.Device(
+                            name="gpu",
+                            count=1,
+                            selectors=[mdv1alpha1.Selector(cel=_MEM_20)],
+                            capacity=mdv1alpha1.Capacity(requests={"memory": "24Gi"}),
+                        )
+                    ],
+                )
+            ],
+            tolerations=None,
+        ),
+        clusters=[
+            _cluster(
+                name="cluster-a",
+                gateway_hostname="cluster-a.clusters.example.com",
+                ready=True,
+                pools=[
+                    icv1alpha1.SchedulablePool(
+                        name="gpu-shared", nodes=1, devices=[_shared_gpu_device(count=1, memory="80Gi")]
+                    )
+                ],
+                taints=None,
+                placement_labels=None,
+            )
+        ],
+        all_replicas=[],
+        fill=True,
+        want=[
+            _candidate(
+                name="cluster-a",
+                index=0,
+                gateway_hostname="cluster-a.clusters.example.com",
+                placement_labels={},
+                members=[
+                    scheduling.MemberPlacement(
+                        role="Standalone",
+                        pool="gpu-shared",
+                        device_requests=[
+                            scheduling.DeviceRequest(
+                                name="gpu",
+                                device_class_name="gpu.nvidia.com",
+                                count=1,
+                                cel_selectors=[_MEM_20],
+                                capacity_requests={"memory": "24Gi"},
+                            )
+                        ],
+                    ),
+                ],
+            ),
+        ],
     ),
 ]
 

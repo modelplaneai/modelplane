@@ -2726,6 +2726,216 @@ COMPOSE_CASES = [
             ],
         ),
     ),
+    # The deployment and cluster here differ from the helpers' in the GPU
+    # request and the pool's GPU, which allows multiple allocations, so they're
+    # written out.
+    ComposeCase(
+        name="SharedGPU",
+        reason="A replica requesting a share of a GPU's memory carries the request into its device requests.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.ModelDeployment(
+                            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+                            spec=v1alpha1.SpecModel2(
+                                replicas=1,
+                                template=v1alpha1.TemplateModel1(
+                                    spec=v1alpha1.SpecModel1(
+                                        engines=[
+                                            v1alpha1.Engine(
+                                                name="main",
+                                                members=[
+                                                    v1alpha1.Member(
+                                                        role="Standalone",
+                                                        nodeSelector=v1alpha1.NodeSelector(
+                                                            devices=[
+                                                                v1alpha1.Device(
+                                                                    name="gpu",
+                                                                    count=1,
+                                                                    selectors=[
+                                                                        v1alpha1.Selector(
+                                                                            cel='device.driver == "gpu.nvidia.com"'
+                                                                        )
+                                                                    ],
+                                                                    capacity=v1alpha1.Capacity(
+                                                                        requests={"memory": "24Gi"}
+                                                                    ),
+                                                                ),
+                                                            ],
+                                                        ),
+                                                        template=v1alpha1.Template(
+                                                            spec=v1alpha1.Spec(
+                                                                containers=[
+                                                                    v1alpha1.Container(
+                                                                        name="engine", image="vllm/vllm-openai:latest"
+                                                                    )
+                                                                ],
+                                                            ),
+                                                        ),
+                                                    )
+                                                ],
+                                            )
+                                        ],
+                                    ),
+                                ),
+                            ),
+                        ).model_dump(exclude_none=True, mode="json", by_alias=True)
+                    )
+                ),
+            ),
+            required_resources={
+                "clusters": fnv1.Resources(
+                    items=[
+                        fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                {
+                                    "apiVersion": "modelplane.ai/v1alpha1",
+                                    "kind": "InferenceCluster",
+                                    "metadata": {"name": "cluster-a"},
+                                    "spec": {
+                                        "cluster": {
+                                            "source": "Existing",
+                                            "existing": {"secretRef": {"name": "k", "key": "kubeconfig"}},
+                                        },
+                                        "stack": "Standard",
+                                    },
+                                    "status": {
+                                        "conditions": [
+                                            {
+                                                "type": "Ready",
+                                                "status": "True",
+                                                "reason": "Available",
+                                                "lastTransitionTime": "2025-01-01T00:00:00Z",
+                                            }
+                                        ],
+                                        "providerConfigRef": {"name": "cluster-a"},
+                                        "gateway": {"address": "10.0.0.1", "hostname": "cluster.clusters.example.com"},
+                                        "schedulablePools": [
+                                            {
+                                                "name": "default",
+                                                "nodes": 1,
+                                                "devices": [
+                                                    {
+                                                        "name": "gpu",
+                                                        "claim": "DRA",
+                                                        "driver": "gpu.nvidia.com",
+                                                        "deviceClassName": "gpu.nvidia.com",
+                                                        "count": 1,
+                                                        "allowMultipleAllocations": True,
+                                                        "capacity": {"memory": {"value": "80Gi"}},
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    },
+                                }
+                            )
+                        )
+                    ]
+                ),
+                "all-replicas": fnv1.Resources(),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_deployment(total_replicas=1, ready_replicas=0, ready=fnv1.READY_FALSE),
+                resources={
+                    "replica-cluster-a-0": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "modelplane.ai/v1alpha1",
+                                "kind": "ModelReplica",
+                                "metadata": {
+                                    "name": "my-model-5ab63",
+                                    "namespace": "ml-team",
+                                    "labels": {
+                                        "modelplane.ai/deployment": "my-model",
+                                        "modelplane.ai/cluster": "cluster-a",
+                                        "modelplane.ai/replica-index": "0",
+                                    },
+                                },
+                                "spec": {
+                                    "clusterName": "cluster-a",
+                                    "engines": [
+                                        {
+                                            "name": "main",
+                                            "copies": 1,
+                                            "members": [
+                                                {
+                                                    "role": "Standalone",
+                                                    "nodePoolName": "default",
+                                                    "deviceRequests": [
+                                                        {
+                                                            "name": "gpu",
+                                                            "deviceClassName": "gpu.nvidia.com",
+                                                            "count": 1,
+                                                            "selectors": [{"cel": 'device.driver == "gpu.nvidia.com"'}],
+                                                            "capacity": {"requests": {"memory": "24Gi"}},
+                                                        }
+                                                    ],
+                                                    "template": {
+                                                        "spec": {
+                                                            "containers": [
+                                                                {
+                                                                    "name": "engine",
+                                                                    "image": "vllm/vllm-openai:latest",
+                                                                    "env": [
+                                                                        {
+                                                                            "name": "MODELPLANE_SERVED_MODEL_NAME",
+                                                                            "value": "ml-team/my-model",
+                                                                        },
+                                                                    ],
+                                                                }
+                                                            ]
+                                                        }
+                                                    },
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="Scheduled 1 replicas across 1 clusters: cluster-a",
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "all-replicas": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelReplica"),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ReplicasScheduled",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Scheduling",
+                    message="Created 0 of 1 replicas",
+                ),
+                fnv1.Condition(
+                    type="ReplicasServing",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="ModelStarting",
+                    message="0 of 1 replicas serving",
+                ),
+                fnv1.Condition(
+                    type="ReplicasReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="ModelStarting",
+                    message="0 of 1 replicas ready",
+                ),
+            ],
+        ),
+    ),
 ]
 
 
