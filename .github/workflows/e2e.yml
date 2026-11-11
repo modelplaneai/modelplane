@@ -30,7 +30,7 @@ jobs:
       github.event_name == 'workflow_dispatch'
       || (github.event.action == 'labeled' && github.event.label.name == 'test-e2e')
       || (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'test-e2e'))
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # Generous: a cold Nix cache (the Actions cache throttles) rebuilds the
     # function images, on top of the two-cluster bring-up and serving-stack
     # install. 45m was too tight on a cold run.
@@ -40,7 +40,7 @@ jobs:
       # Two kind clusters and the serving stack need more disk than the runner
       # has free by default, the same reason the push-package job reclaims space.
       - name: Cleanup Disk
-        uses: jlumbroso/free-disk-space@3f13feab2962a87273d379ebc36ea159527e6cc9 # v1.3.2
+        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
         with:
           android: true
           dotnet: true
@@ -51,7 +51,7 @@ jobs:
           docker-images: false
 
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Nix
         uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
@@ -60,7 +60,7 @@ jobs:
 
       # See ci.yml for why use-flakehub is off.
       - name: Cache Nix store
-        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
+        uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
         with:
           use-flakehub: false
 
@@ -87,7 +87,7 @@ jobs:
 
       - name: Upload diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: e2e-diagnostics
           path: e2e-logs
