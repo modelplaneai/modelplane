@@ -561,23 +561,25 @@ def _transform(mappings: list[mmv1alpha1.MetricMapping]) -> dict[str, Any]:
 # receives every series stripped of everything that says what it measures.
 #
 # Applied under an operator's own config rather than over it: this is a default,
-# and a sink that sets it wins.
+# and a sink that sets it wins. So does a sink that sets the deprecated
+# resource_to_telemetry_conversion, because an exporter refuses a config that
+# sets both.
 #
 # Keyed under both spellings of the remote-write exporter. The component
 # registers as prometheus_remote_write and still answers to the older
 # prometheusremotewrite, so a sink writing the name the collector's own
 # documentation gives would otherwise match nothing here and export every
 # series stripped of its identity - a silent loss, since the sink itself works.
-_RESOURCE_TO_LABELS = {"resource_to_telemetry_conversion": {"enabled": True}}
-_SINK_DEFAULTS = {
-    "prometheus_remote_write": _RESOURCE_TO_LABELS,
-    "prometheusremotewrite": _RESOURCE_TO_LABELS,
-    "prometheus": _RESOURCE_TO_LABELS,
-}
+_FLATTENING_EXPORTERS = {"prometheus_remote_write", "prometheusremotewrite", "prometheus"}
+_RESOURCE_LABEL_SETTINGS = {"resource_constant_labels", "resource_to_telemetry_conversion"}
 
 
-def _sink_defaults(exporter: str) -> dict[str, Any]:
-    return {k: dict(v) for k, v in _SINK_DEFAULTS.get(exporter, {}).items()}
+def _sink_defaults(sink: tdv1alpha1.Sink) -> dict[str, Any]:
+    if sink.type not in _FLATTENING_EXPORTERS or _RESOURCE_LABEL_SETTINGS & (sink.config or {}).keys():
+        return {}
+    # transform/identity leaves nothing but the identity on the resource, so
+    # this converts everything that reaches the exporter.
+    return {"resource_constant_labels": {"included": list(_IDENTITY)}}
 
 
 def _credential_path(sink: tdv1alpha1.Sink, key: str) -> str:
@@ -617,7 +619,7 @@ def exporters(sinks: list[tdv1alpha1.Sink]) -> dict[str, Any]:
     """
     rendered: dict[str, Any] = {}
     for sink in sinks:
-        cfg: dict[str, Any] = _sink_defaults(sink.type) | dict(sink.config or {})
+        cfg: dict[str, Any] = _sink_defaults(sink) | dict(sink.config or {})
         if sink.endpoint:
             cfg["endpoint"] = sink.endpoint
         if sink.auth and sink.auth.bearerTokenKey:
