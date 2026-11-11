@@ -25,7 +25,7 @@ jobs:
       # read-only, so these have to be granted explicitly.
       issues: read
       pull-requests: read
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: mheap/require-checklist-action@9c8100a52aa9726d4648e61aa92415f6c843c990 # v2
         with:
