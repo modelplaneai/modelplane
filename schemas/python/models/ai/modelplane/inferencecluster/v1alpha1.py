@@ -271,7 +271,7 @@ class NodePool(BaseModel):
     """
     minNodeCount: conint(ge=0) | None = None
     """
-    Minimum node count for autoscaling. Keep GPU and CPU pools on EKS, AKS and CoreWeave at 1 or higher: their cluster autoscalers can't scale a pool whose devices bind through DRA up from zero nodes, so a pod scheduled to an empty pool waits forever.
+    Minimum node count for autoscaling. Keep GPU pools on EKS, AKS and CoreWeave, and CPU pools on EKS and CoreWeave, at 1 or higher: their cluster autoscalers can't scale a pool whose devices bind through DRA up from zero nodes, so a pod scheduled to an empty pool waits forever.
     """
     name: constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', max_length=40)
     """
