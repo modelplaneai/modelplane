@@ -95,6 +95,16 @@ _SGLANG = {
     "sglang:http_requests_active": "modelplane_engine_requests_active",
 }
 
+# Under --enable-priority-scheduling SGLang publishes its running and waiting
+# counts once as a total, with an empty priority, and again per priority, so
+# only the total is kept. Not tp_rank 0 for --enable-metrics-for-all-schedulers:
+# under DP attention each group's first rank publishes its own count, and only
+# one of them is tp_rank 0.
+_SGLANG_MATCH: dict[str, list[dict[str, object]]] = {
+    "sglang:num_running_reqs": [{"label": "priority", "absent": True}],
+    "sglang:num_queue_reqs": [{"label": "priority", "absent": True}],
+}
+
 # Each engine's prompt and generation token histograms, taken as counters: the
 # prompt and generated tokens of the requests it finished, and from the prompt
 # histogram's count, the requests. A prompt's tokens include any the prefix
@@ -237,13 +247,16 @@ def _mapping(
     tokens: tuple[str, str] | None = None,
     extra: tuple[dict[str, object], ...] = (),
     types: dict[str, str] | None = None,
+    match: dict[str, list[dict[str, object]]] | None = None,
 ) -> v1alpha1.MetricMapping:
     units = units or {}
     types = types or {}
+    match = match or {}
     metrics: list[dict[str, object]] = [
         {"from": src, "to": dst}
         | ({"fromUnit": units[src]} if src in units else {})
         | ({"fromType": types[src]} if src in types else {})
+        | ({"match": match[src]} if src in match else {})
         for src, dst in pairs.items()
     ]
     if tokens:
@@ -266,7 +279,7 @@ def mappings() -> list[v1alpha1.MetricMapping]:
         _mapping("modelplane-gateway", _GATEWAY),
         _mapping("modelplane-gateway-proxy", _GATEWAY_PROXY),
         _mapping("modelplane-vllm", _VLLM, tokens=_VLLM_TOKENS, extra=(_VLLM_RESPONSES,)),
-        _mapping("modelplane-sglang", _SGLANG, tokens=_SGLANG_TOKENS, extra=(_SGLANG_RESPONSES,)),
+        _mapping("modelplane-sglang", _SGLANG, tokens=_SGLANG_TOKENS, extra=(_SGLANG_RESPONSES,), match=_SGLANG_MATCH),
         _mapping("modelplane-picker", _PICKER),
         _mapping("modelplane-gpu", _GPU, _GPU_UNITS),
         _mapping("modelplane-gpu-amd", _AMD_GPU, _AMD_GPU_UNITS, types=_AMD_GPU_TYPES),

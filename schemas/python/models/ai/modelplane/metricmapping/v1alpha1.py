@@ -64,6 +64,21 @@ class Label(BaseModel):
     """
 
 
+class MatchItem(BaseModel):
+    absent: Literal[True] | None = None
+    """
+    Keep series without the label. A label with an empty value counts as absent, as it does in Prometheus.
+    """
+    label: constr(pattern=r'^[a-zA-Z_][a-zA-Z0-9_]*$', max_length=63)
+    """
+    The label to match on.
+    """
+    value: constr(max_length=253) | None = None
+    """
+    Keep series where the label has this value. A series without the label doesn't match.
+    """
+
+
 class Metric(BaseModel):
     from_: constr(pattern=r'^[a-zA-Z_:][a-zA-Z0-9_:]*$', max_length=255) = Field(
         ..., alias='from'
@@ -94,6 +109,11 @@ class Metric(BaseModel):
     labels: list[Label] | None = Field(None, max_length=16)
     """
     Labels to set on this metric's series. To fold several metrics into one name, give each its own entry with the same `to` and a different fixed value, such as direction: input and direction: output on modelplane_tokens_total.
+    """
+    match: list[MatchItem] | None = Field(None, max_length=16)
+    """
+    Keep only this metric's series whose labels match every entry, and drop the rest before the rename. For a component that publishes the same count more than once, such as a total beside a breakdown of it, which would otherwise be summed twice.
+    It applies to the metric wherever it appears, so a second mapping of the same `from`, such as one taking a part of the same histogram, sees only the series it keeps.
     """
     part: Literal['Count', 'Sum'] | None = None
     """

@@ -1404,6 +1404,7 @@ def _collector_config(
                     "memory_limiter",
                     "resource/cluster",
                     "transform/identity",
+                    "filter/match",
                     "transform/modelplane",
                     "groupbyattrs/identity",
                     "filter/modelplane",
@@ -1659,6 +1660,16 @@ def _collector_config(
                         ],
                     }
                 ]
+            },
+            # SGLang publishes its running and waiting counts as a total and again per
+            # priority, so the built-in keeps only the total.
+            "filter/match": {
+                "metrics": {
+                    "datapoint": [
+                        'metric.name == "sglang:num_running_reqs" and datapoint.attributes["priority"] != nil and datapoint.attributes["priority"] != ""',
+                        'metric.name == "sglang:num_queue_reqs" and datapoint.attributes["priority"] != nil and datapoint.attributes["priority"] != ""',
+                    ]
+                }
             },
             "transform/modelplane": {
                 "metric_statements": [
@@ -4746,7 +4757,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="be9842417e13d6c1",
+                        config_hash="fa3cbe55df2af23e",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5065,7 +5076,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                     ),
                     "collector": _collector(
-                        config_hash="5d3c556be06d8ca8",
+                        config_hash="2c892622cfc36e73",
                         volumes=[
                             {"name": "config", "configMap": {"name": "modelplane-collector"}},
                             {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -5352,7 +5363,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="0a72aaee56455e72",
+                        config_hash="2246c48054b33132",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5615,7 +5626,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="57e31b8f680bd6d3",
+                        config_hash="4e79b223351de201",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5906,7 +5917,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="be9842417e13d6c1",
+                        config_hash="fa3cbe55df2af23e",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
