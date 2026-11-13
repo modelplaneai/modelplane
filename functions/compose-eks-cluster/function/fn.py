@@ -28,6 +28,8 @@ authorised on the cluster. Downstream consumers only need the kubeconfig;
 no per-cluster AWS identity has to be wired into provider-kubernetes.
 """
 
+import functools
+import ipaddress
 from typing import Literal
 
 import grpc
@@ -140,6 +142,11 @@ _LABEL_AZ = "modelplane.ai/zone"
 _LABEL_TIER = "modelplane.ai/subnet-tier"
 _TIER_PUBLIC = "public"
 _TIER_PRIVATE = "private"
+
+# Tags the subnetCidrs subnets, the ones the EKS control plane is placed in. A
+# private subnet composed for a pool zone outside subnetCidrs doesn't get it:
+# that zone may not support the control plane, which would fail cluster creation.
+_LABEL_CONTROL_PLANE = "modelplane.ai/control-plane"
 
 # EKS discovers which subnets to place internet-facing load balancers in by this
 # tag. Nodes run in private subnets, so the serving gateway's ELB would have no
@@ -476,7 +483,7 @@ class Composer:
                 subnetv1beta1.Subnet(
                     metadata=metav1.ObjectMeta(
                         name=_subnet_name(self.xr, az),
-                        labels={_LABEL_AZ: az, _LABEL_TIER: _TIER_PUBLIC},
+                        labels={_LABEL_AZ: az, _LABEL_TIER: _TIER_PUBLIC, _LABEL_CONTROL_PLANE: "true"},
                     ),
                     spec=subnetv1beta1.Spec(
                         providerConfigRef=subnetv1beta1.ProviderConfigRef(
@@ -502,7 +509,7 @@ class Composer:
                 subnetv1beta1.Subnet(
                     metadata=metav1.ObjectMeta(
                         name=_private_subnet_name(self.xr, az),
-                        labels={_LABEL_AZ: az, _LABEL_TIER: _TIER_PRIVATE},
+                        labels={_LABEL_AZ: az, _LABEL_TIER: _TIER_PRIVATE, _LABEL_CONTROL_PLANE: "true"},
                     ),
                     spec=subnetv1beta1.Spec(
                         providerConfigRef=subnetv1beta1.ProviderConfigRef(
@@ -513,6 +520,34 @@ class Composer:
                             region=self.xr.spec.region,
                             availabilityZone=az,
                             cidrBlock=_private_cidr(cidr),
+                            mapPublicIpOnLaunch=False,
+                            vpcIdSelector=subnetv1beta1.VpcIdSelector(
+                                matchControllerRef=True,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+
+        # Private subnets for pool zones beyond the index-derived AZs above, keyed
+        # by AZ name so adding one never renames or re-CIDRs an existing subnet.
+        for az, cidr in self._extra_private_cidrs.items():
+            resource.update(
+                self.rsp.desired.resources[f"private-subnet-{az}"],
+                subnetv1beta1.Subnet(
+                    metadata=metav1.ObjectMeta(
+                        name=_private_subnet_name(self.xr, az),
+                        labels={_LABEL_AZ: az, _LABEL_TIER: _TIER_PRIVATE},
+                    ),
+                    spec=subnetv1beta1.Spec(
+                        providerConfigRef=subnetv1beta1.ProviderConfigRef(
+                            kind=self._cred_kind(),
+                            name=self._cred_name(),
+                        ),
+                        forProvider=subnetv1beta1.ForProvider(
+                            region=self.xr.spec.region,
+                            availabilityZone=az,
+                            cidrBlock=cidr,
                             mapPublicIpOnLaunch=False,
                             vpcIdSelector=subnetv1beta1.VpcIdSelector(
                                 matchControllerRef=True,
@@ -712,6 +747,30 @@ class Composer:
                 ),
             )
 
+        for az in self._extra_private_cidrs:
+            resource.update(
+                self.rsp.desired.resources[f"private-route-table-association-{az}"],
+                rtav1beta1.RouteTableAssociation(
+                    spec=rtav1beta1.Spec(
+                        providerConfigRef=rtav1beta1.ProviderConfigRef(
+                            kind=self._cred_kind(),
+                            name=self._cred_name(),
+                        ),
+                        forProvider=rtav1beta1.ForProvider(
+                            region=self.xr.spec.region,
+                            routeTableIdSelector=rtav1beta1.RouteTableIdSelector(
+                                matchControllerRef=True,
+                                matchLabels={_LABEL_TIER: _TIER_PRIVATE},
+                            ),
+                            subnetIdSelector=rtav1beta1.SubnetIdSelector(
+                                matchControllerRef=True,
+                                matchLabels={_LABEL_AZ: az, _LABEL_TIER: _TIER_PRIVATE},
+                            ),
+                        ),
+                    ),
+                ),
+            )
+
     def compose_iam(self) -> None:
         """Compose the cluster and node IAM roles."""
         resource.update(
@@ -816,6 +875,7 @@ class Composer:
                             endpointPublicAccess=True,
                             subnetIdSelector=clusterv1beta1.SubnetIdSelector(
                                 matchControllerRef=True,
+                                matchLabels={_LABEL_CONTROL_PLANE: "true"},
                             ),
                         ),
                     ),
@@ -1331,10 +1391,11 @@ class Composer:
         )
 
         # One mount target per node subnet so any AZ's nodes can mount the share.
-        for i in range(len(self._networking().subnetCidrs or [])):
-            az = _az(region, i)
+        mount_azs = [(str(i), _az(region, i)) for i in range(len(self._networking().subnetCidrs or []))]
+        mount_azs += [(az, az) for az in self._extra_private_cidrs]
+        for key, az in mount_azs:
             resource.update(
-                self.rsp.desired.resources[f"efs-mount-target-{i}"],
+                self.rsp.desired.resources[f"efs-mount-target-{key}"],
                 mtv1beta1.MountTarget(
                     spec=mtv1beta1.Spec(
                         providerConfigRef=mtv1beta1.ProviderConfigRef(
@@ -1767,6 +1828,10 @@ class Composer:
             managed_resources.append(f"route-table-association-{i}")
             managed_resources.append(f"private-route-table-association-{i}")
             managed_resources.append(f"efs-mount-target-{i}")
+        for az in self._extra_private_cidrs:
+            managed_resources.append(f"private-subnet-{az}")
+            managed_resources.append(f"private-route-table-association-{az}")
+            managed_resources.append(f"efs-mount-target-{az}")
         managed_resources += [f"nodegroup-{p.name}" for p in self.xr.spec.nodePools]
         managed_resources += [
             f"launch-template-{p.name}"
@@ -1799,3 +1864,41 @@ class Composer:
     def _networking(self) -> v1alpha1.Networking:
         """Return the (defaulted) networking config from the XR."""
         return self.xr.spec.networking or v1alpha1.Networking()
+
+    @functools.cached_property
+    def _extra_private_cidrs(self) -> dict[str, str]:
+        """Return a private subnet CIDR for each pool zone the subnetCidrs miss.
+
+        subnetCidrs only covers the region's first len(subnetCidrs) AZs, but a
+        pool may need another (e.g. us-east-1d when 1a-1c are out of capacity).
+        Each such zone gets a private subnet in a free slot of the VPC, the same
+        size as the first subnet in subnetCidrs. The slot is picked by the
+        zone's letter, so it doesn't move when other zones come and go. It does
+        depend on subnetCidrs, so changing subnetCidrs can move it. Zones that don't look
+        like <region><letter>, or that don't fit in the VPC, get a warning.
+        """
+        region = self.xr.spec.region
+        cidrs = [c.root if hasattr(c, "root") else c for c in self._networking().subnetCidrs or []]
+        covered = {_az(region, i) for i in range(len(cidrs))}
+        zones = sorted(
+            {z.root if hasattr(z, "root") else z for p in self.xr.spec.nodePools for z in p.zones or []} - covered
+        )
+        if not zones:
+            return {}
+        try:
+            used = [ipaddress.ip_network(c, strict=False) for c in cidrs + [_private_cidr(c) for c in cidrs]]
+            vpc = ipaddress.ip_network(str(self._networking().vpcCidr), strict=False)
+            free = [s for s in vpc.subnets(new_prefix=used[0].prefixlen) if not any(s.overlaps(u) for u in used)]
+        except ValueError as e:
+            # e.g. a VPC smaller than its subnets; AWS rejects that anyway.
+            response.warning(self.rsp, f"Cannot compose private subnets for zones {', '.join(zones)}: {e}")
+            return {}
+        extra = {}
+        for z in zones:
+            letter = z.removeprefix(region)
+            slot = ord(letter) - ord("a") - len(cidrs) if len(letter) == 1 and "a" <= letter <= "z" else -1
+            if 0 <= slot < len(free):
+                extra[z] = str(free[slot])
+            else:
+                response.warning(self.rsp, f"Cannot compose a private subnet for zone {z} in VPC {vpc}")
+        return extra
