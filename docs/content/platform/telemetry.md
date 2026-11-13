@@ -400,6 +400,11 @@ request once per rank. To keep one rank's series, give a mapping of
     match:
     - label: tp_rank
       value: "0"
+  - from: sglang:num_queue_reqs
+    to: modelplane_requests_waiting
+    match:
+    - label: tp_rank
+      value: "0"
 ```
 
 The built-in mapping has already renamed these metrics, so this mapping's rename does
