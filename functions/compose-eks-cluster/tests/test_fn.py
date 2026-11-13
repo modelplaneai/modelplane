@@ -108,7 +108,11 @@ def _subnet(*, name: str, az: str, cidr: str, cred_kind: str, cred_name: str) ->
                 "kind": "Subnet",
                 "metadata": {
                     "name": name,
-                    "labels": {"modelplane.ai/zone": az, "modelplane.ai/subnet-tier": "public"},
+                    "labels": {
+                        "modelplane.ai/zone": az,
+                        "modelplane.ai/subnet-tier": "public",
+                        "modelplane.ai/control-plane": "true",
+                    },
                 },
                 "spec": {
                     "providerConfigRef": {"kind": cred_kind, "name": cred_name},
@@ -135,7 +139,11 @@ def _private_subnet(*, name: str, az: str, cidr: str, cred_kind: str, cred_name:
                 "kind": "Subnet",
                 "metadata": {
                     "name": name,
-                    "labels": {"modelplane.ai/zone": az, "modelplane.ai/subnet-tier": "private"},
+                    "labels": {
+                        "modelplane.ai/zone": az,
+                        "modelplane.ai/subnet-tier": "private",
+                        "modelplane.ai/control-plane": "true",
+                    },
                 },
                 "spec": {
                     "providerConfigRef": {"kind": cred_kind, "name": cred_name},
@@ -477,7 +485,10 @@ def _eks_cluster(*, cred_kind: str, cred_name: str, ready: fnv1.Ready) -> fnv1.R
                         "vpcConfig": {
                             "endpointPrivateAccess": True,
                             "endpointPublicAccess": True,
-                            "subnetIdSelector": {"matchControllerRef": True},
+                            "subnetIdSelector": {
+                                "matchControllerRef": True,
+                                "matchLabels": {"modelplane.ai/control-plane": "true"},
+                            },
                         },
                     },
                 },
@@ -523,7 +534,10 @@ def _observed_eks_cluster(*, cluster_security_group_id: str | None, ready_condit
                         "vpcConfig": {
                             "endpointPrivateAccess": True,
                             "endpointPublicAccess": True,
-                            "subnetIdSelector": {"matchControllerRef": True},
+                            "subnetIdSelector": {
+                                "matchControllerRef": True,
+                                "matchLabels": {"modelplane.ai/control-plane": "true"},
+                            },
                         },
                     },
                 },
@@ -3449,3 +3463,104 @@ def test_compose(case: Case) -> None:
     """RunFunction composes EKS cluster infrastructure."""
     got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
     assert _to_dict(got) == _to_dict(case.want), case.reason
+
+
+@dataclasses.dataclass
+class PoolZonesCase:
+    """A node pool's zones, and the extra private subnets ({az: cidr}) they need."""
+
+    name: str
+    zones: list[str]
+    want_extra: dict[str, str]
+
+
+# The index-derived subnets every case must keep byte-for-byte: key -> (name, az, cidr).
+BASE_SUBNETS = {
+    "subnet-0": ("test-cluster-subnet-us-west-2a-952dc", "us-west-2a", "10.0.0.0/20"),
+    "subnet-1": ("test-cluster-subnet-us-west-2b-2b80f", "us-west-2b", "10.0.16.0/20"),
+    "subnet-2": ("test-cluster-subnet-us-west-2c-03273", "us-west-2c", "10.0.32.0/20"),
+    "private-subnet-0": ("test-cluster-private-subnet-us-west-2a-6a89f", "us-west-2a", "10.0.48.0/20"),
+    "private-subnet-1": ("test-cluster-private-subnet-us-west-2b-b7832", "us-west-2b", "10.0.64.0/20"),
+    "private-subnet-2": ("test-cluster-private-subnet-us-west-2c-ef57d", "us-west-2c", "10.0.80.0/20"),
+}
+
+POOL_ZONES_CASES = [
+    PoolZonesCase(name="ZoneBeyondFirstThree", zones=["us-west-2d"], want_extra={"us-west-2d": "10.0.96.0/20"}),
+    PoolZonesCase(name="ZonesWithinFirstThree", zones=["us-west-2a", "us-west-2b"], want_extra={}),
+    PoolZonesCase(name="MixedZones", zones=["us-west-2b", "us-west-2d"], want_extra={"us-west-2d": "10.0.96.0/20"}),
+]
+
+
+@pytest.mark.parametrize("case", POOL_ZONES_CASES, ids=lambda case: case.name)
+def test_pool_zones_get_private_subnets(case: PoolZonesCase) -> None:
+    """Every zone a node pool names gets a composed private subnet its NodeGroup can reference (#581)."""
+    req = fnv1.RunFunctionRequest(
+        observed=fnv1.State(
+            composite=_xr(
+                credentials=None,
+                node_pools=[
+                    v1alpha1.NodePool(
+                        name="gpu-l4",
+                        role="GPU",
+                        instanceType="g6.xlarge",
+                        nodeCount=1,
+                        minNodeCount=0,
+                        maxNodeCount=4,
+                        gpu=v1alpha1.Gpu(acceleratorType="nvidia-l4"),
+                        zones=[v1alpha1.Zone(z) for z in case.zones],
+                    ),
+                ],
+            ),
+        ),
+    )
+    rsp = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
+    desired = {k: resource.struct_to_dict(r.resource) for k, r in rsp.desired.resources.items()}
+
+    for key, (name, az, cidr) in BASE_SUBNETS.items():
+        fp = desired[key]["spec"]["forProvider"]
+        assert (desired[key]["metadata"]["name"], fp["availabilityZone"], fp["cidrBlock"]) == (name, az, cidr), key
+
+    assert {k for k in desired if k.startswith("private-subnet-us-")} == {
+        f"private-subnet-{az}" for az in case.want_extra
+    }
+
+    for az, cidr in case.want_extra.items():
+        subnet = desired[f"private-subnet-{az}"]
+        labels = {"modelplane.ai/zone": az, "modelplane.ai/subnet-tier": "private"}
+        assert subnet["kind"] == "Subnet"
+        assert subnet["spec"]["forProvider"]["availabilityZone"] == az
+        assert subnet["spec"]["forProvider"]["cidrBlock"] == cidr
+        assert subnet["metadata"]["labels"] == labels
+        # The association selects its subnet by labels; the mount target names it.
+        assoc = desired[f"private-route-table-association-{az}"]["spec"]["forProvider"]
+        assert assoc["subnetIdSelector"]["matchLabels"] == labels
+        mount = desired[f"efs-mount-target-{az}"]["spec"]["forProvider"]
+        assert mount["subnetIdRef"]["name"] == subnet["metadata"]["name"]
+
+    # The NodeGroup references exactly the composed private subnet of each zone it names.
+    private_by_zone = {
+        r["metadata"]["labels"]["modelplane.ai/zone"]: r["metadata"]["name"]
+        for r in desired.values()
+        if r.get("kind") == "Subnet" and r["metadata"].get("labels", {}).get("modelplane.ai/subnet-tier") == "private"
+    }
+    refs = {ref["name"] for ref in desired["nodegroup-gpu-l4"]["spec"]["forProvider"]["subnetIdRefs"]}
+    assert refs == {private_by_zone[az] for az in case.zones}
+
+    # The control plane must stay on the base subnets: an extra pool zone (e.g. us-east-1e)
+    # may not support the EKS control plane.
+    selector = desired["cluster"]["spec"]["forProvider"]["vpcConfig"]["subnetIdSelector"]
+    assert _selected_subnet_keys(desired, selector) == set(BASE_SUBNETS)
+
+
+def _selected_subnet_keys(desired: dict[str, dict], selector: dict) -> set[str]:
+    """Evaluate a subnetIdSelector the way Crossplane does over the composed Subnets.
+
+    matchControllerRef selects every composed Subnet; each matchLabels entry then narrows it.
+    """
+    assert selector.get("matchControllerRef") is True
+    want = selector.get("matchLabels", {})
+    return {
+        key
+        for key, r in desired.items()
+        if r.get("kind") == "Subnet" and all(r["metadata"].get("labels", {}).get(k) == v for k, v in want.items())
+    }
