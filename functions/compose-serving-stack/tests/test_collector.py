@@ -89,6 +89,16 @@ class TransformCase:
 
 
 @dataclasses.dataclass
+class ConditionsCase:
+    """A test case for collector.conditions."""
+
+    name: str
+    reason: str
+    mappings: list[mmv1alpha1.MetricMapping]
+    want: list[str]
+
+
+@dataclasses.dataclass
 class ObjectsCase:
     """A test case for collector.objects."""
 
@@ -153,6 +163,7 @@ def _config(
                     "memory_limiter",
                     "resource/cluster",
                     "transform/identity",
+                    "filter/match",
                     "transform/modelplane",
                     "groupbyattrs/identity",
                     "filter/modelplane",
@@ -435,6 +446,16 @@ def _config(
                         ],
                     }
                 ]
+            },
+            # SGLang publishes its running and waiting counts as a total and again per
+            # priority, so the built-in keeps only the total.
+            "filter/match": {
+                "metrics": {
+                    "datapoint": [
+                        'metric.name == "sglang:num_running_reqs" and datapoint.attributes["priority"] != nil and datapoint.attributes["priority"] != ""',
+                        'metric.name == "sglang:num_queue_reqs" and datapoint.attributes["priority"] != nil and datapoint.attributes["priority"] != ""',
+                    ]
+                }
             },
             "transform/modelplane": {
                 "metric_statements": [
@@ -1111,6 +1132,33 @@ STATEMENTS_CASES = [
             ['set(metric.name, "modelplane_requests_total") where metric.name == "my_engine_finish"'],
         ),
     ),
+    # A dollar would be substituted by the collector's config expansion, for the
+    # reason DollarValue in CONDITIONS_CASES gives.
+    StatementsCase(
+        name="DollarLabelValue",
+        reason="A dollar in a label value is escaped, so the collector's config expansion leaves it literal.",
+        mappings=[
+            mmv1alpha1.MetricMapping.model_validate(
+                {
+                    "spec": {
+                        "metrics": [
+                            {
+                                "from": "my_engine_running",
+                                "to": "modelplane_requests_running",
+                                "labels": [{"name": "status", "value": "a$b"}],
+                            }
+                        ]
+                    }
+                }
+            )
+        ],
+        want=(
+            [],
+            [],
+            ['set(datapoint.attributes["status"], "a$$b") where metric.name == "my_engine_running"'],
+            ['set(metric.name, "modelplane_requests_running") where metric.name == "my_engine_running"'],
+        ),
+    ),
     # A label carried onto its own name is how a mapping remaps values in place.
     # The delete that stops a carried label costing twice the cardinality would
     # take the label the statements before it just set.
@@ -1212,6 +1260,176 @@ def test_transform(case: TransformCase) -> None:
     assert got == case.want, case.reason
 
 
+CONDITIONS_CASES = [
+    ConditionsCase(
+        name="NoMatch",
+        reason="A metric with no match keeps every datapoint, so it contributes no condition.",
+        mappings=[
+            mmv1alpha1.MetricMapping.model_validate(
+                {"spec": {"metrics": [{"from": "my_engine_running", "to": "modelplane_requests_running"}]}}
+            )
+        ],
+        want=[],
+    ),
+    # Prometheus treats an empty label as no label, and SGLang publishes its
+    # total with priority="", so an empty value has to count as absent.
+    ConditionsCase(
+        name="Absent",
+        reason="A label that must be absent drops every datapoint carrying it with a non-empty value.",
+        mappings=[
+            mmv1alpha1.MetricMapping.model_validate(
+                {
+                    "spec": {
+                        "metrics": [
+                            {
+                                "from": "sglang:num_running_reqs",
+                                "to": "modelplane_requests_running",
+                                "match": [{"label": "priority", "absent": True}],
+                            }
+                        ]
+                    }
+                }
+            )
+        ],
+        want=[
+            'metric.name == "sglang:num_running_reqs" and datapoint.attributes["priority"] != nil'
+            ' and datapoint.attributes["priority"] != ""'
+        ],
+    ),
+    ConditionsCase(
+        name="Value",
+        reason="A label that must hold a value drops every datapoint where it holds another.",
+        mappings=[
+            mmv1alpha1.MetricMapping.model_validate(
+                {
+                    "spec": {
+                        "metrics": [
+                            {
+                                "from": "my_engine_running",
+                                "to": "modelplane_requests_running",
+                                "match": [{"label": "tp_rank", "value": "0"}],
+                            }
+                        ]
+                    }
+                }
+            )
+        ],
+        want=['metric.name == "my_engine_running" and datapoint.attributes["tp_rank"] != "0"'],
+    ),
+    ConditionsCase(
+        name="Both",
+        reason="Each match entry is its own condition, in the order the metric lists them.",
+        mappings=[
+            mmv1alpha1.MetricMapping.model_validate(
+                {
+                    "spec": {
+                        "metrics": [
+                            {
+                                "from": "my_engine_running",
+                                "to": "modelplane_requests_running",
+                                "match": [{"label": "priority", "absent": True}, {"label": "tp_rank", "value": "0"}],
+                            }
+                        ]
+                    }
+                }
+            )
+        ],
+        want=[
+            'metric.name == "my_engine_running" and datapoint.attributes["priority"] != nil'
+            ' and datapoint.attributes["priority"] != ""',
+            'metric.name == "my_engine_running" and datapoint.attributes["tp_rank"] != "0"',
+        ],
+    ),
+    # The filter runs before extraction mints my_engine_duration_ms_count, so a
+    # condition on that name would match nothing, silently.
+    ConditionsCase(
+        name="PartUsesSourceName",
+        reason="A metric extracting a histogram part is matched on its source name, not the extracted part's.",
+        mappings=[
+            mmv1alpha1.MetricMapping.model_validate(
+                {
+                    "spec": {
+                        "metrics": [
+                            {
+                                "from": "my_engine_duration_ms",
+                                "to": "modelplane_requests_running",
+                                "part": "Count",
+                                "match": [{"label": "tp_rank", "value": "0"}],
+                            }
+                        ]
+                    }
+                }
+            )
+        ],
+        want=['metric.name == "my_engine_duration_ms" and datapoint.attributes["tp_rank"] != "0"'],
+    ),
+    # A match value is free text, like a label's, for the reason
+    # QuotedLabelValue in STATEMENTS_CASES gives.
+    ConditionsCase(
+        name="QuotedValue",
+        reason="A quote in a match value is escaped, so it can't end the OTTL string it sits in.",
+        mappings=[
+            mmv1alpha1.MetricMapping.model_validate(
+                {
+                    "spec": {
+                        "metrics": [
+                            {
+                                "from": "my_engine_running",
+                                "to": "modelplane_requests_running",
+                                "match": [{"label": "tp_rank", "value": 'a"b'}],
+                            }
+                        ]
+                    }
+                }
+            )
+        ],
+        want=[r'metric.name == "my_engine_running" and datapoint.attributes["tp_rank"] != "a\"b"'],
+    ),
+    # The collector expands ${scheme:...} in any config string and then turns
+    # $$ into $, so an unescaped dollar is substituted, not compared literally.
+    ConditionsCase(
+        name="DollarValue",
+        reason="A dollar in a match value is escaped, so the collector's config expansion leaves it literal.",
+        mappings=[
+            mmv1alpha1.MetricMapping.model_validate(
+                {
+                    "spec": {
+                        "metrics": [
+                            {
+                                "from": "my_engine_running",
+                                "to": "modelplane_requests_running",
+                                "match": [{"label": "tp_rank", "value": "${env:HOME}"}],
+                            }
+                        ]
+                    }
+                }
+            )
+        ],
+        want=['metric.name == "my_engine_running" and datapoint.attributes["tp_rank"] != "$${env:HOME}"'],
+    ),
+    # Under priority scheduling SGLang publishes a series per priority beside
+    # the total, and summing them all counts every request twice.
+    ConditionsCase(
+        name="BuiltIn",
+        reason="The built-in SGLang mapping keeps only the total of its running and queued requests.",
+        mappings=list(stacks.BUILTIN_MAPPINGS),
+        want=[
+            'metric.name == "sglang:num_running_reqs" and datapoint.attributes["priority"] != nil'
+            ' and datapoint.attributes["priority"] != ""',
+            'metric.name == "sglang:num_queue_reqs" and datapoint.attributes["priority"] != nil'
+            ' and datapoint.attributes["priority"] != ""',
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize("case", CONDITIONS_CASES, ids=lambda case: case.name)
+def test_conditions(case: ConditionsCase) -> None:
+    """conditions compiles the mappings' match entries to the filter conditions that drop a datapoint."""
+    got = collector.conditions(case.mappings)
+    assert got == case.want, case.reason
+
+
 # Every case renders the built-in mappings, read from the stacks package, for
 # the reason CONFIG_CASES gives. The config hashes are of a config that carries
 # them, so changing a built-in changes every hash here too.
@@ -1245,7 +1463,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="522e31c7cedc07c5",
+                    config_hash="fdf48cbae5b2827c",
                     volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                     volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                     env_from=None,
@@ -1290,7 +1508,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="1f03e323432223be",
+                    config_hash="234e99dbae76e1c5",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -1357,7 +1575,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="b1539f5a25d85bfc",
+                    config_hash="d1034140906566fe",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-vendor", "secret": {"secretName": "vendor-token"}},

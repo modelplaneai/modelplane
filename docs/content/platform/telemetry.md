@@ -387,12 +387,32 @@ spec:
     to: modelplane_kv_offload_load_seconds_total
 ```
 
-SGLang publishes `modelplane_requests_running` and `modelplane_requests_waiting` more
-than once per engine under `--enable-priority-scheduling`, once in total and once per
-priority, and once per tensor-parallel rank under
-`--enable-metrics-for-all-schedulers`. With either flag, a sum over them counts each
-request more than once. Keeping only one of those series is tracked in
-[#549](https://github.com/modelplaneai/modelplane/issues/549).
+Under `--enable-priority-scheduling`, SGLang publishes its running and waiting counts
+once in total and once per priority. The built-in mapping keeps only the total. Under
+`--enable-metrics-for-all-schedulers` it publishes them once per tensor-parallel rank,
+and a sum over `modelplane_requests_running` or `modelplane_requests_waiting` counts each
+request once per rank. To keep one rank's series, give a mapping of
+`sglang:num_running_reqs` and `sglang:num_queue_reqs` a `match` on `tp_rank`:
+
+```yaml
+  - from: sglang:num_running_reqs
+    to: modelplane_requests_running
+    match:
+    - label: tp_rank
+      value: "0"
+  - from: sglang:num_queue_reqs
+    to: modelplane_requests_waiting
+    match:
+    - label: tp_rank
+      value: "0"
+```
+
+The built-in mapping has already renamed these metrics, so this mapping's rename does
+nothing, but its `match` still applies: matching runs before any rename, on the name
+SGLang emitted, wherever the metric appears.
+
+Under DP attention, each group's first rank publishes its own count, so keeping
+`tp_rank: "0"` drops every other group's.
 
 Because the gateway, not the engine, measures the `modelplane_frontend_*` series, they
 work without configuration for an engine Modelplane has never seen.

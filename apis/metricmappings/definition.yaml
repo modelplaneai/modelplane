@@ -39,8 +39,10 @@ spec:
               renames for is additive: its renames run after the built-in
               ones, on whatever those left behind. A metric a built-in
               already renamed no longer answers to the name it was emitted
-              under, so a second mapping selecting on that name matches
-              nothing and the built-in stands. Select on the `modelplane_`
+              under, so a second mapping's rename of that name does nothing
+              and the built-in stands. Its `match` still applies, because
+              matching runs before any rename and drops the series it doesn't
+              keep wherever the metric appears. Select on the `modelplane_`
               name instead to rename one of Modelplane's own.
             properties:
               metrics:
@@ -151,6 +153,45 @@ spec:
                               putting an engine's own vocabulary into
                               Modelplane's. A value with no entry here is left
                               as the component wrote it.
+                    match:
+                      type: array
+                      maxItems: 16
+                      description: >-
+                        Keep only this metric's series whose labels match every
+                        entry, and drop the rest before the rename. For a
+                        component that publishes the same count more than once,
+                        such as a total beside a breakdown of it, which would
+                        otherwise be summed twice.
+
+                        It applies to the metric wherever it appears, so a
+                        second mapping of the same `from`, such as one taking
+                        a part of the same histogram, sees only the series it
+                        keeps.
+                      items:
+                        type: object
+                        required: [label]
+                        x-kubernetes-validations:
+                        - rule: "has(self.value) != has(self.absent)"
+                          message: set either value, to keep series carrying it, or absent, to keep series without the label.
+                        properties:
+                          label:
+                            type: string
+                            maxLength: 63
+                            pattern: '^[a-zA-Z_][a-zA-Z0-9_]*$'
+                            description: The label to match on.
+                          value:
+                            type: string
+                            maxLength: 253
+                            description: >-
+                              Keep series where the label has this value. A
+                              series without the label doesn't match.
+                          absent:
+                            type: boolean
+                            enum: [true]
+                            description: >-
+                              Keep series without the label. A label with an
+                              empty value counts as absent, as it does in
+                              Prometheus.
                     fromUnit:
                       type: string
                       enum: [Millijoules, Microjoules, Mebibytes, Milliseconds, Nanoseconds, Percent]
