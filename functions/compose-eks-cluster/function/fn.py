@@ -1873,7 +1873,8 @@ class Composer:
         pool may need another (e.g. us-east-1d when 1a-1c are out of capacity).
         Each such zone gets a private subnet in a free slot of the VPC, the same
         size as the existing subnets. The slot is picked by the zone's letter,
-        so it doesn't move when other zones come and go. Zones that don't look
+        so it doesn't move when other zones come and go. It does depend on
+        subnetCidrs, so changing subnetCidrs can move it. Zones that don't look
         like <region><letter>, or that don't fit in the VPC, get a warning.
         """
         region = self.xr.spec.region
