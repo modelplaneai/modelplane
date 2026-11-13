@@ -185,8 +185,10 @@ Tune both from what the gateway measures, as
 first byte, and `modelplane_frontend_request_duration_seconds` how long whole
 requests take. The gateway's request duration buckets stop at 81.92 seconds, so
 for longer requests read the engine's `modelplane_request_duration_seconds`
-instead. Modelplane doesn't yet export how often the gateway times out; see
-[#536](https://github.com/modelplaneai/modelplane/issues/536). A restarting
+instead. `modelplane_gateway_timeouts_total` counts the gateway's timeouts per
+service, by `kind`: `request` for `request`, and `per_try_idle` for `idle`. A
+stream cut short by `idle` still reaches the caller as a 200, so only
+`per_try_idle` records it. A restarting
 gateway lets requests already in flight run for five minutes, so a restart can
 cut off a response allowed longer than that.
 

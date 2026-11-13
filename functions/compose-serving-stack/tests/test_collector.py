@@ -251,39 +251,40 @@ def _config(
                             "metric_relabel_configs": [
                                 {
                                     "source_labels": ["__name__", "envoy_cluster_name", "gateway"],
-                                    "regex": "envoy_cluster_upstream_rq_active;httproute/(mp-[^/]+)/([^/]+)/rule/0;inference-gateway",
+                                    "regex": "(?:envoy_cluster_upstream_rq_active|envoy_cluster_upstream_rq_retry|envoy_cluster_upstream_rq_timeout|envoy_cluster_upstream_rq_per_try_timeout|envoy_cluster_upstream_rq_per_try_idle_timeout|envoy_cluster_upstream_rq_rx_reset|envoy_cluster_upstream_cx_destroy_remote_with_active_rq|envoy_cluster_outlier_detection_ejections_enforced_total|envoy_cluster_upstream_rq_xx);httproute/(mp-[^/]+)/([^/]+)/rule/0;inference-gateway",
+                                    "target_label": "__tmp_model",
+                                    "replacement": "true",
+                                },
+                                {
+                                    "source_labels": ["__name__", "envoy_http_conn_manager_prefix", "gateway"],
+                                    "regex": "envoy_http_downstream_rq_xx;https?-\\d+;inference-gateway",
                                     "target_label": "__tmp_model",
                                     "replacement": "true",
                                 },
                                 {
                                     "source_labels": ["__name__", "__tmp_model"],
-                                    "regex": "envoy_cluster_upstream_rq_active;",
+                                    "regex": "(?:(?:envoy_cluster_upstream_rq_active|envoy_cluster_upstream_rq_retry|envoy_cluster_upstream_rq_timeout|envoy_cluster_upstream_rq_per_try_timeout|envoy_cluster_upstream_rq_per_try_idle_timeout|envoy_cluster_upstream_rq_rx_reset|envoy_cluster_upstream_cx_destroy_remote_with_active_rq|envoy_cluster_outlier_detection_ejections_enforced_total|envoy_cluster_upstream_rq_xx)|envoy_http_downstream_rq_xx);",
                                     "action": "drop",
                                 },
                                 {
                                     "source_labels": ["__name__", "envoy_cluster_name"],
-                                    "regex": "envoy_cluster_upstream_rq_active;httproute/(mp-[^/]+)/([^/]+)/rule/0",
+                                    "regex": "(?:envoy_cluster_upstream_rq_active|envoy_cluster_upstream_rq_retry|envoy_cluster_upstream_rq_timeout|envoy_cluster_upstream_rq_per_try_timeout|envoy_cluster_upstream_rq_per_try_idle_timeout|envoy_cluster_upstream_rq_rx_reset|envoy_cluster_upstream_cx_destroy_remote_with_active_rq|envoy_cluster_outlier_detection_ejections_enforced_total|envoy_cluster_upstream_rq_xx);httproute/(mp-[^/]+)/([^/]+)/rule/0",
                                     "target_label": "namespace",
                                     "replacement": "$1",
                                 },
                                 {
                                     "source_labels": ["__name__", "envoy_cluster_name"],
-                                    "regex": "envoy_cluster_upstream_rq_active;httproute/(mp-[^/]+)/([^/]+)/rule/0",
+                                    "regex": "(?:envoy_cluster_upstream_rq_active|envoy_cluster_upstream_rq_retry|envoy_cluster_upstream_rq_timeout|envoy_cluster_upstream_rq_per_try_timeout|envoy_cluster_upstream_rq_per_try_idle_timeout|envoy_cluster_upstream_rq_rx_reset|envoy_cluster_upstream_cx_destroy_remote_with_active_rq|envoy_cluster_outlier_detection_ejections_enforced_total|envoy_cluster_upstream_rq_xx);httproute/(mp-[^/]+)/([^/]+)/rule/0",
                                     "target_label": "service",
                                     "replacement": "$2",
                                 },
                                 {
                                     "source_labels": ["__name__"],
-                                    "regex": "envoy_cluster_upstream_rq_active",
+                                    "regex": "(?:envoy_cluster_upstream_rq_active|envoy_cluster_upstream_rq_retry|envoy_cluster_upstream_rq_timeout|envoy_cluster_upstream_rq_per_try_timeout|envoy_cluster_upstream_rq_per_try_idle_timeout|envoy_cluster_upstream_rq_rx_reset|envoy_cluster_upstream_cx_destroy_remote_with_active_rq|envoy_cluster_outlier_detection_ejections_enforced_total|envoy_cluster_upstream_rq_xx)",
                                     "target_label": "envoy_cluster_name",
                                     "replacement": "",
                                 },
-                                {
-                                    "source_labels": ["__name__"],
-                                    "regex": "envoy_cluster_upstream_rq_active",
-                                    "target_label": "__tmp_model",
-                                    "replacement": "",
-                                },
+                                {"target_label": "__tmp_model", "replacement": ""},
                                 {"target_label": "gateway", "replacement": ""},
                             ],
                         },
@@ -404,7 +405,7 @@ def _config(
                             "metric_relabel_configs": [
                                 {
                                     "source_labels": ["__name__"],
-                                    "regex": "envoy_cluster_upstream_rq_active",
+                                    "regex": "(?:(?:envoy_cluster_upstream_rq_active|envoy_cluster_upstream_rq_retry|envoy_cluster_upstream_rq_timeout|envoy_cluster_upstream_rq_per_try_timeout|envoy_cluster_upstream_rq_per_try_idle_timeout|envoy_cluster_upstream_rq_rx_reset|envoy_cluster_upstream_cx_destroy_remote_with_active_rq|envoy_cluster_outlier_detection_ejections_enforced_total|envoy_cluster_upstream_rq_xx)|envoy_http_downstream_rq_xx)",
                                     "action": "drop",
                                 },
                             ],
@@ -480,6 +481,27 @@ def _config(
                     {
                         "context": "datapoint",
                         "statements": [
+                            'set(datapoint.attributes["kind"], "request") where metric.name == "envoy_cluster_upstream_rq_timeout"',
+                            'set(datapoint.attributes["kind"], "per_try") where metric.name == "envoy_cluster_upstream_rq_per_try_timeout"',
+                            'set(datapoint.attributes["kind"], "per_try_idle") where metric.name == "envoy_cluster_upstream_rq_per_try_idle_timeout"',
+                            'set(datapoint.attributes["kind"], "stream_reset") where metric.name == "envoy_cluster_upstream_rq_rx_reset"',
+                            'set(datapoint.attributes["kind"], "connection_closed") where metric.name == "envoy_cluster_upstream_cx_destroy_remote_with_active_rq"',
+                            'set(datapoint.attributes["status_class"], datapoint.attributes["envoy_response_code_class"]) where metric.name == "envoy_cluster_upstream_rq_xx"',
+                            'set(datapoint.attributes["status_class"], "1xx") where metric.name == "envoy_cluster_upstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "1"',
+                            'set(datapoint.attributes["status_class"], "2xx") where metric.name == "envoy_cluster_upstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "2"',
+                            'set(datapoint.attributes["status_class"], "3xx") where metric.name == "envoy_cluster_upstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "3"',
+                            'set(datapoint.attributes["status_class"], "4xx") where metric.name == "envoy_cluster_upstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "4"',
+                            'set(datapoint.attributes["status_class"], "5xx") where metric.name == "envoy_cluster_upstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "5"',
+                            'delete_key(datapoint.attributes, "envoy_response_code_class") where metric.name == "envoy_cluster_upstream_rq_xx"',
+                            'set(datapoint.attributes["status_class"], datapoint.attributes["envoy_response_code_class"]) where metric.name == "envoy_http_downstream_rq_xx"',
+                            'set(datapoint.attributes["status_class"], "1xx") where metric.name == "envoy_http_downstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "1"',
+                            'set(datapoint.attributes["status_class"], "2xx") where metric.name == "envoy_http_downstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "2"',
+                            'set(datapoint.attributes["status_class"], "3xx") where metric.name == "envoy_http_downstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "3"',
+                            'set(datapoint.attributes["status_class"], "4xx") where metric.name == "envoy_http_downstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "4"',
+                            'set(datapoint.attributes["status_class"], "5xx") where metric.name == "envoy_http_downstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "5"',
+                            'delete_key(datapoint.attributes, "envoy_response_code_class") where metric.name == "envoy_http_downstream_rq_xx"',
+                            'set(datapoint.attributes["listener"], datapoint.attributes["envoy_http_conn_manager_prefix"]) where metric.name == "envoy_http_downstream_rq_xx"',
+                            'delete_key(datapoint.attributes, "envoy_http_conn_manager_prefix") where metric.name == "envoy_http_downstream_rq_xx"',
                             'set(datapoint.attributes["direction"], "input") where metric.name == "vllm:request_prompt_tokens_sum"',
                             'set(datapoint.attributes["direction"], "output") where metric.name == "vllm:request_generation_tokens_sum"',
                             'set(datapoint.attributes["reason"], datapoint.attributes["finished_reason"]) where metric.name == "vllm:request_success_total"',
@@ -504,6 +526,15 @@ def _config(
                             'set(metric.name, "modelplane_frontend_ttft_seconds") where metric.name == "gen_ai_server_time_to_first_token_seconds"',
                             'set(metric.name, "modelplane_frontend_tpot_seconds") where metric.name == "gen_ai_server_time_per_output_token_seconds"',
                             'set(metric.name, "modelplane_frontend_requests_active") where metric.name == "envoy_cluster_upstream_rq_active"',
+                            'set(metric.name, "modelplane_gateway_retries_total") where metric.name == "envoy_cluster_upstream_rq_retry"',
+                            'set(metric.name, "modelplane_gateway_ejections_total") where metric.name == "envoy_cluster_outlier_detection_ejections_enforced_total"',
+                            'set(metric.name, "modelplane_gateway_timeouts_total") where metric.name == "envoy_cluster_upstream_rq_timeout"',
+                            'set(metric.name, "modelplane_gateway_timeouts_total") where metric.name == "envoy_cluster_upstream_rq_per_try_timeout"',
+                            'set(metric.name, "modelplane_gateway_timeouts_total") where metric.name == "envoy_cluster_upstream_rq_per_try_idle_timeout"',
+                            'set(metric.name, "modelplane_gateway_upstream_resets_total") where metric.name == "envoy_cluster_upstream_rq_rx_reset"',
+                            'set(metric.name, "modelplane_gateway_upstream_resets_total") where metric.name == "envoy_cluster_upstream_cx_destroy_remote_with_active_rq"',
+                            'set(metric.name, "modelplane_gateway_upstream_responses_total") where metric.name == "envoy_cluster_upstream_rq_xx"',
+                            'set(metric.name, "modelplane_gateway_requests_total") where metric.name == "envoy_http_downstream_rq_xx"',
                             'set(metric.name, "modelplane_request_ttft_seconds") where metric.name == "vllm:time_to_first_token_seconds"',
                             'set(metric.name, "modelplane_request_duration_seconds") where metric.name == "vllm:e2e_request_latency_seconds"',
                             'set(metric.name, "modelplane_request_queue_seconds") where metric.name == "vllm:request_queue_time_seconds"',
@@ -948,6 +979,260 @@ def test_in_flight(case: InFlightCase) -> None:
     assert got == case.want, case.reason
 
 
+GATEWAY_COUNTERS_CASES = [
+    InFlightCase(
+        name="Retries",
+        reason="The fleet gateway's retries for a ModelService's route are kept, with only its namespace and service.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_cluster_upstream_rq_retry",
+            "envoy_cluster_name": "httproute/mp-ml-team-51733/qwen/rule/0",
+            "gateway": "inference-gateway",
+        },
+        want={
+            "__name__": "envoy_cluster_upstream_rq_retry",
+            "namespace": "mp-ml-team-51733",
+            "service": "qwen",
+        },
+    ),
+    InFlightCase(
+        name="RequestTimeouts",
+        reason="The fleet gateway's request timeouts for a ModelService's route are kept, with only its namespace and service.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_cluster_upstream_rq_timeout",
+            "envoy_cluster_name": "httproute/mp-ml-team-51733/qwen/rule/0",
+            "gateway": "inference-gateway",
+        },
+        want={
+            "__name__": "envoy_cluster_upstream_rq_timeout",
+            "namespace": "mp-ml-team-51733",
+            "service": "qwen",
+        },
+    ),
+    InFlightCase(
+        name="PerTryTimeouts",
+        reason="The fleet gateway's per-try timeouts for a ModelService's route are kept, with only its namespace and service.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_cluster_upstream_rq_per_try_timeout",
+            "envoy_cluster_name": "httproute/mp-ml-team-51733/qwen/rule/0",
+            "gateway": "inference-gateway",
+        },
+        want={
+            "__name__": "envoy_cluster_upstream_rq_per_try_timeout",
+            "namespace": "mp-ml-team-51733",
+            "service": "qwen",
+        },
+    ),
+    InFlightCase(
+        name="PerTryIdleTimeouts",
+        reason="The fleet gateway's per-try idle timeouts for a ModelService's route are kept, with only its namespace and service.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_cluster_upstream_rq_per_try_idle_timeout",
+            "envoy_cluster_name": "httproute/mp-ml-team-51733/qwen/rule/0",
+            "gateway": "inference-gateway",
+        },
+        want={
+            "__name__": "envoy_cluster_upstream_rq_per_try_idle_timeout",
+            "namespace": "mp-ml-team-51733",
+            "service": "qwen",
+        },
+    ),
+    InFlightCase(
+        name="StreamResets",
+        reason="The fleet gateway's stream resets for a ModelService's route are kept, with only its namespace and service.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_cluster_upstream_rq_rx_reset",
+            "envoy_cluster_name": "httproute/mp-ml-team-51733/qwen/rule/0",
+            "gateway": "inference-gateway",
+        },
+        want={
+            "__name__": "envoy_cluster_upstream_rq_rx_reset",
+            "namespace": "mp-ml-team-51733",
+            "service": "qwen",
+        },
+    ),
+    InFlightCase(
+        name="ConnectionsClosed",
+        reason="The fleet gateway's connections closed with requests in flight for a ModelService's route are kept, with only its namespace and service.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_cluster_upstream_cx_destroy_remote_with_active_rq",
+            "envoy_cluster_name": "httproute/mp-ml-team-51733/qwen/rule/0",
+            "gateway": "inference-gateway",
+        },
+        want={
+            "__name__": "envoy_cluster_upstream_cx_destroy_remote_with_active_rq",
+            "namespace": "mp-ml-team-51733",
+            "service": "qwen",
+        },
+    ),
+    InFlightCase(
+        name="Ejections",
+        reason="The fleet gateway's ejections for a ModelService's route are kept, with only its namespace and service.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_cluster_outlier_detection_ejections_enforced_total",
+            "envoy_cluster_name": "httproute/mp-ml-team-51733/qwen/rule/0",
+            "gateway": "inference-gateway",
+        },
+        want={
+            "__name__": "envoy_cluster_outlier_detection_ejections_enforced_total",
+            "namespace": "mp-ml-team-51733",
+            "service": "qwen",
+        },
+    ),
+    InFlightCase(
+        name="UpstreamResponses",
+        reason="The fleet gateway's upstream responses for a ModelService's route are kept with their response class, and only its namespace and service.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_cluster_upstream_rq_xx",
+            "envoy_cluster_name": "httproute/mp-ml-team-51733/qwen/rule/0",
+            "envoy_response_code_class": "5",
+            "gateway": "inference-gateway",
+        },
+        want={
+            "__name__": "envoy_cluster_upstream_rq_xx",
+            "namespace": "mp-ml-team-51733",
+            "service": "qwen",
+            "envoy_response_code_class": "5",
+        },
+    ),
+    InFlightCase(
+        name="ClusterGatewayCounter",
+        reason="A cluster gateway's duplicate httproute/<ns>/<deployment>/rule/0 cluster is dropped, so a sum counts each retry once.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_cluster_upstream_rq_retry",
+            "envoy_cluster_name": "httproute/mp-ml-team-51733/qwen-34d80/rule/0",
+            "gateway": "cluster-gateway",
+        },
+        want=None,
+    ),
+    InFlightCase(
+        name="NotAModelCounter",
+        reason="A counter for a route in modelplane-system, such as Grafana's, isn't a model's and is dropped.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_cluster_upstream_rq_retry",
+            "envoy_cluster_name": "httproute/modelplane-system/grafana/rule/0",
+            "gateway": "inference-gateway",
+        },
+        want=None,
+    ),
+    InFlightCase(
+        name="EnvoyClusterCounter",
+        reason="A counter for a cluster Envoy builds for itself is dropped.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_cluster_upstream_rq_retry",
+            "envoy_cluster_name": "xds_cluster",
+            "gateway": "inference-gateway",
+        },
+        want=None,
+    ),
+    InFlightCase(
+        name="FleetDownstreamHTTP",
+        reason="The fleet gateway's responses on its HTTP listener are kept, without the gateway target label.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_http_downstream_rq_xx",
+            "envoy_http_conn_manager_prefix": "http-10080",
+            "envoy_response_code_class": "4",
+            "gateway": "inference-gateway",
+        },
+        want={
+            "__name__": "envoy_http_downstream_rq_xx",
+            "envoy_http_conn_manager_prefix": "http-10080",
+            "envoy_response_code_class": "4",
+        },
+    ),
+    InFlightCase(
+        name="FleetDownstreamHTTPS",
+        reason="The fleet gateway's responses on its HTTPS listener are kept, without the gateway target label.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_http_downstream_rq_xx",
+            "envoy_http_conn_manager_prefix": "https-10443",
+            "envoy_response_code_class": "4",
+            "gateway": "inference-gateway",
+        },
+        want={
+            "__name__": "envoy_http_downstream_rq_xx",
+            "envoy_http_conn_manager_prefix": "https-10443",
+            "envoy_response_code_class": "4",
+        },
+    ),
+    InFlightCase(
+        name="ClusterGatewayDownstream",
+        reason="A cluster gateway's responses are dropped, because they count the fleet gateway's forwarded requests a second time.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_http_downstream_rq_xx",
+            "envoy_http_conn_manager_prefix": "http-10080",
+            "envoy_response_code_class": "4",
+            "gateway": "cluster-gateway",
+        },
+        want=None,
+    ),
+    InFlightCase(
+        name="StatsListener",
+        reason="Responses on Envoy Gateway's own stats listener are scrapes, not model requests, and are dropped.",
+        job="modelplane-gateway",
+        series={
+            "__name__": "envoy_http_downstream_rq_xx",
+            "envoy_http_conn_manager_prefix": "eg-stats-http",
+            "envoy_response_code_class": "2",
+            "gateway": "inference-gateway",
+        },
+        want=None,
+    ),
+    InFlightCase(
+        name="SubstrateClusterCounter",
+        reason="Another Envoy's retries, such as an Istio sidecar's, are dropped rather than mapped as the gateway's.",
+        job="modelplane-substrate",
+        series={
+            "__name__": "envoy_cluster_upstream_rq_retry",
+            "envoy_cluster_name": "outbound|8080||reviews.default.svc.cluster.local",
+            "namespace": "default",
+        },
+        want=None,
+    ),
+    InFlightCase(
+        name="SubstrateDownstream",
+        reason="Another Envoy's responses, such as an Istio sidecar's, are dropped rather than mapped as the gateway's.",
+        job="modelplane-substrate",
+        series={
+            "__name__": "envoy_http_downstream_rq_xx",
+            "envoy_http_conn_manager_prefix": "inbound_0.0.0.0_8080",
+            "envoy_response_code_class": "2",
+            "namespace": "default",
+        },
+        want=None,
+    ),
+]
+
+
+@pytest.mark.parametrize("case", GATEWAY_COUNTERS_CASES, ids=lambda case: case.name)
+def test_gateway_counters(case: InFlightCase) -> None:
+    """Only the fleet gateway's retries, timeouts, ejections and responses are kept, labelled by model where they have one."""
+    config = yaml.safe_load(
+        collector.config(
+            "prod-us-east",
+            list(stacks.BUILTIN_MAPPINGS),
+            [_sink(name="primary", type_="otlphttp", secret=None)],
+            {"oauth2client/acme": {"token_url": "https://issuer.acme.example/token"}},
+        )
+    )
+    job = next(j for j in config["receivers"]["prometheus"]["config"]["scrape_configs"] if j["job_name"] == case.job)
+    got = _metric_relabel(rules=job["metric_relabel_configs"], labels=case.series)
+    assert got == case.want, case.reason
+
+
 STATEMENTS_CASES = [
     # The built-in mappings, read from the stacks package rather than restated,
     # because what the collector compiles them to is what this case pins.
@@ -977,6 +1262,27 @@ STATEMENTS_CASES = [
                 'convert_gauge_to_sum("cumulative", true) where metric.name == "gpu_energy_consumed"',
             ],
             [
+                'set(datapoint.attributes["kind"], "request") where metric.name == "envoy_cluster_upstream_rq_timeout"',
+                'set(datapoint.attributes["kind"], "per_try") where metric.name == "envoy_cluster_upstream_rq_per_try_timeout"',
+                'set(datapoint.attributes["kind"], "per_try_idle") where metric.name == "envoy_cluster_upstream_rq_per_try_idle_timeout"',
+                'set(datapoint.attributes["kind"], "stream_reset") where metric.name == "envoy_cluster_upstream_rq_rx_reset"',
+                'set(datapoint.attributes["kind"], "connection_closed") where metric.name == "envoy_cluster_upstream_cx_destroy_remote_with_active_rq"',
+                'set(datapoint.attributes["status_class"], datapoint.attributes["envoy_response_code_class"]) where metric.name == "envoy_cluster_upstream_rq_xx"',
+                'set(datapoint.attributes["status_class"], "1xx") where metric.name == "envoy_cluster_upstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "1"',
+                'set(datapoint.attributes["status_class"], "2xx") where metric.name == "envoy_cluster_upstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "2"',
+                'set(datapoint.attributes["status_class"], "3xx") where metric.name == "envoy_cluster_upstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "3"',
+                'set(datapoint.attributes["status_class"], "4xx") where metric.name == "envoy_cluster_upstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "4"',
+                'set(datapoint.attributes["status_class"], "5xx") where metric.name == "envoy_cluster_upstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "5"',
+                'delete_key(datapoint.attributes, "envoy_response_code_class") where metric.name == "envoy_cluster_upstream_rq_xx"',
+                'set(datapoint.attributes["status_class"], datapoint.attributes["envoy_response_code_class"]) where metric.name == "envoy_http_downstream_rq_xx"',
+                'set(datapoint.attributes["status_class"], "1xx") where metric.name == "envoy_http_downstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "1"',
+                'set(datapoint.attributes["status_class"], "2xx") where metric.name == "envoy_http_downstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "2"',
+                'set(datapoint.attributes["status_class"], "3xx") where metric.name == "envoy_http_downstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "3"',
+                'set(datapoint.attributes["status_class"], "4xx") where metric.name == "envoy_http_downstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "4"',
+                'set(datapoint.attributes["status_class"], "5xx") where metric.name == "envoy_http_downstream_rq_xx" and datapoint.attributes["envoy_response_code_class"] == "5"',
+                'delete_key(datapoint.attributes, "envoy_response_code_class") where metric.name == "envoy_http_downstream_rq_xx"',
+                'set(datapoint.attributes["listener"], datapoint.attributes["envoy_http_conn_manager_prefix"]) where metric.name == "envoy_http_downstream_rq_xx"',
+                'delete_key(datapoint.attributes, "envoy_http_conn_manager_prefix") where metric.name == "envoy_http_downstream_rq_xx"',
                 'set(datapoint.attributes["direction"], "input") where metric.name == "vllm:request_prompt_tokens_sum"',
                 'set(datapoint.attributes["direction"], "output") where metric.name == "vllm:request_generation_tokens_sum"',
                 'set(datapoint.attributes["reason"], datapoint.attributes["finished_reason"]) where metric.name == "vllm:request_success_total"',
@@ -998,6 +1304,15 @@ STATEMENTS_CASES = [
                 'set(metric.name, "modelplane_frontend_ttft_seconds") where metric.name == "gen_ai_server_time_to_first_token_seconds"',
                 'set(metric.name, "modelplane_frontend_tpot_seconds") where metric.name == "gen_ai_server_time_per_output_token_seconds"',
                 'set(metric.name, "modelplane_frontend_requests_active") where metric.name == "envoy_cluster_upstream_rq_active"',
+                'set(metric.name, "modelplane_gateway_retries_total") where metric.name == "envoy_cluster_upstream_rq_retry"',
+                'set(metric.name, "modelplane_gateway_ejections_total") where metric.name == "envoy_cluster_outlier_detection_ejections_enforced_total"',
+                'set(metric.name, "modelplane_gateway_timeouts_total") where metric.name == "envoy_cluster_upstream_rq_timeout"',
+                'set(metric.name, "modelplane_gateway_timeouts_total") where metric.name == "envoy_cluster_upstream_rq_per_try_timeout"',
+                'set(metric.name, "modelplane_gateway_timeouts_total") where metric.name == "envoy_cluster_upstream_rq_per_try_idle_timeout"',
+                'set(metric.name, "modelplane_gateway_upstream_resets_total") where metric.name == "envoy_cluster_upstream_rq_rx_reset"',
+                'set(metric.name, "modelplane_gateway_upstream_resets_total") where metric.name == "envoy_cluster_upstream_cx_destroy_remote_with_active_rq"',
+                'set(metric.name, "modelplane_gateway_upstream_responses_total") where metric.name == "envoy_cluster_upstream_rq_xx"',
+                'set(metric.name, "modelplane_gateway_requests_total") where metric.name == "envoy_http_downstream_rq_xx"',
                 'set(metric.name, "modelplane_request_ttft_seconds") where metric.name == "vllm:time_to_first_token_seconds"',
                 'set(metric.name, "modelplane_request_duration_seconds") where metric.name == "vllm:e2e_request_latency_seconds"',
                 'set(metric.name, "modelplane_request_queue_seconds") where metric.name == "vllm:request_queue_time_seconds"',
@@ -1245,7 +1560,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="522e31c7cedc07c5",
+                    config_hash="b432ac64502089aa",
                     volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                     volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                     env_from=None,
@@ -1290,7 +1605,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="1f03e323432223be",
+                    config_hash="9e9c9afeae7deb9e",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -1357,7 +1672,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="b1539f5a25d85bfc",
+                    config_hash="ac31d3b5c67018be",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-vendor", "secret": {"secretName": "vendor-token"}},
