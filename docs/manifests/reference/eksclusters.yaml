@@ -15,7 +15,10 @@ spec:
       role: GPU
       instanceType: g6.12xlarge
       diskSizeGb: 200
-      nodeCount: 0
+      # GPU groups need at least one node: the cluster autoscaler cannot
+      # scale a group whose GPUs bind through DRA up from zero.
+      nodeCount: 1
+      minNodeCount: 1
       maxNodeCount: 8
       zones: [us-west-2a, us-west-2b]
       gpu:
