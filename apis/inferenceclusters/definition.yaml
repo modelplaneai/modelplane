@@ -528,6 +528,12 @@ spec:
                       minimum: 0
                     minNodeCount:
                       type: integer
+                      description: >-
+                        Minimum node count for autoscaling. Keep GPU pools on
+                        EKS, AKS and CoreWeave, and CPU pools on EKS and
+                        CoreWeave, at 1 or higher: their cluster autoscalers can't scale a pool whose devices
+                        bind through DRA up from zero nodes, so a pod
+                        scheduled to an empty pool waits forever.
                       minimum: 0
                     maxNodeCount:
                       type: integer

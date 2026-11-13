@@ -162,8 +162,12 @@ spec:
                       type: integer
                       default: 0
                       description: >-
-                        Minimum number of nodes for autoscaling. Set to 1 or
-                        higher for groups that must always be available.
+                        Minimum number of nodes for autoscaling. Set it to 1
+                        or higher for groups that must always be available,
+                        and for GPU and CPU groups: the upstream cluster
+                        autoscaler's AWS provider can't scale a group whose
+                        devices bind through DRA up from zero nodes, so a pod
+                        scheduled to an empty group waits forever.
                       minimum: 0
                       maximum: 1000
                     maxNodeCount:

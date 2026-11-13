@@ -270,6 +270,9 @@ class NodePool(BaseModel):
     Maximum node count for autoscaling. Omit for fixed-size pools.
     """
     minNodeCount: conint(ge=0) | None = None
+    """
+    Minimum node count for autoscaling. Keep GPU pools on EKS, AKS and CoreWeave, and CPU pools on EKS and CoreWeave, at 1 or higher: their cluster autoscalers can't scale a pool whose devices bind through DRA up from zero nodes, so a pod scheduled to an empty pool waits forever.
+    """
     name: constr(pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', max_length=40)
     """
     Name of the pool. Its nodes carry it as the value of the modelplane.ai/pool label, and the cluster agent observes the pool through an object of this name.
