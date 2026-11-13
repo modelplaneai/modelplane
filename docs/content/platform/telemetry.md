@@ -402,6 +402,10 @@ request once per rank. To keep one rank's series, give a mapping of
       value: "0"
 ```
 
+The built-in mapping has already renamed these metrics, so this mapping's rename does
+nothing, but its `match` still applies: matching runs before any rename, on the name
+SGLang emitted, wherever the metric appears.
+
 Under DP attention, each group's first rank publishes its own count, so keeping
 `tp_rank: "0"` drops every other group's.
 

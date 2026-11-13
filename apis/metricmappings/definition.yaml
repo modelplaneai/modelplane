@@ -39,8 +39,10 @@ spec:
               renames for is additive: its renames run after the built-in
               ones, on whatever those left behind. A metric a built-in
               already renamed no longer answers to the name it was emitted
-              under, so a second mapping selecting on that name matches
-              nothing and the built-in stands. Select on the `modelplane_`
+              under, so a second mapping's rename of that name does nothing
+              and the built-in stands. Its `match` still applies, because
+              matching runs before any rename and drops the series it doesn't
+              keep wherever the metric appears. Select on the `modelplane_`
               name instead to rename one of Modelplane's own.
             properties:
               metrics:

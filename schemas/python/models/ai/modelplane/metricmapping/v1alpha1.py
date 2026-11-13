@@ -174,7 +174,7 @@ class MetricMapping(BaseModel):
     spec: Spec
     """
     How one component's metrics become part of the modelplane_* surface. Modelplane renders every MetricMapping into each inference cluster's collector, so a mapping is written once on the control plane and reaches the whole fleet.
-    A mapping naming a component Modelplane already provides renames for is additive: its renames run after the built-in ones, on whatever those left behind. A metric a built-in already renamed no longer answers to the name it was emitted under, so a second mapping selecting on that name matches nothing and the built-in stands. Select on the `modelplane_` name instead to rename one of Modelplane's own.
+    A mapping naming a component Modelplane already provides renames for is additive: its renames run after the built-in ones, on whatever those left behind. A metric a built-in already renamed no longer answers to the name it was emitted under, so a second mapping's rename of that name does nothing and the built-in stands. Its `match` still applies, because matching runs before any rename and drops the series it doesn't keep wherever the metric appears. Select on the `modelplane_` name instead to rename one of Modelplane's own.
     """
     status: Status | None = None
 
