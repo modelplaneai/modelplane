@@ -24,7 +24,7 @@ set -e
 # Our flake needs Nix 2.19 or later (for builtins.convertHash), which rules out
 # Ubuntu's nix-bin package. Install a static Nix build with the Renovate
 # image's containerbase installer instead.
-NIX_VERSION=2.35.4
+NIX_VERSION=2.35.6
 NIX_BIN=/opt/containerbase/tools/nix/${NIX_VERSION}/bin/nix
 
 echo "Installing Nix..."
