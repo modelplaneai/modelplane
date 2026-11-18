@@ -121,6 +121,22 @@ class AuthenticatorsCase:
     want: dict
 
 
+# The resource attributes Modelplane converts to labels on an exporter that
+# flattens a series into labels: collector._IDENTITY.
+_IDENTITY = (
+    "cluster",
+    "namespace",
+    "deployment",
+    "replica",
+    "engine",
+    "role",
+    "phase",
+    "node",
+    "service.name",
+    "service.instance.id",
+)
+
+
 def _sink(*, name: str, type_: str, secret: str | None) -> tdv1alpha1.Sink:
     """A sink exporting to otel.acme.example, with a bearer token read from secret if there is one."""
     return tdv1alpha1.Sink.model_validate(
@@ -738,7 +754,7 @@ CONFIG_CASES = [
         want=_config(
             exporters={
                 "prometheus_remote_write/primary": {
-                    "resource_to_telemetry_conversion": {"enabled": True},
+                    "resource_constant_labels": {"included": list(_IDENTITY)},
                     "endpoint": "https://otel.acme.example",
                 }
             },
@@ -757,7 +773,7 @@ CONFIG_CASES = [
         want=_config(
             exporters={
                 "prometheusremotewrite/primary": {
-                    "resource_to_telemetry_conversion": {"enabled": True},
+                    "resource_constant_labels": {"included": list(_IDENTITY)},
                     "endpoint": "https://otel.acme.example",
                 }
             },
@@ -776,7 +792,7 @@ CONFIG_CASES = [
         want=_config(
             exporters={
                 "prometheus/primary": {
-                    "resource_to_telemetry_conversion": {"enabled": True},
+                    "resource_constant_labels": {"included": list(_IDENTITY)},
                     "endpoint": "https://otel.acme.example",
                 }
             },
@@ -1334,7 +1350,7 @@ OBJECTS_CASES = [
                                 "auth": {"authenticator": "bearertokenauth/vendor"},
                             },
                             "prometheusremotewrite/prometheus": {
-                                "resource_to_telemetry_conversion": {"enabled": True},
+                                "resource_constant_labels": {"included": list(_IDENTITY)},
                                 "endpoint": "https://otel.acme.example",
                                 "auth": {"authenticator": "bearertokenauth/prometheus"},
                             },
@@ -1357,7 +1373,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="b1539f5a25d85bfc",
+                    config_hash="45ee5c54e7529c48",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-vendor", "secret": {"secretName": "vendor-token"}},
@@ -1445,6 +1461,48 @@ EXPORTERS_CASES = [
             )
         ],
         want={"otlphttp/primary": {"endpoint": "https://otel.acme.example", "compression": "gzip"}},
+    ),
+    ExportersCase(
+        name="OwnConstantLabels",
+        reason="A sink that sets resource_constant_labels keeps its own instead of Modelplane's.",
+        sinks=[
+            tdv1alpha1.Sink.model_validate(
+                {
+                    "name": "primary",
+                    "type": "prometheus_remote_write",
+                    "endpoint": "https://otel.acme.example",
+                    "config": {"resource_constant_labels": {"included": ["deployment"]}},
+                }
+            )
+        ],
+        want={
+            "prometheus_remote_write/primary": {
+                "resource_constant_labels": {"included": ["deployment"]},
+                "endpoint": "https://otel.acme.example",
+            }
+        },
+    ),
+    # An exporter refuses a config that sets both resource_constant_labels and
+    # the deprecated resource_to_telemetry_conversion.
+    ExportersCase(
+        name="OwnDeprecatedConversion",
+        reason="A sink that sets resource_to_telemetry_conversion gets no resource_constant_labels.",
+        sinks=[
+            tdv1alpha1.Sink.model_validate(
+                {
+                    "name": "primary",
+                    "type": "prometheus",
+                    "endpoint": "https://otel.acme.example",
+                    "config": {"resource_to_telemetry_conversion": {"enabled": True}},
+                }
+            )
+        ],
+        want={
+            "prometheus/primary": {
+                "resource_to_telemetry_conversion": {"enabled": True},
+                "endpoint": "https://otel.acme.example",
+            }
+        },
     ),
 ]
 

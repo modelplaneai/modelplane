@@ -5343,7 +5343,20 @@ COMPOSE_CASES = [
                         exporters={
                             "otlphttp/vendor": {"endpoint": "https://otel.vendor.example"},
                             "prometheus_remote_write/prom": {
-                                "resource_to_telemetry_conversion": {"enabled": True},
+                                "resource_constant_labels": {
+                                    "included": [
+                                        "cluster",
+                                        "namespace",
+                                        "deployment",
+                                        "replica",
+                                        "engine",
+                                        "role",
+                                        "phase",
+                                        "node",
+                                        "service.name",
+                                        "service.instance.id",
+                                    ]
+                                },
                                 "endpoint": "https://p.example/w",
                             },
                         },
@@ -5352,7 +5365,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="0a72aaee56455e72",
+                        config_hash="5119d7881b94cc5b",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,

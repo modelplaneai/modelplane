@@ -65,7 +65,7 @@ class Sink(BaseModel):
     config: dict[str, Any] | None = None
     """
     The rest of the exporter's configuration, passed through as written: TLS, retries, queueing, compression, headers.
-    Modelplane sets one default, for the exporters that flatten a series into labels: prometheus and prometheus_remote_write get resource_to_telemetry_conversion, or they would receive every series stripped of the cluster, deployment, engine and role it belongs to. Setting it here overrides that.
+    Modelplane sets one default, for the exporters that flatten a series into labels: prometheus and prometheus_remote_write get resource_constant_labels, or they would receive every series stripped of the cluster, deployment, engine and role it belongs to. Setting it, or the deprecated resource_to_telemetry_conversion, here overrides that.
     """
     endpoint: constr(max_length=2048) | None = None
     """
