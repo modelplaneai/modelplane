@@ -63,6 +63,7 @@ spec:
                 - Vultr
                 - Civo
                 - CoreWeave
+                - UpCloud
                 - Existing
               draDrivers:
                 type: array

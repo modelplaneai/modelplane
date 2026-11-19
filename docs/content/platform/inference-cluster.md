@@ -11,7 +11,8 @@ serving. Platform teams create these to provide GPU capacity.
 
 Each cluster has:
 
-- A **cluster source**: `GKE`, `EKS`, `AKS`, `Nebius`, `Vultr`, `Civo` or `CoreWeave` (Modelplane
+- A **cluster source**: `GKE`, `EKS`, `AKS`, `Nebius`, `Vultr`, `Civo`,
+  `CoreWeave` or `UpCloud` (Modelplane
   provisions the full cluster) or `Existing` (bring a cluster you manage yourself). See
   [Supported Providers]({{< ref "platform/providers.md" >}}) for the clouds and
   neoclouds Modelplane runs on.
@@ -40,7 +41,8 @@ cluster](#requirements-for-an-existing-cluster) sets out.
 
 The `cluster.source` discriminator picks one of two models:
 
-- **Provisioned (`GKE`, `EKS`, `AKS`, `Nebius`, `Vultr`, `Civo`, `CoreWeave`).** Modelplane creates the cluster and its GPU node
+- **Provisioned (`GKE`, `EKS`, `AKS`, `Nebius`, `Vultr`, `Civo`, `CoreWeave`,
+  `UpCloud`).** Modelplane creates the cluster and its GPU node
   pools from each pool's `InferenceClass`, labels the pool's nodes so the
   scheduler's placement is enforced, and provisions the storage class for model
   weights. It also injects a non-GPU **system pool** with opinionated defaults to
@@ -199,6 +201,9 @@ pool.
 {{< tab "CoreWeave" >}}
 {{< manifests path="concepts/inference-cluster-coreweave.yaml" apply="false" >}}
 {{< /tab >}}
+{{< tab "UpCloud" >}}
+{{< manifests path="concepts/inference-cluster-upcloud.yaml" apply="false" >}}
+{{< /tab >}}
 {{< tab "Existing" >}}
 {{< manifests path="concepts/inference-cluster-existing.yaml" apply="false" >}}
 {{< /tab >}}
@@ -215,11 +220,13 @@ depends on the source:
   **`Nebius`** (shared filesystem), and **`CoreWeave`** (Distributed File
   Storage): auto-provisioned. Those classes are fixed; nothing for the admin
   to do.
-- **`Vultr`** and **`Civo`**: none. VKE's built-in RWX class (Vultr File
-  System) isn't usable on GPU nodes, Civo's `civo-volume` class is
-  `ReadWriteOnce` only, and Modelplane doesn't provision an alternative
-  on either. Deploy single-node engines without a `ModelCache` and let
-  them pull weights directly from the model source.
+- **`Vultr`**, **`Civo`** and **`UpCloud`**: none. VKE's built-in RWX class
+  (Vultr File System) isn't usable on GPU nodes, Civo's `civo-volume` class
+  is `ReadWriteOnce` only, UpCloud's File Storage NFS has no CSI driver (it
+  only supports statically provisioned volumes), and Modelplane doesn't
+  provision an alternative on any of them. Deploy single-node engines
+  without a `ModelCache` and let them pull weights directly from the model
+  source.
 - **`Existing`**: bring your own. Create an RWX StorageClass on the cluster, with
   any backend that supports automatic PVC provisioning (WekaIO, NetApp Trident,
   `FSx` for NetApp, and similar), and name it in

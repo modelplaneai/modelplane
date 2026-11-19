@@ -62,6 +62,10 @@ You also need an account with one of these providers:
 - A CoreWeave API access token belonging to a user who can administer CKS
   clusters
 {{< /tab >}}
+{{< tab "UpCloud" >}}
+- An UpCloud account with access to GPU plans (quota is granted per account; ask UpCloud support to raise it)
+- An UpCloud API token
+{{< /tab >}}
 {{< /tabs >}}
 
 ## Configure cloud credentials
@@ -216,6 +220,23 @@ cluster's kubeconfig Secret in `modelplane-system` holds a copy of it. Limit
 who can read Secrets there.
 {{< /hint >}}
 {{< /tab >}}
+
+{{< tab "UpCloud" >}}
+Create a Kubernetes secret from your API token, as the JSON `creds` key
+the provider parses:
+
+{{< editCode >}}
+```bash
+kubectl create secret generic upcloud-credentials \
+  --from-literal=creds='{"token": "$@<upcloud-api-token>$@"}' \
+  -n crossplane-system
+```
+{{< /editCode >}}
+
+Apply the `ClusterProviderConfig` referencing your secret:
+
+{{< manifests "getting-started/clusterproviderconfig-upcloud.yaml" >}}
+{{< /tab >}}
 {{</tabs>}}
 
 ## Publish hardware and register the cluster
@@ -301,6 +322,16 @@ Modelplane provisions the cluster:
 kubectl wait --for=condition=Ready ic/coreweave-us-east-04 --timeout=45m
 ```
 {{< /tab >}}
+
+{{< tab "UpCloud" >}}
+{{< manifests "getting-started/upcloud/platform.yaml" >}}
+
+Modelplane provisions the cluster. This takes about 15 minutes:
+
+```bash
+kubectl wait --for=condition=Ready ic/upcloud-fi-hel2 --timeout=20m
+```
+{{< /tab >}}
 {{< /tabs >}}
 
 {{< hint "note" >}}
@@ -359,6 +390,9 @@ for an example with TLS and authentication.
 {{< /tab >}}
 {{< tab "CoreWeave" >}}
 {{< manifests "getting-started/coreweave/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< tab "UpCloud" >}}
+{{< manifests "getting-started/upcloud/inference-gateway.yaml" >}}
 {{< /tab >}}
 {{< /tabs >}}
 

@@ -259,6 +259,12 @@ SUPPORTED_DRIVERS_CASES = [
         want=frozenset({"gpu.nvidia.com", "dra.cpu"}),
     ),
     SupportedDriversCase(
+        name="UpCloud",
+        reason="UpCloud tags the NVIDIA and CPU stacks.",
+        cloud="UpCloud",
+        want=frozenset({"gpu.nvidia.com", "dra.cpu"}),
+    ),
+    SupportedDriversCase(
         name="Existing",
         reason="Existing is the one cloud that tags the AMD stack, beside NVIDIA and CPU.",
         cloud="Existing",
@@ -306,6 +312,34 @@ GATEWAY_PROXY_CASES = [
                     "kubernetes": {
                         "envoyService": {
                             "annotations": {"service.beta.kubernetes.io/coreweave-load-balancer-type": "public"},
+                            "externalTrafficPolicy": "Cluster",
+                        },
+                    },
+                },
+            },
+        },
+    ),
+    GatewayProxyCase(
+        name="UpCloud",
+        reason=(
+            "UpCloud's EnvoyProxy puts the cluster gateway's load balancer in TCP mode beside the "
+            "externalTrafficPolicy pin, naming the frontend after the gateway's single Service port."
+        ),
+        cloud="UpCloud",
+        want={
+            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+            "kind": "EnvoyProxy",
+            "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
+            "spec": {
+                "provider": {
+                    "type": "Kubernetes",
+                    "kubernetes": {
+                        "envoyService": {
+                            "annotations": {
+                                "service.beta.kubernetes.io/upcloud-load-balancer-config": (
+                                    '{"frontends": [{"name": "https-443", "mode": "tcp"}]}'
+                                ),
+                            },
                             "externalTrafficPolicy": "Cluster",
                         },
                     },
@@ -531,7 +565,7 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
 
 # The clouds that install NVIDIA's standalone dcgm-exporter chart rather
 # than the gpu-operator.
-STANDALONE_EXPORTER_CLOUDS = ("Nebius", "CoreWeave")
+STANDALONE_EXPORTER_CLOUDS = ("Nebius", "CoreWeave", "UpCloud")
 
 
 @pytest.mark.parametrize("cloud", STANDALONE_EXPORTER_CLOUDS)

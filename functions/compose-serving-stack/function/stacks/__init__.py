@@ -24,7 +24,7 @@ stack's own file. See design/serving-stack-generation.md.
 from typing import Any
 
 from function.stacks import common, components, dynamo, metrics, standard
-from function.stacks.clouds import civo, coreweave, existing, nebius, vultr
+from function.stacks.clouds import civo, coreweave, existing, nebius, upcloud, vultr
 from function.stacks.clouds.generated.aicr import aks, eks, gke
 from function.stacks.components import Chart, Cloud, Component, Manifests, Stack
 from function.stacks.metrics import BUILTIN_MAPPINGS
@@ -55,6 +55,7 @@ _CLOUDS: dict[Cloud, list[Component]] = {
     "Vultr": vultr.COMPONENTS,
     "Civo": civo.COMPONENTS,
     "CoreWeave": coreweave.COMPONENTS,
+    "UpCloud": upcloud.COMPONENTS,
     "Existing": existing.COMPONENTS,
 }
 
@@ -77,6 +78,7 @@ _EXTERNAL_DRIVERS: dict[Cloud, frozenset[str]] = {
     "Vultr": frozenset(vultr.EXTERNAL_DRIVERS),
     "Civo": frozenset(civo.EXTERNAL_DRIVERS),
     "CoreWeave": frozenset(coreweave.EXTERNAL_DRIVERS),
+    "UpCloud": frozenset(upcloud.EXTERNAL_DRIVERS),
     "Existing": frozenset(existing.EXTERNAL_DRIVERS),
 }
 
@@ -87,6 +89,7 @@ _EXTERNAL_DRIVERS: dict[Cloud, frozenset[str]] = {
 # need any settings are absent.
 _GATEWAY_SERVICE: dict[Cloud, dict[str, Any]] = {
     "CoreWeave": coreweave.GATEWAY_SERVICE,
+    "UpCloud": upcloud.GATEWAY_SERVICE,
 }
 
 

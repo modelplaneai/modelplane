@@ -217,12 +217,35 @@ class AcceleratorModel5(BaseModel):
     count: conint(ge=1, le=16)
     type: constr(min_length=1, max_length=63)
     """
+    GPU accelerator type (e.g. nvidia-l40s, nvidia-h100). Informational - reported on the consuming InferenceCluster's status.
+    """
+
+
+class Upcloud(BaseModel):
+    accelerator: AcceleratorModel5 | None = None
+    """
+    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU pool: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
+    """
+    diskSizeGb: conint(ge=10) | None = 100
+    """
+    Node disk size in GB. Honored for GPU and Cloud Native plans, whose storage UpCloud unbundles from the plan; Starter and Premium plans bundle a fixed disk and ignore it.
+    """
+    plan: constr(min_length=1, max_length=63)
+    """
+    UpCloud server plan (e.g. GPU-8xCPU-64GB-1xL40S, PREMIUM-8xCPU-32GB). The plan determines the GPU model and count, if any. The accelerator block below doesn't change the hardware, but whether it's set decides whether the pool is provisioned as a GPU or a CPU pool.
+    """
+
+
+class AcceleratorModel6(BaseModel):
+    count: conint(ge=1, le=16)
+    type: constr(min_length=1, max_length=63)
+    """
     GPU accelerator type (e.g. nvidia-l40s, nvidia-a100). Informational - reported on the consuming InferenceCluster's status.
     """
 
 
 class Vultr(BaseModel):
-    accelerator: AcceleratorModel5 | None = None
+    accelerator: AcceleratorModel6 | None = None
     """
     GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block. Set this when and only when a device claims a DRA driver other than dra.cpu; the API rejects a mismatch. Omitted, Modelplane provisions a CPU pool: a standard node image, the modelplane.ai/cpu label and taint, and no GPU stack.
     """
@@ -239,7 +262,10 @@ class Provisioning(BaseModel):
     eks: Eks | None = None
     gke: Gke | None = None
     nebius: Nebius | None = None
-    provider: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Civo', 'CoreWeave']
+    provider: Literal[
+        'GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Civo', 'CoreWeave', 'UpCloud'
+    ]
+    upcloud: Upcloud | None = None
     vultr: Vultr | None = None
 
 

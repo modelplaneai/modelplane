@@ -1,0 +1,43 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: l40s-1x
+spec:
+  # A 1x L40S server plan. UpCloud GPU plans are zone-gated (fi-hel2 at
+  # the time of writing) and quota is granted per account; list what
+  # yours offers with `upctl server plans` before picking another plan.
+  description: "UpCloud GPU-8xCPU-64GB-1xL40S, 1x NVIDIA L40S 48GB"
+  provisioning:
+    provider: UpCloud
+    upcloud:
+      plan: GPU-8xCPU-64GB-1xL40S
+      accelerator:
+        type: nvidia-l40s
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+      cudaComputeCapability: { version: "8.9.0" }
+    capacity:
+      memory: { value: "46068Mi" }   # L40S's real reported VRAM (not the nominal 48GB)
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: upcloud-fi-hel2
+  labels:
+    modelplane.ai/region: fi-hel2
+spec:
+  cluster:
+    source: UpCloud
+    upcloud:
+      zone: fi-hel2
+  nodePools:
+  - name: gpu-l40s
+    className: l40s-1x
+    nodeCount: 1

@@ -84,6 +84,9 @@ GPU.
 {{< tab "CoreWeave RTX PRO 6000" >}}
 {{< manifests "concepts/inference-class-coreweave-rtxp6000.yaml" >}}
 {{< /tab >}}
+{{< tab "UpCloud L40S" >}}
+{{< manifests "concepts/inference-class-upcloud-l40s.yaml" >}}
+{{< /tab >}}
 {{< tab "H100 bare-metal" >}}
 {{< manifests "concepts/inference-class-h100-byo.yaml" >}}
 {{< /tab >}}
