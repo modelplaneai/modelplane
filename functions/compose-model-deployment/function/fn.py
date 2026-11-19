@@ -92,6 +92,33 @@ _GATEWAY_SCHEME = "https"
 # ModelService rather than a deployment, so something has to reconcile the two.
 SERVED_MODEL_NAME_ENV = "MODELPLANE_SERVED_MODEL_NAME"
 
+# Injected into the engine container of a member that requests a share of its
+# device's memory, so the engine can size itself to that share:
+#
+#   args:
+#   - --gpu-memory-utilization=$(MODELPLANE_DEVICE_MEMORY_FRACTION)
+#
+# DRA accounts a shared device's memory but doesn't enforce it, so an engine
+# that takes all of a device's memory starves the others sharing it.
+DEVICE_MEMORY_FRACTION_ENV = "MODELPLANE_DEVICE_MEMORY_FRACTION"
+
+
+def _inject_device_memory_fraction(template: mrv1alpha1.Template, requests: list[scheduling.DeviceRequest]) -> None:
+    """Put DEVICE_MEMORY_FRACTION_ENV ahead of the engine container's own env entries.
+
+    Only when exactly one of the member's device requests asks for memory: one
+    variable can't describe two devices. A user entry of the same name is
+    dropped, as _inject_served_model_name drops one.
+    """
+    fractions = [r.memory_fraction for r in requests if r.memory_fraction]
+    if len(fractions) != 1:
+        return
+    for container in template.spec.containers:
+        if container.name != "engine":
+            continue
+        existing = [e for e in container.env or [] if e.name != DEVICE_MEMORY_FRACTION_ENV]
+        container.env = [mrv1alpha1.EnvItem(name=DEVICE_MEMORY_FRACTION_ENV, value=fractions[0]), *existing]
+
 
 def _inject_served_model_name(template: mrv1alpha1.Template, served: str) -> None:
     """Put SERVED_MODEL_NAME_ENV ahead of the engine container's own env entries.
@@ -499,6 +526,7 @@ class Composer:
         members = []
         for member, mp in zip(engine.members, placement.members, strict=True):
             template = mrv1alpha1.Template.model_validate(member.template.model_dump(exclude_unset=True))
+            _inject_device_memory_fraction(template, mp.device_requests)
             _inject_served_model_name(template, served)
             replica_member = mrv1alpha1.Member(
                 role=member.role,
@@ -518,6 +546,11 @@ class Composer:
                     )
                     for r in mp.device_requests
                 ]
+                for r, dr in zip(mp.device_requests, replica_member.deviceRequests, strict=True):
+                    # Set only when requested, so a request that takes whole
+                    # devices doesn't serialize an empty capacity.
+                    if r.capacity_requests:
+                        dr.capacity = mrv1alpha1.Capacity(requests=dict(r.capacity_requests))
             # Only a Worker carries the worker block, and only when the user
             # set one. Setting worker=None explicitly would serialize a literal
             # null into the composed manifest rather than omitting the field.

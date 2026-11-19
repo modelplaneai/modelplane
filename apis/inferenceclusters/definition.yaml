@@ -870,6 +870,33 @@ spec:
                             additionalProperties:
                               type: integer
                               minimum: 0
+                          sharedDevices:
+                            type: object
+                            description: >-
+                              The free capacity of each of the nodes' devices
+                              that allows multiple allocations and that a
+                              claim has allocated, keyed by DeviceClass. Such a
+                              device doesn't count in freeDevices. One no claim
+                              has allocated does, with all of its capacity
+                              free.
+                            maxProperties: 32
+                            additionalProperties:
+                              type: array
+                              maxItems: 64
+                              x-kubernetes-list-type: atomic
+                              items:
+                                type: object
+                                properties:
+                                  freeCapacity:
+                                    type: object
+                                    description: >-
+                                      The device's capacity no claim has
+                                      consumed, keyed by the names its driver
+                                      publishes capacity under.
+                                    maxProperties: 32
+                                    additionalProperties:
+                                      type: string
+                                      maxLength: 32
                           nodes:
                             type: integer
                             minimum: 1
@@ -900,6 +927,8 @@ spec:
                             maxLength: 253
                           count:
                             type: integer
+                          allowMultipleAllocations:
+                            type: boolean
                           attributes:
                             type: object
                             maxProperties: 32

@@ -20,6 +20,7 @@ serving resources. Backends return provider-kubernetes Objects; the dispatcher
 """
 
 import hashlib
+import json
 import re
 from collections.abc import Mapping
 from typing import Protocol
@@ -425,8 +426,9 @@ GROVE_QUEUE = "modelplane"
 
 # Response resource keys. A replica's HTTPRoute keeps a stable key; each engine's
 # workload gets a key scoped by its backend and engine, and each member's claim
-# a member-scoped one (the engine name plus the member role) so a multi-engine
-# replica's resources don't collide in the response map.
+# a member-scoped one (the engine name plus the member role, and a hash of the
+# claim's spec - see claim_key) so a multi-engine replica's resources don't
+# collide in the response map.
 ROUTE_KEY = "model-route"
 _WORKLOAD_KEY = "workload"
 _SCALING_GROUP_KEY = "scaling-group"
@@ -487,8 +489,13 @@ def claim_key(engine: v1alpha1.Engine, member: v1alpha1.Member) -> str:
     devices through the same template (a template stamps a fresh claim per
     pod), but an engine's members may claim different devices, or none. The
     member role disambiguates - an engine has at most one member per role.
+
+    The key carries the hash of the template's spec, as its name does (see
+    claim_template_name). A changed spec is then a new composed resource, and
+    Crossplane deletes the Object composing the old template rather than
+    trying to update it.
     """
-    return f"{_CLAIM_KEY}-{engine.name}-{member_role(member)}"
+    return f"{_CLAIM_KEY}-{engine.name}-{member_role(member)}-{_claim_spec_hash(member)}"
 
 
 def workload_keys(replica: v1alpha1.ModelReplica, stack: str) -> list[str]:
@@ -813,13 +820,26 @@ def claim_template_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine,
 
     Per-replica, per-engine, per-member-role: derived from the same parts as
     engine_name (flat, not nested through engine_name's already-hashed result,
-    so the name reads replica-engine-role-devices-hash) so concurrent replicas
-    of the same deployment on one cluster stay distinct. One template serves
-    every pod of the member - a template stamps a fresh claim per pod - but an
-    engine's members may claim different devices, so each claiming member gets
-    its own.
+    so the name reads replica-engine-role-devices-spec-hash) so concurrent
+    replicas of the same deployment on one cluster stay distinct. One template
+    serves every pod of the member - a template stamps a fresh claim per pod -
+    but an engine's members may claim different devices, so each claiming
+    member gets its own.
+
+    A ResourceClaimTemplate's spec is immutable, so the name includes a hash of
+    the spec: a changed device request composes a new template under a new
+    name, and the member's pods, which reference the template by this name,
+    roll onto it. child_name truncates the name to a DNS label.
     """
-    return resource.child_name(_name(replica.metadata), engine.name, member_role(member), _POD_CLAIM_NAME)
+    return resource.child_name(
+        _name(replica.metadata), engine.name, member_role(member), _POD_CLAIM_NAME, _claim_spec_hash(member)
+    )
+
+
+def _claim_spec_hash(member: v1alpha1.Member) -> str:
+    """A short hash of the spec of a member's ResourceClaimTemplate."""
+    spec = json.dumps(claim_template_spec(member), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(spec.encode()).hexdigest()[:8]
 
 
 def engine_resources(container: v1alpha1.Container, *, claim: bool) -> dict:
@@ -952,10 +972,24 @@ def resource_claim_template(
 
     Each resolved device request (stamped by compose-model-deployment from the
     matched InferenceClass claim: DRA devices) becomes one DeviceRequest carrying
-    its DeviceClass, count, and CEL selectors verbatim. Only called for a member
-    with device requests; a claimless member composes no template. One template
-    serves every pod of the member, and DRA stamps a fresh claim per pod.
+    its DeviceClass, count, CEL selectors, and capacity requests verbatim. Only
+    called for a member with device requests; a claimless member composes no
+    template. One template serves every pod of the member, and DRA stamps a
+    fresh claim per pod.
     """
+    return wrap_object(
+        provider_config,
+        {
+            "apiVersion": _DRA_API_VERSION,
+            "kind": "ResourceClaimTemplate",
+            "metadata": {"name": claim_template_name(replica, engine, member), "namespace": remote_namespace(replica)},
+            "spec": claim_template_spec(member),
+        },
+    )
+
+
+def claim_template_spec(member: v1alpha1.Member) -> dict:
+    """The spec of a member's ResourceClaimTemplate: one DeviceRequest per resolved device request."""
     # Callers (the backends) gate this on `if member.deviceRequests`, so it's
     # only reached for a member that claims devices; a claimless member composes
     # no template.
@@ -966,6 +1000,10 @@ def resource_claim_template(
         selectors = [{"cel": {"expression": s.cel}} for s in (r.selectors or []) if s.cel]
         if selectors:
             exactly["selectors"] = selectors
+        if r.capacity:
+            # A share of a device that allows multiple allocations, as the
+            # deployment's nodeSelector requested it.
+            exactly["capacity"] = {"requests": dict(r.capacity.requests)}
         if r.deviceClassName == _CPU_DEVICE_CLASS:
             # dra-driver-cpu's grouped device holds its cores as consumable
             # capacity, and a claim with no capacity request consumes the
@@ -981,13 +1019,4 @@ def resource_claim_template(
             assert container.resources is not None and container.resources.requests is not None
             exactly["capacity"] = {"requests": {_CPU_CAPACITY: str(container.resources.requests["cpu"])}}
         device_requests.append({"name": r.name, "exactly": exactly})
-
-    return wrap_object(
-        provider_config,
-        {
-            "apiVersion": _DRA_API_VERSION,
-            "kind": "ResourceClaimTemplate",
-            "metadata": {"name": claim_template_name(replica, engine, member), "namespace": remote_namespace(replica)},
-            "spec": {"spec": {"devices": {"requests": device_requests}}},
-        },
-    )
+    return {"spec": {"devices": {"requests": device_requests}}}
