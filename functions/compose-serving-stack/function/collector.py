@@ -68,6 +68,31 @@ _GENAI_PORT = "aigw-admin"
 _IN_FLIGHT = "envoy_cluster_upstream_rq_active"
 _FLEET_GATEWAY = "inference-gateway"
 
+# Envoy's per-cluster counts of what happened to the requests it sent: retries,
+# timeouts, resets, ejections and responses by class. Each cluster gateway
+# reports its own httproute/<ns>/<deployment>/rule/0 for the same requests, so
+# these are kept and attributed exactly as the requests in flight are.
+_UPSTREAM_SERIES = (
+    _IN_FLIGHT,
+    "envoy_cluster_upstream_rq_retry",
+    "envoy_cluster_upstream_rq_timeout",
+    "envoy_cluster_upstream_rq_per_try_timeout",
+    "envoy_cluster_upstream_rq_per_try_idle_timeout",
+    "envoy_cluster_upstream_rq_rx_reset",
+    "envoy_cluster_upstream_cx_destroy_remote_with_active_rq",
+    "envoy_cluster_outlier_detection_ejections_enforced_total",
+    "envoy_cluster_upstream_rq_xx",
+)
+_UPSTREAM = f"(?:{'|'.join(_UPSTREAM_SERIES)})"
+
+# What the fleet gateway answered callers, per listener, which also counts the
+# 401s, 404s and 429s that never reach a model. A cluster gateway counts the
+# fleet gateway's forwarded requests a second time, and Envoy Gateway's own
+# listeners, such as eg-stats-http, count scrapes and probes, so only the
+# fleet gateway's Gateway listeners, named http-<port> or https-<port>, are kept.
+_DOWNSTREAM = "envoy_http_downstream_rq_xx"
+_LISTENER = r"https?-\d+"
+
 # The cluster Envoy builds for a ModelService: compose-model-route's
 # AIGatewayRoute, named for the service in the team's mirrored namespace, and
 # rule 0, the one rule compose_route gives it. The namespace is the one an
@@ -193,7 +218,10 @@ def _annotated_port() -> list[dict[str, Any]]:
 
 
 def _in_flight_relabels() -> list[dict[str, Any]]:
-    """Keep the fleet gateway's in-flight requests to each model, as namespace and service.
+    """Keep the fleet gateway's counts for each model, as namespace and service.
+
+    Its requests in flight and the other _UPSTREAM series, and its _DOWNSTREAM
+    responses, which aren't per model and keep their listener.
 
     Prometheus relabeling rather than a transform statement, because it runs
     as the series are scraped, and the two drops are on labels a mapping can't
@@ -207,29 +235,33 @@ def _in_flight_relabels() -> list[dict[str, Any]]:
     return [
         {
             "source_labels": ["__name__", "envoy_cluster_name", "gateway"],
-            "regex": f"{_IN_FLIGHT};{_MODEL_ROUTE};{_FLEET_GATEWAY}",
+            "regex": f"{_UPSTREAM};{_MODEL_ROUTE};{_FLEET_GATEWAY}",
             "target_label": "__tmp_model",
             "replacement": "true",
         },
-        {"source_labels": ["__name__", "__tmp_model"], "regex": f"{_IN_FLIGHT};", "action": "drop"},
+        {
+            "source_labels": ["__name__", "envoy_http_conn_manager_prefix", "gateway"],
+            "regex": f"{_DOWNSTREAM};{_LISTENER};{_FLEET_GATEWAY}",
+            "target_label": "__tmp_model",
+            "replacement": "true",
+        },
+        {"source_labels": ["__name__", "__tmp_model"], "regex": f"(?:{_UPSTREAM}|{_DOWNSTREAM});", "action": "drop"},
         {
             "source_labels": ["__name__", "envoy_cluster_name"],
-            "regex": f"{_IN_FLIGHT};{_MODEL_ROUTE}",
+            "regex": f"{_UPSTREAM};{_MODEL_ROUTE}",
             "target_label": "namespace",
             "replacement": "$1",
         },
         {
             "source_labels": ["__name__", "envoy_cluster_name"],
-            "regex": f"{_IN_FLIGHT};{_MODEL_ROUTE}",
+            "regex": f"{_UPSTREAM};{_MODEL_ROUTE}",
             "target_label": "service",
             "replacement": "$2",
         },
         # An empty label is no label, so these leave the series with only the
         # identity just set.
-        *(
-            {"source_labels": ["__name__"], "regex": _IN_FLIGHT, "target_label": label, "replacement": ""}
-            for label in ("envoy_cluster_name", "__tmp_model")
-        ),
+        {"source_labels": ["__name__"], "regex": _UPSTREAM, "target_label": "envoy_cluster_name", "replacement": ""},
+        {"target_label": "__tmp_model", "replacement": ""},
         # The gateway is a target label, so it's on every series from the job,
         # and only the rules above read it.
         {"target_label": "gateway", "replacement": ""},
@@ -403,11 +435,13 @@ def _scrape_configs() -> list[dict[str, Any]]:
                 *_annotated_port(),
                 {"source_labels": ["__meta_kubernetes_namespace"], "target_label": "namespace"},
             ],
-            # Another Envoy's count of requests in flight would otherwise leave
+            # Another Envoy's counts of requests would otherwise leave
             # under the gateway's name, with its own cluster names and none of
             # the gateway job's drops. An Istio sidecar publishes Envoy's
             # statistics, and annotates its pod for scraping.
-            "metric_relabel_configs": [{"source_labels": ["__name__"], "regex": _IN_FLIGHT, "action": "drop"}],
+            "metric_relabel_configs": [
+                {"source_labels": ["__name__"], "regex": f"(?:{_UPSTREAM}|{_DOWNSTREAM})", "action": "drop"}
+            ],
         },
     ]
 

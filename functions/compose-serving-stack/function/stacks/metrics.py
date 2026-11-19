@@ -59,7 +59,46 @@ _GATEWAY = {
 # it, for minutes, is work no caller is waiting for.
 _GATEWAY_PROXY = {
     "envoy_cluster_upstream_rq_active": "modelplane_frontend_requests_active",
+    "envoy_cluster_upstream_rq_retry": "modelplane_gateway_retries_total",
+    "envoy_cluster_outlier_detection_ejections_enforced_total": "modelplane_gateway_ejections_total",
 }
+
+# The fleet gateway's timeouts, resets and responses, kept per model like the
+# requests in flight (see collector._UPSTREAM), and its responses to callers per
+# listener (collector._DOWNSTREAM). Folded sources keep a label apart, or two
+# counters for one service would land on one series and one would replace the
+# other. A timeout's kind tells a request's timeout from an attempt's: Envoy
+# counts per_try and per_try_idle once per attempt, timeout once per request.
+# Envoy labels a response by the first digit of its code.
+_RESPONSE_CLASSES = {str(n): f"{n}xx" for n in range(1, 6)}
+_STATUS_CLASS = {"name": "status_class", "from": "envoy_response_code_class", "values": _RESPONSE_CLASSES}
+_GATEWAY_PROXY_LABELLED: tuple[dict[str, object], ...] = (
+    *(
+        {"from": src, "to": "modelplane_gateway_timeouts_total", "labels": [{"name": "kind", "value": kind}]}
+        for src, kind in (
+            ("envoy_cluster_upstream_rq_timeout", "request"),
+            ("envoy_cluster_upstream_rq_per_try_timeout", "per_try"),
+            ("envoy_cluster_upstream_rq_per_try_idle_timeout", "per_try_idle"),
+        )
+    ),
+    *(
+        {"from": src, "to": "modelplane_gateway_upstream_resets_total", "labels": [{"name": "kind", "value": kind}]}
+        for src, kind in (
+            ("envoy_cluster_upstream_rq_rx_reset", "stream_reset"),
+            ("envoy_cluster_upstream_cx_destroy_remote_with_active_rq", "connection_closed"),
+        )
+    ),
+    {
+        "from": "envoy_cluster_upstream_rq_xx",
+        "to": "modelplane_gateway_upstream_responses_total",
+        "labels": [_STATUS_CLASS],
+    },
+    {
+        "from": "envoy_http_downstream_rq_xx",
+        "to": "modelplane_gateway_requests_total",
+        "labels": [_STATUS_CLASS, {"name": "listener", "from": "envoy_http_conn_manager_prefix"}],
+    },
+)
 
 # The engines, which explain what the gateway measured. vLLM publishes these
 # names from v0.9.2.
@@ -264,7 +303,7 @@ def mappings() -> list[v1alpha1.MetricMapping]:
     """
     return [
         _mapping("modelplane-gateway", _GATEWAY),
-        _mapping("modelplane-gateway-proxy", _GATEWAY_PROXY),
+        _mapping("modelplane-gateway-proxy", _GATEWAY_PROXY, extra=_GATEWAY_PROXY_LABELLED),
         _mapping("modelplane-vllm", _VLLM, tokens=_VLLM_TOKENS, extra=(_VLLM_RESPONSES,)),
         _mapping("modelplane-sglang", _SGLANG, tokens=_SGLANG_TOKENS, extra=(_SGLANG_RESPONSES,)),
         _mapping("modelplane-picker", _PICKER),

@@ -38,7 +38,13 @@ sent the request to, `<namespace>/<deployment>`.
 has a `service` label, and the same `namespace` label as an engine's series:
 the team's namespace as it's mirrored on the inference cluster, such as
 `mp-ml-team-51733`. The namespace in `gen_ai_original_model` is the team's own,
-such as `ml-team`, so the two don't join on it.
+such as `ml-team`, so the two don't join on it. The gateway's
+`modelplane_gateway_*` counters of retries, timeouts, resets, ejections and
+upstream responses have the same `namespace` and `service` labels. Every
+deployment behind a service is one upstream to the gateway, so these count per
+service, not per deployment.
+`modelplane_gateway_requests_total` has neither, because it's counted per
+listener, before the gateway picks a route.
 
 Each replica publishes its own series, so combine them in your query. Which
 combination is right follows from what the metric measures:
@@ -83,6 +89,12 @@ Some examples of the available metrics:
 | `modelplane_frontend_tpot_seconds` | Time per output token, measured at the gateway. Streaming requests only. |
 | `modelplane_frontend_request_duration_seconds` | What the caller waited, end to end |
 | `modelplane_frontend_requests_active` | Requests open at the gateway, per `ModelService` |
+| `modelplane_gateway_requests_total` | Requests the fleet gateway answered, by `status_class` (`1xx` to `5xx`), including 401, 404 and 429 responses no model served |
+| `modelplane_gateway_upstream_responses_total` | Responses per `ModelService` by `status_class`, counted once per request by its final code, including the gateway's own 503 and 504 |
+| `modelplane_gateway_retries_total` | Retries the gateway sent, per `ModelService` |
+| `modelplane_gateway_timeouts_total` | Timeouts per `ModelService`, by `kind`: `request` counts requests, `per_try` and `per_try_idle` count attempts |
+| `modelplane_gateway_upstream_resets_total` | Upstream resets per `ModelService`, by `kind`: `stream_reset` counts requests, `connection_closed` counts connections closed with requests in flight |
+| `modelplane_gateway_ejections_total` | Times the gateway took an endpoint out of rotation after consecutive 5xx, per `ModelService` |
 | `modelplane_request_queue_seconds` | How long a request waited before the engine started |
 | `modelplane_requests_waiting` | Queue depth per engine |
 | `modelplane_kv_cache_utilization_ratio` | KV-cache occupancy, per replica |
