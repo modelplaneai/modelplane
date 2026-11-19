@@ -9,7 +9,17 @@ on:
         default: "info"
         type: string
   schedule:
-    - cron: '0 8 * * *'
+    # Hourly, so a vulnerability alert gets its fix PR within about an hour.
+    # Not on the hour, when GitHub delays and sometimes drops scheduled runs.
+    # Lock file maintenance relies on some runs falling within its default
+    # schedule, before 4am on Monday.
+    - cron: '17 * * * *'
+
+# A run can outlast the hour, since the postUpgradeTask build alone may take up
+# to RENOVATE_EXECUTION_TIMEOUT. Queue the next run rather than let two push to
+# the same branches.
+concurrency:
+  group: ${{ github.workflow }}
 
 permissions:
   contents: read
