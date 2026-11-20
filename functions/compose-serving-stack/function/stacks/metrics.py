@@ -53,6 +53,17 @@ _GATEWAY = {
     "gen_ai_server_time_per_output_token_seconds": "modelplane_frontend_tpot_seconds",
 }
 
+# Which model each request was for, under the names design/telemetry.md gives
+# them. The route matches on <namespace>/<service>, the name the caller sent.
+# A deployment's endpoint overrides it with <namespace>/<deployment>, and an
+# external endpoint with its spec.model when set; one without spec.model keeps
+# the caller's name. model stays whole rather than split into namespace and
+# deployment, because an external name such as Qwen/Qwen3-8B has the same shape.
+_GATEWAY_LABELS = [
+    {"name": "service", "from": "gen_ai_original_model"},
+    {"name": "model", "from": "gen_ai_request_model"},
+]
+
 # The front door's own count of requests in flight to each model, which the
 # collector keeps for the fleet gateway's model routes only (see
 # collector._IN_FLIGHT). The engines' running and waiting requests well above
@@ -237,6 +248,7 @@ def _mapping(
     tokens: tuple[str, str] | None = None,
     extra: tuple[dict[str, object], ...] = (),
     types: dict[str, str] | None = None,
+    labels: list[dict[str, str]] | None = None,
 ) -> v1alpha1.MetricMapping:
     units = units or {}
     types = types or {}
@@ -244,6 +256,7 @@ def _mapping(
         {"from": src, "to": dst}
         | ({"fromUnit": units[src]} if src in units else {})
         | ({"fromType": types[src]} if src in types else {})
+        | ({"labels": labels} if labels else {})
         for src, dst in pairs.items()
     ]
     if tokens:
@@ -263,7 +276,7 @@ def mappings() -> list[v1alpha1.MetricMapping]:
     operator's do, and a built-in that breaks breaks the path everyone uses.
     """
     return [
-        _mapping("modelplane-gateway", _GATEWAY),
+        _mapping("modelplane-gateway", _GATEWAY, labels=_GATEWAY_LABELS),
         _mapping("modelplane-gateway-proxy", _GATEWAY_PROXY),
         _mapping("modelplane-vllm", _VLLM, tokens=_VLLM_TOKENS, extra=(_VLLM_RESPONSES,)),
         _mapping("modelplane-sglang", _SGLANG, tokens=_SGLANG_TOKENS, extra=(_SGLANG_RESPONSES,)),

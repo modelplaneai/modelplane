@@ -480,6 +480,18 @@ def _config(
                     {
                         "context": "datapoint",
                         "statements": [
+                            'set(datapoint.attributes["service"], datapoint.attributes["gen_ai_original_model"]) where metric.name == "gen_ai_server_request_duration_seconds"',
+                            'delete_key(datapoint.attributes, "gen_ai_original_model") where metric.name == "gen_ai_server_request_duration_seconds"',
+                            'set(datapoint.attributes["model"], datapoint.attributes["gen_ai_request_model"]) where metric.name == "gen_ai_server_request_duration_seconds"',
+                            'delete_key(datapoint.attributes, "gen_ai_request_model") where metric.name == "gen_ai_server_request_duration_seconds"',
+                            'set(datapoint.attributes["service"], datapoint.attributes["gen_ai_original_model"]) where metric.name == "gen_ai_server_time_to_first_token_seconds"',
+                            'delete_key(datapoint.attributes, "gen_ai_original_model") where metric.name == "gen_ai_server_time_to_first_token_seconds"',
+                            'set(datapoint.attributes["model"], datapoint.attributes["gen_ai_request_model"]) where metric.name == "gen_ai_server_time_to_first_token_seconds"',
+                            'delete_key(datapoint.attributes, "gen_ai_request_model") where metric.name == "gen_ai_server_time_to_first_token_seconds"',
+                            'set(datapoint.attributes["service"], datapoint.attributes["gen_ai_original_model"]) where metric.name == "gen_ai_server_time_per_output_token_seconds"',
+                            'delete_key(datapoint.attributes, "gen_ai_original_model") where metric.name == "gen_ai_server_time_per_output_token_seconds"',
+                            'set(datapoint.attributes["model"], datapoint.attributes["gen_ai_request_model"]) where metric.name == "gen_ai_server_time_per_output_token_seconds"',
+                            'delete_key(datapoint.attributes, "gen_ai_request_model") where metric.name == "gen_ai_server_time_per_output_token_seconds"',
                             'set(datapoint.attributes["direction"], "input") where metric.name == "vllm:request_prompt_tokens_sum"',
                             'set(datapoint.attributes["direction"], "output") where metric.name == "vllm:request_generation_tokens_sum"',
                             'set(datapoint.attributes["reason"], datapoint.attributes["finished_reason"]) where metric.name == "vllm:request_success_total"',
@@ -977,6 +989,18 @@ STATEMENTS_CASES = [
                 'convert_gauge_to_sum("cumulative", true) where metric.name == "gpu_energy_consumed"',
             ],
             [
+                'set(datapoint.attributes["service"], datapoint.attributes["gen_ai_original_model"]) where metric.name == "gen_ai_server_request_duration_seconds"',
+                'delete_key(datapoint.attributes, "gen_ai_original_model") where metric.name == "gen_ai_server_request_duration_seconds"',
+                'set(datapoint.attributes["model"], datapoint.attributes["gen_ai_request_model"]) where metric.name == "gen_ai_server_request_duration_seconds"',
+                'delete_key(datapoint.attributes, "gen_ai_request_model") where metric.name == "gen_ai_server_request_duration_seconds"',
+                'set(datapoint.attributes["service"], datapoint.attributes["gen_ai_original_model"]) where metric.name == "gen_ai_server_time_to_first_token_seconds"',
+                'delete_key(datapoint.attributes, "gen_ai_original_model") where metric.name == "gen_ai_server_time_to_first_token_seconds"',
+                'set(datapoint.attributes["model"], datapoint.attributes["gen_ai_request_model"]) where metric.name == "gen_ai_server_time_to_first_token_seconds"',
+                'delete_key(datapoint.attributes, "gen_ai_request_model") where metric.name == "gen_ai_server_time_to_first_token_seconds"',
+                'set(datapoint.attributes["service"], datapoint.attributes["gen_ai_original_model"]) where metric.name == "gen_ai_server_time_per_output_token_seconds"',
+                'delete_key(datapoint.attributes, "gen_ai_original_model") where metric.name == "gen_ai_server_time_per_output_token_seconds"',
+                'set(datapoint.attributes["model"], datapoint.attributes["gen_ai_request_model"]) where metric.name == "gen_ai_server_time_per_output_token_seconds"',
+                'delete_key(datapoint.attributes, "gen_ai_request_model") where metric.name == "gen_ai_server_time_per_output_token_seconds"',
                 'set(datapoint.attributes["direction"], "input") where metric.name == "vllm:request_prompt_tokens_sum"',
                 'set(datapoint.attributes["direction"], "output") where metric.name == "vllm:request_generation_tokens_sum"',
                 'set(datapoint.attributes["reason"], datapoint.attributes["finished_reason"]) where metric.name == "vllm:request_success_total"',
@@ -1245,7 +1269,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="522e31c7cedc07c5",
+                    config_hash="22c1ddf72adb50c0",
                     volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                     volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                     env_from=None,
@@ -1290,7 +1314,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="1f03e323432223be",
+                    config_hash="bebcec895ec61a18",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -1357,7 +1381,7 @@ OBJECTS_CASES = [
             (
                 "collector",
                 _deployment(
-                    config_hash="b1539f5a25d85bfc",
+                    config_hash="b7fa36179085e000",
                     volumes=[
                         {"name": "config", "configMap": {"name": "modelplane-collector"}},
                         {"name": "credentials-vendor", "secret": {"secretName": "vendor-token"}},
