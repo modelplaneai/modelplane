@@ -486,6 +486,30 @@ def statements(mappings: list[mmv1alpha1.MetricMapping]) -> tuple[list[str], lis
     return extract, scale, datapoint, metric
 
 
+def conditions(mappings: list[mmv1alpha1.MetricMapping]) -> list[str]:
+    """Compile each metric's match to the filter conditions that drop the series it doesn't keep.
+
+    One condition per entry, since the filter drops a datapoint any condition
+    holds for. A filter rather than a transform statement, because OTTL in the
+    transform processor can't drop a datapoint. It runs ahead of the
+    transform, so it selects on the name the component emitted, before a part
+    is extracted or the metric renamed.
+    """
+    out: list[str] = []
+    for mapping in mappings:
+        for m in mapping.spec.metrics:
+            for entry in m.match or []:
+                attr = f'datapoint.attributes["{entry.label}"]'
+                if entry.value is not None:
+                    out.append(f'metric.name == "{m.from_}" and {attr} != {_quote(entry.value)}')
+                else:
+                    # absent, which the schema requires without a value. The
+                    # Prometheus receiver drops an empty label, but a source
+                    # that keeps one means the same by it.
+                    out.append(f'metric.name == "{m.from_}" and {attr} != nil and {attr} != ""')
+    return out
+
+
 def _quote(value: str) -> str:
     """One OTTL string literal, with anything that would end it escaped.
 
@@ -494,9 +518,11 @@ def _quote(value: str) -> str:
     remap - they have to be, because they carry whatever vocabulary the
     component already emits. An unescaped quote in one of them would close the
     literal early and leave the rest of it as OTTL, which at best stops the
-    collector from starting and at worst runs.
+    collector from starting and at worst runs. A dollar is doubled too: the
+    collector expands ${...} anywhere in its config before OTTL sees it, then
+    turns $$ back into $.
     """
-    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "$$")
     return f'"{escaped}"'
 
 
@@ -666,6 +692,7 @@ def config(
                 {"context": "resource", "statements": [f"keep_keys(resource.attributes, [{_IDENTITY_OTTL}])"]}
             ]
         },
+        "filter/match": {"metrics": {"datapoint": conditions(mappings)}},
         "transform/modelplane": _transform(mappings),
         # Discovery writes the identity onto each datapoint; this lifts it onto
         # the resource, which is where an exporter that flattens a series into
@@ -687,6 +714,7 @@ def config(
         "memory_limiter",
         "resource/cluster",
         "transform/identity",
+        "filter/match",
         "transform/modelplane",
         "groupbyattrs/identity",
         "filter/modelplane",
