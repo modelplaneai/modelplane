@@ -19,5 +19,5 @@ spec:
     nodeCount: 1
     zones:
     - us-west-2a
-    minNodeCount: 0
+    minNodeCount: 1
     maxNodeCount: 4
