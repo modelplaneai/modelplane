@@ -622,6 +622,13 @@ spec:
                       minimum: 0
                     minNodeCount:
                       type: integer
+                      description: >-
+                        Minimum node count for autoscaling. Some providers'
+                        cluster autoscalers can't scale a pool whose devices
+                        bind through DRA up from zero nodes, so a pod
+                        scheduled to an empty pool waits forever. See the
+                        provider cluster's minNodeCount for which pools must
+                        stay at 1 or higher.
                       minimum: 0
                     maxNodeCount:
                       type: integer
