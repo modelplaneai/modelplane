@@ -1694,6 +1694,18 @@ def _collector_config(
                     {
                         "context": "datapoint",
                         "statements": [
+                            'set(datapoint.attributes["service"], datapoint.attributes["gen_ai_original_model"]) where metric.name == "gen_ai_server_request_duration_seconds"',
+                            'delete_key(datapoint.attributes, "gen_ai_original_model") where metric.name == "gen_ai_server_request_duration_seconds"',
+                            'set(datapoint.attributes["model"], datapoint.attributes["gen_ai_request_model"]) where metric.name == "gen_ai_server_request_duration_seconds"',
+                            'delete_key(datapoint.attributes, "gen_ai_request_model") where metric.name == "gen_ai_server_request_duration_seconds"',
+                            'set(datapoint.attributes["service"], datapoint.attributes["gen_ai_original_model"]) where metric.name == "gen_ai_server_time_to_first_token_seconds"',
+                            'delete_key(datapoint.attributes, "gen_ai_original_model") where metric.name == "gen_ai_server_time_to_first_token_seconds"',
+                            'set(datapoint.attributes["model"], datapoint.attributes["gen_ai_request_model"]) where metric.name == "gen_ai_server_time_to_first_token_seconds"',
+                            'delete_key(datapoint.attributes, "gen_ai_request_model") where metric.name == "gen_ai_server_time_to_first_token_seconds"',
+                            'set(datapoint.attributes["service"], datapoint.attributes["gen_ai_original_model"]) where metric.name == "gen_ai_server_time_per_output_token_seconds"',
+                            'delete_key(datapoint.attributes, "gen_ai_original_model") where metric.name == "gen_ai_server_time_per_output_token_seconds"',
+                            'set(datapoint.attributes["model"], datapoint.attributes["gen_ai_request_model"]) where metric.name == "gen_ai_server_time_per_output_token_seconds"',
+                            'delete_key(datapoint.attributes, "gen_ai_request_model") where metric.name == "gen_ai_server_time_per_output_token_seconds"',
                             'set(datapoint.attributes["direction"], "input") where metric.name == "vllm:request_prompt_tokens_sum"',
                             'set(datapoint.attributes["direction"], "output") where metric.name == "vllm:request_generation_tokens_sum"',
                             'set(datapoint.attributes["reason"], datapoint.attributes["finished_reason"]) where metric.name == "vllm:request_success_total"',
@@ -4746,7 +4758,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="be9842417e13d6c1",
+                        config_hash="3fa1d749afe4119b",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5065,7 +5077,7 @@ COMPOSE_CASES = [
                         ready=fnv1.READY_TRUE,
                     ),
                     "collector": _collector(
-                        config_hash="5d3c556be06d8ca8",
+                        config_hash="70626da52676ee4a",
                         volumes=[
                             {"name": "config", "configMap": {"name": "modelplane-collector"}},
                             {"name": "credentials-primary", "secret": {"secretName": "telemetry-credentials"}},
@@ -5352,7 +5364,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="0a72aaee56455e72",
+                        config_hash="28d926180d9a6a07",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5615,7 +5627,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="57e31b8f680bd6d3",
+                        config_hash="72f7544255eb6139",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
@@ -5906,7 +5918,7 @@ COMPOSE_CASES = [
                         service_extensions=None,
                     ),
                     "collector": _collector(
-                        config_hash="be9842417e13d6c1",
+                        config_hash="3fa1d749afe4119b",
                         volumes=[{"name": "config", "configMap": {"name": "modelplane-collector"}}],
                         volume_mounts=[{"name": "config", "mountPath": "/conf"}],
                         env_from=None,
