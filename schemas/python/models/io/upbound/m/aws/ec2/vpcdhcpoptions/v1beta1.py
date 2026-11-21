@@ -29,7 +29,7 @@ class ForProvider(BaseModel):
     """
     netbiosNodeType: str | None = None
     """
-    The NetBIOS node type (1, 2, 4, or 8). AWS recommends to specify 2 since broadcast and multicast are not supported in their network. For more information about these node types, see RFC 2132.
+    NetBIOS node type (1, 2, 4, or 8). AWS recommends to specify 2 since broadcast and multicast are not supported in their network. For more information about these node types, see RFC 2132.
     """
     ntpServers: list[str] | None = None
     """
@@ -65,7 +65,7 @@ class InitProvider(BaseModel):
     """
     netbiosNodeType: str | None = None
     """
-    The NetBIOS node type (1, 2, 4, or 8). AWS recommends to specify 2 since broadcast and multicast are not supported in their network. For more information about these node types, see RFC 2132.
+    NetBIOS node type (1, 2, 4, or 8). AWS recommends to specify 2 since broadcast and multicast are not supported in their network. For more information about these node types, see RFC 2132.
     """
     ntpServers: list[str] | None = None
     """
@@ -142,7 +142,7 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     arn: str | None = None
     """
-    The ARN of the DHCP Options Set.
+    ARN of the DHCP Options Set.
     """
     domainName: str | None = None
     """
@@ -154,7 +154,7 @@ class AtProvider(BaseModel):
     """
     id: str | None = None
     """
-    The ID of the DHCP Options Set.
+    ID of the DHCP Options Set.
     """
     ipv6AddressPreferredLeaseTime: str | None = None
     """
@@ -166,7 +166,7 @@ class AtProvider(BaseModel):
     """
     netbiosNodeType: str | None = None
     """
-    The NetBIOS node type (1, 2, 4, or 8). AWS recommends to specify 2 since broadcast and multicast are not supported in their network. For more information about these node types, see RFC 2132.
+    NetBIOS node type (1, 2, 4, or 8). AWS recommends to specify 2 since broadcast and multicast are not supported in their network. For more information about these node types, see RFC 2132.
     """
     ntpServers: list[str] | None = None
     """
@@ -174,7 +174,7 @@ class AtProvider(BaseModel):
     """
     ownerId: str | None = None
     """
-    The ID of the AWS account that owns the DHCP options set.
+    ID of the AWS account that owns the DHCP options set.
     """
     region: str | None = None
     """
@@ -187,7 +187,7 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
 
 

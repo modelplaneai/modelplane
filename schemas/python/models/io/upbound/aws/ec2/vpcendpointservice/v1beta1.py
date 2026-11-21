@@ -112,7 +112,7 @@ class ForProvider(BaseModel):
     """
     privateDnsName: str | None = None
     """
-    The private DNS name for the service.
+    Private DNS name for the service.
     """
     region: str
     """
@@ -121,11 +121,11 @@ class ForProvider(BaseModel):
     """
     supportedIpAddressTypes: list[str] | None = None
     """
-    The supported IP address types. The possible values are ipv4 and ipv6.
+    Supported IP address types. The possible values are ipv4 and ipv6.
     """
     supportedRegions: list[str] | None = None
     """
-    The set of regions from which service consumers can access the service.
+    Set of regions from which service consumers can access the service.
     """
     tags: dict[str, str] | None = None
     """
@@ -164,15 +164,15 @@ class InitProvider(BaseModel):
     """
     privateDnsName: str | None = None
     """
-    The private DNS name for the service.
+    Private DNS name for the service.
     """
     supportedIpAddressTypes: list[str] | None = None
     """
-    The supported IP address types. The possible values are ipv4 and ipv6.
+    Supported IP address types. The possible values are ipv4 and ipv6.
     """
     supportedRegions: list[str] | None = None
     """
-    The set of regions from which service consumers can access the service.
+    Set of regions from which service consumers can access the service.
     """
     tags: dict[str, str] | None = None
     """
@@ -267,7 +267,7 @@ class PrivateDnsNameConfigurationItem(BaseModel):
     """
     state: str | None = None
     """
-    The state of the VPC endpoint service.
+    Verification state of the VPC endpoint service. Consumers of the endpoint service can use the private name only when the state is verified.
     """
     type: str | None = None
     """
@@ -286,7 +286,7 @@ class AtProvider(BaseModel):
     """
     allowedPrincipals: list[str] | None = None
     """
-    The ARNs of one or more principals allowed to discover the endpoint service.
+    ARNs of one or more principals allowed to discover the endpoint service.
     """
     arn: str | None = None
     """
@@ -294,11 +294,11 @@ class AtProvider(BaseModel):
     """
     availabilityZones: list[str] | None = None
     """
-    A set of Availability Zones in which the service is available.
+    Set of Availability Zones in which the service is available.
     """
     baseEndpointDnsNames: list[str] | None = None
     """
-    A set of DNS names for the service.
+    Set of DNS names for the service.
     """
     gatewayLoadBalancerArns: list[str] | None = None
     """
@@ -306,7 +306,7 @@ class AtProvider(BaseModel):
     """
     id: str | None = None
     """
-    The ID of the VPC endpoint service.
+    ID of the VPC endpoint service.
     """
     managesVpcEndpoints: bool | None = None
     """
@@ -318,7 +318,7 @@ class AtProvider(BaseModel):
     """
     privateDnsName: str | None = None
     """
-    The private DNS name for the service.
+    Private DNS name for the service.
     """
     privateDnsNameConfiguration: list[PrivateDnsNameConfigurationItem] | None = None
     """
@@ -331,23 +331,23 @@ class AtProvider(BaseModel):
     """
     serviceName: str | None = None
     """
-    The service name.
+    Service name.
     """
     serviceType: str | None = None
     """
-    The service type, Gateway or Interface.
+    Service type, Gateway or Interface.
     """
     state: str | None = None
     """
-    The state of the VPC endpoint service.
+    Verification state of the VPC endpoint service. Consumers of the endpoint service can use the private name only when the state is verified.
     """
     supportedIpAddressTypes: list[str] | None = None
     """
-    The supported IP address types. The possible values are ipv4 and ipv6.
+    Supported IP address types. The possible values are ipv4 and ipv6.
     """
     supportedRegions: list[str] | None = None
     """
-    The set of regions from which service consumers can access the service.
+    Set of regions from which service consumers can access the service.
     """
     tags: dict[str, str] | None = None
     """
@@ -355,7 +355,7 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
 
 

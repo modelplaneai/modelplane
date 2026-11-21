@@ -57,7 +57,7 @@ class VpcEndpointServiceIdSelector(BaseModel):
 class ForProvider(BaseModel):
     principalArn: str | None = None
     """
-    The ARN of the principal to allow permissions.
+    ARN of the principal to allow permissions.
     """
     region: str
     """
@@ -66,7 +66,7 @@ class ForProvider(BaseModel):
     """
     vpcEndpointServiceId: str | None = None
     """
-    The ID of the VPC endpoint service to allow permission.
+    ID of the VPC endpoint service to allow permission.
     """
     vpcEndpointServiceIdRef: VpcEndpointServiceIdRef | None = None
     """
@@ -81,11 +81,11 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     principalArn: str | None = None
     """
-    The ARN of the principal to allow permissions.
+    ARN of the principal to allow permissions.
     """
     vpcEndpointServiceId: str | None = None
     """
-    The ID of the VPC endpoint service to allow permission.
+    ID of the VPC endpoint service to allow permission.
     """
     vpcEndpointServiceIdRef: VpcEndpointServiceIdRef | None = None
     """
@@ -180,11 +180,11 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     id: str | None = None
     """
-    The ID of the association.
+    ID of the association.
     """
     principalArn: str | None = None
     """
-    The ARN of the principal to allow permissions.
+    ARN of the principal to allow permissions.
     """
     region: str | None = None
     """
@@ -193,7 +193,7 @@ class AtProvider(BaseModel):
     """
     vpcEndpointServiceId: str | None = None
     """
-    The ID of the VPC endpoint service to allow permission.
+    ID of the VPC endpoint service to allow permission.
     """
 
 

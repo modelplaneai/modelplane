@@ -100,19 +100,15 @@ class VolumeIdSelector(BaseModel):
 class ForProvider(BaseModel):
     deviceName: str | None = None
     """
-    The device name to expose to the instance (for
-    example, /dev/sdh or xvdh).  See Device Naming on Linux Instances and Device Naming on Windows Instances for more information.
+    Device name to expose to the instance (for example, /dev/sdh or xvdh). See Device Naming on Linux Instances and Device Naming on Windows Instances for more information.
     """
     forceDetach: bool | None = None
     """
-    Set to true if you want to force the
-    volume to detach. Useful if previous attempts failed, but use this option only
-    as a last resort, as this can result in data loss. See
-    Detaching an Amazon EBS Volume from an Instance for more information.
+    Whether to force the volume to detach. Useful if previous attempts failed, but use this option only as a last resort, as this can result in data loss. See Detaching an Amazon EBS Volume from an Instance for more information.
     """
     instanceId: str | None = None
     """
-    ID of the Instance to attach to
+    ID of the Instance to attach to.
     """
     instanceIdRef: InstanceIdRef | None = None
     """
@@ -129,18 +125,15 @@ class ForProvider(BaseModel):
     """
     skipDestroy: bool | None = None
     """
-    This is
-    useful when destroying an instance which has volumes created by some other
-    means attached.
+    This is useful when destroying an instance which has volumes created by some other means attached.
     """
     stopInstanceBeforeDetaching: bool | None = None
     """
-    Set this to true to ensure that the target instance is stopped
-    before trying to detach the volume. Stops the instance, if it is not already stopped.
+    Whether to ensure that the target instance is stopped before trying to detach the volume. Stops the instance, if it is not already stopped.
     """
     volumeId: str | None = None
     """
-    ID of the Volume to be attached
+    ID of the Volume to be attached.
     """
     volumeIdRef: VolumeIdRef | None = None
     """
@@ -155,19 +148,15 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     deviceName: str | None = None
     """
-    The device name to expose to the instance (for
-    example, /dev/sdh or xvdh).  See Device Naming on Linux Instances and Device Naming on Windows Instances for more information.
+    Device name to expose to the instance (for example, /dev/sdh or xvdh). See Device Naming on Linux Instances and Device Naming on Windows Instances for more information.
     """
     forceDetach: bool | None = None
     """
-    Set to true if you want to force the
-    volume to detach. Useful if previous attempts failed, but use this option only
-    as a last resort, as this can result in data loss. See
-    Detaching an Amazon EBS Volume from an Instance for more information.
+    Whether to force the volume to detach. Useful if previous attempts failed, but use this option only as a last resort, as this can result in data loss. See Detaching an Amazon EBS Volume from an Instance for more information.
     """
     instanceId: str | None = None
     """
-    ID of the Instance to attach to
+    ID of the Instance to attach to.
     """
     instanceIdRef: InstanceIdRef | None = None
     """
@@ -179,18 +168,15 @@ class InitProvider(BaseModel):
     """
     skipDestroy: bool | None = None
     """
-    This is
-    useful when destroying an instance which has volumes created by some other
-    means attached.
+    This is useful when destroying an instance which has volumes created by some other means attached.
     """
     stopInstanceBeforeDetaching: bool | None = None
     """
-    Set this to true to ensure that the target instance is stopped
-    before trying to detach the volume. Stops the instance, if it is not already stopped.
+    Whether to ensure that the target instance is stopped before trying to detach the volume. Stops the instance, if it is not already stopped.
     """
     volumeId: str | None = None
     """
-    ID of the Volume to be attached
+    ID of the Volume to be attached.
     """
     volumeIdRef: VolumeIdRef | None = None
     """
@@ -267,20 +253,16 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     deviceName: str | None = None
     """
-    The device name to expose to the instance (for
-    example, /dev/sdh or xvdh).  See Device Naming on Linux Instances and Device Naming on Windows Instances for more information.
+    Device name to expose to the instance (for example, /dev/sdh or xvdh). See Device Naming on Linux Instances and Device Naming on Windows Instances for more information.
     """
     forceDetach: bool | None = None
     """
-    Set to true if you want to force the
-    volume to detach. Useful if previous attempts failed, but use this option only
-    as a last resort, as this can result in data loss. See
-    Detaching an Amazon EBS Volume from an Instance for more information.
+    Whether to force the volume to detach. Useful if previous attempts failed, but use this option only as a last resort, as this can result in data loss. See Detaching an Amazon EBS Volume from an Instance for more information.
     """
     id: str | None = None
     instanceId: str | None = None
     """
-    ID of the Instance to attach to
+    ID of the Instance to attach to.
     """
     region: str | None = None
     """
@@ -289,18 +271,15 @@ class AtProvider(BaseModel):
     """
     skipDestroy: bool | None = None
     """
-    This is
-    useful when destroying an instance which has volumes created by some other
-    means attached.
+    This is useful when destroying an instance which has volumes created by some other means attached.
     """
     stopInstanceBeforeDetaching: bool | None = None
     """
-    Set this to true to ensure that the target instance is stopped
-    before trying to detach the volume. Stops the instance, if it is not already stopped.
+    Whether to ensure that the target instance is stopped before trying to detach the volume. Stops the instance, if it is not already stopped.
     """
     volumeId: str | None = None
     """
-    ID of the Volume to be attached
+    ID of the Volume to be attached.
     """
 
 

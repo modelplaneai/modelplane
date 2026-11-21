@@ -13,9 +13,7 @@ from .....k8s.apimachinery.pkg.apis.meta import v1
 class ForProvider(BaseModel):
     partitionCount: float | None = None
     """
-    The number of partitions to create in the
-    placement group.  Can only be specified when the strategy is set to
-    partition.  Must be at least 1. (default is 2).
+    Number of partitions to create in the placement group. Can only be specified when the strategy is set to partition. Must be at least 1. (default is 2).
     """
     region: str
     """
@@ -24,12 +22,11 @@ class ForProvider(BaseModel):
     """
     spreadLevel: str | None = None
     """
-    Determines how placement groups spread instances. Can only be used
-    when the strategy is set to spread. Can be host or rack. host can only be used for Outpost placement groups. Defaults to rack.
+    How placement groups spread instances. Can only be used when the strategy is set to spread. Can be host or rack. host can only be used for Outpost placement groups. Defaults to rack.
     """
     strategy: str | None = None
     """
-    The placement strategy. Can be cluster, partition or spread.
+    Placement strategy. Can be cluster, partition or spread.
     """
     tags: dict[str, str] | None = None
     """
@@ -40,18 +37,15 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     partitionCount: float | None = None
     """
-    The number of partitions to create in the
-    placement group.  Can only be specified when the strategy is set to
-    partition.  Must be at least 1. (default is 2).
+    Number of partitions to create in the placement group. Can only be specified when the strategy is set to partition. Must be at least 1. (default is 2).
     """
     spreadLevel: str | None = None
     """
-    Determines how placement groups spread instances. Can only be used
-    when the strategy is set to spread. Can be host or rack. host can only be used for Outpost placement groups. Defaults to rack.
+    How placement groups spread instances. Can only be used when the strategy is set to spread. Can be host or rack. host can only be used for Outpost placement groups. Defaults to rack.
     """
     strategy: str | None = None
     """
-    The placement strategy. Can be cluster, partition or spread.
+    Placement strategy. Can be cluster, partition or spread.
     """
     tags: dict[str, str] | None = None
     """
@@ -163,17 +157,15 @@ class AtProvider(BaseModel):
     """
     id: str | None = None
     """
-    The name of the placement group.
+    Name of the placement group.
     """
     partitionCount: float | None = None
     """
-    The number of partitions to create in the
-    placement group.  Can only be specified when the strategy is set to
-    partition.  Must be at least 1. (default is 2).
+    Number of partitions to create in the placement group. Can only be specified when the strategy is set to partition. Must be at least 1. (default is 2).
     """
     placementGroupId: str | None = None
     """
-    The ID of the placement group.
+    ID of the placement group.
     """
     region: str | None = None
     """
@@ -182,12 +174,11 @@ class AtProvider(BaseModel):
     """
     spreadLevel: str | None = None
     """
-    Determines how placement groups spread instances. Can only be used
-    when the strategy is set to spread. Can be host or rack. host can only be used for Outpost placement groups. Defaults to rack.
+    How placement groups spread instances. Can only be used when the strategy is set to spread. Can be host or rack. host can only be used for Outpost placement groups. Defaults to rack.
     """
     strategy: str | None = None
     """
-    The placement strategy. Can be cluster, partition or spread.
+    Placement strategy. Can be cluster, partition or spread.
     """
     tags: dict[str, str] | None = None
     """
@@ -195,7 +186,7 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
 
 

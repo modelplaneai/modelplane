@@ -93,7 +93,7 @@ class ForProvider(BaseModel):
     """
     securityGroupId: str | None = None
     """
-    The ID of the security group to be associated with the VPC endpoint.
+    ID of the security group to be associated with the VPC endpoint.
     """
     securityGroupIdRef: SecurityGroupIdRef | None = None
     """
@@ -105,7 +105,7 @@ class ForProvider(BaseModel):
     """
     vpcEndpointId: str | None = None
     """
-    The ID of the VPC endpoint with which the security group will be associated.
+    ID of the VPC endpoint with which the security group will be associated.
     """
     vpcEndpointIdRef: VpcEndpointIdRef | None = None
     """
@@ -124,7 +124,7 @@ class InitProvider(BaseModel):
     """
     securityGroupId: str | None = None
     """
-    The ID of the security group to be associated with the VPC endpoint.
+    ID of the security group to be associated with the VPC endpoint.
     """
     securityGroupIdRef: SecurityGroupIdRef | None = None
     """
@@ -136,7 +136,7 @@ class InitProvider(BaseModel):
     """
     vpcEndpointId: str | None = None
     """
-    The ID of the VPC endpoint with which the security group will be associated.
+    ID of the VPC endpoint with which the security group will be associated.
     """
     vpcEndpointIdRef: VpcEndpointIdRef | None = None
     """
@@ -231,7 +231,7 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     id: str | None = None
     """
-    The ID of the association.
+    ID of the association.
     """
     region: str | None = None
     """
@@ -244,11 +244,11 @@ class AtProvider(BaseModel):
     """
     securityGroupId: str | None = None
     """
-    The ID of the security group to be associated with the VPC endpoint.
+    ID of the security group to be associated with the VPC endpoint.
     """
     vpcEndpointId: str | None = None
     """
-    The ID of the VPC endpoint with which the security group will be associated.
+    ID of the VPC endpoint with which the security group will be associated.
     """
 
 

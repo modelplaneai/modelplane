@@ -227,7 +227,7 @@ class LaunchTemplateSpecification(BaseModel):
     """
     version: str | None = None
     """
-    Template version. Unlike the autoscaling equivalent, does not support $Latest or $Default, so use the launch_template resource's attribute, e.g., "${aws_launch_template.foo.latest_version}". It will use the default version if omitted.
+    Template version. Unlike the AutoScaling equivalent, does not support $Latest or $Default, so use the launch_template resource's attribute, e.g., "${aws_launch_template.foo.latest_version}". It will use the default version if omitted.
     """
     versionRef: VersionRef | None = None
     """
@@ -349,7 +349,7 @@ class InstanceRequirements(BaseModel):
     """
     acceleratorNames: list[str] | None = None
     """
-    List of accelerator names. Default is any acclerator.
+    List of accelerator names. Default is any accelerator.
     """
     acceleratorTotalMemoryMib: AcceleratorTotalMemoryMib | None = None
     """
@@ -365,7 +365,7 @@ class InstanceRequirements(BaseModel):
     """
     bareMetal: str | None = None
     """
-    Indicate whether bare metal instace types should be included, excluded, or required. Default is excluded.
+    Indicate whether bare metal instance types should be included, excluded, or required. Default is excluded.
     """
     baselineEbsBandwidthMbps: BaselineEbsBandwidthMbps | None = None
     """
@@ -872,7 +872,7 @@ class LaunchTemplateSpecificationModel(BaseModel):
     """
     version: str | None = None
     """
-    Template version. Unlike the autoscaling equivalent, does not support $Latest or $Default, so use the launch_template resource's attribute, e.g., "${aws_launch_template.foo.latest_version}". It will use the default version if omitted.
+    Template version. Unlike the AutoScaling equivalent, does not support $Latest or $Default, so use the launch_template resource's attribute, e.g., "${aws_launch_template.foo.latest_version}". It will use the default version if omitted.
     """
 
 

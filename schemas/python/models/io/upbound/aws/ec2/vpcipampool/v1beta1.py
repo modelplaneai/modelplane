@@ -138,19 +138,19 @@ class SourceResource(BaseModel):
 class ForProvider(BaseModel):
     addressFamily: str | None = None
     """
-    The IP protocol assigned to this pool. You must choose either IPv4 or IPv6 protocol for a pool.
+    IP protocol assigned to this pool. You must choose either IPv4 or IPv6 protocol for a pool.
     """
     allocationDefaultNetmaskLength: float | None = None
     """
-    A default netmask length for allocations added to this pool. If, for example, the CIDR assigned to this pool is 10.0.0.0/8 and you enter 16 here, new allocations will default to 10.0.0.0/16 (unless you provide a different netmask value when you create the new allocation).
+    Default netmask length for allocations added to this pool. If, for example, the CIDR assigned to this pool is 10.0.0.0/8 and you enter 16 here, new allocations will default to 10.0.0.0/16 (unless you provide a different netmask value when you create the new allocation).
     """
     allocationMaxNetmaskLength: float | None = None
     """
-    The maximum netmask length that will be required for CIDR allocations in this pool.
+    Maximum netmask length that will be required for CIDR allocations in this pool.
     """
     allocationMinNetmaskLength: float | None = None
     """
-    The minimum netmask length that will be required for CIDR allocations in this pool.
+    Minimum netmask length that will be required for CIDR allocations in this pool.
     """
     allocationResourceTags: dict[str, str] | None = None
     """
@@ -158,8 +158,7 @@ class ForProvider(BaseModel):
     """
     autoImport: bool | None = None
     """
-    If you include this argument, IPAM automatically imports any VPCs you have in your scope that fall
-    within the CIDR range in the pool.
+    Whether to automatically import any VPCs you have in your scope that fall within the CIDR range in the pool.
     """
     awsService: str | None = None
     """
@@ -167,15 +166,15 @@ class ForProvider(BaseModel):
     """
     cascade: bool | None = None
     """
-    Enables you to quickly delete an IPAM pool and all resources within that pool, including provisioned CIDRs, allocations, and other pools.
+    Whether to quickly delete an IPAM pool and all resources within that pool, including provisioned CIDRs, allocations, and other pools.
     """
     description: str | None = None
     """
-    A description for the IPAM pool.
+    Description for the IPAM pool.
     """
     ipamScopeId: str | None = None
     """
-    The ID of the scope in which you would like to create the IPAM pool.
+    ID of the scope in which you would like to create the IPAM pool.
     """
     ipamScopeIdRef: IpamScopeIdRef | None = None
     """
@@ -187,15 +186,15 @@ class ForProvider(BaseModel):
     """
     locale: str | None = None
     """
-    The locale in which you would like to create the IPAM pool. Locale is the Region where you want to make an IPAM pool available for allocations. You can only create pools with locales that match the operating Regions of the IPAM. You can only create VPCs from a pool whose locale matches the VPC's Region. Possible values: Any AWS region, such as us-east-1.
+    Locale in which you would like to create the IPAM pool. Locale is the Region where you want to make an IPAM pool available for allocations. You can only create pools with locales that match the operating Regions of the IPAM. You can only create VPCs from a pool whose locale matches the VPC's Region. Possible values: Any AWS region, such as us-east-1.
     """
     publicIpSource: str | None = None
     """
-    The IP address source for pools in the public scope. Only used for provisioning IP address CIDRs to pools in the public scope. Valid values are byoip or amazon. Default is byoip.
+    IP address source for pools in the public scope. Only used for provisioning IP address CIDRs to pools in the public scope. Valid values are byoip or amazon. Default is byoip.
     """
     publiclyAdvertisable: bool | None = None
     """
-    Defines whether or not IPv6 pool space is publicly advertisable over the internet. This argument is required if address_family = "ipv6" and public_ip_source = "byoip", default is false. This option is not available for IPv4 pool space or if public_ip_source = "amazon". Setting this argument to true when it is not available may result in erroneous differences being reported.
+    Whether IPv6 pool space is publicly advertisable over the internet. This argument is required if address_family = "ipv6" and public_ip_source = "byoip", default is false. This option is not available for IPv4 pool space or if public_ip_source = "amazon". Setting this argument to true when it is not available may result in erroneous differences being reported.
     """
     region: str
     """
@@ -204,7 +203,7 @@ class ForProvider(BaseModel):
     """
     sourceIpamPoolId: str | None = None
     """
-    The ID of the source IPAM pool. Use this argument to create a child pool within an existing pool.
+    ID of the source IPAM pool. Use this argument to create a child pool within an existing pool.
     """
     sourceIpamPoolIdRef: SourceIpamPoolIdRef | None = None
     """
@@ -216,7 +215,7 @@ class ForProvider(BaseModel):
     """
     sourceResource: SourceResource | None = None
     """
-    Resource to use to use to configure a resource planning IPAM Pool. If configured, the locale of the parent pool must match the region that the vpc resides in.
+    Resource to use to use to configure a resource planning IPAM Pool. If configured, the locale of the parent pool must match the region that the VPC resides in.
     """
     tags: dict[str, str] | None = None
     """
@@ -227,19 +226,19 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     addressFamily: str | None = None
     """
-    The IP protocol assigned to this pool. You must choose either IPv4 or IPv6 protocol for a pool.
+    IP protocol assigned to this pool. You must choose either IPv4 or IPv6 protocol for a pool.
     """
     allocationDefaultNetmaskLength: float | None = None
     """
-    A default netmask length for allocations added to this pool. If, for example, the CIDR assigned to this pool is 10.0.0.0/8 and you enter 16 here, new allocations will default to 10.0.0.0/16 (unless you provide a different netmask value when you create the new allocation).
+    Default netmask length for allocations added to this pool. If, for example, the CIDR assigned to this pool is 10.0.0.0/8 and you enter 16 here, new allocations will default to 10.0.0.0/16 (unless you provide a different netmask value when you create the new allocation).
     """
     allocationMaxNetmaskLength: float | None = None
     """
-    The maximum netmask length that will be required for CIDR allocations in this pool.
+    Maximum netmask length that will be required for CIDR allocations in this pool.
     """
     allocationMinNetmaskLength: float | None = None
     """
-    The minimum netmask length that will be required for CIDR allocations in this pool.
+    Minimum netmask length that will be required for CIDR allocations in this pool.
     """
     allocationResourceTags: dict[str, str] | None = None
     """
@@ -247,8 +246,7 @@ class InitProvider(BaseModel):
     """
     autoImport: bool | None = None
     """
-    If you include this argument, IPAM automatically imports any VPCs you have in your scope that fall
-    within the CIDR range in the pool.
+    Whether to automatically import any VPCs you have in your scope that fall within the CIDR range in the pool.
     """
     awsService: str | None = None
     """
@@ -256,15 +254,15 @@ class InitProvider(BaseModel):
     """
     cascade: bool | None = None
     """
-    Enables you to quickly delete an IPAM pool and all resources within that pool, including provisioned CIDRs, allocations, and other pools.
+    Whether to quickly delete an IPAM pool and all resources within that pool, including provisioned CIDRs, allocations, and other pools.
     """
     description: str | None = None
     """
-    A description for the IPAM pool.
+    Description for the IPAM pool.
     """
     ipamScopeId: str | None = None
     """
-    The ID of the scope in which you would like to create the IPAM pool.
+    ID of the scope in which you would like to create the IPAM pool.
     """
     ipamScopeIdRef: IpamScopeIdRef | None = None
     """
@@ -276,19 +274,19 @@ class InitProvider(BaseModel):
     """
     locale: str | None = None
     """
-    The locale in which you would like to create the IPAM pool. Locale is the Region where you want to make an IPAM pool available for allocations. You can only create pools with locales that match the operating Regions of the IPAM. You can only create VPCs from a pool whose locale matches the VPC's Region. Possible values: Any AWS region, such as us-east-1.
+    Locale in which you would like to create the IPAM pool. Locale is the Region where you want to make an IPAM pool available for allocations. You can only create pools with locales that match the operating Regions of the IPAM. You can only create VPCs from a pool whose locale matches the VPC's Region. Possible values: Any AWS region, such as us-east-1.
     """
     publicIpSource: str | None = None
     """
-    The IP address source for pools in the public scope. Only used for provisioning IP address CIDRs to pools in the public scope. Valid values are byoip or amazon. Default is byoip.
+    IP address source for pools in the public scope. Only used for provisioning IP address CIDRs to pools in the public scope. Valid values are byoip or amazon. Default is byoip.
     """
     publiclyAdvertisable: bool | None = None
     """
-    Defines whether or not IPv6 pool space is publicly advertisable over the internet. This argument is required if address_family = "ipv6" and public_ip_source = "byoip", default is false. This option is not available for IPv4 pool space or if public_ip_source = "amazon". Setting this argument to true when it is not available may result in erroneous differences being reported.
+    Whether IPv6 pool space is publicly advertisable over the internet. This argument is required if address_family = "ipv6" and public_ip_source = "byoip", default is false. This option is not available for IPv4 pool space or if public_ip_source = "amazon". Setting this argument to true when it is not available may result in erroneous differences being reported.
     """
     sourceIpamPoolId: str | None = None
     """
-    The ID of the source IPAM pool. Use this argument to create a child pool within an existing pool.
+    ID of the source IPAM pool. Use this argument to create a child pool within an existing pool.
     """
     sourceIpamPoolIdRef: SourceIpamPoolIdRef | None = None
     """
@@ -300,7 +298,7 @@ class InitProvider(BaseModel):
     """
     sourceResource: SourceResource | None = None
     """
-    Resource to use to use to configure a resource planning IPAM Pool. If configured, the locale of the parent pool must match the region that the vpc resides in.
+    Resource to use to use to configure a resource planning IPAM Pool. If configured, the locale of the parent pool must match the region that the VPC resides in.
     """
     tags: dict[str, str] | None = None
     """
@@ -410,19 +408,19 @@ class SourceResourceModel(BaseModel):
 class AtProvider(BaseModel):
     addressFamily: str | None = None
     """
-    The IP protocol assigned to this pool. You must choose either IPv4 or IPv6 protocol for a pool.
+    IP protocol assigned to this pool. You must choose either IPv4 or IPv6 protocol for a pool.
     """
     allocationDefaultNetmaskLength: float | None = None
     """
-    A default netmask length for allocations added to this pool. If, for example, the CIDR assigned to this pool is 10.0.0.0/8 and you enter 16 here, new allocations will default to 10.0.0.0/16 (unless you provide a different netmask value when you create the new allocation).
+    Default netmask length for allocations added to this pool. If, for example, the CIDR assigned to this pool is 10.0.0.0/8 and you enter 16 here, new allocations will default to 10.0.0.0/16 (unless you provide a different netmask value when you create the new allocation).
     """
     allocationMaxNetmaskLength: float | None = None
     """
-    The maximum netmask length that will be required for CIDR allocations in this pool.
+    Maximum netmask length that will be required for CIDR allocations in this pool.
     """
     allocationMinNetmaskLength: float | None = None
     """
-    The minimum netmask length that will be required for CIDR allocations in this pool.
+    Minimum netmask length that will be required for CIDR allocations in this pool.
     """
     allocationResourceTags: dict[str, str] | None = None
     """
@@ -434,8 +432,7 @@ class AtProvider(BaseModel):
     """
     autoImport: bool | None = None
     """
-    If you include this argument, IPAM automatically imports any VPCs you have in your scope that fall
-    within the CIDR range in the pool.
+    Whether to automatically import any VPCs you have in your scope that fall within the CIDR range in the pool.
     """
     awsService: str | None = None
     """
@@ -443,33 +440,39 @@ class AtProvider(BaseModel):
     """
     cascade: bool | None = None
     """
-    Enables you to quickly delete an IPAM pool and all resources within that pool, including provisioned CIDRs, allocations, and other pools.
+    Whether to quickly delete an IPAM pool and all resources within that pool, including provisioned CIDRs, allocations, and other pools.
     """
     description: str | None = None
     """
-    A description for the IPAM pool.
+    Description for the IPAM pool.
     """
     id: str | None = None
     """
-    The ID of the IPAM
+    ID of the IPAM
     """
     ipamScopeId: str | None = None
     """
-    The ID of the scope in which you would like to create the IPAM pool.
+    ID of the scope in which you would like to create the IPAM pool.
     """
     ipamScopeType: str | None = None
+    """
+    Type of the scope the pool belongs to.
+    """
     locale: str | None = None
     """
-    The locale in which you would like to create the IPAM pool. Locale is the Region where you want to make an IPAM pool available for allocations. You can only create pools with locales that match the operating Regions of the IPAM. You can only create VPCs from a pool whose locale matches the VPC's Region. Possible values: Any AWS region, such as us-east-1.
+    Locale in which you would like to create the IPAM pool. Locale is the Region where you want to make an IPAM pool available for allocations. You can only create pools with locales that match the operating Regions of the IPAM. You can only create VPCs from a pool whose locale matches the VPC's Region. Possible values: Any AWS region, such as us-east-1.
     """
     poolDepth: float | None = None
+    """
+    Depth of pools in your IPAM pool.
+    """
     publicIpSource: str | None = None
     """
-    The IP address source for pools in the public scope. Only used for provisioning IP address CIDRs to pools in the public scope. Valid values are byoip or amazon. Default is byoip.
+    IP address source for pools in the public scope. Only used for provisioning IP address CIDRs to pools in the public scope. Valid values are byoip or amazon. Default is byoip.
     """
     publiclyAdvertisable: bool | None = None
     """
-    Defines whether or not IPv6 pool space is publicly advertisable over the internet. This argument is required if address_family = "ipv6" and public_ip_source = "byoip", default is false. This option is not available for IPv4 pool space or if public_ip_source = "amazon". Setting this argument to true when it is not available may result in erroneous differences being reported.
+    Whether IPv6 pool space is publicly advertisable over the internet. This argument is required if address_family = "ipv6" and public_ip_source = "byoip", default is false. This option is not available for IPv4 pool space or if public_ip_source = "amazon". Setting this argument to true when it is not available may result in erroneous differences being reported.
     """
     region: str | None = None
     """
@@ -478,15 +481,15 @@ class AtProvider(BaseModel):
     """
     sourceIpamPoolId: str | None = None
     """
-    The ID of the source IPAM pool. Use this argument to create a child pool within an existing pool.
+    ID of the source IPAM pool. Use this argument to create a child pool within an existing pool.
     """
     sourceResource: SourceResourceModel | None = None
     """
-    Resource to use to use to configure a resource planning IPAM Pool. If configured, the locale of the parent pool must match the region that the vpc resides in.
+    Resource to use to use to configure a resource planning IPAM Pool. If configured, the locale of the parent pool must match the region that the VPC resides in.
     """
     state: str | None = None
     """
-    The ID of the IPAM
+    State of the IPAM pool.
     """
     tags: dict[str, str] | None = None
     """
@@ -494,7 +497,7 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
 
 

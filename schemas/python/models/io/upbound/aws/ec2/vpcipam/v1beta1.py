@@ -13,22 +13,22 @@ from .....k8s.apimachinery.pkg.apis.meta import v1
 class OperatingRegion(BaseModel):
     regionName: str | None = None
     """
-    The name of the Region you want to add to the IPAM.
+    Name of the Region you want to add to the IPAM.
     """
 
 
 class ForProvider(BaseModel):
     cascade: bool | None = None
     """
-    Enables you to quickly delete an IPAM, private scopes, pools in private scopes, and any allocations in the pools in private scopes.
+    Whether to quickly delete an IPAM, private scopes, pools in private scopes, and any allocations in the pools in private scopes.
     """
     description: str | None = None
     """
-    A description for the IPAM.
+    Description for the IPAM.
     """
     enablePrivateGua: bool | None = None
     """
-    Enable this option to use your own GUA ranges as private IPv6 addresses. Default: false.
+    Whether to use your own GUA ranges as private IPv6 addresses. Default: false.
     """
     meteredAccount: str | None = None
     """
@@ -36,7 +36,7 @@ class ForProvider(BaseModel):
     """
     operatingRegions: list[OperatingRegion] | None = None
     """
-    Determines which locales can be chosen when you create pools. Locale is the Region where you want to make an IPAM pool available for allocations. You can only create pools with locales that match the operating Regions of the IPAM. You can only create VPCs from a pool whose locale matches the VPC's Region. You specify a region using the region_name parameter. You must set your provider block region as an operating_region.
+    Locales that can be chosen when you create pools. Locale is the Region where you want to make an IPAM pool available for allocations. You can only create pools with locales that match the operating Regions of the IPAM. You can only create VPCs from a pool whose locale matches the VPC's Region. You specify a region using the region_name parameter. You must set your provider block region as an operating_region.
     """
     region: str
     """
@@ -56,15 +56,15 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     cascade: bool | None = None
     """
-    Enables you to quickly delete an IPAM, private scopes, pools in private scopes, and any allocations in the pools in private scopes.
+    Whether to quickly delete an IPAM, private scopes, pools in private scopes, and any allocations in the pools in private scopes.
     """
     description: str | None = None
     """
-    A description for the IPAM.
+    Description for the IPAM.
     """
     enablePrivateGua: bool | None = None
     """
-    Enable this option to use your own GUA ranges as private IPv6 addresses. Default: false.
+    Whether to use your own GUA ranges as private IPv6 addresses. Default: false.
     """
     meteredAccount: str | None = None
     """
@@ -72,7 +72,7 @@ class InitProvider(BaseModel):
     """
     operatingRegions: list[OperatingRegion] | None = None
     """
-    Determines which locales can be chosen when you create pools. Locale is the Region where you want to make an IPAM pool available for allocations. You can only create pools with locales that match the operating Regions of the IPAM. You can only create VPCs from a pool whose locale matches the VPC's Region. You specify a region using the region_name parameter. You must set your provider block region as an operating_region.
+    Locales that can be chosen when you create pools. Locale is the Region where you want to make an IPAM pool available for allocations. You can only create pools with locales that match the operating Regions of the IPAM. You can only create VPCs from a pool whose locale matches the VPC's Region. You specify a region using the region_name parameter. You must set your provider block region as an operating_region.
     """
     tags: dict[str, str] | None = None
     """
@@ -188,27 +188,27 @@ class AtProvider(BaseModel):
     """
     cascade: bool | None = None
     """
-    Enables you to quickly delete an IPAM, private scopes, pools in private scopes, and any allocations in the pools in private scopes.
+    Whether to quickly delete an IPAM, private scopes, pools in private scopes, and any allocations in the pools in private scopes.
     """
     defaultResourceDiscoveryAssociationId: str | None = None
     """
-    The IPAM's default resource discovery association ID.
+    IPAM's default resource discovery association ID.
     """
     defaultResourceDiscoveryId: str | None = None
     """
-    The IPAM's default resource discovery ID.
+    IPAM's default resource discovery ID.
     """
     description: str | None = None
     """
-    A description for the IPAM.
+    Description for the IPAM.
     """
     enablePrivateGua: bool | None = None
     """
-    Enable this option to use your own GUA ranges as private IPv6 addresses. Default: false.
+    Whether to use your own GUA ranges as private IPv6 addresses. Default: false.
     """
     id: str | None = None
     """
-    The ID of the IPAM
+    ID of the IPAM
     """
     meteredAccount: str | None = None
     """
@@ -216,16 +216,15 @@ class AtProvider(BaseModel):
     """
     operatingRegions: list[OperatingRegion] | None = None
     """
-    Determines which locales can be chosen when you create pools. Locale is the Region where you want to make an IPAM pool available for allocations. You can only create pools with locales that match the operating Regions of the IPAM. You can only create VPCs from a pool whose locale matches the VPC's Region. You specify a region using the region_name parameter. You must set your provider block region as an operating_region.
+    Locales that can be chosen when you create pools. Locale is the Region where you want to make an IPAM pool available for allocations. You can only create pools with locales that match the operating Regions of the IPAM. You can only create VPCs from a pool whose locale matches the VPC's Region. You specify a region using the region_name parameter. You must set your provider block region as an operating_region.
     """
     privateDefaultScopeId: str | None = None
     """
-    The ID of the IPAM's private scope. A scope is a top-level container in IPAM. Each scope represents an IP-independent network. Scopes enable you to represent networks where you have overlapping IP space. When you create an IPAM, IPAM automatically creates two scopes: public and private. The private scope is intended for private IP space. The public scope is intended for all internet-routable IP space.
+    ID of the IPAM's private scope. A scope is a top-level container in IPAM. Each scope represents an IP-independent network. Scopes enable you to represent networks where you have overlapping IP space. When you create an IPAM, IPAM automatically creates two scopes: public and private. The private scope is intended for private IP space. The public scope is intended for all internet-routable IP space.
     """
     publicDefaultScopeId: str | None = None
     """
-    The ID of the IPAM's public scope. A scope is a top-level container in IPAM. Each scope represents an IP-independent network. Scopes enable you to represent networks where you have overlapping IP space. When you create an IPAM, IPAM automatically creates two scopes: public and private. The private scope is intended for private
-    IP space. The public scope is intended for all internet-routable IP space.
+    ID of the IPAM's public scope. A scope is a top-level container in IPAM. Each scope represents an IP-independent network. Scopes enable you to represent networks where you have overlapping IP space. When you create an IPAM, IPAM automatically creates two scopes: public and private. The private scope is intended for private IP space. The public scope is intended for all internet-routable IP space.
     """
     region: str | None = None
     """
@@ -234,7 +233,7 @@ class AtProvider(BaseModel):
     """
     scopeCount: float | None = None
     """
-    The number of scopes in the IPAM.
+    Number of scopes in the IPAM.
     """
     tags: dict[str, str] | None = None
     """
@@ -242,7 +241,7 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
     tier: str | None = None
     """

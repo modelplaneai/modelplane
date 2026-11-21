@@ -444,7 +444,7 @@ class InstanceRequirements(BaseModel):
     """
     acceleratorNames: list[str] | None = None
     """
-    List of accelerator names. Default is any acclerator.
+    List of accelerator names. Default is any accelerator.
     """
     acceleratorTotalMemoryMib: AcceleratorTotalMemoryMib | None = None
     """
@@ -460,7 +460,7 @@ class InstanceRequirements(BaseModel):
     """
     bareMetal: str | None = None
     """
-    Indicate whether bare metal instace types should be included, excluded, or required. Default is excluded.
+    Indicate whether bare metal instance types should be included, excluded, or required. Default is excluded.
     """
     baselineEbsBandwidthMbps: BaselineEbsBandwidthMbps | None = None
     """
@@ -721,7 +721,7 @@ class NetworkInterface(BaseModel):
     """
     associatePublicIpAddress: str | None = None
     """
-    Associate a public ip address with the network interface. Boolean value, can be left unset.
+    Associate a public IP address with the network interface. Boolean value, can be left unset.
     """
     connectionTrackingSpecification: ConnectionTrackingSpecification | None = None
     """
@@ -1473,7 +1473,7 @@ class NetworkInterfaceModel(BaseModel):
     """
     associatePublicIpAddress: str | None = None
     """
-    Associate a public ip address with the network interface. Boolean value, can be left unset.
+    Associate a public IP address with the network interface. Boolean value, can be left unset.
     """
     connectionTrackingSpecification: ConnectionTrackingSpecification | None = None
     """

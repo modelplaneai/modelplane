@@ -274,7 +274,7 @@ class ForProvider(BaseModel):
     """
     sourceSecurityGroupId: str | None = None
     """
-    Security group id to allow access to/from, depending on the type. Cannot be specified with cidr_blocks, ipv6_cidr_blocks, or self.
+    Security group ID to allow access to/from, depending on the type. Cannot be specified with cidr_blocks, ipv6_cidr_blocks, or self.
     """
     sourceSecurityGroupIdRef: SourceSecurityGroupIdRef | None = None
     """
@@ -362,7 +362,7 @@ class InitProvider(BaseModel):
     """
     sourceSecurityGroupId: str | None = None
     """
-    Security group id to allow access to/from, depending on the type. Cannot be specified with cidr_blocks, ipv6_cidr_blocks, or self.
+    Security group ID to allow access to/from, depending on the type. Cannot be specified with cidr_blocks, ipv6_cidr_blocks, or self.
     """
     sourceSecurityGroupIdRef: SourceSecurityGroupIdRef | None = None
     """
@@ -493,7 +493,7 @@ class AtProvider(BaseModel):
     """
     sourceSecurityGroupId: str | None = None
     """
-    Security group id to allow access to/from, depending on the type. Cannot be specified with cidr_blocks, ipv6_cidr_blocks, or self.
+    Security group ID to allow access to/from, depending on the type. Cannot be specified with cidr_blocks, ipv6_cidr_blocks, or self.
     """
     toPort: float | None = None
     """

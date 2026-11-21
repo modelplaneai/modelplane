@@ -65,11 +65,11 @@ class IpamPoolIdSelector(BaseModel):
 class ForProvider(BaseModel):
     cidr: str | None = None
     """
-    The CIDR you want to assign to the pool.
+    CIDR you want to assign to the pool.
     """
     description: str | None = None
     """
-    The description for the allocation.
+    Description for the allocation.
     """
     disallowedCidrs: list[str] | None = None
     """
@@ -77,7 +77,7 @@ class ForProvider(BaseModel):
     """
     ipamPoolId: str | None = None
     """
-    The ID of the pool to which you want to assign a CIDR.
+    ID of the pool to which you want to assign a CIDR.
     """
     ipamPoolIdRef: IpamPoolIdRef | None = None
     """
@@ -89,7 +89,7 @@ class ForProvider(BaseModel):
     """
     netmaskLength: float | None = None
     """
-    The netmask length of the CIDR you would like to allocate to the IPAM pool. Valid Values: 0-128.
+    Netmask length of the CIDR you would like to allocate to the IPAM pool. Valid Values: 0-128.
     """
     region: str
     """
@@ -105,11 +105,11 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     cidr: str | None = None
     """
-    The CIDR you want to assign to the pool.
+    CIDR you want to assign to the pool.
     """
     description: str | None = None
     """
-    The description for the allocation.
+    Description for the allocation.
     """
     disallowedCidrs: list[str] | None = None
     """
@@ -117,7 +117,7 @@ class InitProvider(BaseModel):
     """
     ipamPoolId: str | None = None
     """
-    The ID of the pool to which you want to assign a CIDR.
+    ID of the pool to which you want to assign a CIDR.
     """
     ipamPoolIdRef: IpamPoolIdRef | None = None
     """
@@ -129,7 +129,7 @@ class InitProvider(BaseModel):
     """
     netmaskLength: float | None = None
     """
-    The netmask length of the CIDR you would like to allocate to the IPAM pool. Valid Values: 0-128.
+    Netmask length of the CIDR you would like to allocate to the IPAM pool. Valid Values: 0-128.
     """
     tags: dict[str, str] | None = None
     """
@@ -202,11 +202,11 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     cidr: str | None = None
     """
-    The CIDR you want to assign to the pool.
+    CIDR you want to assign to the pool.
     """
     description: str | None = None
     """
-    The description for the allocation.
+    Description for the allocation.
     """
     disallowedCidrs: list[str] | None = None
     """
@@ -214,19 +214,19 @@ class AtProvider(BaseModel):
     """
     id: str | None = None
     """
-    The ID of the allocation.
+    ID of the allocation.
     """
     ipamPoolAllocationId: str | None = None
     """
-    The ID of the allocation.
+    ID of the allocation.
     """
     ipamPoolId: str | None = None
     """
-    The ID of the pool to which you want to assign a CIDR.
+    ID of the pool to which you want to assign a CIDR.
     """
     netmaskLength: float | None = None
     """
-    The netmask length of the CIDR you would like to allocate to the IPAM pool. Valid Values: 0-128.
+    Netmask length of the CIDR you would like to allocate to the IPAM pool. Valid Values: 0-128.
     """
     region: str | None = None
     """
@@ -235,15 +235,15 @@ class AtProvider(BaseModel):
     """
     resourceId: str | None = None
     """
-    The ID of the resource.
+    ID of the resource.
     """
     resourceOwner: str | None = None
     """
-    The owner of the resource.
+    Owner of the resource.
     """
     resourceType: str | None = None
     """
-    The type of the resource.
+    Type of the resource.
     """
     tags: dict[str, str] | None = None
     """

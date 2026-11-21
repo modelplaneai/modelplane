@@ -118,7 +118,7 @@ class ForProvider(BaseModel):
     """
     sourceAmiId: str | None = None
     """
-    Id of the AMI to copy. This id must be valid in the region
+    ID of the AMI to copy. This ID must be valid in the region
     given by source_ami_region.
     """
     sourceAmiIdRef: SourceAmiIdRef | None = None
@@ -172,7 +172,7 @@ class InitProvider(BaseModel):
     """
     sourceAmiId: str | None = None
     """
-    Id of the AMI to copy. This id must be valid in the region
+    ID of the AMI to copy. This ID must be valid in the region
     given by source_ami_region.
     """
     sourceAmiIdRef: SourceAmiIdRef | None = None
@@ -379,7 +379,7 @@ class AtProvider(BaseModel):
     """
     sourceAmiId: str | None = None
     """
-    Id of the AMI to copy. This id must be valid in the region
+    ID of the AMI to copy. This ID must be valid in the region
     given by source_ami_region.
     """
     sourceAmiRegion: str | None = None

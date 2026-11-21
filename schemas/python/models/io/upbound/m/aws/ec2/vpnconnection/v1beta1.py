@@ -100,7 +100,7 @@ class TransitGatewayIdSelector(BaseModel):
 class CloudwatchLogOptions(BaseModel):
     bgpLogEnabled: bool | None = None
     """
-    Enable or disable BGP logging feature. The default is false.
+    Whether to enable the BGP logging feature. The default is false.
     """
     bgpLogGroupArn: str | None = None
     """
@@ -108,11 +108,11 @@ class CloudwatchLogOptions(BaseModel):
     """
     bgpLogOutputFormat: str | None = None
     """
-    Set BGP log format. Default format is json. Possible values are: json and text. The default is json.
+    Set BGP log format. Default format is JSON. Possible values are: json and text. The default is json.
     """
     logEnabled: bool | None = None
     """
-    Enable or disable VPN tunnel logging feature. The default is false.
+    Whether to enable the VPN tunnel logging feature. The default is false.
     """
     logGroupArn: str | None = None
     """
@@ -120,7 +120,7 @@ class CloudwatchLogOptions(BaseModel):
     """
     logOutputFormat: str | None = None
     """
-    Set log format. Default format is json. Possible values are: json and text. The default is json.
+    Set log format. Default format is JSON. Possible values are: json and text. The default is json.
     """
 
 
@@ -227,7 +227,7 @@ class VpnGatewayIdSelector(BaseModel):
 class ForProvider(BaseModel):
     customerGatewayId: str | None = None
     """
-    The ID of the customer gateway.
+    ID of the customer gateway.
     """
     customerGatewayIdRef: CustomerGatewayIdRef | None = None
     """
@@ -239,19 +239,19 @@ class ForProvider(BaseModel):
     """
     enableAcceleration: bool | None = None
     """
-    Indicate whether to enable acceleration for the VPN connection. Supports only EC2 Transit Gateway.
+    Whether to enable acceleration for the VPN connection. Supports only EC2 Transit Gateway.
     """
     localIpv4NetworkCidr: str | None = None
     """
-    The IPv4 CIDR on the customer gateway (on-premises) side of the VPN connection.
+    IPv4 CIDR on the customer gateway (on-premises) side of the VPN connection.
     """
     localIpv6NetworkCidr: str | None = None
     """
-    The IPv6 CIDR on the customer gateway (on-premises) side of the VPN connection.
+    IPv6 CIDR on the customer gateway (on-premises) side of the VPN connection.
     """
     outsideIpAddressType: str | None = None
     """
-    Indicates if a Public S2S VPN or Private S2S VPN over AWS Direct Connect. Valid values are PublicIpv4 | PrivateIpv4
+    Type of VPN endpoint, either a public Site-to-Site VPN or a private Site-to-Site VPN over AWS Direct Connect. Valid values are PublicIpv4 | PrivateIpv4.
     """
     presharedKeyStorage: str | None = None
     """
@@ -264,11 +264,11 @@ class ForProvider(BaseModel):
     """
     remoteIpv4NetworkCidr: str | None = None
     """
-    The IPv4 CIDR on the AWS side of the VPN connection.
+    IPv4 CIDR on the AWS side of the VPN connection.
     """
     remoteIpv6NetworkCidr: str | None = None
     """
-    The IPv6 CIDR on the AWS side of the VPN connection.
+    IPv6 CIDR on the AWS side of the VPN connection.
     """
     staticRoutesOnly: bool | None = None
     """
@@ -280,7 +280,7 @@ class ForProvider(BaseModel):
     """
     transitGatewayId: str | None = None
     """
-    The ID of the EC2 Transit Gateway.
+    ID of the EC2 Transit Gateway.
     """
     transitGatewayIdRef: TransitGatewayIdRef | None = None
     """
@@ -292,35 +292,35 @@ class ForProvider(BaseModel):
     """
     transportTransitGatewayAttachmentId: str | None = None
     """
-    . The attachment ID of the Transit Gateway attachment to Direct Connect Gateway. The ID is obtained through a data source only.
+    Attachment ID of the Transit Gateway attachment to Direct Connect Gateway. Required when outside_ip_address_type is set to PrivateIpv4. The ID is obtained through a data source only.
     """
     tunnel1DpdTimeoutAction: str | None = None
     """
-    The action to take after DPD timeout occurs for the first VPN tunnel. Specify restart to restart the IKE initiation. Specify clear to end the IKE session. Valid values are clear | none | restart.
+    Action to take after DPD timeout occurs for the first VPN tunnel. Specify restart to restart the IKE initiation. Specify clear to end the IKE session. Valid values are clear | none | restart.
     """
     tunnel1DpdTimeoutSeconds: float | None = None
     """
-    The number of seconds after which a DPD timeout occurs for the first VPN tunnel. Valid value is equal or higher than 30.
+    Number of seconds after which a DPD timeout occurs for the first VPN tunnel. Valid value is equal or higher than 30.
     """
     tunnel1EnableTunnelLifecycleControl: bool | None = None
     """
-    Turn on or off tunnel endpoint lifecycle control feature for the first VPN tunnel. Valid values are true | false.
+    Whether to enable the tunnel endpoint lifecycle control feature for the first VPN tunnel. Valid values are true | false.
     """
     tunnel1IkeVersions: list[str] | None = None
     """
-    The IKE versions that are permitted for the first VPN tunnel. Valid values are ikev1 | ikev2.
+    IKE versions that are permitted for the first VPN tunnel. Valid values are ikev1 | ikev2.
     """
     tunnel1InsideCidr: str | None = None
     """
-    The CIDR block of the inside IP addresses for the first VPN tunnel. Valid value is a size /30 CIDR block from the 169.254.0.0/16 range.
+    CIDR block of the inside IP addresses for the first VPN tunnel. Valid value is a size /30 CIDR block from the 169.254.0.0/16 range.
     """
     tunnel1InsideIpv6Cidr: str | None = None
     """
-    The range of inside IPv6 addresses for the first VPN tunnel. Supports only EC2 Transit Gateway. Valid value is a size /126 CIDR block from the local fd00::/8 range.
+    Range of inside IPv6 addresses for the first VPN tunnel. Supports only EC2 Transit Gateway. Valid value is a size /126 CIDR block from the local fd00::/8 range.
     """
     tunnel1LogOptions: Tunnel1LogOptions | None = None
     """
-    Options for logging VPN tunnel activity. See Log Options below for more details.
+    Options for logging VPN tunnel activity. See tunnel1_log_options below for more details.
     """
     tunnel1Phase1DhGroupNumbers: list[float] | None = None
     """
@@ -336,7 +336,7 @@ class ForProvider(BaseModel):
     """
     tunnel1Phase1LifetimeSeconds: float | None = None
     """
-    The lifetime for phase 1 of the IKE negotiation for the first VPN tunnel, in seconds. Valid value is between 900 and 28800.
+    Lifetime for phase 1 of the IKE negotiation for the first VPN tunnel, in seconds. Valid value is between 900 and 28800.
     """
     tunnel1Phase2DhGroupNumbers: list[float] | None = None
     """
@@ -352,55 +352,55 @@ class ForProvider(BaseModel):
     """
     tunnel1Phase2LifetimeSeconds: float | None = None
     """
-    The lifetime for phase 2 of the IKE negotiation for the first VPN tunnel, in seconds. Valid value is between 900 and 3600.
+    Lifetime for phase 2 of the IKE negotiation for the first VPN tunnel, in seconds. Valid value is between 900 and 3600.
     """
     tunnel1PresharedKeySecretRef: Tunnel1PresharedKeySecretRef | None = None
     """
-    The preshared key of the first VPN tunnel. The preshared key must be between 8 and 64 characters in length and cannot start with zero(0). Allowed characters are alphanumeric characters, periods(.) and underscores(_).
+    Preshared key of the first VPN tunnel. The preshared key must be between 8 and 64 characters in length and cannot start with zero(0). Allowed characters are alphanumeric characters, periods(.) and underscores(_).
     """
     tunnel1RekeyFuzzPercentage: float | None = None
     """
-    The percentage of the rekey window for the first VPN tunnel (determined by tunnel1_rekey_margin_time_seconds) during which the rekey time is randomly selected. Valid value is between 0 and 100.
+    Percentage of the rekey window for the first VPN tunnel (determined by tunnel1_rekey_margin_time_seconds) during which the rekey time is randomly selected. Valid value is between 0 and 100.
     """
     tunnel1RekeyMarginTimeSeconds: float | None = None
     """
-    The margin time, in seconds, before the phase 2 lifetime expires, during which the AWS side of the first VPN connection performs an IKE rekey. The exact time of the rekey is randomly selected based on the value for tunnel1_rekey_fuzz_percentage. Valid value is between 60 and half of tunnel1_phase2_lifetime_seconds.
+    Margin time, in seconds, before the phase 2 lifetime expires, during which the AWS side of the first VPN connection performs an IKE rekey. The exact time of the rekey is randomly selected based on the value for tunnel1_rekey_fuzz_percentage. Valid value is between 60 and half of tunnel1_phase2_lifetime_seconds.
     """
     tunnel1ReplayWindowSize: float | None = None
     """
-    The number of packets in an IKE replay window for the first VPN tunnel. Valid value is between 64 and 2048.
+    Number of packets in an IKE replay window for the first VPN tunnel. Valid value is between 64 and 2048.
     """
     tunnel1StartupAction: str | None = None
     """
-    The action to take when the establishing the tunnel for the first VPN connection. By default, your customer gateway device must initiate the IKE negotiation and bring up the tunnel. Specify start for AWS to initiate the IKE negotiation. Valid values are add | start.
+    Action to take when the establishing the tunnel for the first VPN connection. By default, your customer gateway device must initiate the IKE negotiation and bring up the tunnel. Specify start for AWS to initiate the IKE negotiation. Valid values are add | start.
     """
     tunnel2DpdTimeoutAction: str | None = None
     """
-    The action to take after DPD timeout occurs for the second VPN tunnel. Specify restart to restart the IKE initiation. Specify clear to end the IKE session. Valid values are clear | none | restart.
+    Action to take after DPD timeout occurs for the second VPN tunnel. Specify restart to restart the IKE initiation. Specify clear to end the IKE session. Valid values are clear | none | restart.
     """
     tunnel2DpdTimeoutSeconds: float | None = None
     """
-    The number of seconds after which a DPD timeout occurs for the second VPN tunnel. Valid value is equal or higher than 30.
+    Number of seconds after which a DPD timeout occurs for the second VPN tunnel. Valid value is equal or higher than 30.
     """
     tunnel2EnableTunnelLifecycleControl: bool | None = None
     """
-    Turn on or off tunnel endpoint lifecycle control feature for the second VPN tunnel. Valid values are true | false.
+    Whether to enable the tunnel endpoint lifecycle control feature for the second VPN tunnel. Valid values are true | false.
     """
     tunnel2IkeVersions: list[str] | None = None
     """
-    The IKE versions that are permitted for the second VPN tunnel. Valid values are ikev1 | ikev2.
+    IKE versions that are permitted for the second VPN tunnel. Valid values are ikev1 | ikev2.
     """
     tunnel2InsideCidr: str | None = None
     """
-    The CIDR block of the inside IP addresses for the second VPN tunnel. Valid value is a size /30 CIDR block from the 169.254.0.0/16 range.
+    CIDR block of the inside IP addresses for the second VPN tunnel. Valid value is a size /30 CIDR block from the 169.254.0.0/16 range.
     """
     tunnel2InsideIpv6Cidr: str | None = None
     """
-    The range of inside IPv6 addresses for the second VPN tunnel. Supports only EC2 Transit Gateway. Valid value is a size /126 CIDR block from the local fd00::/8 range.
+    Range of inside IPv6 addresses for the second VPN tunnel. Supports only EC2 Transit Gateway. Valid value is a size /126 CIDR block from the local fd00::/8 range.
     """
     tunnel2LogOptions: Tunnel2LogOptions | None = None
     """
-    Options for logging VPN tunnel activity. See Log Options below for more details.
+    Options for logging VPN tunnel activity. See tunnel2_log_options below for more details.
     """
     tunnel2Phase1DhGroupNumbers: list[float] | None = None
     """
@@ -416,7 +416,7 @@ class ForProvider(BaseModel):
     """
     tunnel2Phase1LifetimeSeconds: float | None = None
     """
-    The lifetime for phase 1 of the IKE negotiation for the second VPN tunnel, in seconds. Valid value is between 900 and 28800.
+    Lifetime for phase 1 of the IKE negotiation for the second VPN tunnel, in seconds. Valid value is between 900 and 28800.
     """
     tunnel2Phase2DhGroupNumbers: list[float] | None = None
     """
@@ -432,27 +432,27 @@ class ForProvider(BaseModel):
     """
     tunnel2Phase2LifetimeSeconds: float | None = None
     """
-    The lifetime for phase 2 of the IKE negotiation for the second VPN tunnel, in seconds. Valid value is between 900 and 3600.
+    Lifetime for phase 2 of the IKE negotiation for the second VPN tunnel, in seconds. Valid value is between 900 and 3600.
     """
     tunnel2PresharedKeySecretRef: Tunnel2PresharedKeySecretRef | None = None
     """
-    The preshared key of the second VPN tunnel. The preshared key must be between 8 and 64 characters in length and cannot start with zero(0). Allowed characters are alphanumeric characters, periods(.) and underscores(_).
+    Preshared key of the second VPN tunnel. The preshared key must be between 8 and 64 characters in length and cannot start with zero(0). Allowed characters are alphanumeric characters, periods(.) and underscores(_).
     """
     tunnel2RekeyFuzzPercentage: float | None = None
     """
-    The percentage of the rekey window for the second VPN tunnel (determined by tunnel2_rekey_margin_time_seconds) during which the rekey time is randomly selected. Valid value is between 0 and 100.
+    Percentage of the rekey window for the second VPN tunnel (determined by tunnel2_rekey_margin_time_seconds) during which the rekey time is randomly selected. Valid value is between 0 and 100.
     """
     tunnel2RekeyMarginTimeSeconds: float | None = None
     """
-    The margin time, in seconds, before the phase 2 lifetime expires, during which the AWS side of the second VPN connection performs an IKE rekey. The exact time of the rekey is randomly selected based on the value for tunnel2_rekey_fuzz_percentage. Valid value is between 60 and half of tunnel2_phase2_lifetime_seconds.
+    Margin time, in seconds, before the phase 2 lifetime expires, during which the AWS side of the second VPN connection performs an IKE rekey. The exact time of the rekey is randomly selected based on the value for tunnel2_rekey_fuzz_percentage. Valid value is between 60 and half of tunnel2_phase2_lifetime_seconds.
     """
     tunnel2ReplayWindowSize: float | None = None
     """
-    The number of packets in an IKE replay window for the second VPN tunnel. Valid value is between 64 and 2048.
+    Number of packets in an IKE replay window for the second VPN tunnel. Valid value is between 64 and 2048.
     """
     tunnel2StartupAction: str | None = None
     """
-    The action to take when the establishing the tunnel for the second VPN connection. By default, your customer gateway device must initiate the IKE negotiation and bring up the tunnel. Specify start for AWS to initiate the IKE negotiation. Valid values are add | start.
+    Action to take when the establishing the tunnel for the second VPN connection. By default, your customer gateway device must initiate the IKE negotiation and bring up the tunnel. Specify start for AWS to initiate the IKE negotiation. Valid values are add | start.
     """
     tunnelBandwidth: str | None = None
     """
@@ -464,7 +464,7 @@ class ForProvider(BaseModel):
     """
     type: str | None = None
     """
-    The type of VPN connection. The only type AWS supports at this time is "ipsec.1".
+    Type of VPN connection. The only type AWS supports at this time is "ipsec.1".
     """
     typeRef: TypeRef | None = None
     """
@@ -480,7 +480,7 @@ class ForProvider(BaseModel):
     """
     vpnGatewayId: str | None = None
     """
-    The ID of the Virtual Private Gateway.
+    ID of the Virtual Private Gateway.
     """
     vpnGatewayIdRef: VpnGatewayIdRef | None = None
     """
@@ -495,7 +495,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     customerGatewayId: str | None = None
     """
-    The ID of the customer gateway.
+    ID of the customer gateway.
     """
     customerGatewayIdRef: CustomerGatewayIdRef | None = None
     """
@@ -507,19 +507,19 @@ class InitProvider(BaseModel):
     """
     enableAcceleration: bool | None = None
     """
-    Indicate whether to enable acceleration for the VPN connection. Supports only EC2 Transit Gateway.
+    Whether to enable acceleration for the VPN connection. Supports only EC2 Transit Gateway.
     """
     localIpv4NetworkCidr: str | None = None
     """
-    The IPv4 CIDR on the customer gateway (on-premises) side of the VPN connection.
+    IPv4 CIDR on the customer gateway (on-premises) side of the VPN connection.
     """
     localIpv6NetworkCidr: str | None = None
     """
-    The IPv6 CIDR on the customer gateway (on-premises) side of the VPN connection.
+    IPv6 CIDR on the customer gateway (on-premises) side of the VPN connection.
     """
     outsideIpAddressType: str | None = None
     """
-    Indicates if a Public S2S VPN or Private S2S VPN over AWS Direct Connect. Valid values are PublicIpv4 | PrivateIpv4
+    Type of VPN endpoint, either a public Site-to-Site VPN or a private Site-to-Site VPN over AWS Direct Connect. Valid values are PublicIpv4 | PrivateIpv4.
     """
     presharedKeyStorage: str | None = None
     """
@@ -527,11 +527,11 @@ class InitProvider(BaseModel):
     """
     remoteIpv4NetworkCidr: str | None = None
     """
-    The IPv4 CIDR on the AWS side of the VPN connection.
+    IPv4 CIDR on the AWS side of the VPN connection.
     """
     remoteIpv6NetworkCidr: str | None = None
     """
-    The IPv6 CIDR on the AWS side of the VPN connection.
+    IPv6 CIDR on the AWS side of the VPN connection.
     """
     staticRoutesOnly: bool | None = None
     """
@@ -543,7 +543,7 @@ class InitProvider(BaseModel):
     """
     transitGatewayId: str | None = None
     """
-    The ID of the EC2 Transit Gateway.
+    ID of the EC2 Transit Gateway.
     """
     transitGatewayIdRef: TransitGatewayIdRef | None = None
     """
@@ -555,35 +555,35 @@ class InitProvider(BaseModel):
     """
     transportTransitGatewayAttachmentId: str | None = None
     """
-    . The attachment ID of the Transit Gateway attachment to Direct Connect Gateway. The ID is obtained through a data source only.
+    Attachment ID of the Transit Gateway attachment to Direct Connect Gateway. Required when outside_ip_address_type is set to PrivateIpv4. The ID is obtained through a data source only.
     """
     tunnel1DpdTimeoutAction: str | None = None
     """
-    The action to take after DPD timeout occurs for the first VPN tunnel. Specify restart to restart the IKE initiation. Specify clear to end the IKE session. Valid values are clear | none | restart.
+    Action to take after DPD timeout occurs for the first VPN tunnel. Specify restart to restart the IKE initiation. Specify clear to end the IKE session. Valid values are clear | none | restart.
     """
     tunnel1DpdTimeoutSeconds: float | None = None
     """
-    The number of seconds after which a DPD timeout occurs for the first VPN tunnel. Valid value is equal or higher than 30.
+    Number of seconds after which a DPD timeout occurs for the first VPN tunnel. Valid value is equal or higher than 30.
     """
     tunnel1EnableTunnelLifecycleControl: bool | None = None
     """
-    Turn on or off tunnel endpoint lifecycle control feature for the first VPN tunnel. Valid values are true | false.
+    Whether to enable the tunnel endpoint lifecycle control feature for the first VPN tunnel. Valid values are true | false.
     """
     tunnel1IkeVersions: list[str] | None = None
     """
-    The IKE versions that are permitted for the first VPN tunnel. Valid values are ikev1 | ikev2.
+    IKE versions that are permitted for the first VPN tunnel. Valid values are ikev1 | ikev2.
     """
     tunnel1InsideCidr: str | None = None
     """
-    The CIDR block of the inside IP addresses for the first VPN tunnel. Valid value is a size /30 CIDR block from the 169.254.0.0/16 range.
+    CIDR block of the inside IP addresses for the first VPN tunnel. Valid value is a size /30 CIDR block from the 169.254.0.0/16 range.
     """
     tunnel1InsideIpv6Cidr: str | None = None
     """
-    The range of inside IPv6 addresses for the first VPN tunnel. Supports only EC2 Transit Gateway. Valid value is a size /126 CIDR block from the local fd00::/8 range.
+    Range of inside IPv6 addresses for the first VPN tunnel. Supports only EC2 Transit Gateway. Valid value is a size /126 CIDR block from the local fd00::/8 range.
     """
     tunnel1LogOptions: Tunnel1LogOptions | None = None
     """
-    Options for logging VPN tunnel activity. See Log Options below for more details.
+    Options for logging VPN tunnel activity. See tunnel1_log_options below for more details.
     """
     tunnel1Phase1DhGroupNumbers: list[float] | None = None
     """
@@ -599,7 +599,7 @@ class InitProvider(BaseModel):
     """
     tunnel1Phase1LifetimeSeconds: float | None = None
     """
-    The lifetime for phase 1 of the IKE negotiation for the first VPN tunnel, in seconds. Valid value is between 900 and 28800.
+    Lifetime for phase 1 of the IKE negotiation for the first VPN tunnel, in seconds. Valid value is between 900 and 28800.
     """
     tunnel1Phase2DhGroupNumbers: list[float] | None = None
     """
@@ -615,55 +615,55 @@ class InitProvider(BaseModel):
     """
     tunnel1Phase2LifetimeSeconds: float | None = None
     """
-    The lifetime for phase 2 of the IKE negotiation for the first VPN tunnel, in seconds. Valid value is between 900 and 3600.
+    Lifetime for phase 2 of the IKE negotiation for the first VPN tunnel, in seconds. Valid value is between 900 and 3600.
     """
     tunnel1PresharedKeySecretRef: Tunnel1PresharedKeySecretRef | None = None
     """
-    The preshared key of the first VPN tunnel. The preshared key must be between 8 and 64 characters in length and cannot start with zero(0). Allowed characters are alphanumeric characters, periods(.) and underscores(_).
+    Preshared key of the first VPN tunnel. The preshared key must be between 8 and 64 characters in length and cannot start with zero(0). Allowed characters are alphanumeric characters, periods(.) and underscores(_).
     """
     tunnel1RekeyFuzzPercentage: float | None = None
     """
-    The percentage of the rekey window for the first VPN tunnel (determined by tunnel1_rekey_margin_time_seconds) during which the rekey time is randomly selected. Valid value is between 0 and 100.
+    Percentage of the rekey window for the first VPN tunnel (determined by tunnel1_rekey_margin_time_seconds) during which the rekey time is randomly selected. Valid value is between 0 and 100.
     """
     tunnel1RekeyMarginTimeSeconds: float | None = None
     """
-    The margin time, in seconds, before the phase 2 lifetime expires, during which the AWS side of the first VPN connection performs an IKE rekey. The exact time of the rekey is randomly selected based on the value for tunnel1_rekey_fuzz_percentage. Valid value is between 60 and half of tunnel1_phase2_lifetime_seconds.
+    Margin time, in seconds, before the phase 2 lifetime expires, during which the AWS side of the first VPN connection performs an IKE rekey. The exact time of the rekey is randomly selected based on the value for tunnel1_rekey_fuzz_percentage. Valid value is between 60 and half of tunnel1_phase2_lifetime_seconds.
     """
     tunnel1ReplayWindowSize: float | None = None
     """
-    The number of packets in an IKE replay window for the first VPN tunnel. Valid value is between 64 and 2048.
+    Number of packets in an IKE replay window for the first VPN tunnel. Valid value is between 64 and 2048.
     """
     tunnel1StartupAction: str | None = None
     """
-    The action to take when the establishing the tunnel for the first VPN connection. By default, your customer gateway device must initiate the IKE negotiation and bring up the tunnel. Specify start for AWS to initiate the IKE negotiation. Valid values are add | start.
+    Action to take when the establishing the tunnel for the first VPN connection. By default, your customer gateway device must initiate the IKE negotiation and bring up the tunnel. Specify start for AWS to initiate the IKE negotiation. Valid values are add | start.
     """
     tunnel2DpdTimeoutAction: str | None = None
     """
-    The action to take after DPD timeout occurs for the second VPN tunnel. Specify restart to restart the IKE initiation. Specify clear to end the IKE session. Valid values are clear | none | restart.
+    Action to take after DPD timeout occurs for the second VPN tunnel. Specify restart to restart the IKE initiation. Specify clear to end the IKE session. Valid values are clear | none | restart.
     """
     tunnel2DpdTimeoutSeconds: float | None = None
     """
-    The number of seconds after which a DPD timeout occurs for the second VPN tunnel. Valid value is equal or higher than 30.
+    Number of seconds after which a DPD timeout occurs for the second VPN tunnel. Valid value is equal or higher than 30.
     """
     tunnel2EnableTunnelLifecycleControl: bool | None = None
     """
-    Turn on or off tunnel endpoint lifecycle control feature for the second VPN tunnel. Valid values are true | false.
+    Whether to enable the tunnel endpoint lifecycle control feature for the second VPN tunnel. Valid values are true | false.
     """
     tunnel2IkeVersions: list[str] | None = None
     """
-    The IKE versions that are permitted for the second VPN tunnel. Valid values are ikev1 | ikev2.
+    IKE versions that are permitted for the second VPN tunnel. Valid values are ikev1 | ikev2.
     """
     tunnel2InsideCidr: str | None = None
     """
-    The CIDR block of the inside IP addresses for the second VPN tunnel. Valid value is a size /30 CIDR block from the 169.254.0.0/16 range.
+    CIDR block of the inside IP addresses for the second VPN tunnel. Valid value is a size /30 CIDR block from the 169.254.0.0/16 range.
     """
     tunnel2InsideIpv6Cidr: str | None = None
     """
-    The range of inside IPv6 addresses for the second VPN tunnel. Supports only EC2 Transit Gateway. Valid value is a size /126 CIDR block from the local fd00::/8 range.
+    Range of inside IPv6 addresses for the second VPN tunnel. Supports only EC2 Transit Gateway. Valid value is a size /126 CIDR block from the local fd00::/8 range.
     """
     tunnel2LogOptions: Tunnel2LogOptions | None = None
     """
-    Options for logging VPN tunnel activity. See Log Options below for more details.
+    Options for logging VPN tunnel activity. See tunnel2_log_options below for more details.
     """
     tunnel2Phase1DhGroupNumbers: list[float] | None = None
     """
@@ -679,7 +679,7 @@ class InitProvider(BaseModel):
     """
     tunnel2Phase1LifetimeSeconds: float | None = None
     """
-    The lifetime for phase 1 of the IKE negotiation for the second VPN tunnel, in seconds. Valid value is between 900 and 28800.
+    Lifetime for phase 1 of the IKE negotiation for the second VPN tunnel, in seconds. Valid value is between 900 and 28800.
     """
     tunnel2Phase2DhGroupNumbers: list[float] | None = None
     """
@@ -695,27 +695,27 @@ class InitProvider(BaseModel):
     """
     tunnel2Phase2LifetimeSeconds: float | None = None
     """
-    The lifetime for phase 2 of the IKE negotiation for the second VPN tunnel, in seconds. Valid value is between 900 and 3600.
+    Lifetime for phase 2 of the IKE negotiation for the second VPN tunnel, in seconds. Valid value is between 900 and 3600.
     """
     tunnel2PresharedKeySecretRef: Tunnel2PresharedKeySecretRef | None = None
     """
-    The preshared key of the second VPN tunnel. The preshared key must be between 8 and 64 characters in length and cannot start with zero(0). Allowed characters are alphanumeric characters, periods(.) and underscores(_).
+    Preshared key of the second VPN tunnel. The preshared key must be between 8 and 64 characters in length and cannot start with zero(0). Allowed characters are alphanumeric characters, periods(.) and underscores(_).
     """
     tunnel2RekeyFuzzPercentage: float | None = None
     """
-    The percentage of the rekey window for the second VPN tunnel (determined by tunnel2_rekey_margin_time_seconds) during which the rekey time is randomly selected. Valid value is between 0 and 100.
+    Percentage of the rekey window for the second VPN tunnel (determined by tunnel2_rekey_margin_time_seconds) during which the rekey time is randomly selected. Valid value is between 0 and 100.
     """
     tunnel2RekeyMarginTimeSeconds: float | None = None
     """
-    The margin time, in seconds, before the phase 2 lifetime expires, during which the AWS side of the second VPN connection performs an IKE rekey. The exact time of the rekey is randomly selected based on the value for tunnel2_rekey_fuzz_percentage. Valid value is between 60 and half of tunnel2_phase2_lifetime_seconds.
+    Margin time, in seconds, before the phase 2 lifetime expires, during which the AWS side of the second VPN connection performs an IKE rekey. The exact time of the rekey is randomly selected based on the value for tunnel2_rekey_fuzz_percentage. Valid value is between 60 and half of tunnel2_phase2_lifetime_seconds.
     """
     tunnel2ReplayWindowSize: float | None = None
     """
-    The number of packets in an IKE replay window for the second VPN tunnel. Valid value is between 64 and 2048.
+    Number of packets in an IKE replay window for the second VPN tunnel. Valid value is between 64 and 2048.
     """
     tunnel2StartupAction: str | None = None
     """
-    The action to take when the establishing the tunnel for the second VPN connection. By default, your customer gateway device must initiate the IKE negotiation and bring up the tunnel. Specify start for AWS to initiate the IKE negotiation. Valid values are add | start.
+    Action to take when the establishing the tunnel for the second VPN connection. By default, your customer gateway device must initiate the IKE negotiation and bring up the tunnel. Specify start for AWS to initiate the IKE negotiation. Valid values are add | start.
     """
     tunnelBandwidth: str | None = None
     """
@@ -727,7 +727,7 @@ class InitProvider(BaseModel):
     """
     type: str | None = None
     """
-    The type of VPN connection. The only type AWS supports at this time is "ipsec.1".
+    Type of VPN connection. The only type AWS supports at this time is "ipsec.1".
     """
     typeRef: TypeRef | None = None
     """
@@ -743,7 +743,7 @@ class InitProvider(BaseModel):
     """
     vpnGatewayId: str | None = None
     """
-    The ID of the Virtual Private Gateway.
+    ID of the Virtual Private Gateway.
     """
     vpnGatewayIdRef: VpnGatewayIdRef | None = None
     """
@@ -820,22 +820,22 @@ class Spec(BaseModel):
 class Route(BaseModel):
     destinationCidrBlock: str | None = None
     """
-    The CIDR block associated with the local subnet of the customer data center.
+    CIDR block associated with the local subnet of the customer data center.
     """
     source: str | None = None
     """
-    Indicates how the routes were provided.
+    How the routes were provided.
     """
     state: str | None = None
     """
-    The current state of the static route.
+    Current state of the static route.
     """
 
 
 class VgwTelemetryItem(BaseModel):
     acceptedRouteCount: float | None = None
     """
-    The number of accepted routes.
+    Number of accepted routes.
     """
     certificateArn: str | None = None
     """
@@ -843,15 +843,15 @@ class VgwTelemetryItem(BaseModel):
     """
     lastStatusChange: str | None = None
     """
-    The date and time of the last change in status.
+    Date and time of the last change in status.
     """
     outsideIpAddress: str | None = None
     """
-    The Internet-routable IP address of the virtual private gateway's outside interface.
+    Internet-routable IP address of the virtual private gateway's outside interface.
     """
     status: str | None = None
     """
-    The status of the VPN tunnel.
+    Status of the VPN tunnel.
     """
     statusMessage: str | None = None
     """
@@ -866,35 +866,35 @@ class AtProvider(BaseModel):
     """
     coreNetworkArn: str | None = None
     """
-    The ARN of the core network.
+    ARN of the core network.
     """
     coreNetworkAttachmentArn: str | None = None
     """
-    The ARN of the core network attachment.
+    ARN of the core network attachment.
     """
     customerGatewayId: str | None = None
     """
-    The ID of the customer gateway.
+    ID of the customer gateway.
     """
     enableAcceleration: bool | None = None
     """
-    Indicate whether to enable acceleration for the VPN connection. Supports only EC2 Transit Gateway.
+    Whether to enable acceleration for the VPN connection. Supports only EC2 Transit Gateway.
     """
     id: str | None = None
     """
-    The amazon-assigned ID of the VPN connection.
+    Amazon-assigned ID of the VPN connection.
     """
     localIpv4NetworkCidr: str | None = None
     """
-    The IPv4 CIDR on the customer gateway (on-premises) side of the VPN connection.
+    IPv4 CIDR on the customer gateway (on-premises) side of the VPN connection.
     """
     localIpv6NetworkCidr: str | None = None
     """
-    The IPv6 CIDR on the customer gateway (on-premises) side of the VPN connection.
+    IPv6 CIDR on the customer gateway (on-premises) side of the VPN connection.
     """
     outsideIpAddressType: str | None = None
     """
-    Indicates if a Public S2S VPN or Private S2S VPN over AWS Direct Connect. Valid values are PublicIpv4 | PrivateIpv4
+    Type of VPN endpoint, either a public Site-to-Site VPN or a private Site-to-Site VPN over AWS Direct Connect. Valid values are PublicIpv4 | PrivateIpv4.
     """
     presharedKeyArn: str | None = None
     """
@@ -911,15 +911,15 @@ class AtProvider(BaseModel):
     """
     remoteIpv4NetworkCidr: str | None = None
     """
-    The IPv4 CIDR on the AWS side of the VPN connection.
+    IPv4 CIDR on the AWS side of the VPN connection.
     """
     remoteIpv6NetworkCidr: str | None = None
     """
-    The IPv6 CIDR on the AWS side of the VPN connection.
+    IPv6 CIDR on the AWS side of the VPN connection.
     """
     routes: list[Route] | None = None
     """
-    The static routes associated with the VPN connection. Detailed below.
+    Static routes associated with the VPN connection. Detailed below.
     """
     staticRoutesOnly: bool | None = None
     """
@@ -931,7 +931,7 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
     transitGatewayAttachmentId: str | None = None
     """
@@ -939,55 +939,55 @@ class AtProvider(BaseModel):
     """
     transitGatewayId: str | None = None
     """
-    The ID of the EC2 Transit Gateway.
+    ID of the EC2 Transit Gateway.
     """
     transportTransitGatewayAttachmentId: str | None = None
     """
-    . The attachment ID of the Transit Gateway attachment to Direct Connect Gateway. The ID is obtained through a data source only.
+    Attachment ID of the Transit Gateway attachment to Direct Connect Gateway. Required when outside_ip_address_type is set to PrivateIpv4. The ID is obtained through a data source only.
     """
     tunnel1Address: str | None = None
     """
-    The public IP address of the first VPN tunnel.
+    Public IP address of the first VPN tunnel.
     """
     tunnel1BgpAsn: str | None = None
     """
-    The bgp asn number of the first VPN tunnel.
+    BGP ASN number of the first VPN tunnel.
     """
     tunnel1BgpHoldtime: float | None = None
     """
-    The bgp holdtime of the first VPN tunnel.
+    BGP holdtime of the first VPN tunnel.
     """
     tunnel1CgwInsideAddress: str | None = None
     """
-    The RFC 6890 link-local address of the first VPN tunnel (Customer Gateway Side).
+    RFC 6890 link-local address of the first VPN tunnel (Customer Gateway Side).
     """
     tunnel1DpdTimeoutAction: str | None = None
     """
-    The action to take after DPD timeout occurs for the first VPN tunnel. Specify restart to restart the IKE initiation. Specify clear to end the IKE session. Valid values are clear | none | restart.
+    Action to take after DPD timeout occurs for the first VPN tunnel. Specify restart to restart the IKE initiation. Specify clear to end the IKE session. Valid values are clear | none | restart.
     """
     tunnel1DpdTimeoutSeconds: float | None = None
     """
-    The number of seconds after which a DPD timeout occurs for the first VPN tunnel. Valid value is equal or higher than 30.
+    Number of seconds after which a DPD timeout occurs for the first VPN tunnel. Valid value is equal or higher than 30.
     """
     tunnel1EnableTunnelLifecycleControl: bool | None = None
     """
-    Turn on or off tunnel endpoint lifecycle control feature for the first VPN tunnel. Valid values are true | false.
+    Whether to enable the tunnel endpoint lifecycle control feature for the first VPN tunnel. Valid values are true | false.
     """
     tunnel1IkeVersions: list[str] | None = None
     """
-    The IKE versions that are permitted for the first VPN tunnel. Valid values are ikev1 | ikev2.
+    IKE versions that are permitted for the first VPN tunnel. Valid values are ikev1 | ikev2.
     """
     tunnel1InsideCidr: str | None = None
     """
-    The CIDR block of the inside IP addresses for the first VPN tunnel. Valid value is a size /30 CIDR block from the 169.254.0.0/16 range.
+    CIDR block of the inside IP addresses for the first VPN tunnel. Valid value is a size /30 CIDR block from the 169.254.0.0/16 range.
     """
     tunnel1InsideIpv6Cidr: str | None = None
     """
-    The range of inside IPv6 addresses for the first VPN tunnel. Supports only EC2 Transit Gateway. Valid value is a size /126 CIDR block from the local fd00::/8 range.
+    Range of inside IPv6 addresses for the first VPN tunnel. Supports only EC2 Transit Gateway. Valid value is a size /126 CIDR block from the local fd00::/8 range.
     """
     tunnel1LogOptions: Tunnel1LogOptions | None = None
     """
-    Options for logging VPN tunnel activity. See Log Options below for more details.
+    Options for logging VPN tunnel activity. See tunnel1_log_options below for more details.
     """
     tunnel1Phase1DhGroupNumbers: list[float] | None = None
     """
@@ -1003,7 +1003,7 @@ class AtProvider(BaseModel):
     """
     tunnel1Phase1LifetimeSeconds: float | None = None
     """
-    The lifetime for phase 1 of the IKE negotiation for the first VPN tunnel, in seconds. Valid value is between 900 and 28800.
+    Lifetime for phase 1 of the IKE negotiation for the first VPN tunnel, in seconds. Valid value is between 900 and 28800.
     """
     tunnel1Phase2DhGroupNumbers: list[float] | None = None
     """
@@ -1019,71 +1019,71 @@ class AtProvider(BaseModel):
     """
     tunnel1Phase2LifetimeSeconds: float | None = None
     """
-    The lifetime for phase 2 of the IKE negotiation for the first VPN tunnel, in seconds. Valid value is between 900 and 3600.
+    Lifetime for phase 2 of the IKE negotiation for the first VPN tunnel, in seconds. Valid value is between 900 and 3600.
     """
     tunnel1RekeyFuzzPercentage: float | None = None
     """
-    The percentage of the rekey window for the first VPN tunnel (determined by tunnel1_rekey_margin_time_seconds) during which the rekey time is randomly selected. Valid value is between 0 and 100.
+    Percentage of the rekey window for the first VPN tunnel (determined by tunnel1_rekey_margin_time_seconds) during which the rekey time is randomly selected. Valid value is between 0 and 100.
     """
     tunnel1RekeyMarginTimeSeconds: float | None = None
     """
-    The margin time, in seconds, before the phase 2 lifetime expires, during which the AWS side of the first VPN connection performs an IKE rekey. The exact time of the rekey is randomly selected based on the value for tunnel1_rekey_fuzz_percentage. Valid value is between 60 and half of tunnel1_phase2_lifetime_seconds.
+    Margin time, in seconds, before the phase 2 lifetime expires, during which the AWS side of the first VPN connection performs an IKE rekey. The exact time of the rekey is randomly selected based on the value for tunnel1_rekey_fuzz_percentage. Valid value is between 60 and half of tunnel1_phase2_lifetime_seconds.
     """
     tunnel1ReplayWindowSize: float | None = None
     """
-    The number of packets in an IKE replay window for the first VPN tunnel. Valid value is between 64 and 2048.
+    Number of packets in an IKE replay window for the first VPN tunnel. Valid value is between 64 and 2048.
     """
     tunnel1StartupAction: str | None = None
     """
-    The action to take when the establishing the tunnel for the first VPN connection. By default, your customer gateway device must initiate the IKE negotiation and bring up the tunnel. Specify start for AWS to initiate the IKE negotiation. Valid values are add | start.
+    Action to take when the establishing the tunnel for the first VPN connection. By default, your customer gateway device must initiate the IKE negotiation and bring up the tunnel. Specify start for AWS to initiate the IKE negotiation. Valid values are add | start.
     """
     tunnel1VgwInsideAddress: str | None = None
     """
-    The RFC 6890 link-local address of the first VPN tunnel (VPN Gateway Side).
+    RFC 6890 link-local address of the first VPN tunnel (VPN Gateway Side).
     """
     tunnel2Address: str | None = None
     """
-    The public IP address of the second VPN tunnel.
+    Public IP address of the second VPN tunnel.
     """
     tunnel2BgpAsn: str | None = None
     """
-    The bgp asn number of the second VPN tunnel.
+    BGP ASN number of the second VPN tunnel.
     """
     tunnel2BgpHoldtime: float | None = None
     """
-    The bgp holdtime of the second VPN tunnel.
+    BGP holdtime of the second VPN tunnel.
     """
     tunnel2CgwInsideAddress: str | None = None
     """
-    The RFC 6890 link-local address of the second VPN tunnel (Customer Gateway Side).
+    RFC 6890 link-local address of the second VPN tunnel (Customer Gateway Side).
     """
     tunnel2DpdTimeoutAction: str | None = None
     """
-    The action to take after DPD timeout occurs for the second VPN tunnel. Specify restart to restart the IKE initiation. Specify clear to end the IKE session. Valid values are clear | none | restart.
+    Action to take after DPD timeout occurs for the second VPN tunnel. Specify restart to restart the IKE initiation. Specify clear to end the IKE session. Valid values are clear | none | restart.
     """
     tunnel2DpdTimeoutSeconds: float | None = None
     """
-    The number of seconds after which a DPD timeout occurs for the second VPN tunnel. Valid value is equal or higher than 30.
+    Number of seconds after which a DPD timeout occurs for the second VPN tunnel. Valid value is equal or higher than 30.
     """
     tunnel2EnableTunnelLifecycleControl: bool | None = None
     """
-    Turn on or off tunnel endpoint lifecycle control feature for the second VPN tunnel. Valid values are true | false.
+    Whether to enable the tunnel endpoint lifecycle control feature for the second VPN tunnel. Valid values are true | false.
     """
     tunnel2IkeVersions: list[str] | None = None
     """
-    The IKE versions that are permitted for the second VPN tunnel. Valid values are ikev1 | ikev2.
+    IKE versions that are permitted for the second VPN tunnel. Valid values are ikev1 | ikev2.
     """
     tunnel2InsideCidr: str | None = None
     """
-    The CIDR block of the inside IP addresses for the second VPN tunnel. Valid value is a size /30 CIDR block from the 169.254.0.0/16 range.
+    CIDR block of the inside IP addresses for the second VPN tunnel. Valid value is a size /30 CIDR block from the 169.254.0.0/16 range.
     """
     tunnel2InsideIpv6Cidr: str | None = None
     """
-    The range of inside IPv6 addresses for the second VPN tunnel. Supports only EC2 Transit Gateway. Valid value is a size /126 CIDR block from the local fd00::/8 range.
+    Range of inside IPv6 addresses for the second VPN tunnel. Supports only EC2 Transit Gateway. Valid value is a size /126 CIDR block from the local fd00::/8 range.
     """
     tunnel2LogOptions: Tunnel2LogOptions | None = None
     """
-    Options for logging VPN tunnel activity. See Log Options below for more details.
+    Options for logging VPN tunnel activity. See tunnel2_log_options below for more details.
     """
     tunnel2Phase1DhGroupNumbers: list[float] | None = None
     """
@@ -1099,7 +1099,7 @@ class AtProvider(BaseModel):
     """
     tunnel2Phase1LifetimeSeconds: float | None = None
     """
-    The lifetime for phase 1 of the IKE negotiation for the second VPN tunnel, in seconds. Valid value is between 900 and 28800.
+    Lifetime for phase 1 of the IKE negotiation for the second VPN tunnel, in seconds. Valid value is between 900 and 28800.
     """
     tunnel2Phase2DhGroupNumbers: list[float] | None = None
     """
@@ -1115,27 +1115,27 @@ class AtProvider(BaseModel):
     """
     tunnel2Phase2LifetimeSeconds: float | None = None
     """
-    The lifetime for phase 2 of the IKE negotiation for the second VPN tunnel, in seconds. Valid value is between 900 and 3600.
+    Lifetime for phase 2 of the IKE negotiation for the second VPN tunnel, in seconds. Valid value is between 900 and 3600.
     """
     tunnel2RekeyFuzzPercentage: float | None = None
     """
-    The percentage of the rekey window for the second VPN tunnel (determined by tunnel2_rekey_margin_time_seconds) during which the rekey time is randomly selected. Valid value is between 0 and 100.
+    Percentage of the rekey window for the second VPN tunnel (determined by tunnel2_rekey_margin_time_seconds) during which the rekey time is randomly selected. Valid value is between 0 and 100.
     """
     tunnel2RekeyMarginTimeSeconds: float | None = None
     """
-    The margin time, in seconds, before the phase 2 lifetime expires, during which the AWS side of the second VPN connection performs an IKE rekey. The exact time of the rekey is randomly selected based on the value for tunnel2_rekey_fuzz_percentage. Valid value is between 60 and half of tunnel2_phase2_lifetime_seconds.
+    Margin time, in seconds, before the phase 2 lifetime expires, during which the AWS side of the second VPN connection performs an IKE rekey. The exact time of the rekey is randomly selected based on the value for tunnel2_rekey_fuzz_percentage. Valid value is between 60 and half of tunnel2_phase2_lifetime_seconds.
     """
     tunnel2ReplayWindowSize: float | None = None
     """
-    The number of packets in an IKE replay window for the second VPN tunnel. Valid value is between 64 and 2048.
+    Number of packets in an IKE replay window for the second VPN tunnel. Valid value is between 64 and 2048.
     """
     tunnel2StartupAction: str | None = None
     """
-    The action to take when the establishing the tunnel for the second VPN connection. By default, your customer gateway device must initiate the IKE negotiation and bring up the tunnel. Specify start for AWS to initiate the IKE negotiation. Valid values are add | start.
+    Action to take when the establishing the tunnel for the second VPN connection. By default, your customer gateway device must initiate the IKE negotiation and bring up the tunnel. Specify start for AWS to initiate the IKE negotiation. Valid values are add | start.
     """
     tunnel2VgwInsideAddress: str | None = None
     """
-    The RFC 6890 link-local address of the second VPN tunnel (VPN Gateway Side).
+    RFC 6890 link-local address of the second VPN tunnel (VPN Gateway Side).
     """
     tunnelBandwidth: str | None = None
     """
@@ -1147,7 +1147,7 @@ class AtProvider(BaseModel):
     """
     type: str | None = None
     """
-    The type of VPN connection. The only type AWS supports at this time is "ipsec.1".
+    Type of VPN connection. The only type AWS supports at this time is "ipsec.1".
     """
     vgwTelemetry: list[VgwTelemetryItem] | None = None
     """
@@ -1159,7 +1159,7 @@ class AtProvider(BaseModel):
     """
     vpnGatewayId: str | None = None
     """
-    The ID of the Virtual Private Gateway.
+    ID of the Virtual Private Gateway.
     """
 
 
