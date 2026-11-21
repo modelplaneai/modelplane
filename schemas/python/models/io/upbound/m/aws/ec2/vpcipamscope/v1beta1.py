@@ -65,11 +65,11 @@ class IpamIdSelector(BaseModel):
 class ForProvider(BaseModel):
     description: str | None = None
     """
-    A description for the scope you're creating.
+    Description for the scope you're creating.
     """
     ipamId: str | None = None
     """
-    The ID of the IPAM for which you're creating this scope.
+    ID of the IPAM for which you're creating this scope.
     """
     ipamIdRef: IpamIdRef | None = None
     """
@@ -93,11 +93,11 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     description: str | None = None
     """
-    A description for the scope you're creating.
+    Description for the scope you're creating.
     """
     ipamId: str | None = None
     """
-    The ID of the IPAM for which you're creating this scope.
+    ID of the IPAM for which you're creating this scope.
     """
     ipamIdRef: IpamIdRef | None = None
     """
@@ -182,31 +182,31 @@ class AtProvider(BaseModel):
     """
     description: str | None = None
     """
-    A description for the scope you're creating.
+    Description for the scope you're creating.
     """
     id: str | None = None
     """
-    The ID of the IPAM Scope.
+    ID of the IPAM Scope.
     """
     ipamArn: str | None = None
     """
-    The ARN of the IPAM for which you're creating this scope.
+    ARN of the IPAM for which you're creating this scope.
     """
     ipamId: str | None = None
     """
-    The ID of the IPAM for which you're creating this scope.
+    ID of the IPAM for which you're creating this scope.
     """
     ipamScopeType: str | None = None
     """
-    The type of the scope.
+    Type of the scope.
     """
     isDefault: bool | None = None
     """
-    Defines if the scope is the default scope or not.
+    Whether the scope is the default scope.
     """
     poolCount: float | None = None
     """
-    The number of pools in the scope.
+    Number of pools in the scope.
     """
     region: str | None = None
     """

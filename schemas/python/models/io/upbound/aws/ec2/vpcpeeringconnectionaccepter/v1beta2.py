@@ -13,16 +13,14 @@ from .....k8s.apimachinery.pkg.apis.meta import v1
 class Accepter(BaseModel):
     allowRemoteVpcDnsResolution: bool | None = None
     """
-    Indicates whether a local VPC can resolve public DNS hostnames to
-    private IP addresses when queried from instances in a peer VPC.
+    Whether to allow a local VPC to resolve public DNS hostnames to private IP addresses when queried from instances in a peer VPC.
     """
 
 
 class Requester(BaseModel):
     allowRemoteVpcDnsResolution: bool | None = None
     """
-    Indicates whether a local VPC can resolve public DNS hostnames to
-    private IP addresses when queried from instances in a peer VPC.
+    Whether to allow a local VPC to resolve public DNS hostnames to private IP addresses when queried from instances in a peer VPC.
     """
 
 
@@ -73,8 +71,7 @@ class VpcPeeringConnectionIdSelector(BaseModel):
 class ForProvider(BaseModel):
     accepter: Accepter | None = None
     """
-    A configuration block that describes [VPC Peering Connection]
-    (https://docs.aws.amazon.com/vpc/latest/peering/what-is-vpc-peering.html) options set for the accepter VPC.
+    Configuration block for VPC Peering Connection options to set for the VPC that accepts the peering connection (a maximum of one). See accepter Block below.
     """
     autoAccept: bool | None = None
     """
@@ -87,8 +84,7 @@ class ForProvider(BaseModel):
     """
     requester: Requester | None = None
     """
-    A configuration block that describes [VPC Peering Connection]
-    (https://docs.aws.amazon.com/vpc/latest/peering/what-is-vpc-peering.html) options set for the requester VPC.
+    Configuration block for VPC Peering Connection options to set for the VPC that requests the peering connection (a maximum of one). See requester Block below.
     """
     tags: dict[str, str] | None = None
     """
@@ -96,7 +92,7 @@ class ForProvider(BaseModel):
     """
     vpcPeeringConnectionId: str | None = None
     """
-    The VPC Peering Connection ID to manage.
+    VPC Peering Connection ID to manage.
     """
     vpcPeeringConnectionIdRef: VpcPeeringConnectionIdRef | None = None
     """
@@ -111,8 +107,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     accepter: Accepter | None = None
     """
-    A configuration block that describes [VPC Peering Connection]
-    (https://docs.aws.amazon.com/vpc/latest/peering/what-is-vpc-peering.html) options set for the accepter VPC.
+    Configuration block for VPC Peering Connection options to set for the VPC that accepts the peering connection (a maximum of one). See accepter Block below.
     """
     autoAccept: bool | None = None
     """
@@ -120,8 +115,7 @@ class InitProvider(BaseModel):
     """
     requester: Requester | None = None
     """
-    A configuration block that describes [VPC Peering Connection]
-    (https://docs.aws.amazon.com/vpc/latest/peering/what-is-vpc-peering.html) options set for the requester VPC.
+    Configuration block for VPC Peering Connection options to set for the VPC that requests the peering connection (a maximum of one). See requester Block below.
     """
     tags: dict[str, str] | None = None
     """
@@ -129,7 +123,7 @@ class InitProvider(BaseModel):
     """
     vpcPeeringConnectionId: str | None = None
     """
-    The VPC Peering Connection ID to manage.
+    VPC Peering Connection ID to manage.
     """
     vpcPeeringConnectionIdRef: VpcPeeringConnectionIdRef | None = None
     """
@@ -224,12 +218,11 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     acceptStatus: str | None = None
     """
-    The status of the VPC Peering Connection request.
+    Status of the VPC Peering Connection request.
     """
     accepter: Accepter | None = None
     """
-    A configuration block that describes [VPC Peering Connection]
-    (https://docs.aws.amazon.com/vpc/latest/peering/what-is-vpc-peering.html) options set for the accepter VPC.
+    Configuration block for VPC Peering Connection options to set for the VPC that accepts the peering connection (a maximum of one). See accepter Block below.
     """
     autoAccept: bool | None = None
     """
@@ -237,19 +230,19 @@ class AtProvider(BaseModel):
     """
     id: str | None = None
     """
-    The ID of the VPC Peering Connection.
+    ID of the VPC Peering Connection.
     """
     peerOwnerId: str | None = None
     """
-    The AWS account ID of the owner of the requester VPC.
+    AWS account ID of the owner of the requester VPC.
     """
     peerRegion: str | None = None
     """
-    The region of the accepter VPC.
+    Region of the accepter VPC.
     """
     peerVpcId: str | None = None
     """
-    The ID of the requester VPC.
+    ID of the requester VPC.
     """
     region: str | None = None
     """
@@ -258,8 +251,7 @@ class AtProvider(BaseModel):
     """
     requester: Requester | None = None
     """
-    A configuration block that describes [VPC Peering Connection]
-    (https://docs.aws.amazon.com/vpc/latest/peering/what-is-vpc-peering.html) options set for the requester VPC.
+    Configuration block for VPC Peering Connection options to set for the VPC that requests the peering connection (a maximum of one). See requester Block below.
     """
     tags: dict[str, str] | None = None
     """
@@ -267,15 +259,15 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
     vpcId: str | None = None
     """
-    The ID of the accepter VPC.
+    ID of the accepter VPC.
     """
     vpcPeeringConnectionId: str | None = None
     """
-    The VPC Peering Connection ID to manage.
+    VPC Peering Connection ID to manage.
     """
 
 

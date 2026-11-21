@@ -100,7 +100,7 @@ class VpcIdSelector(BaseModel):
 class ForProvider(BaseModel):
     dhcpOptionsId: str | None = None
     """
-    The ID of the DHCP Options Set to associate to the VPC.
+    ID of the DHCP Options Set to associate to the VPC.
     """
     dhcpOptionsIdRef: DhcpOptionsIdRef | None = None
     """
@@ -117,7 +117,7 @@ class ForProvider(BaseModel):
     """
     vpcId: str | None = None
     """
-    The ID of the VPC to which we would like to associate a DHCP Options Set.
+    ID of the VPC to which we would like to associate a DHCP Options Set.
     """
     vpcIdRef: VpcIdRef | None = None
     """
@@ -132,7 +132,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     dhcpOptionsId: str | None = None
     """
-    The ID of the DHCP Options Set to associate to the VPC.
+    ID of the DHCP Options Set to associate to the VPC.
     """
     dhcpOptionsIdRef: DhcpOptionsIdRef | None = None
     """
@@ -144,7 +144,7 @@ class InitProvider(BaseModel):
     """
     vpcId: str | None = None
     """
-    The ID of the VPC to which we would like to associate a DHCP Options Set.
+    ID of the VPC to which we would like to associate a DHCP Options Set.
     """
     vpcIdRef: VpcIdRef | None = None
     """
@@ -221,11 +221,11 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     dhcpOptionsId: str | None = None
     """
-    The ID of the DHCP Options Set to associate to the VPC.
+    ID of the DHCP Options Set to associate to the VPC.
     """
     id: str | None = None
     """
-    The ID of the DHCP Options Set Association.
+    ID of the DHCP Options Set Association.
     """
     region: str | None = None
     """
@@ -234,7 +234,7 @@ class AtProvider(BaseModel):
     """
     vpcId: str | None = None
     """
-    The ID of the VPC to which we would like to associate a DHCP Options Set.
+    ID of the VPC to which we would like to associate a DHCP Options Set.
     """
 
 

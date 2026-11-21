@@ -221,7 +221,7 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     id: str | None = None
     """
-    A hash of the EC2 Route Table and VPC Endpoint identifiers.
+    Hash of the EC2 Route Table and VPC Endpoint identifiers.
     """
     region: str | None = None
     """

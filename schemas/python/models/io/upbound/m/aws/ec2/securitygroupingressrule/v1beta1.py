@@ -135,27 +135,27 @@ class SecurityGroupIdSelector(BaseModel):
 class ForProvider(BaseModel):
     cidrIpv4: str | None = None
     """
-    The source IPv4 CIDR range.
+    Source IPv4 CIDR range.
     """
     cidrIpv6: str | None = None
     """
-    The source IPv6 CIDR range.
+    Source IPv6 CIDR range.
     """
     description: str | None = None
     """
-    The security group rule description.
+    Security group rule description.
     """
     fromPort: float | None = None
     """
-    The start of port range for the TCP and UDP protocols, or an ICMP/ICMPv6 type.
+    Start of port range for the TCP and UDP protocols, or an ICMP/ICMPv6 type.
     """
     ipProtocol: str | None = None
     """
-    The IP protocol name or number. Use -1 to specify all protocols. Note that if ip_protocol is set to -1, it translates to all protocols, all port ranges, and from_port and to_port values should not be defined.
+    IP protocol name or number. Use -1 to specify all protocols. Note that if ip_protocol is set to -1, it translates to all protocols, all port ranges, and from_port and to_port values should not be defined.
     """
     prefixListId: str | None = None
     """
-    The ID of the source prefix list.
+    ID of the source prefix list.
     """
     prefixListIdRef: PrefixListIdRef | None = None
     """
@@ -167,7 +167,7 @@ class ForProvider(BaseModel):
     """
     referencedSecurityGroupId: str | None = None
     """
-    The source security group that is referenced in the rule.
+    Source security group that is referenced in the rule.
     """
     referencedSecurityGroupIdRef: ReferencedSecurityGroupIdRef | None = None
     """
@@ -184,7 +184,7 @@ class ForProvider(BaseModel):
     """
     securityGroupId: str | None = None
     """
-    The ID of the security group.
+    ID of the security group.
     """
     securityGroupIdRef: SecurityGroupIdRef | None = None
     """
@@ -200,34 +200,34 @@ class ForProvider(BaseModel):
     """
     toPort: float | None = None
     """
-    The end of port range for the TCP and UDP protocols, or an ICMP/ICMPv6 code.
+    End of port range for the TCP and UDP protocols, or an ICMP/ICMPv6 code.
     """
 
 
 class InitProvider(BaseModel):
     cidrIpv4: str | None = None
     """
-    The source IPv4 CIDR range.
+    Source IPv4 CIDR range.
     """
     cidrIpv6: str | None = None
     """
-    The source IPv6 CIDR range.
+    Source IPv6 CIDR range.
     """
     description: str | None = None
     """
-    The security group rule description.
+    Security group rule description.
     """
     fromPort: float | None = None
     """
-    The start of port range for the TCP and UDP protocols, or an ICMP/ICMPv6 type.
+    Start of port range for the TCP and UDP protocols, or an ICMP/ICMPv6 type.
     """
     ipProtocol: str | None = None
     """
-    The IP protocol name or number. Use -1 to specify all protocols. Note that if ip_protocol is set to -1, it translates to all protocols, all port ranges, and from_port and to_port values should not be defined.
+    IP protocol name or number. Use -1 to specify all protocols. Note that if ip_protocol is set to -1, it translates to all protocols, all port ranges, and from_port and to_port values should not be defined.
     """
     prefixListId: str | None = None
     """
-    The ID of the source prefix list.
+    ID of the source prefix list.
     """
     prefixListIdRef: PrefixListIdRef | None = None
     """
@@ -239,7 +239,7 @@ class InitProvider(BaseModel):
     """
     referencedSecurityGroupId: str | None = None
     """
-    The source security group that is referenced in the rule.
+    Source security group that is referenced in the rule.
     """
     referencedSecurityGroupIdRef: ReferencedSecurityGroupIdRef | None = None
     """
@@ -251,7 +251,7 @@ class InitProvider(BaseModel):
     """
     securityGroupId: str | None = None
     """
-    The ID of the security group.
+    ID of the security group.
     """
     securityGroupIdRef: SecurityGroupIdRef | None = None
     """
@@ -267,7 +267,7 @@ class InitProvider(BaseModel):
     """
     toPort: float | None = None
     """
-    The end of port range for the TCP and UDP protocols, or an ICMP/ICMPv6 code.
+    End of port range for the TCP and UDP protocols, or an ICMP/ICMPv6 code.
     """
 
 
@@ -340,19 +340,19 @@ class AtProvider(BaseModel):
     """
     cidrIpv4: str | None = None
     """
-    The source IPv4 CIDR range.
+    Source IPv4 CIDR range.
     """
     cidrIpv6: str | None = None
     """
-    The source IPv6 CIDR range.
+    Source IPv6 CIDR range.
     """
     description: str | None = None
     """
-    The security group rule description.
+    Security group rule description.
     """
     fromPort: float | None = None
     """
-    The start of port range for the TCP and UDP protocols, or an ICMP/ICMPv6 type.
+    Start of port range for the TCP and UDP protocols, or an ICMP/ICMPv6 type.
     """
     id: str | None = None
     """
@@ -360,15 +360,15 @@ class AtProvider(BaseModel):
     """
     ipProtocol: str | None = None
     """
-    The IP protocol name or number. Use -1 to specify all protocols. Note that if ip_protocol is set to -1, it translates to all protocols, all port ranges, and from_port and to_port values should not be defined.
+    IP protocol name or number. Use -1 to specify all protocols. Note that if ip_protocol is set to -1, it translates to all protocols, all port ranges, and from_port and to_port values should not be defined.
     """
     prefixListId: str | None = None
     """
-    The ID of the source prefix list.
+    ID of the source prefix list.
     """
     referencedSecurityGroupId: str | None = None
     """
-    The source security group that is referenced in the rule.
+    Source security group that is referenced in the rule.
     """
     region: str | None = None
     """
@@ -377,11 +377,11 @@ class AtProvider(BaseModel):
     """
     securityGroupId: str | None = None
     """
-    The ID of the security group.
+    ID of the security group.
     """
     securityGroupRuleId: str | None = None
     """
-    The ID of the security group rule.
+    ID of the security group rule.
     """
     tags: dict[str, str] | None = None
     """
@@ -389,11 +389,11 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
     toPort: float | None = None
     """
-    The end of port range for the TCP and UDP protocols, or an ICMP/ICMPv6 code.
+    End of port range for the TCP and UDP protocols, or an ICMP/ICMPv6 code.
     """
 
 

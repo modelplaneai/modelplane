@@ -133,7 +133,7 @@ class ForProvider(BaseModel):
     """
     transportAttachmentId: str | None = None
     """
-    The underlaying VPC attachment
+    The underlying VPC attachment
     """
     transportAttachmentIdRef: TransportAttachmentIdRef | None = None
     """
@@ -176,7 +176,7 @@ class InitProvider(BaseModel):
     """
     transportAttachmentId: str | None = None
     """
-    The underlaying VPC attachment
+    The underlying VPC attachment
     """
     transportAttachmentIdRef: TransportAttachmentIdRef | None = None
     """
@@ -286,7 +286,7 @@ class AtProvider(BaseModel):
     """
     transportAttachmentId: str | None = None
     """
-    The underlaying VPC attachment
+    The underlying VPC attachment
     """
 
 

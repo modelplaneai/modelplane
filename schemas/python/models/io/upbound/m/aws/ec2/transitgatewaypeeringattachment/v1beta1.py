@@ -13,7 +13,7 @@ from ......k8s.apimachinery.pkg.apis.meta import v1
 class Options(BaseModel):
     dynamicRouting: str | None = None
     """
-    Indicates whether dynamic routing is enabled or disabled.. Supports enable and disable.
+    Indicates whether dynamic routing is enabled or disabled. Supports enable and disable. If not configured, the value is populated from the API.
     """
 
 
@@ -107,7 +107,7 @@ class TransitGatewayIdSelector(BaseModel):
 class ForProvider(BaseModel):
     options: Options | None = None
     """
-    Describes whether dynamic routing is enabled or disabled for the transit gateway peering request. See options below for more details!
+    Block describing whether dynamic routing is enabled or disabled for the transit gateway peering request. If not configured, the value is populated from the API. See options below for more details!
     """
     peerAccountId: str | None = None
     """
@@ -155,7 +155,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     options: Options | None = None
     """
-    Describes whether dynamic routing is enabled or disabled for the transit gateway peering request. See options below for more details!
+    Block describing whether dynamic routing is enabled or disabled for the transit gateway peering request. If not configured, the value is populated from the API. See options below for more details!
     """
     peerAccountId: str | None = None
     """
@@ -268,7 +268,7 @@ class AtProvider(BaseModel):
     """
     options: Options | None = None
     """
-    Describes whether dynamic routing is enabled or disabled for the transit gateway peering request. See options below for more details!
+    Block describing whether dynamic routing is enabled or disabled for the transit gateway peering request. If not configured, the value is populated from the API. See options below for more details!
     """
     peerAccountId: str | None = None
     """

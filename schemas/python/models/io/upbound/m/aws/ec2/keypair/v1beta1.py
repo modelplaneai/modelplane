@@ -13,7 +13,7 @@ from ......k8s.apimachinery.pkg.apis.meta import v1
 class ForProvider(BaseModel):
     publicKey: str | None = None
     """
-    The public key material.
+    Public key material.
     """
     region: str
     """
@@ -29,7 +29,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     publicKey: str | None = None
     """
-    The public key material.
+    Public key material.
     """
     tags: dict[str, str] | None = None
     """
@@ -102,27 +102,27 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     arn: str | None = None
     """
-    The key pair ARN.
+    Key pair ARN.
     """
     fingerprint: str | None = None
     """
-    The MD5 public key fingerprint as specified in section 4 of RFC 4716.
+    MD5 public key fingerprint as specified in section 4 of RFC 4716.
     """
     id: str | None = None
     """
-    The key pair name.
+    Key pair name.
     """
     keyPairId: str | None = None
     """
-    The key pair ID.
+    Key pair ID.
     """
     keyType: str | None = None
     """
-    The type of key pair.
+    Type of key pair.
     """
     publicKey: str | None = None
     """
-    The public key material.
+    Public key material.
     """
     region: str | None = None
     """
@@ -135,7 +135,7 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
 
 
