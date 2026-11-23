@@ -13,8 +13,8 @@ jobs:
     # until they're marked ready for review. The ready_for_review trigger above
     # re-runs this job when that happens.
     #
-    # The checklist is a human attestation, so skip it for bot PRs (Renovate,
-    # Dependabot) whose bodies don't carry the template. GitHub counts a
+    # The checklist is a human attestation, so skip it for bot PRs, such as
+    # Renovate's, whose bodies don't carry the template. GitHub counts a
     # skipped required check as passed, keeping those PRs mergeable.
     if: |
       github.event.pull_request.draft == false &&

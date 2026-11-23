@@ -4,35 +4,44 @@
     'config:recommended',
     'helpers:pinGitHubActionDigests',
   ],
-  // config:recommended turns on every default manager, which would also open
-  // PRs for the ~20 pyproject.toml files (rewriting requires-python etc.) that
-  // we don't want Renovate touching. Limit it to exactly what this config
-  // targets: the custom managers for crossplane-project.yaml, the Renovate
-  // version in renovate.yml and the Nix version in renovate-entrypoint.sh,
-  // GitHub Actions, and the Nix flakes (inputs plus flake.lock via
-  // lockFileMaintenance below).
+  // Renovate runs every manager that's on by default. Limit it to exactly what
+  // this config targets: the custom managers for crossplane-project.yaml, the
+  // Renovate version in renovate.yml and the Nix version in
+  // renovate-entrypoint.sh, GitHub Actions, the Nix flakes (inputs plus
+  // flake.lock via lockFileMaintenance below), and vulnerability fixes for Go
+  // modules and uv.lock.
   enabledManagers: [
     'custom.regex',
     'github-actions',
+    'gomod',
     'nix',
+    'pep621',
   ],
+  // Renovate opens PRs to fix the repository's Dependabot alerts, forcing this
+  // object onto the dependency each alert matches. Setting enabled here is
+  // what lets those fixes past the package rule below that disables gomod and
+  // pep621.
+  vulnerabilityAlerts: {
+    enabled: true,
+  },
+  // config:recommended ignores tests/ directories, which would hide the Go
+  // module under functions/compose-model-deployment/tests/oracle from
+  // vulnerability fixes.
+  gomod: {
+    ignorePaths: [],
+  },
   // The Nix manager is disabled by default. Enable it (together with
   // lockFileMaintenance) so Renovate keeps flake.lock fresh. Renovate
   // installs its own Nix to apply those updates.
   nix: {
     enabled: true,
   },
-  // Lock file maintenance defaults to 'before 4am on monday', which the
-  // workflow's daily 08:00 UTC run never falls in.
   lockFileMaintenance: {
     enabled: true,
-    schedule: [
-      '* * * * 1',
-    ],
   },
   // CONTRIBUTING forbids typed commit prefixes like chore(deps):. Disable
   // explicitly rather than relying on the 'auto' default, which sniffs
-  // recent history and could flip on from Dependabot's build(deps): commits.
+  // recent history and could flip on from any typed commits in it.
   semanticCommits: 'disabled',
   rebaseWhen: 'auto',
   rebaseLabel: 'rebase',
@@ -44,6 +53,17 @@
     'automated',
   ],
   packageRules: [
+    {
+      // gomod and pep621 are enabled only to fix vulnerabilities. Their
+      // routine updates would open PRs for every pyproject.toml (rewriting
+      // requires-python etc.), and pep621's lock file maintenance would
+      // refresh all of uv.lock.
+      matchManagers: [
+        'gomod',
+        'pep621',
+      ],
+      enabled: false,
+    },
     {
       matchFileNames: [
         '.github/**',
