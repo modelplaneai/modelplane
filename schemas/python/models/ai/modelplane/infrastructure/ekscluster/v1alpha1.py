@@ -117,7 +117,7 @@ class NodePool(BaseModel):
     """
     minNodeCount: conint(ge=0, le=1000) | None = 0
     """
-    Minimum number of nodes for autoscaling. Set to 1 or higher for groups that must always be available.
+    Minimum number of nodes for autoscaling. Set it to 1 or higher for groups that must always be available, and for GPU and CPU groups: the upstream cluster autoscaler's AWS provider can't scale a group whose devices bind through DRA up from zero nodes, so a pod scheduled to an empty group waits forever.
     """
     name: constr(min_length=1, max_length=40)
     """
