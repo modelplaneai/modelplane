@@ -13,14 +13,14 @@ from .....k8s.apimachinery.pkg.apis.meta import v1
 class Accepter(BaseModel):
     allowRemoteVpcDnsResolution: bool | None = None
     """
-    Allow a local VPC to resolve public DNS hostnames to private IP addresses when queried from instances in the peer VPC.
+    Whether to allow a local VPC to resolve public DNS hostnames to private IP addresses when queried from instances in the peer VPC.
     """
 
 
 class Requester(BaseModel):
     allowRemoteVpcDnsResolution: bool | None = None
     """
-    Allow a local VPC to resolve public DNS hostnames to private IP addresses when queried from instances in the peer VPC.
+    Whether to allow a local VPC to resolve public DNS hostnames to private IP addresses when queried from instances in the peer VPC.
     """
 
 
@@ -71,7 +71,7 @@ class VpcPeeringConnectionIdSelector(BaseModel):
 class ForProvider(BaseModel):
     accepter: Accepter | None = None
     """
-    An optional configuration block that allows for VPC Peering Connection options to be set for the VPC that accepts the peering connection (a maximum of one).
+    Configuration block for VPC Peering Connection options to set for the VPC that accepts the peering connection (a maximum of one). See accepter Block below.
     """
     region: str
     """
@@ -80,11 +80,11 @@ class ForProvider(BaseModel):
     """
     requester: Requester | None = None
     """
-    A optional configuration block that allows for VPC Peering Connection options to be set for the VPC that requests the peering connection (a maximum of one).
+    Configuration block for VPC Peering Connection options to set for the VPC that requests the peering connection (a maximum of one). See requester Block below.
     """
     vpcPeeringConnectionId: str | None = None
     """
-    The ID of the requester VPC peering connection.
+    ID of the requester VPC peering connection.
     """
     vpcPeeringConnectionIdRef: VpcPeeringConnectionIdRef | None = None
     """
@@ -99,15 +99,15 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     accepter: Accepter | None = None
     """
-    An optional configuration block that allows for VPC Peering Connection options to be set for the VPC that accepts the peering connection (a maximum of one).
+    Configuration block for VPC Peering Connection options to set for the VPC that accepts the peering connection (a maximum of one). See accepter Block below.
     """
     requester: Requester | None = None
     """
-    A optional configuration block that allows for VPC Peering Connection options to be set for the VPC that requests the peering connection (a maximum of one).
+    Configuration block for VPC Peering Connection options to set for the VPC that requests the peering connection (a maximum of one). See requester Block below.
     """
     vpcPeeringConnectionId: str | None = None
     """
-    The ID of the requester VPC peering connection.
+    ID of the requester VPC peering connection.
     """
     vpcPeeringConnectionIdRef: VpcPeeringConnectionIdRef | None = None
     """
@@ -202,11 +202,11 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     accepter: Accepter | None = None
     """
-    An optional configuration block that allows for VPC Peering Connection options to be set for the VPC that accepts the peering connection (a maximum of one).
+    Configuration block for VPC Peering Connection options to set for the VPC that accepts the peering connection (a maximum of one). See accepter Block below.
     """
     id: str | None = None
     """
-    The ID of the VPC Peering Connection Options.
+    ID of the VPC Peering Connection Options.
     """
     region: str | None = None
     """
@@ -215,11 +215,11 @@ class AtProvider(BaseModel):
     """
     requester: Requester | None = None
     """
-    A optional configuration block that allows for VPC Peering Connection options to be set for the VPC that requests the peering connection (a maximum of one).
+    Configuration block for VPC Peering Connection options to set for the VPC that requests the peering connection (a maximum of one). See requester Block below.
     """
     vpcPeeringConnectionId: str | None = None
     """
-    The ID of the requester VPC peering connection.
+    ID of the requester VPC peering connection.
     """
 
 

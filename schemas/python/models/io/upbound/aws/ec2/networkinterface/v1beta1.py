@@ -10,6 +10,21 @@ from pydantic import AwareDatetime, BaseModel, Field
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
+class ConnectionTrackingSpecification(BaseModel):
+    tcpEstablishedTimeout: float | None = None
+    """
+    Timeout (in seconds) for idle TCP connections in an established state. Min: 60 seconds. Max: 432000 seconds (5 days). Recommended: Less than 432000 seconds.
+    """
+    udpStreamTimeout: float | None = None
+    """
+    Timeout (in seconds) for idle UDP flows classified as streams which have seen more than one request-response transaction. Min: 60 seconds. Max: 180 seconds (3 minutes). Default: 180 seconds.
+    """
+    udpTimeout: float | None = None
+    """
+    Timeout (in seconds) for idle UDP flows that have seen traffic only in a single direction or a single request-response transaction. Min: 30 seconds. Max: 60 seconds. Default: 30 seconds.
+    """
+
+
 class EnaSrdUdpSpecification(BaseModel):
     enaSrdUdpEnabled: bool | None = None
     """
@@ -100,6 +115,10 @@ class SubnetIdSelector(BaseModel):
 
 
 class ForProvider(BaseModel):
+    connectionTrackingSpecification: ConnectionTrackingSpecification | None = None
+    """
+    Configures the connection tracking timeouts for the network interface. See Connection Tracking Specification below for more details.
+    """
     description: str | None = None
     """
     Description for the network interface.
@@ -163,7 +182,7 @@ class ForProvider(BaseModel):
     """
     privateIpsCount: float | None = None
     """
-    Number of secondary private IPs to assign to the ENI. The total number of private IPs will be 1 + private_ips_count, as a primary private IP will be assiged to an ENI by default.
+    Number of secondary private IPs to assign to the ENI. The total number of private IPs will be 1 + private_ips_count, as a primary private IP will be assigned to an ENI by default.
     """
     region: str
     """
@@ -205,6 +224,10 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
+    connectionTrackingSpecification: ConnectionTrackingSpecification | None = None
+    """
+    Configures the connection tracking timeouts for the network interface. See Connection Tracking Specification below for more details.
+    """
     description: str | None = None
     """
     Description for the network interface.
@@ -268,7 +291,7 @@ class InitProvider(BaseModel):
     """
     privateIpsCount: float | None = None
     """
-    Number of secondary private IPs to assign to the ENI. The total number of private IPs will be 1 + private_ips_count, as a primary private IP will be assiged to an ENI by default.
+    Number of secondary private IPs to assign to the ENI. The total number of private IPs will be 1 + private_ips_count, as a primary private IP will be assigned to an ENI by default.
     """
     securityGroupRefs: list[SecurityGroupRef] | None = None
     """
@@ -412,6 +435,10 @@ class AtProvider(BaseModel):
     """
     Configuration block to define the attachment of the ENI. See Attachment below for more details!
     """
+    connectionTrackingSpecification: ConnectionTrackingSpecification | None = None
+    """
+    Configures the connection tracking timeouts for the network interface. See Connection Tracking Specification below for more details.
+    """
     description: str | None = None
     """
     Description for the network interface.
@@ -495,7 +522,7 @@ class AtProvider(BaseModel):
     """
     privateIpsCount: float | None = None
     """
-    Number of secondary private IPs to assign to the ENI. The total number of private IPs will be 1 + private_ips_count, as a primary private IP will be assiged to an ENI by default.
+    Number of secondary private IPs to assign to the ENI. The total number of private IPs will be 1 + private_ips_count, as a primary private IP will be assigned to an ENI by default.
     """
     region: str | None = None
     """

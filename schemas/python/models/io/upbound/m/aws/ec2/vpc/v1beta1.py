@@ -282,7 +282,7 @@ class AtProvider(BaseModel):
     """
     dhcpOptionsId: str | None = None
     """
-    DHCP options id of the desired VPC.
+    DHCP options ID of the desired VPC.
     """
     enableDnsHostnames: bool | None = None
     """

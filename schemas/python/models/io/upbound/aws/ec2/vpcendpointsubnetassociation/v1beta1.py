@@ -89,7 +89,7 @@ class ForProvider(BaseModel):
     """
     subnetId: str | None = None
     """
-    The ID of the subnet to be associated with the VPC endpoint.
+    ID of the subnet to be associated with the VPC endpoint.
     """
     subnetIdRef: SubnetIdRef | None = None
     """
@@ -101,7 +101,7 @@ class ForProvider(BaseModel):
     """
     vpcEndpointId: str | None = None
     """
-    The ID of the VPC endpoint with which the subnet will be associated.
+    ID of the VPC endpoint with which the subnet will be associated.
     """
     vpcEndpointIdRef: VpcEndpointIdRef | None = None
     """
@@ -116,7 +116,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     subnetId: str | None = None
     """
-    The ID of the subnet to be associated with the VPC endpoint.
+    ID of the subnet to be associated with the VPC endpoint.
     """
     subnetIdRef: SubnetIdRef | None = None
     """
@@ -128,7 +128,7 @@ class InitProvider(BaseModel):
     """
     vpcEndpointId: str | None = None
     """
-    The ID of the VPC endpoint with which the subnet will be associated.
+    ID of the VPC endpoint with which the subnet will be associated.
     """
     vpcEndpointIdRef: VpcEndpointIdRef | None = None
     """
@@ -223,7 +223,7 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     id: str | None = None
     """
-    The ID of the association.
+    ID of the association.
     """
     region: str | None = None
     """
@@ -232,11 +232,11 @@ class AtProvider(BaseModel):
     """
     subnetId: str | None = None
     """
-    The ID of the subnet to be associated with the VPC endpoint.
+    ID of the subnet to be associated with the VPC endpoint.
     """
     vpcEndpointId: str | None = None
     """
-    The ID of the VPC endpoint with which the subnet will be associated.
+    ID of the VPC endpoint with which the subnet will be associated.
     """
 
 

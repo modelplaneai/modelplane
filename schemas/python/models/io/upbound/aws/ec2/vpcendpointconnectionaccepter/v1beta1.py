@@ -196,7 +196,7 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     id: str | None = None
     """
-    The ID of the VPC Endpoint Connection.
+    ID of the VPC Endpoint Connection.
     """
     region: str | None = None
     """

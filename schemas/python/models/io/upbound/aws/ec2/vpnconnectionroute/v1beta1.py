@@ -57,7 +57,7 @@ class VpnConnectionIdSelector(BaseModel):
 class ForProvider(BaseModel):
     destinationCidrBlock: str | None = None
     """
-    The CIDR block associated with the local subnet of the customer network.
+    CIDR block associated with the local subnet of the customer network.
     """
     region: str
     """
@@ -66,7 +66,7 @@ class ForProvider(BaseModel):
     """
     vpnConnectionId: str | None = None
     """
-    The ID of the VPN connection.
+    ID of the VPN connection.
     """
     vpnConnectionIdRef: VpnConnectionIdRef | None = None
     """
@@ -81,11 +81,11 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     destinationCidrBlock: str | None = None
     """
-    The CIDR block associated with the local subnet of the customer network.
+    CIDR block associated with the local subnet of the customer network.
     """
     vpnConnectionId: str | None = None
     """
-    The ID of the VPN connection.
+    ID of the VPN connection.
     """
     vpnConnectionIdRef: VpnConnectionIdRef | None = None
     """
@@ -180,7 +180,7 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     destinationCidrBlock: str | None = None
     """
-    The CIDR block associated with the local subnet of the customer network.
+    CIDR block associated with the local subnet of the customer network.
     """
     id: str | None = None
     region: str | None = None
@@ -190,7 +190,7 @@ class AtProvider(BaseModel):
     """
     vpnConnectionId: str | None = None
     """
-    The ID of the VPN connection.
+    ID of the VPN connection.
     """
 
 

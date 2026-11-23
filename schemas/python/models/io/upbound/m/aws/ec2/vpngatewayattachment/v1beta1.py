@@ -105,7 +105,7 @@ class ForProvider(BaseModel):
     """
     vpcId: str | None = None
     """
-    The ID of the VPC.
+    ID of the VPC.
     """
     vpcIdRef: VpcIdRef | None = None
     """
@@ -117,7 +117,7 @@ class ForProvider(BaseModel):
     """
     vpnGatewayId: str | None = None
     """
-    The ID of the Virtual Private Gateway.
+    ID of the Virtual Private Gateway.
     """
     vpnGatewayIdRef: VpnGatewayIdRef | None = None
     """
@@ -132,7 +132,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     vpcId: str | None = None
     """
-    The ID of the VPC.
+    ID of the VPC.
     """
     vpcIdRef: VpcIdRef | None = None
     """
@@ -144,7 +144,7 @@ class InitProvider(BaseModel):
     """
     vpnGatewayId: str | None = None
     """
-    The ID of the Virtual Private Gateway.
+    ID of the Virtual Private Gateway.
     """
     vpnGatewayIdRef: VpnGatewayIdRef | None = None
     """
@@ -227,11 +227,11 @@ class AtProvider(BaseModel):
     """
     vpcId: str | None = None
     """
-    The ID of the VPC.
+    ID of the VPC.
     """
     vpnGatewayId: str | None = None
     """
-    The ID of the Virtual Private Gateway.
+    ID of the Virtual Private Gateway.
     """
 
 

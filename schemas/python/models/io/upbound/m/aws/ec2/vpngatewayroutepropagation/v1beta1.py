@@ -105,7 +105,7 @@ class ForProvider(BaseModel):
     """
     routeTableId: str | None = None
     """
-    The id of the aws_route_table to propagate routes into.
+    ID of the aws_route_table to propagate routes into.
     """
     routeTableIdRef: RouteTableIdRef | None = None
     """
@@ -117,7 +117,7 @@ class ForProvider(BaseModel):
     """
     vpnGatewayId: str | None = None
     """
-    The id of the aws_vpn_gateway to propagate routes from.
+    ID of the aws_vpn_gateway to propagate routes from.
     """
     vpnGatewayIdRef: VpnGatewayIdRef | None = None
     """
@@ -132,7 +132,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     routeTableId: str | None = None
     """
-    The id of the aws_route_table to propagate routes into.
+    ID of the aws_route_table to propagate routes into.
     """
     routeTableIdRef: RouteTableIdRef | None = None
     """
@@ -144,7 +144,7 @@ class InitProvider(BaseModel):
     """
     vpnGatewayId: str | None = None
     """
-    The id of the aws_vpn_gateway to propagate routes from.
+    ID of the aws_vpn_gateway to propagate routes from.
     """
     vpnGatewayIdRef: VpnGatewayIdRef | None = None
     """
@@ -227,11 +227,11 @@ class AtProvider(BaseModel):
     """
     routeTableId: str | None = None
     """
-    The id of the aws_route_table to propagate routes into.
+    ID of the aws_route_table to propagate routes into.
     """
     vpnGatewayId: str | None = None
     """
-    The id of the aws_vpn_gateway to propagate routes from.
+    ID of the aws_vpn_gateway to propagate routes from.
     """
 
 

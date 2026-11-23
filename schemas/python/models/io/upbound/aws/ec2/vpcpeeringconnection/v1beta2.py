@@ -84,21 +84,19 @@ class VpcIdSelector(BaseModel):
 class ForProvider(BaseModel):
     autoAccept: bool | None = None
     """
-    Accept the peering (both VPCs need to be in the same AWS account and region).
+    Whether to accept the peering (both VPCs need to be in the same AWS account and region).
     """
     peerOwnerId: str | None = None
     """
-    The AWS account ID of the target peer VPC.
-    Defaults to the account ID the AWS provider is currently connected to, so must be managed if connecting cross-account.
+    AWS account ID of the target peer VPC. Defaults to the account ID the AWS provider is currently connected to, so must be managed if connecting cross-account.
     """
     peerRegion: str | None = None
     """
-    The region of the accepter VPC of the VPC Peering Connection. auto_accept must be false,
-    and use the aws_vpc_peering_connection_accepter to manage the accepter side.
+    Region of the accepter VPC of the VPC Peering Connection. auto_accept must be false, and use the aws_vpc_peering_connection_accepter to manage the accepter side.
     """
     peerVpcId: str | None = None
     """
-    The ID of the target VPC with which you are creating the VPC Peering Connection.
+    ID of the target VPC with which you are creating the VPC Peering Connection.
     """
     peerVpcIdRef: PeerVpcIdRef | None = None
     """
@@ -119,7 +117,7 @@ class ForProvider(BaseModel):
     """
     vpcId: str | None = None
     """
-    The ID of the requester VPC.
+    ID of the requester VPC.
     """
     vpcIdRef: VpcIdRef | None = None
     """
@@ -134,21 +132,19 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     autoAccept: bool | None = None
     """
-    Accept the peering (both VPCs need to be in the same AWS account and region).
+    Whether to accept the peering (both VPCs need to be in the same AWS account and region).
     """
     peerOwnerId: str | None = None
     """
-    The AWS account ID of the target peer VPC.
-    Defaults to the account ID the AWS provider is currently connected to, so must be managed if connecting cross-account.
+    AWS account ID of the target peer VPC. Defaults to the account ID the AWS provider is currently connected to, so must be managed if connecting cross-account.
     """
     peerRegion: str | None = None
     """
-    The region of the accepter VPC of the VPC Peering Connection. auto_accept must be false,
-    and use the aws_vpc_peering_connection_accepter to manage the accepter side.
+    Region of the accepter VPC of the VPC Peering Connection. auto_accept must be false, and use the aws_vpc_peering_connection_accepter to manage the accepter side.
     """
     peerVpcId: str | None = None
     """
-    The ID of the target VPC with which you are creating the VPC Peering Connection.
+    ID of the target VPC with which you are creating the VPC Peering Connection.
     """
     peerVpcIdRef: PeerVpcIdRef | None = None
     """
@@ -164,7 +160,7 @@ class InitProvider(BaseModel):
     """
     vpcId: str | None = None
     """
-    The ID of the requester VPC.
+    ID of the requester VPC.
     """
     vpcIdRef: VpcIdRef | None = None
     """
@@ -259,50 +255,45 @@ class Spec(BaseModel):
 class Accepter(BaseModel):
     allowRemoteVpcDnsResolution: bool | None = None
     """
-    Allow a local VPC to resolve public DNS hostnames to
-    private IP addresses when queried from instances in the peer VPC.
+    Whether to allow a local VPC to resolve public DNS hostnames to private IP addresses when queried from instances in the peer VPC.
     """
 
 
 class Requester(BaseModel):
     allowRemoteVpcDnsResolution: bool | None = None
     """
-    Allow a local VPC to resolve public DNS hostnames to
-    private IP addresses when queried from instances in the peer VPC.
+    Whether to allow a local VPC to resolve public DNS hostnames to private IP addresses when queried from instances in the peer VPC.
     """
 
 
 class AtProvider(BaseModel):
     acceptStatus: str | None = None
     """
-    The status of the VPC Peering Connection request.
+    Status of the VPC Peering Connection request.
     """
     accepter: Accepter | None = None
     """
-    An optional configuration block that allows for VPC Peering Connection options to be set for the VPC that accepts
-    the peering connection (a maximum of one).
+    Configuration block for VPC Peering Connection options to set for the VPC that accepts the peering connection (a maximum of one). See accepter Block below.
     """
     autoAccept: bool | None = None
     """
-    Accept the peering (both VPCs need to be in the same AWS account and region).
+    Whether to accept the peering (both VPCs need to be in the same AWS account and region).
     """
     id: str | None = None
     """
-    The ID of the VPC Peering Connection.
+    ID of the VPC Peering Connection.
     """
     peerOwnerId: str | None = None
     """
-    The AWS account ID of the target peer VPC.
-    Defaults to the account ID the AWS provider is currently connected to, so must be managed if connecting cross-account.
+    AWS account ID of the target peer VPC. Defaults to the account ID the AWS provider is currently connected to, so must be managed if connecting cross-account.
     """
     peerRegion: str | None = None
     """
-    The region of the accepter VPC of the VPC Peering Connection. auto_accept must be false,
-    and use the aws_vpc_peering_connection_accepter to manage the accepter side.
+    Region of the accepter VPC of the VPC Peering Connection. auto_accept must be false, and use the aws_vpc_peering_connection_accepter to manage the accepter side.
     """
     peerVpcId: str | None = None
     """
-    The ID of the target VPC with which you are creating the VPC Peering Connection.
+    ID of the target VPC with which you are creating the VPC Peering Connection.
     """
     region: str | None = None
     """
@@ -311,8 +302,7 @@ class AtProvider(BaseModel):
     """
     requester: Requester | None = None
     """
-    A optional configuration block that allows for VPC Peering Connection options to be set for the VPC that requests
-    the peering connection (a maximum of one).
+    Configuration block for VPC Peering Connection options to set for the VPC that requests the peering connection (a maximum of one). See requester Block below.
     """
     tags: dict[str, str] | None = None
     """
@@ -320,11 +310,11 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
     vpcId: str | None = None
     """
-    The ID of the requester VPC.
+    ID of the requester VPC.
     """
 
 

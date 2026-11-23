@@ -469,7 +469,7 @@ class VpcSecurityGroupIdSelector(BaseModel):
 class ForProvider(BaseModel):
     ami: str | None = None
     """
-    AMI to use for the instance. Required unless launch_template is specified and the Launch Template specifes an AMI. If an AMI is specified in the Launch Template, setting ami will override the AMI specified in the Launch Template.
+    AMI to use for the instance. Required unless launch_template is specified and the Launch Template specifies an AMI. If an AMI is specified in the Launch Template, setting ami will override the AMI specified in the Launch Template.
     """
     associatePublicIpAddress: bool | None = None
     """
@@ -589,15 +589,15 @@ class ForProvider(BaseModel):
     """
     placementGroup: str | None = None
     """
-    Placement Group to start the instance in. Conflicts with placement_group_id.
+    Placement Group to start the instance in. Conflicts with placement_group_id. Updating this argument stops and restarts the EC2 instance, except for Spot Instances and instances with disable_api_stop and force_destroy enabled, which are replaced.
     """
     placementGroupId: str | None = None
     """
-    Placement Group ID to start the instance in. Conflicts with placement_group.
+    Placement Group ID to start the instance in. Conflicts with placement_group. Updating this argument stops and restarts the EC2 instance, except for Spot Instances and instances with disable_api_stop and force_destroy enabled, which are replaced.
     """
     placementPartitionNumber: float | None = None
     """
-    Number of the partition the instance is in. Valid only if the  strategy argument is set to "partition".
+    Number of the partition the instance is in. Valid only if the  strategy argument is set to "partition". Updating this argument stops and restarts the EC2 instance, except for Spot Instances and instances with disable_api_stop and force_destroy enabled, which are replaced.
     """
     primaryNetworkInterface: PrimaryNetworkInterface | None = None
     """
@@ -685,7 +685,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     ami: str | None = None
     """
-    AMI to use for the instance. Required unless launch_template is specified and the Launch Template specifes an AMI. If an AMI is specified in the Launch Template, setting ami will override the AMI specified in the Launch Template.
+    AMI to use for the instance. Required unless launch_template is specified and the Launch Template specifies an AMI. If an AMI is specified in the Launch Template, setting ami will override the AMI specified in the Launch Template.
     """
     associatePublicIpAddress: bool | None = None
     """
@@ -805,15 +805,15 @@ class InitProvider(BaseModel):
     """
     placementGroup: str | None = None
     """
-    Placement Group to start the instance in. Conflicts with placement_group_id.
+    Placement Group to start the instance in. Conflicts with placement_group_id. Updating this argument stops and restarts the EC2 instance, except for Spot Instances and instances with disable_api_stop and force_destroy enabled, which are replaced.
     """
     placementGroupId: str | None = None
     """
-    Placement Group ID to start the instance in. Conflicts with placement_group.
+    Placement Group ID to start the instance in. Conflicts with placement_group. Updating this argument stops and restarts the EC2 instance, except for Spot Instances and instances with disable_api_stop and force_destroy enabled, which are replaced.
     """
     placementPartitionNumber: float | None = None
     """
-    Number of the partition the instance is in. Valid only if the  strategy argument is set to "partition".
+    Number of the partition the instance is in. Valid only if the  strategy argument is set to "partition". Updating this argument stops and restarts the EC2 instance, except for Spot Instances and instances with disable_api_stop and force_destroy enabled, which are replaced.
     """
     primaryNetworkInterface: PrimaryNetworkInterface | None = None
     """
@@ -1149,7 +1149,7 @@ class SecondaryNetworkInterfaceItemModel(BaseModel):
 class AtProvider(BaseModel):
     ami: str | None = None
     """
-    AMI to use for the instance. Required unless launch_template is specified and the Launch Template specifes an AMI. If an AMI is specified in the Launch Template, setting ami will override the AMI specified in the Launch Template.
+    AMI to use for the instance. Required unless launch_template is specified and the Launch Template specifies an AMI. If an AMI is specified in the Launch Template, setting ami will override the AMI specified in the Launch Template.
     """
     arn: str | None = None
     """
@@ -1293,15 +1293,15 @@ class AtProvider(BaseModel):
     """
     placementGroup: str | None = None
     """
-    Placement Group to start the instance in. Conflicts with placement_group_id.
+    Placement Group to start the instance in. Conflicts with placement_group_id. Updating this argument stops and restarts the EC2 instance, except for Spot Instances and instances with disable_api_stop and force_destroy enabled, which are replaced.
     """
     placementGroupId: str | None = None
     """
-    Placement Group ID to start the instance in. Conflicts with placement_group.
+    Placement Group ID to start the instance in. Conflicts with placement_group. Updating this argument stops and restarts the EC2 instance, except for Spot Instances and instances with disable_api_stop and force_destroy enabled, which are replaced.
     """
     placementPartitionNumber: float | None = None
     """
-    Number of the partition the instance is in. Valid only if the  strategy argument is set to "partition".
+    Number of the partition the instance is in. Valid only if the  strategy argument is set to "partition". Updating this argument stops and restarts the EC2 instance, except for Spot Instances and instances with disable_api_stop and force_destroy enabled, which are replaced.
     """
     primaryNetworkInterface: PrimaryNetworkInterfaceModel | None = None
     """

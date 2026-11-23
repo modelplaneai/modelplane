@@ -105,8 +105,7 @@ class ForProvider(BaseModel):
     """
     routeTableId: str | None = None
     """
-    The ID of the Route Table to set as the new
-    main route table for the target VPC
+    ID of the Route Table to set as the new main route table for the target VPC
     """
     routeTableIdRef: RouteTableIdRef | None = None
     """
@@ -118,7 +117,7 @@ class ForProvider(BaseModel):
     """
     vpcId: str | None = None
     """
-    The ID of the VPC whose main route table should be set
+    ID of the VPC whose main route table should be set
     """
     vpcIdRef: VpcIdRef | None = None
     """
@@ -133,8 +132,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     routeTableId: str | None = None
     """
-    The ID of the Route Table to set as the new
-    main route table for the target VPC
+    ID of the Route Table to set as the new main route table for the target VPC
     """
     routeTableIdRef: RouteTableIdRef | None = None
     """
@@ -146,7 +144,7 @@ class InitProvider(BaseModel):
     """
     vpcId: str | None = None
     """
-    The ID of the VPC whose main route table should be set
+    ID of the VPC whose main route table should be set
     """
     vpcIdRef: VpcIdRef | None = None
     """
@@ -223,11 +221,11 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     id: str | None = None
     """
-    The ID of the Route Table Association
+    ID of the Route Table Association
     """
     originalRouteTableId: str | None = None
     """
-    Used internally, see Notes below
+    Original route table ID, used internally; see Notes below
     """
     region: str | None = None
     """
@@ -236,12 +234,11 @@ class AtProvider(BaseModel):
     """
     routeTableId: str | None = None
     """
-    The ID of the Route Table to set as the new
-    main route table for the target VPC
+    ID of the Route Table to set as the new main route table for the target VPC
     """
     vpcId: str | None = None
     """
-    The ID of the VPC whose main route table should be set
+    ID of the VPC whose main route table should be set
     """
 
 

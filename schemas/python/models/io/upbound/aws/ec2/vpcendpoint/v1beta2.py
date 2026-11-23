@@ -13,11 +13,11 @@ from .....k8s.apimachinery.pkg.apis.meta import v1
 class DnsOptions(BaseModel):
     dnsRecordIpType: str | None = None
     """
-    The DNS records created for the endpoint. Valid values are ipv4, dualstack, service-defined, and ipv6.
+    DNS records created for the endpoint. Valid values are ipv4, dualstack, service-defined, and ipv6.
     """
     privateDnsOnlyForInboundResolverEndpoint: bool | None = None
     """
-    Boolean indicating whether to enable private DNS only for inbound endpoints. This option is available only for interface endpoints of services that support both gateway and interface endpoints. A gateway endpoint for the same service must be created before an interface endpoint is created. Traffic originating from the VPC is routed to the gateway endpoint, while traffic originating from on-premises is routed to the interface endpoint. Defaults to false. This argument can be specified only if private_dns_enabled is true.
+    Whether to enable private DNS only for inbound endpoints. This option is available only for interface endpoints of services that support both gateway and interface endpoints. A gateway endpoint for the same service must be created before an interface endpoint is created. Traffic originating from the VPC is routed to the gateway endpoint, while traffic originating from on-premises is routed to the interface endpoint. Defaults to false. This argument can be specified only if private_dns_enabled is true.
     """
     privateDnsPreference: str | None = None
     """
@@ -157,15 +157,15 @@ class SubnetIdSelector(BaseModel):
 class SubnetConfigurationItem(BaseModel):
     ipv4: str | None = None
     """
-    The IPv4 address to assign to the endpoint network interface in the subnet. You must provide an IPv4 address if the VPC endpoint supports IPv4.
+    IPv4 address to assign to the endpoint network interface in the subnet. You must provide an IPv4 address if the VPC endpoint supports IPv4.
     """
     ipv6: str | None = None
     """
-    The IPv6 address to assign to the endpoint network interface in the subnet. You must provide an IPv6 address if the VPC endpoint supports IPv6.
+    IPv6 address to assign to the endpoint network interface in the subnet. You must provide an IPv6 address if the VPC endpoint supports IPv6.
     """
     subnetId: str | None = None
     """
-    The ID of the subnet. Must have a corresponding subnet in the subnet_ids argument.
+    ID of the subnet. Must have a corresponding subnet in the subnet_ids argument.
     """
     subnetIdRef: SubnetIdRef | None = None
     """
@@ -207,24 +207,23 @@ class VpcIdSelector(BaseModel):
 class ForProvider(BaseModel):
     autoAccept: bool | None = None
     """
-    Accept the VPC endpoint (the VPC endpoint and service need to be in the same AWS account).
+    Whether to accept the VPC endpoint (the VPC endpoint and service need to be in the same AWS account).
     """
     dnsOptions: DnsOptions | None = None
     """
-    The DNS options for the endpoint. See dns_options below.
+    DNS options for the endpoint. See dns_options below.
     """
     ipAddressType: str | None = None
     """
-    The IP address type for the endpoint. Valid values are ipv4, dualstack, and ipv6.
+    IP address type for the endpoint. Valid values are ipv4, dualstack, and ipv6.
     """
     policy: str | None = None
     """
-    A policy to attach to the endpoint that controls access to the service. This is a JSON formatted string. Defaults to full access. All Gateway and some Interface endpoints support policies - see the relevant AWS documentation for more details.
+    Policy to attach to the endpoint that controls access to the service. This is a JSON formatted string. Defaults to full access. All Gateway and some Interface endpoints support policies - see the relevant AWS documentation for more details.
     """
     privateDnsEnabled: bool | None = None
     """
-    Whether or not to associate a private hosted zone with the specified VPC. Applicable for endpoints of type Interface. Most users will want this enabled to allow services within the VPC to automatically use the endpoint.
-    Defaults to false. If vpc_endpoint_type is anything other than Interface, changing this value forces a new resource to be created.
+    Whether to associate a private hosted zone with the specified VPC. Available for AWS services and AWS Marketplace partner services only. Applicable for endpoints of type Interface. Most users will want this enabled to allow services within the VPC to automatically use the endpoint. Defaults to false. If vpc_endpoint_type is anything other than Interface, changing this value forces a new resource to be created.
     """
     region: str
     """
@@ -233,7 +232,7 @@ class ForProvider(BaseModel):
     """
     resourceConfigurationArn: str | None = None
     """
-    The ARN of a Resource Configuration to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
+    ARN of a Resource Configuration to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required. Applicable for endpoints of type Resource and Tunnel. For Tunnel endpoints, the resource configuration must be of type CIDR.
     """
     resourceConfigurationArnRef: ResourceConfigurationArnRef | None = None
     """
@@ -245,7 +244,7 @@ class ForProvider(BaseModel):
     """
     serviceName: str | None = None
     """
-    The service name. For AWS services the service name is usually in the form com.amazonaws.<region>.<service> (the SageMaker AI Notebook service is an exception to this rule, the service name is in the form aws.sagemaker.<region>.notebook). Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
+    Service name. For AWS services the service name is usually in the form com.amazonaws.<region>.<service> (the SageMaker AI Notebook service is an exception to this rule, the service name is in the form aws.sagemaker.<region>.notebook). Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
     serviceNameRef: ServiceNameRef | None = None
     """
@@ -257,7 +256,7 @@ class ForProvider(BaseModel):
     """
     serviceNetworkArn: str | None = None
     """
-    The ARN of a Service Network to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
+    ARN of a Service Network to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
     serviceNetworkArnRef: ServiceNetworkArnRef | None = None
     """
@@ -269,7 +268,7 @@ class ForProvider(BaseModel):
     """
     serviceRegion: str | None = None
     """
-    - The AWS region of the VPC Endpoint Service. If specified, the VPC endpoint will connect to the service in the provided region. Applicable for endpoints of type Interface.
+    AWS region of the VPC Endpoint Service. If specified, the VPC endpoint will connect to the service in the provided region. Applicable for endpoints of type Interface.
     """
     subnetConfiguration: list[SubnetConfigurationItem] | None = None
     """
@@ -281,11 +280,11 @@ class ForProvider(BaseModel):
     """
     vpcEndpointType: str | None = None
     """
-    The VPC endpoint type, Gateway, GatewayLoadBalancer,Interface, Resource or ServiceNetwork. Defaults to Gateway.
+    VPC endpoint type, Gateway, GatewayLoadBalancer, Interface, Resource, ServiceNetwork or Tunnel. Defaults to Gateway.
     """
     vpcId: str | None = None
     """
-    The ID of the VPC in which the endpoint will be used.
+    ID of the VPC in which the endpoint will be used.
     """
     vpcIdRef: VpcIdRef | None = None
     """
@@ -300,28 +299,27 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     autoAccept: bool | None = None
     """
-    Accept the VPC endpoint (the VPC endpoint and service need to be in the same AWS account).
+    Whether to accept the VPC endpoint (the VPC endpoint and service need to be in the same AWS account).
     """
     dnsOptions: DnsOptions | None = None
     """
-    The DNS options for the endpoint. See dns_options below.
+    DNS options for the endpoint. See dns_options below.
     """
     ipAddressType: str | None = None
     """
-    The IP address type for the endpoint. Valid values are ipv4, dualstack, and ipv6.
+    IP address type for the endpoint. Valid values are ipv4, dualstack, and ipv6.
     """
     policy: str | None = None
     """
-    A policy to attach to the endpoint that controls access to the service. This is a JSON formatted string. Defaults to full access. All Gateway and some Interface endpoints support policies - see the relevant AWS documentation for more details.
+    Policy to attach to the endpoint that controls access to the service. This is a JSON formatted string. Defaults to full access. All Gateway and some Interface endpoints support policies - see the relevant AWS documentation for more details.
     """
     privateDnsEnabled: bool | None = None
     """
-    Whether or not to associate a private hosted zone with the specified VPC. Applicable for endpoints of type Interface. Most users will want this enabled to allow services within the VPC to automatically use the endpoint.
-    Defaults to false. If vpc_endpoint_type is anything other than Interface, changing this value forces a new resource to be created.
+    Whether to associate a private hosted zone with the specified VPC. Available for AWS services and AWS Marketplace partner services only. Applicable for endpoints of type Interface. Most users will want this enabled to allow services within the VPC to automatically use the endpoint. Defaults to false. If vpc_endpoint_type is anything other than Interface, changing this value forces a new resource to be created.
     """
     resourceConfigurationArn: str | None = None
     """
-    The ARN of a Resource Configuration to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
+    ARN of a Resource Configuration to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required. Applicable for endpoints of type Resource and Tunnel. For Tunnel endpoints, the resource configuration must be of type CIDR.
     """
     resourceConfigurationArnRef: ResourceConfigurationArnRef | None = None
     """
@@ -333,7 +331,7 @@ class InitProvider(BaseModel):
     """
     serviceName: str | None = None
     """
-    The service name. For AWS services the service name is usually in the form com.amazonaws.<region>.<service> (the SageMaker AI Notebook service is an exception to this rule, the service name is in the form aws.sagemaker.<region>.notebook). Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
+    Service name. For AWS services the service name is usually in the form com.amazonaws.<region>.<service> (the SageMaker AI Notebook service is an exception to this rule, the service name is in the form aws.sagemaker.<region>.notebook). Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
     serviceNameRef: ServiceNameRef | None = None
     """
@@ -345,7 +343,7 @@ class InitProvider(BaseModel):
     """
     serviceNetworkArn: str | None = None
     """
-    The ARN of a Service Network to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
+    ARN of a Service Network to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
     serviceNetworkArnRef: ServiceNetworkArnRef | None = None
     """
@@ -357,7 +355,7 @@ class InitProvider(BaseModel):
     """
     serviceRegion: str | None = None
     """
-    - The AWS region of the VPC Endpoint Service. If specified, the VPC endpoint will connect to the service in the provided region. Applicable for endpoints of type Interface.
+    AWS region of the VPC Endpoint Service. If specified, the VPC endpoint will connect to the service in the provided region. Applicable for endpoints of type Interface.
     """
     subnetConfiguration: list[SubnetConfigurationItem] | None = None
     """
@@ -369,11 +367,11 @@ class InitProvider(BaseModel):
     """
     vpcEndpointType: str | None = None
     """
-    The VPC endpoint type, Gateway, GatewayLoadBalancer,Interface, Resource or ServiceNetwork. Defaults to Gateway.
+    VPC endpoint type, Gateway, GatewayLoadBalancer, Interface, Resource, ServiceNetwork or Tunnel. Defaults to Gateway.
     """
     vpcId: str | None = None
     """
-    The ID of the VPC in which the endpoint will be used.
+    ID of the VPC in which the endpoint will be used.
     """
     vpcIdRef: VpcIdRef | None = None
     """
@@ -468,26 +466,26 @@ class Spec(BaseModel):
 class DnsEntryItem(BaseModel):
     dnsName: str | None = None
     """
-    The DNS name.
+    DNS name.
     """
     hostedZoneId: str | None = None
     """
-    The ID of the private hosted zone.
+    ID of the private hosted zone.
     """
 
 
 class SubnetConfigurationItemModel(BaseModel):
     ipv4: str | None = None
     """
-    The IPv4 address to assign to the endpoint network interface in the subnet. You must provide an IPv4 address if the VPC endpoint supports IPv4.
+    IPv4 address to assign to the endpoint network interface in the subnet. You must provide an IPv4 address if the VPC endpoint supports IPv4.
     """
     ipv6: str | None = None
     """
-    The IPv6 address to assign to the endpoint network interface in the subnet. You must provide an IPv6 address if the VPC endpoint supports IPv6.
+    IPv6 address to assign to the endpoint network interface in the subnet. You must provide an IPv6 address if the VPC endpoint supports IPv6.
     """
     subnetId: str | None = None
     """
-    The ID of the subnet. Must have a corresponding subnet in the subnet_ids argument.
+    ID of the subnet. Must have a corresponding subnet in the subnet_ids argument.
     """
 
 
@@ -498,27 +496,27 @@ class AtProvider(BaseModel):
     """
     autoAccept: bool | None = None
     """
-    Accept the VPC endpoint (the VPC endpoint and service need to be in the same AWS account).
+    Whether to accept the VPC endpoint (the VPC endpoint and service need to be in the same AWS account).
     """
     cidrBlocks: list[str] | None = None
     """
-    The list of CIDR blocks for the exposed AWS service. Applicable for endpoints of type Gateway.
+    List of CIDR blocks for the exposed AWS service. Applicable for endpoints of type Gateway.
     """
     dnsEntry: list[DnsEntryItem] | None = None
     """
-    The DNS entries for the VPC Endpoint. Applicable for endpoints of type Interface. DNS blocks are documented below.
+    DNS entries for the VPC Endpoint. Applicable for endpoints of type Interface. See dns_entry below.
     """
     dnsOptions: DnsOptions | None = None
     """
-    The DNS options for the endpoint. See dns_options below.
+    DNS options for the endpoint. See dns_options below.
     """
     id: str | None = None
     """
-    The ID of the VPC endpoint.
+    ID of the VPC endpoint.
     """
     ipAddressType: str | None = None
     """
-    The IP address type for the endpoint. Valid values are ipv4, dualstack, and ipv6.
+    IP address type for the endpoint. Valid values are ipv4, dualstack, and ipv6.
     """
     networkInterfaceIds: list[str] | None = None
     """
@@ -526,20 +524,19 @@ class AtProvider(BaseModel):
     """
     ownerId: str | None = None
     """
-    The ID of the AWS account that owns the VPC endpoint.
+    ID of the AWS account that owns the VPC endpoint.
     """
     policy: str | None = None
     """
-    A policy to attach to the endpoint that controls access to the service. This is a JSON formatted string. Defaults to full access. All Gateway and some Interface endpoints support policies - see the relevant AWS documentation for more details.
+    Policy to attach to the endpoint that controls access to the service. This is a JSON formatted string. Defaults to full access. All Gateway and some Interface endpoints support policies - see the relevant AWS documentation for more details.
     """
     prefixListId: str | None = None
     """
-    The prefix list ID of the exposed AWS service. Applicable for endpoints of type Gateway.
+    Prefix list ID of the exposed AWS service. Applicable for endpoints of type Gateway.
     """
     privateDnsEnabled: bool | None = None
     """
-    Whether or not to associate a private hosted zone with the specified VPC. Applicable for endpoints of type Interface. Most users will want this enabled to allow services within the VPC to automatically use the endpoint.
-    Defaults to false. If vpc_endpoint_type is anything other than Interface, changing this value forces a new resource to be created.
+    Whether to associate a private hosted zone with the specified VPC. Available for AWS services and AWS Marketplace partner services only. Applicable for endpoints of type Interface. Most users will want this enabled to allow services within the VPC to automatically use the endpoint. Defaults to false. If vpc_endpoint_type is anything other than Interface, changing this value forces a new resource to be created.
     """
     region: str | None = None
     """
@@ -552,7 +549,7 @@ class AtProvider(BaseModel):
     """
     resourceConfigurationArn: str | None = None
     """
-    The ARN of a Resource Configuration to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
+    ARN of a Resource Configuration to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required. Applicable for endpoints of type Resource and Tunnel. For Tunnel endpoints, the resource configuration must be of type CIDR.
     """
     routeTableIds: list[str] | None = None
     """
@@ -560,24 +557,23 @@ class AtProvider(BaseModel):
     """
     securityGroupIds: list[str] | None = None
     """
-    The ID of one or more security groups to associate with the network interface. Applicable for endpoints of type Interface.
-    If no security groups are specified, the VPC's default security group is associated with the endpoint.
+    ID of one or more security groups to associate with the network interface. Applicable for endpoints of type Interface, Resource, ServiceNetwork, and Tunnel. If no security groups are specified, the VPC's default security group is associated with the endpoint.
     """
     serviceName: str | None = None
     """
-    The service name. For AWS services the service name is usually in the form com.amazonaws.<region>.<service> (the SageMaker AI Notebook service is an exception to this rule, the service name is in the form aws.sagemaker.<region>.notebook). Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
+    Service name. For AWS services the service name is usually in the form com.amazonaws.<region>.<service> (the SageMaker AI Notebook service is an exception to this rule, the service name is in the form aws.sagemaker.<region>.notebook). Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
     serviceNetworkArn: str | None = None
     """
-    The ARN of a Service Network to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
+    ARN of a Service Network to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
     serviceRegion: str | None = None
     """
-    - The AWS region of the VPC Endpoint Service. If specified, the VPC endpoint will connect to the service in the provided region. Applicable for endpoints of type Interface.
+    AWS region of the VPC Endpoint Service. If specified, the VPC endpoint will connect to the service in the provided region. Applicable for endpoints of type Interface.
     """
     state: str | None = None
     """
-    The state of the VPC endpoint.
+    State of the VPC endpoint.
     """
     subnetConfiguration: list[SubnetConfigurationItemModel] | None = None
     """
@@ -585,7 +581,7 @@ class AtProvider(BaseModel):
     """
     subnetIds: list[str] | None = None
     """
-    The ID of one or more subnets in which to create a network interface for the endpoint. Applicable for endpoints of type GatewayLoadBalancer and Interface. Interface type endpoints cannot function without being assigned to a subnet.
+    ID of one or more subnets in which to create a network interface for the endpoint. Applicable for endpoints of type GatewayLoadBalancer, Interface, Resource, ServiceNetwork, and Tunnel. Interface type endpoints cannot function without being assigned to a subnet. For Tunnel endpoints, the subnets must be in the Availability Zones of the resource gateway associated with the resource configuration.
     """
     tags: dict[str, str] | None = None
     """
@@ -593,15 +589,15 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
     vpcEndpointType: str | None = None
     """
-    The VPC endpoint type, Gateway, GatewayLoadBalancer,Interface, Resource or ServiceNetwork. Defaults to Gateway.
+    VPC endpoint type, Gateway, GatewayLoadBalancer, Interface, Resource, ServiceNetwork or Tunnel. Defaults to Gateway.
     """
     vpcId: str | None = None
     """
-    The ID of the VPC in which the endpoint will be used.
+    ID of the VPC in which the endpoint will be used.
     """
 
 

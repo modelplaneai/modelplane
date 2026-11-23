@@ -290,7 +290,7 @@ class VersionSelector(BaseModel):
 class WarmPoolConfig(BaseModel):
     maxGroupPreparedCapacity: float | None = None
     """
-    Maximum number of instances that are allowed to be in the warm pool combined with the Auto Scaling Group. Use -1 to specify an unlimited capacity.
+    Maximum number of instances that are allowed to be in the warm pool combined with the Auto Scaling group. Use -1 to specify an unlimited capacity.
     """
     minSize: float | None = None
     """
@@ -302,7 +302,7 @@ class WarmPoolConfig(BaseModel):
     """
     reuseOnScaleIn: bool | None = None
     """
-    Whether to return instances in the Auto Scaling Group to the warm pool on scale in. Not supported on Bottlerocket. Defaults to false.
+    Whether to return instances in the Auto Scaling group to the warm pool on scale in. Not supported on Bottlerocket. Defaults to false.
     """
 
 
@@ -615,14 +615,14 @@ class RemoteAccessModel(BaseModel):
 class AutoscalingGroup(BaseModel):
     name: str | None = None
     """
-    Name of the AutoScaling Group.
+    Name of the Auto Scaling group.
     """
 
 
 class Resource(BaseModel):
     autoscalingGroups: list[AutoscalingGroup] | None = None
     """
-    List of objects containing information about AutoScaling Groups.
+    List of objects containing information about Auto Scaling groups.
     """
     remoteAccessSecurityGroupId: str | None = None
     """

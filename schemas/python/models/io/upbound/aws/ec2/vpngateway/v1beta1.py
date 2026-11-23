@@ -57,11 +57,11 @@ class VpcIdSelector(BaseModel):
 class ForProvider(BaseModel):
     amazonSideAsn: str | None = None
     """
-    The Autonomous System Number (ASN) for the Amazon side of the gateway. If you don't specify an ASN, the virtual private gateway is created with the default ASN.
+    Autonomous System Number (ASN) for the Amazon side of the gateway. If you don't specify an ASN, the virtual private gateway is created with the default ASN.
     """
     availabilityZone: str | None = None
     """
-    The Availability Zone for the virtual private gateway.
+    Availability Zone for the virtual private gateway.
     """
     region: str
     """
@@ -74,7 +74,7 @@ class ForProvider(BaseModel):
     """
     vpcId: str | None = None
     """
-    The VPC ID to create in.
+    VPC ID to create in.
     """
     vpcIdRef: VpcIdRef | None = None
     """
@@ -89,11 +89,11 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     amazonSideAsn: str | None = None
     """
-    The Autonomous System Number (ASN) for the Amazon side of the gateway. If you don't specify an ASN, the virtual private gateway is created with the default ASN.
+    Autonomous System Number (ASN) for the Amazon side of the gateway. If you don't specify an ASN, the virtual private gateway is created with the default ASN.
     """
     availabilityZone: str | None = None
     """
-    The Availability Zone for the virtual private gateway.
+    Availability Zone for the virtual private gateway.
     """
     tags: dict[str, str] | None = None
     """
@@ -101,7 +101,7 @@ class InitProvider(BaseModel):
     """
     vpcId: str | None = None
     """
-    The VPC ID to create in.
+    VPC ID to create in.
     """
     vpcIdRef: VpcIdRef | None = None
     """
@@ -196,7 +196,7 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     amazonSideAsn: str | None = None
     """
-    The Autonomous System Number (ASN) for the Amazon side of the gateway. If you don't specify an ASN, the virtual private gateway is created with the default ASN.
+    Autonomous System Number (ASN) for the Amazon side of the gateway. If you don't specify an ASN, the virtual private gateway is created with the default ASN.
     """
     arn: str | None = None
     """
@@ -204,11 +204,11 @@ class AtProvider(BaseModel):
     """
     availabilityZone: str | None = None
     """
-    The Availability Zone for the virtual private gateway.
+    Availability Zone for the virtual private gateway.
     """
     id: str | None = None
     """
-    The ID of the VPN Gateway.
+    ID of the VPN Gateway.
     """
     region: str | None = None
     """
@@ -221,11 +221,11 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
     vpcId: str | None = None
     """
-    The VPC ID to create in.
+    VPC ID to create in.
     """
 
 

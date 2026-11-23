@@ -88,7 +88,7 @@ class ForProvider(BaseModel):
     """
     connectionNotificationArn: str | None = None
     """
-    The ARN of the SNS topic for the notifications.
+    ARN of the SNS topic for the notifications.
     """
     connectionNotificationArnRef: ConnectionNotificationArnRef | None = None
     """
@@ -105,11 +105,11 @@ class ForProvider(BaseModel):
     """
     vpcEndpointId: str | None = None
     """
-    The ID of the VPC Endpoint to receive notifications for.
+    ID of the VPC Endpoint to receive notifications for.
     """
     vpcEndpointServiceId: str | None = None
     """
-    The ID of the VPC Endpoint Service to receive notifications for.
+    ID of the VPC Endpoint Service to receive notifications for.
     """
     vpcEndpointServiceIdRef: VpcEndpointServiceIdRef | None = None
     """
@@ -128,7 +128,7 @@ class InitProvider(BaseModel):
     """
     connectionNotificationArn: str | None = None
     """
-    The ARN of the SNS topic for the notifications.
+    ARN of the SNS topic for the notifications.
     """
     connectionNotificationArnRef: ConnectionNotificationArnRef | None = None
     """
@@ -140,11 +140,11 @@ class InitProvider(BaseModel):
     """
     vpcEndpointId: str | None = None
     """
-    The ID of the VPC Endpoint to receive notifications for.
+    ID of the VPC Endpoint to receive notifications for.
     """
     vpcEndpointServiceId: str | None = None
     """
-    The ID of the VPC Endpoint Service to receive notifications for.
+    ID of the VPC Endpoint Service to receive notifications for.
     """
     vpcEndpointServiceIdRef: VpcEndpointServiceIdRef | None = None
     """
@@ -243,15 +243,15 @@ class AtProvider(BaseModel):
     """
     connectionNotificationArn: str | None = None
     """
-    The ARN of the SNS topic for the notifications.
+    ARN of the SNS topic for the notifications.
     """
     id: str | None = None
     """
-    The ID of the VPC connection notification.
+    ID of the VPC connection notification.
     """
     notificationType: str | None = None
     """
-    The type of notification.
+    Type of notification.
     """
     region: str | None = None
     """
@@ -260,15 +260,15 @@ class AtProvider(BaseModel):
     """
     state: str | None = None
     """
-    The state of the notification.
+    State of the notification.
     """
     vpcEndpointId: str | None = None
     """
-    The ID of the VPC Endpoint to receive notifications for.
+    ID of the VPC Endpoint to receive notifications for.
     """
     vpcEndpointServiceId: str | None = None
     """
-    The ID of the VPC Endpoint Service to receive notifications for.
+    ID of the VPC Endpoint Service to receive notifications for.
     """
 
 

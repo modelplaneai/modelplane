@@ -244,6 +244,9 @@ class AtProvider(BaseModel):
     A destination configuration block (documented below).
     """
     id: str | None = None
+    """
+    (String) ID of the file system.
+    """
     originalSourceFileSystemArn: str | None = None
     """
     ARN of the original source Amazon EFS file system in the replication configuration.
