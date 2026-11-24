@@ -115,6 +115,7 @@ vLLM
 [Hh]uggingFace
 NVIDIA
 NVLink
+NVMe
 AMD
 Instinct
 ROCm
