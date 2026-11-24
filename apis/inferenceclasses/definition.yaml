@@ -611,6 +611,18 @@ spec:
                       default: 1
                       minimum: 1
                       maximum: 64
+                    allowMultipleAllocations:
+                      type: boolean
+                      description: >-
+                        Whether several claims can allocate one of these
+                        devices at once, each consuming part of its capacity,
+                        as DRA's consumable capacity (KEP-5075) allows. Set it
+                        only when the DRA driver publishes the device with
+                        allowMultipleAllocations. A ModelDeployment request
+                        that sets capacity.requests matches only a device that
+                        allows multiple allocations, and is scheduled by the
+                        capacity its device has free. Only a claim: DRA device
+                        can set it. Omitted, the scheduler counts the device whole.
                     attributes:
                       type: object
                       description: >-
@@ -655,6 +667,8 @@ spec:
                   x-kubernetes-validations:
                   - rule: "self.claim != 'DRA' || has(self.deviceClassName)"
                     message: "deviceClassName is required when claim is DRA"
+                  - rule: "self.claim == 'DRA' || !has(self.allowMultipleAllocations) || !self.allowMultipleAllocations"
+                    message: "allowMultipleAllocations requires claim: DRA"
           status:
             type: object
             properties:

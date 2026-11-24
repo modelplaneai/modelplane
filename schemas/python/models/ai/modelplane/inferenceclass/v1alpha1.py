@@ -60,6 +60,10 @@ class Capacity(BaseModel):
 
 
 class Device(BaseModel):
+    allowMultipleAllocations: bool | None = None
+    """
+    Whether several claims can allocate one of these devices at once, each consuming part of its capacity, as DRA's consumable capacity (KEP-5075) allows. Set it only when the DRA driver publishes the device with allowMultipleAllocations. A ModelDeployment request that sets capacity.requests matches only a device that allows multiple allocations, and is scheduled by the capacity its device has free. Only a claim: DRA device can set it. Omitted, the scheduler counts the device whole.
+    """
     attributes: dict[str, Attributes] | None = Field(None, max_length=32)
     """
     DRA-style typed attributes for this device. Keys are bare names (e.g. architecture); the domain comes from the device's driver. Each value sets exactly one typed field.

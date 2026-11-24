@@ -542,6 +542,43 @@ spec:
                                                       device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0.
                                                     minLength: 1
                                                     maxLength: 10240
+                                            capacity:
+                                              type: object
+                                              description: >-
+                                                The share of each device's capacity the
+                                                request consumes, mirroring a DRA
+                                                DeviceRequest's capacity and carried
+                                                through to the ResourceClaim. Setting it
+                                                makes the request match only a device
+                                                whose InferenceClass sets
+                                                allowMultipleAllocations and declares at
+                                                least the requested amount of each
+                                                capacity. The scheduler then places the
+                                                request on devices with that much
+                                                capacity free, so several requests can
+                                                share one device. Omitted, the request
+                                                takes whole devices.
+                                              required: [requests]
+                                              properties:
+                                                requests:
+                                                  type: object
+                                                  description: >-
+                                                    The capacity to consume on each
+                                                    device, keyed by the names the
+                                                    device declares capacity under (e.g.
+                                                    memory); values are Kubernetes
+                                                    Quantities. When exactly one of a
+                                                    member's requests asks for memory,
+                                                    its engine container gets
+                                                    MODELPLANE_DEVICE_MEMORY_FRACTION:
+                                                    the requested memory over the memory
+                                                    the device's class declares.
+                                                  minProperties: 1
+                                                  maxProperties: 8
+                                                  additionalProperties:
+                                                    type: string
+                                                    pattern: '^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$'
+                                                    maxLength: 32
                                   # This object has no schema default on purpose: the
                                   # apiserver applies defaults before CEL validation, so
                                   # defaulting it would inject it onto Standalone and

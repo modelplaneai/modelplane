@@ -52,6 +52,19 @@ class ClusterSelector(BaseModel):
     matchLabels: dict[str, str] | None = None
 
 
+class Capacity(BaseModel):
+    requests: dict[
+        str,
+        constr(
+            pattern=r'^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$',
+            max_length=32,
+        ),
+    ] = Field(..., max_length=8, min_length=1)
+    """
+    The capacity to consume on each device, keyed by the names the device declares capacity under (e.g. memory); values are Kubernetes Quantities. When exactly one of a member's requests asks for memory, its engine container gets MODELPLANE_DEVICE_MEMORY_FRACTION: the requested memory over the memory the device's class declares.
+    """
+
+
 class Selector(BaseModel):
     cel: constr(min_length=1, max_length=10240) | None = None
     """
@@ -60,6 +73,10 @@ class Selector(BaseModel):
 
 
 class Device(BaseModel):
+    capacity: Capacity | None = None
+    """
+    The share of each device's capacity the request consumes, mirroring a DRA DeviceRequest's capacity and carried through to the ResourceClaim. Setting it makes the request match only a device whose InferenceClass sets allowMultipleAllocations and declares at least the requested amount of each capacity. The scheduler then places the request on devices with that much capacity free, so several requests can share one device. Omitted, the request takes whole devices.
+    """
     count: conint(ge=1, le=64) | None = 1
     """
     How many matching devices a node must have. For a GPU request this is the per-node GPU count.
