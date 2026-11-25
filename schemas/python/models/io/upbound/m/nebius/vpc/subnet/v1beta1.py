@@ -188,8 +188,8 @@ class ForProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     networkId: str | None = None
     """
@@ -247,8 +247,8 @@ class InitProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     networkId: str | None = None
     """
@@ -377,7 +377,7 @@ class Ipv4PublicPool(BaseModel):
 class RouteTable(BaseModel):
     default: bool | None = None
     """
-    (Boolean) :
+    (Boolean) Indicates whether this is the network's default subnet.
     :
 
     Indicates whether this is the network's default route table.
@@ -392,6 +392,11 @@ class RouteTable(BaseModel):
 
 
 class Status(BaseModel):
+    default: bool | None = None
+    """
+    (Boolean) Indicates whether this is the network's default subnet.
+    Indicates whether this is the network's default subnet.
+    """
     ipv4PrivateCidrs: list[str] | None = None
     """
     (List of String, Deprecated) :
@@ -477,8 +482,8 @@ class AtProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     networkId: str | None = None
     """

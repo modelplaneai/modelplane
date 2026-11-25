@@ -112,7 +112,8 @@ class ForProvider(BaseModel):
     """
     region: str | None = None
     """
-    The region of the cluster the node pool belongs to. Defaults to the account's default region. It scopes every API call made for this resource, because the upstream resource has no region attribute of its own.
+    (String) The region of the node pool, if not declare we use the region of the cluster
+    The region of the node pool, if not declare we use the region of the cluster
     """
     size: str | None = None
     """
@@ -160,7 +161,8 @@ class InitProvider(BaseModel):
     """
     region: str | None = None
     """
-    The region of the cluster the node pool belongs to. Defaults to the account's default region. It scopes every API call made for this resource, because the upstream resource has no region attribute of its own.
+    (String) The region of the node pool, if not declare we use the region of the cluster
+    The region of the node pool, if not declare we use the region of the cluster
     """
     size: str | None = None
     """
@@ -271,7 +273,8 @@ class AtProvider(BaseModel):
     """
     region: str | None = None
     """
-    The region of the cluster the node pool belongs to. Defaults to the account's default region. It scopes every API call made for this resource, because the upstream resource has no region attribute of its own.
+    (String) The region of the node pool, if not declare we use the region of the cluster
+    The region of the node pool, if not declare we use the region of the cluster
     """
     size: str | None = None
     """

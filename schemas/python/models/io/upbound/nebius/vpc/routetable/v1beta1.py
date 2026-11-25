@@ -62,7 +62,7 @@ class ForProvider(BaseModel):
     metadata: dict[str, Any] | None = None
     name: str | None = None
     """
-    Human readable name for the resource.
+    Human-readable name for the resource.
     """
     networkId: str | None = None
     """
@@ -90,7 +90,7 @@ class InitProvider(BaseModel):
     metadata: dict[str, Any] | None = None
     name: str | None = None
     """
-    Human readable name for the resource.
+    Human-readable name for the resource.
     """
     networkId: str | None = None
     """
@@ -219,6 +219,10 @@ class Status(BaseModel):
 
     - `STATE_UNSPECIFIED` - The state is unknown or not yet set.
     - `READY` - The route table is configured and operational.
+    - `CREATING` - The route table is being created.
+    - `RECONCILING` - The route table is reconciling changes after it has been created.
+    - `DELETING` - The route table is being deleted.
+    - `FAILED` - Reconciliation stopped because of an error.
     """
 
 
@@ -243,7 +247,7 @@ class AtProvider(BaseModel):
     metadata: dict[str, Any] | None = None
     name: str | None = None
     """
-    Human readable name for the resource.
+    Human-readable name for the resource.
     """
     networkId: str | None = None
     """

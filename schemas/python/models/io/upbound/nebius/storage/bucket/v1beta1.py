@@ -243,6 +243,13 @@ class Condition(BaseModel):
     """
 
 
+class LastAccess(BaseModel):
+    conditions: list[Condition] | None = None
+    """
+    (Attributes List) :
+    """
+
+
 class LastAccessFilter(BaseModel):
     conditions: list[Condition] | None = None
     """
@@ -524,6 +531,10 @@ class ForProvider(BaseModel):
     (Map of String) Labels associated with the resource.
     Labels associated with the resource.
     """
+    lastAccess: LastAccess | None = None
+    """
+    (Attributes) :
+    """
     lifecycleConfiguration: LifecycleConfiguration | None = None
     """
     (Attributes) :
@@ -544,8 +555,8 @@ class ForProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     objectAuditLogging: str | None = None
     """
@@ -741,6 +752,10 @@ class InitProvider(BaseModel):
     (Map of String) Labels associated with the resource.
     Labels associated with the resource.
     """
+    lastAccess: LastAccess | None = None
+    """
+    (Attributes) :
+    """
     lifecycleConfiguration: LifecycleConfiguration | None = None
     """
     (Attributes) :
@@ -761,8 +776,8 @@ class InitProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     objectAuditLogging: str | None = None
     """
@@ -1301,6 +1316,10 @@ class AtProvider(BaseModel):
     (Map of String) Effective labels sent to the API after merging provider default_labels with resource labels.
     Effective labels sent to the API after merging provider `default_labels` with resource `labels`.
     """
+    lastAccess: LastAccess | None = None
+    """
+    (Attributes) :
+    """
     lifecycleConfiguration: LifecycleConfiguration | None = None
     """
     (Attributes) :
@@ -1321,8 +1340,8 @@ class AtProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     objectAuditLogging: str | None = None
     """

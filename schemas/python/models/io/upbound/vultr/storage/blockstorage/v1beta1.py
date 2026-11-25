@@ -206,7 +206,7 @@ class AtProvider(BaseModel):
     """
     Whether or not this block device can be used as a bootable volume.
     """
-    cost: int | None = None
+    cost: float | None = None
     """
     The monthly cost of this block storage.
     """

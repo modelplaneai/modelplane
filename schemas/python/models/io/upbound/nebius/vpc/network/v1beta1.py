@@ -104,8 +104,8 @@ class ForProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -134,8 +134,8 @@ class InitProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -233,6 +233,11 @@ class PoolModel(BaseModel):
 
 
 class Status(BaseModel):
+    default: bool | None = None
+    """
+    (Boolean) Indicates whether this is the project's default network.
+    Indicates whether this is the project's default network.
+    """
     defaultRouteTableId: str | None = None
     """
     (String) ID of the network's default route table.
@@ -295,8 +300,8 @@ class AtProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """

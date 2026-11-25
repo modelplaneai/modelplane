@@ -26,7 +26,7 @@ class MaxPriceV1(BaseModel):
     """
     :
 
-    Per-GPU hourly limit in USD, decimal string 3 digits precision. Example: "3.515".
+    Per-GPU hourly limit in USD, as a string with three decimal places. Example: "3.515".
     Must be within the allowed price range (OUT_OF_RANGE otherwise);
     a value below the current market price is accepted but blocks scheduling.
     Mutable only while `status.running_vm_count` is 0
@@ -48,7 +48,7 @@ class ForProvider(BaseModel):
     metadata: dict[str, Any] | None = None
     name: str | None = None
     """
-    Human readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -66,7 +66,7 @@ class InitProvider(BaseModel):
     metadata: dict[str, Any] | None = None
     name: str | None = None
     """
-    Human readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -185,7 +185,8 @@ class Status(BaseModel):
     - `STATE_ACTIVE` - Ready; whether VMs may start is `scheduling_state`.
     - `STATE_DELETING` - Being deleted; does not accept new VMs.
     - `STATE_UPDATING`:
-    The bid is being changed; scheduling is blocked until the change lands.
+    The max_price is being changed; scheduling is blocked until the change
+    is applied.
     The state can last while a market price change is applied to the segment.
     """
 
@@ -212,7 +213,7 @@ class AtProvider(BaseModel):
     metadata: dict[str, Any] | None = None
     name: str | None = None
     """
-    Human readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """

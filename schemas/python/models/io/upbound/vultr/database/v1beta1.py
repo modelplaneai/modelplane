@@ -665,6 +665,10 @@ class ReadReplicaModel1(BaseModel):
     """
     A list of SQL modes to configure for the managed database (MySQL engine types only - ALLOW_INVALID_DATES, ANSI, ANSI_QUOTES, ERROR_FOR_DIVISION_BY_ZERO, HIGH_NOT_PRECEDENCE, IGNORE_SPACE, NO_AUTO_VALUE_ON_ZERO, NO_DIR_IN_CREATE, NO_ENGINE_SUBSTITUTION, NO_UNSIGNED_SUBTRACTION, NO_ZERO_DATE, NO_ZERO_IN_DATE, ONLY_FULL_GROUP_BY, PIPES_AS_CONCAT, REAL_AS_FLOAT, STRICT_ALL_TABLES, STRICT_TRANS_TABLES, TIME_TRUNCATE_FRACTIONAL, TRADITIONAL).
     """
+    pendingCharges: float | None = None
+    """
+    Charges due at the end of the billing period.
+    """
     plan: str | None = None
     """
     The ID of the plan that you want the managed database to subscribe to. See List Managed Database Plans
@@ -814,7 +818,7 @@ class AtProvider(BaseModel):
     """
     pendingCharges: float | None = None
     """
-    Charges due for this managed database subscription at the end of the billing period.
+    Charges due at the end of the billing period.
     """
     plan: str | None = None
     """

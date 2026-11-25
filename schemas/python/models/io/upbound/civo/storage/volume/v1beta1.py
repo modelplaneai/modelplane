@@ -80,11 +80,12 @@ class ForProvider(BaseModel):
     """
     sizeGb: int | None = None
     """
-    (Number) A minimum of 1 and a maximum of your available disk space from your quota specifies the size of the volume in gigabytes
-    A minimum of 1 and a maximum of your available disk space from your quota specifies the size of the volume in gigabytes
+    replace for a smaller size.
+    A minimum of 1 and a maximum of your available disk space from your quota specifies the size of the volume in gigabytes. Increases are applied in place: on a detached volume, and on a volume attached to a running instance when its volume type supports online expansion. Otherwise the API refuses the resize with `volume_onlie_resize` (detach the volume or move it to an expandable volume type) or `volume_resize_requires_running_instance` (start the instance).
     """
     volumeType: str | None = None
     """
+    (String) The type of the volume
     The type of the volume
     """
 
@@ -115,11 +116,12 @@ class InitProvider(BaseModel):
     """
     sizeGb: int | None = None
     """
-    (Number) A minimum of 1 and a maximum of your available disk space from your quota specifies the size of the volume in gigabytes
-    A minimum of 1 and a maximum of your available disk space from your quota specifies the size of the volume in gigabytes
+    replace for a smaller size.
+    A minimum of 1 and a maximum of your available disk space from your quota specifies the size of the volume in gigabytes. Increases are applied in place: on a detached volume, and on a volume attached to a running instance when its volume type supports online expansion. Otherwise the API refuses the resize with `volume_onlie_resize` (detach the volume or move it to an expandable volume type) or `volume_resize_requires_running_instance` (start the instance).
     """
     volumeType: str | None = None
     """
+    (String) The type of the volume
     The type of the volume
     """
 
@@ -231,11 +233,12 @@ class AtProvider(BaseModel):
     """
     sizeGb: int | None = None
     """
-    (Number) A minimum of 1 and a maximum of your available disk space from your quota specifies the size of the volume in gigabytes
-    A minimum of 1 and a maximum of your available disk space from your quota specifies the size of the volume in gigabytes
+    replace for a smaller size.
+    A minimum of 1 and a maximum of your available disk space from your quota specifies the size of the volume in gigabytes. Increases are applied in place: on a detached volume, and on a volume attached to a running instance when its volume type supports online expansion. Otherwise the API refuses the resize with `volume_onlie_resize` (detach the volume or move it to an expandable volume type) or `volume_resize_requires_running_instance` (start the instance).
     """
     volumeType: str | None = None
     """
+    (String) The type of the volume
     The type of the volume
     """
 

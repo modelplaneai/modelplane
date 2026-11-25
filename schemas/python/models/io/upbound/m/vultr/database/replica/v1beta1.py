@@ -352,6 +352,10 @@ class AtProvider(BaseModel):
     """
     A list of SQL modes currently configured for the managed database read replica (MySQL engine types only).
     """
+    pendingCharges: float | None = None
+    """
+    Charges due at the end of the billing period.
+    """
     plan: str | None = None
     """
     The managed database read replica's plan ID.

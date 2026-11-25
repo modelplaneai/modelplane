@@ -41,7 +41,7 @@ class ForProvider(BaseModel):
     metadata: dict[str, Any] | None = None
     name: str | None = None
     """
-    Human readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -69,7 +69,7 @@ class InitProvider(BaseModel):
     metadata: dict[str, Any] | None = None
     name: str | None = None
     """
-    Human readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -232,7 +232,7 @@ class AtProvider(BaseModel):
     metadata: dict[str, Any] | None = None
     name: str | None = None
     """
-    Human readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """

@@ -62,13 +62,26 @@ class AutoRepair(BaseModel):
 
 
 class Autoscaling(BaseModel):
+    initialNodeCount: float | None = None
+    """
+    (Number) :
+    :
+
+    Initial number of nodes in the autoscaled node group. Defaults to `min_node_count`.
+    At creation, the value must be between `min_node_count` and `max_node_count`, inclusive.
+
+    Updating or clearing this field after creation has no effect.
+    This also applies when switching an existing node group from a fixed size to autoscaling.
+    Autoscaling starts from the current node count, subject to `min_node_count` and `max_node_count`.
+    """
     maxNodeCount: float | None = None
     """
     (Number)
     """
     minNodeCount: float | None = None
     """
-    (Number)
+    .
+    At creation, the value must be between min_node_count and max_node_count, inclusive.
     """
 
 
@@ -247,6 +260,25 @@ class CloudInitUserDataSecretRef(BaseModel):
     name: str
     """
     Name of the secret.
+    """
+
+
+class ContainerRuntime(BaseModel):
+    sociPullMode: str | None = None
+    """
+    (String) :
+    :
+
+    Uses SOCI Snapshotter to pull images.
+
+    #### Supported values
+
+    Image pull modes for SOCI Snapshotter
+    Possible values:
+
+    - `SOCI_PULL_MODE_UNSPECIFIED` - Uses the default containerd pull.
+    - `LAZY` - Uses SOCI Snapshotter to fetch image layers on demand.
+    - `PARALLEL` - Uses SOCI Snapshotter to download and unpack image layers in parallel.
     """
 
 
@@ -696,6 +728,10 @@ class Template(BaseModel):
     cloud-init user-data
     Should contain at least one SSH key.
     """
+    containerRuntime: ContainerRuntime | None = None
+    """
+    (Attributes) :
+    """
     filesystems: list[Filesystem] | None = None
     """
     (Attributes List) :
@@ -827,8 +863,8 @@ class ForProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -856,9 +892,11 @@ class ForProvider(BaseModel):
     (String) :
     :
 
-    Version is desired Kubernetes version of the cluster. For now only acceptable format is
-    `<major>.<minor>` like "1.31". Option for patch version update will be added later.
-    By default the cluster control plane `<major>.<minor>` version will be used.
+    Desired Kubernetes version and optional node image version for the node group.
+    Use `<major>.<minor>[-nebius-node.<image>]`, for example, "1.36" or "1.36-nebius-node.80".
+    If this field is omitted, the Kubernetes version defaults to the cluster control plane version.
+    If the image version suffix is omitted, the latest compatible node image version is selected on NodeGroup creation.
+    To upgrade to the latest node image version later, use `NodeGroupService.Upgrade`.
     """
 
 
@@ -891,8 +929,8 @@ class InitProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -920,9 +958,11 @@ class InitProvider(BaseModel):
     (String) :
     :
 
-    Version is desired Kubernetes version of the cluster. For now only acceptable format is
-    `<major>.<minor>` like "1.31". Option for patch version update will be added later.
-    By default the cluster control plane `<major>.<minor>` version will be used.
+    Desired Kubernetes version and optional node image version for the node group.
+    Use `<major>.<minor>[-nebius-node.<image>]`, for example, "1.36" or "1.36-nebius-node.80".
+    If this field is omitted, the Kubernetes version defaults to the cluster control plane version.
+    If the image version suffix is omitted, the latest compatible node image version is selected on NodeGroup creation.
+    To upgrade to the latest node image version later, use `NodeGroupService.Upgrade`.
     """
 
 
@@ -1120,9 +1160,10 @@ class Status(BaseModel):
     (String) :
     :
 
-    Actual version of NodeGroup. Have format `<major>.<minor>.<patch>-nebius-node.<infra_version>` like "1.30.0-nebius-node.10".
-    Where `<major>.<minor>.<patch>` is Kubernetes version and `<infra_version>` is version of Node infrastructure and configuration,
-    which update may include bug fixes, security updates and new features depending on worker node configuration.
+    Actual Kubernetes version and node image version of the node group.
+    Format: `<major>.<minor>.<patch>-nebius-node.<image>`, for example, "1.36.3-nebius-node.80".
+    `<major>.<minor>.<patch>` is the Kubernetes version, and `<image>` is the node image version.
+    Node image updates can include bug fixes, security updates, and new features for the selected node configuration.
     """
 
 
@@ -1180,6 +1221,10 @@ class TemplateModel(BaseModel):
     bootDisk: BootDisk | None = None
     """
     (Attributes) Parameters of a Node Nebius Compute Instance boot disk. (see below for nested schema)
+    """
+    containerRuntime: ContainerRuntime | None = None
+    """
+    (Attributes) :
     """
     filesystems: list[Filesystem] | None = None
     """
@@ -1322,8 +1367,8 @@ class AtProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -1366,9 +1411,11 @@ class AtProvider(BaseModel):
     (String) :
     :
 
-    Version is desired Kubernetes version of the cluster. For now only acceptable format is
-    `<major>.<minor>` like "1.31". Option for patch version update will be added later.
-    By default the cluster control plane `<major>.<minor>` version will be used.
+    Desired Kubernetes version and optional node image version for the node group.
+    Use `<major>.<minor>[-nebius-node.<image>]`, for example, "1.36" or "1.36-nebius-node.80".
+    If this field is omitted, the Kubernetes version defaults to the cluster control plane version.
+    If the image version suffix is omitted, the latest compatible node image version is selected on NodeGroup creation.
+    To upgrade to the latest node image version later, use `NodeGroupService.Upgrade`.
     """
 
 

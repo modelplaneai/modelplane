@@ -39,7 +39,7 @@ class ForProvider(BaseModel):
     metadata: dict[str, Any] | None = None
     name: str | None = None
     """
-    Human readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -76,7 +76,7 @@ class InitProvider(BaseModel):
     metadata: dict[str, Any] | None = None
     name: str | None = None
     """
-    Human readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -202,7 +202,7 @@ class Status(BaseModel):
     """
     :
 
-    State (ACTIVE, SCHEDULED_FOR_DELETION)
+    State (ACTIVE, SCHEDULED_FOR_DELETION).
 
     #### Supported values
 
@@ -212,6 +212,7 @@ class Status(BaseModel):
     - `KEY_STATE_UNSPECIFIED`
     - `ACTIVE` - Key is active, ready for use
     - `SCHEDULED_FOR_DELETION` - Key is scheduled for deletion.
+    - `PENDING_IMPORT`
     """
 
 
@@ -257,7 +258,7 @@ class AtProvider(BaseModel):
     metadata: dict[str, Any] | None = None
     name: str | None = None
     """
-    Human readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
