@@ -114,6 +114,10 @@ class ForProvider(BaseModel):
     """
     The number of nodes in this node pool.
     """
+    nodeRecycle: list[str] | None = None
+    """
+    A list of node IDs to recycle. This will increase the node pool size with new nodes and automatically remove the recycled nodes.
+    """
     plan: str | None = None
     """
     The plan to be used in this node pool. See plans list Note the minimum plan requirements must have at least 1 core and 2 gbs of memory.
@@ -126,6 +130,10 @@ class ForProvider(BaseModel):
     userData: str | None = None
     """
     A base64 encoded string containing the user data to apply to nodes in the node pool.
+    """
+    vpcOnly: bool | None = None
+    """
+    Enable private-only VPC connectivity for nodes. If true, nodes can only access the internet via the NAT Gateway attached to the VPC.
     """
 
 
@@ -163,6 +171,10 @@ class InitProvider(BaseModel):
     """
     The number of nodes in this node pool.
     """
+    nodeRecycle: list[str] | None = None
+    """
+    A list of node IDs to recycle. This will increase the node pool size with new nodes and automatically remove the recycled nodes.
+    """
     plan: str | None = None
     """
     The plan to be used in this node pool. See plans list Note the minimum plan requirements must have at least 1 core and 2 gbs of memory.
@@ -175,6 +187,10 @@ class InitProvider(BaseModel):
     userData: str | None = None
     """
     A base64 encoded string containing the user data to apply to nodes in the node pool.
+    """
+    vpcOnly: bool | None = None
+    """
+    Enable private-only VPC connectivity for nodes. If true, nodes can only access the internet via the NAT Gateway attached to the VPC.
     """
 
 
@@ -349,6 +365,10 @@ class AtProvider(BaseModel):
     """
     The number of nodes in this node pool.
     """
+    nodeRecycle: list[str] | None = None
+    """
+    A list of node IDs to recycle. This will increase the node pool size with new nodes and automatically remove the recycled nodes.
+    """
     nodes: list[Node] | None = None
     plan: str | None = None
     """
@@ -366,6 +386,10 @@ class AtProvider(BaseModel):
     userData: str | None = None
     """
     A base64 encoded string containing the user data to apply to nodes in the node pool.
+    """
+    vpcOnly: bool | None = None
+    """
+    Enable private-only VPC connectivity for nodes. If true, nodes can only access the internet via the NAT Gateway attached to the VPC.
     """
 
 

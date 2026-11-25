@@ -26,8 +26,8 @@ class ForProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -52,8 +52,8 @@ class InitProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -127,7 +127,7 @@ class Spec(BaseModel):
 class Status(BaseModel):
     imagesCount: float | None = None
     """
-    (Number) Registry.Type type = 2;
+    (Number)
     """
     registryFqdn: str | None = None
     """
@@ -170,8 +170,7 @@ class AtProvider(BaseModel):
     """
     imagesCount: float | None = None
     """
-    (Number) Registry.Type type = 2;
-    Registry.Type type = 2;
+    (Number)
     """
     labels: dict[str, str] | None = None
     """
@@ -189,8 +188,8 @@ class AtProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """

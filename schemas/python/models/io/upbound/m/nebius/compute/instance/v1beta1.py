@@ -230,7 +230,7 @@ class ManagedDisk(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
+    readable name for the resource.
     :
 
     Name of a dependent disk.
@@ -460,7 +460,7 @@ class NetworkInterface(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
+    readable name for the resource.
     :
 
     Interface name
@@ -686,8 +686,8 @@ class ForProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     networkInterfaces: list[NetworkInterface] | None = None
     """
@@ -820,8 +820,8 @@ class InitProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     networkInterfaces: list[NetworkInterface] | None = None
     """
@@ -1088,7 +1088,7 @@ class NetworkInterfaceModel(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
+    readable name for the resource.
     :
 
     Interface name
@@ -1139,7 +1139,7 @@ class DiskAttachment(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
+    readable name for the resource.
     :
 
     Disk name used to match this status entry with the desired attachment
@@ -1227,7 +1227,7 @@ class NetworkInterfaceModel1(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
+    readable name for the resource.
     :
 
     Name for interface.
@@ -1349,8 +1349,8 @@ class AtProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     networkInterfaces: list[NetworkInterfaceModel] | None = None
     """

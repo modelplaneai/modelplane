@@ -135,8 +135,8 @@ class ForProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -174,8 +174,8 @@ class InitProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -345,8 +345,8 @@ class AtProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """

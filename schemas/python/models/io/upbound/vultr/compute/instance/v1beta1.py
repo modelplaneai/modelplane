@@ -405,10 +405,6 @@ class ForProvider(BaseModel):
     """
     The scheme used for the default user. Possible values are root or limited (linux servers only).
     """
-    vpc2Ids: list[str] | None = None
-    """
-    (Deprecated) A list of VPC 2.0 IDs to be attached to the server.
-    """
     vpcIds: list[str] | None = None
     """
     A list of VPC IDs to be attached to the server.
@@ -578,10 +574,6 @@ class InitProvider(BaseModel):
     userScheme: str | None = None
     """
     The scheme used for the default user. Possible values are root or limited (linux servers only).
-    """
-    vpc2Ids: list[str] | None = None
-    """
-    (Deprecated) A list of VPC 2.0 IDs to be attached to the server.
     """
     vpcIds: list[str] | None = None
     """
@@ -856,10 +848,6 @@ class AtProvider(BaseModel):
     vcpuCount: int | None = None
     """
     The number of virtual CPUs available on the server.
-    """
-    vpc2Ids: list[str] | None = None
-    """
-    (Deprecated) A list of VPC 2.0 IDs to be attached to the server.
     """
     vpcIds: list[str] | None = None
     """

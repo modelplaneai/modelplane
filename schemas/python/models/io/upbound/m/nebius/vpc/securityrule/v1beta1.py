@@ -70,8 +70,8 @@ class Egress(BaseModel):
 
     CIDR blocks as the destination.
     Optional. Empty list means any address.
-    Must be a valid IPv4.
-    Maximum of 8 CIDRs can be specified.
+    Each value must be a valid IPv4 CIDR.
+    Specify at most 8 CIDRs.
     """
     destinationPorts: list[float] | None = None
     """
@@ -151,8 +151,8 @@ class Ingress(BaseModel):
 
     CIDR blocks as the source.
     Optional. Empty list means any address.
-    Must be a valid IPv4
-    Maximum of 8 CIDRs can be specified.
+    Each value must be a valid IPv4 CIDR.
+    Specify at most 8 CIDRs.
     """
     sourceSecurityGroupId: str | None = None
     """
@@ -241,8 +241,8 @@ class ForProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -345,8 +345,8 @@ class InitProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -482,8 +482,8 @@ class EgressModel(BaseModel):
 
     CIDR blocks as the destination.
     Optional. Empty list means any address.
-    Must be a valid IPv4.
-    Maximum of 8 CIDRs can be specified.
+    Each value must be a valid IPv4 CIDR.
+    Specify at most 8 CIDRs.
     """
     destinationPorts: list[float] | None = None
     """
@@ -520,8 +520,8 @@ class IngressModel(BaseModel):
 
     CIDR blocks as the source.
     Optional. Empty list means any address.
-    Must be a valid IPv4
-    Maximum of 8 CIDRs can be specified.
+    Each value must be a valid IPv4 CIDR.
+    Specify at most 8 CIDRs.
     """
     sourceSecurityGroupId: str | None = None
     """
@@ -672,8 +672,8 @@ class AtProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """

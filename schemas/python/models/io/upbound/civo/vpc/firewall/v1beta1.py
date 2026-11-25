@@ -113,7 +113,7 @@ class NetworkIdSelector(BaseModel):
 class ForProvider(BaseModel):
     createDefaultRules: bool | None = None
     """
-    place (the firewall is never recreated). Changing it to false requires declaring at least one ingress_rule or egress_rule to replace the default rules; changing it back to true is a no-op and does not re-create the default rules.
+    create the default rules. If you set it to false you need to define at least one ingress or egress rule
     The create rules flag is used to create the default firewall rules, if is not defined will be set to true. This flag only takes effect when the firewall is created; changing it on an existing firewall never recreates the firewall and does not re-create the default rules. If you set it to false you need to define at least one ingress or egress rule
     """
     egressRule: list[EgressRuleItem] | None = None
@@ -154,7 +154,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     createDefaultRules: bool | None = None
     """
-    place (the firewall is never recreated). Changing it to false requires declaring at least one ingress_rule or egress_rule to replace the default rules; changing it back to true is a no-op and does not re-create the default rules.
+    create the default rules. If you set it to false you need to define at least one ingress or egress rule
     The create rules flag is used to create the default firewall rules, if is not defined will be set to true. This flag only takes effect when the firewall is created; changing it on an existing firewall never recreates the firewall and does not re-create the default rules. If you set it to false you need to define at least one ingress or egress rule
     """
     egressRule: list[EgressRuleItem] | None = None
@@ -285,7 +285,7 @@ class EgressRuleItemModel(BaseModel):
     """
     id: str | None = None
     """
-    (String) The ID of the firewall rule.
+    (String) The ID of this resource.
     The ID of the firewall rule.
     """
     label: str | None = None
@@ -318,7 +318,7 @@ class IngressRuleItemModel(BaseModel):
     """
     id: str | None = None
     """
-    (String) The ID of the firewall rule.
+    (String) The ID of this resource.
     The ID of the firewall rule.
     """
     label: str | None = None
@@ -341,7 +341,7 @@ class IngressRuleItemModel(BaseModel):
 class AtProvider(BaseModel):
     createDefaultRules: bool | None = None
     """
-    place (the firewall is never recreated). Changing it to false requires declaring at least one ingress_rule or egress_rule to replace the default rules; changing it back to true is a no-op and does not re-create the default rules.
+    create the default rules. If you set it to false you need to define at least one ingress or egress rule
     The create rules flag is used to create the default firewall rules, if is not defined will be set to true. This flag only takes effect when the firewall is created; changing it on an existing firewall never recreates the firewall and does not re-create the default rules. If you set it to false you need to define at least one ingress or egress rule
     """
     egressRule: list[EgressRuleItemModel] | None = None
@@ -351,7 +351,7 @@ class AtProvider(BaseModel):
     """
     id: str | None = None
     """
-    (String) The ID of the firewall rule.
+    (String) The ID of this resource.
     """
     ingressRule: list[IngressRuleItemModel] | None = None
     """

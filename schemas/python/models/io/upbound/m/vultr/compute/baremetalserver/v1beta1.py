@@ -265,10 +265,6 @@ class ForProvider(BaseModel):
     """
     The scheme used for the default user. Possible values are root or limited (linux servers only).
     """
-    vpc2Ids: list[str] | None = None
-    """
-    (Deprecated) A list of VPC 2.0 IDs to be attached to the server.
-    """
     vpcId: str | None = None
     """
     The VPC ID to use when creating the server.
@@ -380,10 +376,6 @@ class InitProvider(BaseModel):
     userScheme: str | None = None
     """
     The scheme used for the default user. Possible values are root or limited (linux servers only).
-    """
-    vpc2Ids: list[str] | None = None
-    """
-    (Deprecated) A list of VPC 2.0 IDs to be attached to the server.
     """
     vpcId: str | None = None
     """
@@ -590,10 +582,6 @@ class AtProvider(BaseModel):
     v6NetworkSize: int | None = None
     """
     The IPv6 network size in bits.
-    """
-    vpc2Ids: list[str] | None = None
-    """
-    (Deprecated) A list of VPC 2.0 IDs to be attached to the server.
     """
     vpcId: str | None = None
     """

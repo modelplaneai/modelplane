@@ -10,6 +10,143 @@ from pydantic import AwareDatetime, BaseModel, Field
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
+class Groups(BaseModel):
+    claim: str | None = None
+    """
+    (String) Names the token claim to map.
+    Names the token claim to map.
+    """
+    expression: str | None = None
+    """
+    (String) Maps token claims with a CEL expression.
+    Maps token claims with a CEL expression.
+    """
+    prefix: str | None = None
+    """
+    (String) Omission and an empty value disable prefixing for claims. Expressions require omission, including for an empty value.
+    Omission and an empty value disable prefixing for claims. Expressions require omission, including for an empty value.
+    """
+
+
+class Username(BaseModel):
+    claim: str | None = None
+    """
+    (String) Names the token claim to map.
+    Names the token claim to map.
+    """
+    expression: str | None = None
+    """
+    (String) Maps token claims with a CEL expression.
+    Maps token claims with a CEL expression.
+    """
+    prefix: str | None = None
+    """
+    (String) Omission and an empty value disable prefixing for claims. Expressions require omission, including for an empty value.
+    Omission and an empty value disable prefixing for claims. Expressions require omission, including for an empty value.
+    """
+
+
+class ClaimMappings(BaseModel):
+    groups: Groups | None = None
+    """
+    (Attributes) Maps token claims to Kubernetes groups. Omission disables group mapping. (see below for nested schema)
+    """
+    username: Username | None = None
+    """
+    (Attributes) Maps token claims to the Kubernetes username. (see below for nested schema)
+    """
+
+
+class ClaimValidationRule(BaseModel):
+    claim: str | None = None
+    """
+    (String) Names the token claim to map.
+    Names the token claim that must match required_value exactly.
+    """
+    expression: str | None = None
+    """
+    (String) Maps token claims with a CEL expression.
+    Validates token claims with CEL. The expression must evaluate to true.
+    """
+    message: str | None = None
+    """
+    (String) Describes a failed CEL validation.
+    Describes a failed CEL validation.
+    """
+    requiredValue: str | None = None
+    """
+    (String) An omitted value matches an empty string, following upstream behavior.
+    An omitted value matches an empty string, following upstream behavior.
+    """
+
+
+class Issuer(BaseModel):
+    audiences: list[str] | None = None
+    """
+    (List of String) Lists the token audiences that this issuer accepts, for example, ["kubernetes", "dashboard"].
+    Lists the token audiences that this issuer accepts, for example, `["kubernetes", "dashboard"]`.
+    """
+    certificateAuthority: str | None = None
+    """
+    (String) PEM CA bundle for discovery and JWKS. Omission uses system trust.
+    PEM CA bundle for discovery and JWKS. Omission uses system trust.
+    """
+    discoveryUrl: str | None = None
+    """
+    (String) Overrides the OpenID discovery URL. An empty value uses the issuer's standard discovery URL.
+    Overrides the OpenID discovery URL. An empty value uses the issuer's standard discovery URL.
+    """
+    url: str | None = None
+    """
+    (String) Identifies the issuer and must match the token iss claim.
+    Identifies the issuer and must match the token `iss` claim.
+    """
+
+
+class UserValidationRule(BaseModel):
+    expression: str | None = None
+    """
+    (String) Maps token claims with a CEL expression.
+    Validates the mapped Kubernetes user information with CEL.
+    """
+    message: str | None = None
+    """
+    (String) Describes a failed CEL validation.
+    Describes a failed CEL validation.
+    """
+
+
+class OidcItem(BaseModel):
+    claimMappings: ClaimMappings | None = None
+    """
+    (Attributes) Maps token claims to Kubernetes user attributes. (see below for nested schema)
+    """
+    claimValidationRules: list[ClaimValidationRule] | None = None
+    """
+    (Attributes List) Validates token claims before Kubernetes authenticates the user. (see below for nested schema)
+    """
+    issuer: Issuer | None = None
+    """
+    (Attributes) Defines the issuer for accepted tokens. (see below for nested schema)
+    """
+    name: str | None = None
+    """
+    readable name for the resource.
+    Identifies this provider within the cluster configuration.
+    """
+    userValidationRules: list[UserValidationRule] | None = None
+    """
+    (Attributes List) Validates the mapped Kubernetes user information. (see below for nested schema)
+    """
+
+
+class Authentication(BaseModel):
+    oidc: list[OidcItem] | None = None
+    """
+    (Attributes List) Configures OIDC providers for Kubernetes user authentication. (see below for nested schema)
+    """
+
+
 class PublicEndpoint(BaseModel):
     allowedCidrs: list[str] | None = None
     """
@@ -18,7 +155,7 @@ class PublicEndpoint(BaseModel):
 
     List of CIDR blocks from which access to public endpoint is allowed.
     If field is not set, or list is empty, it means that access is not restricted at all.
-    You can specify a maximum of 8 CIDRs.
+    You can specify a maximum of 100 CIDRs.
     """
 
 
@@ -78,6 +215,10 @@ class ControlPlane(BaseModel):
     """
     (Attributes) :
     """
+    authentication: Authentication | None = None
+    """
+    plane infra version. (see below for nested schema)
+    """
     endpoints: Endpoints | None = None
     """
     (Attributes) Specification of endpoints of cluster control plane. (see below for nested schema)
@@ -102,6 +243,7 @@ class ControlPlane(BaseModel):
     :
 
     Nebius VPC Subnet ID where control plane instances will be located.
+    If it isn't specified default network of the parent container will be used.
     Also will be default NodeGroup subnet.
     """
     subnetIdRef: SubnetIdRef | None = None
@@ -160,8 +302,8 @@ class ForProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -190,8 +332,8 @@ class InitProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
@@ -285,6 +427,10 @@ class ControlPlaneModel(BaseModel):
     """
     (Attributes) :
     """
+    authentication: Authentication | None = None
+    """
+    plane infra version. (see below for nested schema)
+    """
     endpoints: Endpoints | None = None
     """
     (Attributes) Specification of endpoints of cluster control plane. (see below for nested schema)
@@ -309,6 +455,7 @@ class ControlPlaneModel(BaseModel):
     :
 
     Nebius VPC Subnet ID where control plane instances will be located.
+    If it isn't specified default network of the parent container will be used.
     Also will be default NodeGroup subnet.
     """
     version: str | None = None
@@ -378,7 +525,7 @@ class LastOccurrence(BaseModel):
     """
     message: str | None = None
     """
-    (String) :
+    (String) Describes a failed CEL validation.
     :
 
     A human-readable message describing what has happened
@@ -484,8 +631,8 @@ class AtProvider(BaseModel):
     """
     name: str | None = None
     """
-    (String) Human readable name for the resource.
-    Human readable name for the resource.
+    readable name for the resource.
+    Human-readable name for the resource.
     """
     parentId: str | None = None
     """
